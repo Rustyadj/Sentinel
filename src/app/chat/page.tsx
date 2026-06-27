@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { useKeyStore } from "@/store/useKeyStore";
 import type { Message, Agent } from "@/types";
 
 // Parse @AgentName from user input — returns matched agent or null
@@ -81,6 +82,7 @@ export default function ChatPage() {
   const { rooms, activeRoomId, setActiveRoom, addMessage, updateMessage, createRoom } =
     useChatStore();
   const { agents, updateAgentStatus } = useAgentStore();
+  const { anthropicKey, openaiKey, openrouterKey } = useKeyStore();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
@@ -133,7 +135,12 @@ export default function ChatPage() {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(anthropicKey && { "x-anthropic-key": anthropicKey }),
+          ...(openaiKey && { "x-openai-key": openaiKey }),
+          ...(openrouterKey && { "x-openrouter-key": openrouterKey }),
+        },
         body: JSON.stringify({ messages: history, agentId: respondingAgent.id }),
       });
 
@@ -199,6 +206,9 @@ export default function ChatPage() {
     addMessage,
     updateMessage,
     updateAgentStatus,
+    anthropicKey,
+    openaiKey,
+    openrouterKey,
   ]);
 
   return (

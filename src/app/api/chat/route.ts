@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import type { NextRequest } from "next/server";
 
@@ -8,29 +9,36 @@ function sse(data: object): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+function sseStream(
+  fn: (ctrl: ReadableStreamDefaultController) => Promise<void>
+): Response {
+  return new Response(
+    new ReadableStream({ start: fn }),
+    {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    }
+  );
+}
+
 function sseError(message: string): Response {
-  const stream = new ReadableStream({
-    start(ctrl) {
-      ctrl.enqueue(sse({ type: "error", error: message }));
-      ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-      ctrl.close();
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
+  return sseStream(async (ctrl) => {
+    ctrl.enqueue(sse({ type: "error", error: message }));
+    ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+    ctrl.close();
   });
 }
 
-export async function POST(request: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return sseError("ANTHROPIC_API_KEY is not configured");
-  }
+function pickProvider(model: string) {
+  if (model.startsWith("claude")) return "anthropic";
+  if (model.startsWith("gpt") || model === "o1" || model === "o3") return "openai";
+  return "openrouter";
+}
 
+export async function POST(request: NextRequest) {
   let body: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     agentId: string;
@@ -43,25 +51,32 @@ export async function POST(request: NextRequest) {
   }
 
   const { messages, agentId } = body;
-
   if (!messages?.length || !agentId) {
     return sseError("Missing required fields: messages, agentId");
   }
 
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
+  const model = agentTemplate?.model ?? "claude-sonnet-4-6";
   const systemPrompt =
     agentTemplate?.systemPrompt ??
-    `You are ${agentTemplate?.name ?? "an AI assistant"} in the HermesOS platform. Be concise, helpful, and professional.`;
+    `You are an AI assistant in the HermesOS platform. Be concise and professional.`;
 
-  const anthropic = new Anthropic({ apiKey });
+  const provider = pickProvider(model);
 
-  const stream = new ReadableStream({
-    async start(ctrl) {
+  // Keys passed from the browser (user's own credentials)
+  const anthropicKey = request.headers.get("x-anthropic-key") ?? "";
+  const openaiKey = request.headers.get("x-openai-key") ?? "";
+  const openrouterKey = request.headers.get("x-openrouter-key") ?? "";
+
+  // ── Anthropic ─────────────────────────────────────────────────────────────
+  if (provider === "anthropic") {
+    if (!anthropicKey) return sseError("Anthropic API key not configured — add it in Settings → API Keys");
+
+    return sseStream(async (ctrl) => {
       try {
+        const anthropic = new Anthropic({ apiKey: anthropicKey });
         const response = await anthropic.messages.create({
-          model: agentTemplate?.model?.startsWith("claude")
-            ? agentTemplate.model
-            : "claude-sonnet-4-6",
+          model,
           max_tokens: 2048,
           system: systemPrompt,
           messages,
@@ -75,30 +90,88 @@ export async function POST(request: NextRequest) {
           ) {
             ctrl.enqueue(sse({ type: "text", text: event.delta.text }));
           }
-          if (event.type === "message_stop") {
-            ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-            ctrl.close();
-            return;
-          }
+          if (event.type === "message_stop") break;
         }
-
-        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-        ctrl.close();
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Upstream API error";
-        ctrl.enqueue(sse({ type: "error", error: msg }));
+        ctrl.enqueue(
+          sse({ type: "error", error: err instanceof Error ? err.message : "Anthropic API error" })
+        );
+      } finally {
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
       }
-    },
-  });
+    });
+  }
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
+  // ── OpenAI ────────────────────────────────────────────────────────────────
+  if (provider === "openai") {
+    if (!openaiKey) return sseError("OpenAI API key not configured — add it in Settings → API Keys");
+
+    return sseStream(async (ctrl) => {
+      try {
+        const openai = new OpenAI({ apiKey: openaiKey });
+        const stream = await openai.chat.completions.create({
+          model,
+          max_tokens: 2048,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages,
+          ],
+          stream: true,
+        });
+
+        for await (const chunk of stream) {
+          const text = chunk.choices[0]?.delta?.content;
+          if (text) ctrl.enqueue(sse({ type: "text", text }));
+          if (chunk.choices[0]?.finish_reason) break;
+        }
+      } catch (err) {
+        ctrl.enqueue(
+          sse({ type: "error", error: err instanceof Error ? err.message : "OpenAI API error" })
+        );
+      } finally {
+        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+        ctrl.close();
+      }
+    });
+  }
+
+  // ── OpenRouter (OpenAI-compatible) ────────────────────────────────────────
+  if (!openrouterKey) return sseError("OpenRouter API key not configured — add it in Settings → API Keys");
+
+  return sseStream(async (ctrl) => {
+    try {
+      const openai = new OpenAI({
+        apiKey: openrouterKey,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "https://hermesos.ai",
+          "X-Title": "HermesOS",
+        },
+      });
+
+      const stream = await openai.chat.completions.create({
+        model,
+        max_tokens: 2048,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages,
+        ],
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content;
+        if (text) ctrl.enqueue(sse({ type: "text", text }));
+        if (chunk.choices[0]?.finish_reason) break;
+      }
+    } catch (err) {
+      ctrl.enqueue(
+        sse({ type: "error", error: err instanceof Error ? err.message : "OpenRouter API error" })
+      );
+    } finally {
+      ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+      ctrl.close();
+    }
   });
 }

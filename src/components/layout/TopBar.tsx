@@ -1,20 +1,33 @@
 "use client";
 
 import { Search, Bell, Plus, ChevronDown, Zap } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useAppStore } from "@/store/useAppStore";
 import { useAgentStore } from "@/store/useAgentStore";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NAV_MODULES } from "@/lib/constants";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function TopBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { setCommandBarOpen } = useAppStore();
   const { agents } = useAgentStore();
+  const { data: session } = useSession();
 
   const activeModule = NAV_MODULES.find((m) => pathname.startsWith(m.href));
   const busyAgents = agents.filter((a) => a.status === "busy");
+
+  const user = session?.user;
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
 
   return (
     <header className="h-14 border-b border-[--border] bg-[--card] flex items-center px-4 gap-3 shrink-0">
@@ -71,12 +84,27 @@ export function TopBar() {
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[--primary]" />
         </Button>
 
-        {/* User */}
-        <button className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-md hover:bg-[--accent] transition-colors">
-          <div className="w-6 h-6 rounded-full bg-[--primary]/20 flex items-center justify-center text-xs text-[--primary] font-medium">
-            R
-          </div>
-          <span className="text-xs text-[--foreground] hidden sm:block">Rusty</span>
+        {/* User avatar */}
+        <button
+          onClick={() => router.push("/settings")}
+          className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-md hover:bg-[--accent] transition-colors"
+          title="Settings"
+        >
+          {user?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.image}
+              alt={user.name ?? "User"}
+              className="w-6 h-6 rounded-full border border-[--border]"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-[--primary]/20 flex items-center justify-center text-[10px] text-[--primary] font-semibold">
+              {initials}
+            </div>
+          )}
+          <span className="text-xs text-[--foreground] hidden sm:block">
+            {user?.name?.split(" ")[0] ?? "User"}
+          </span>
           <ChevronDown className="w-3 h-3 text-[--muted-foreground]" />
         </button>
       </div>
