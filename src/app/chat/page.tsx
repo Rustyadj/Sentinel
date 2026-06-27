@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send,
   Plus,
@@ -12,6 +12,7 @@ import {
   AtSign,
   Cpu,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { useChatStore } from "@/store/useChatStore";
 import { useAgentStore } from "@/store/useAgentStore";
@@ -21,56 +22,184 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import type { Message } from "@/types";
+import type { Message, Agent } from "@/types";
+
+// Parse @AgentName from user input — returns matched agent or null
+function parseMention(content: string, agents: Agent[]): Agent | null {
+  const match = content.match(/@([\w\s]+)/);
+  if (!match) return null;
+  const name = match[1].trim().toLowerCase();
+  return agents.find((a) => a.name.toLowerCase().includes(name)) ?? null;
+}
+
+// Read an SSE stream, calling onToken for each text chunk
+async function readSSEStream(
+  response: Response,
+  onToken: (text: string) => void
+): Promise<{ error?: string }> {
+  if (!response.body) return { error: "No response body" };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]" || raw === "") continue;
+
+        try {
+          const parsed = JSON.parse(raw) as
+            | { type: "text"; text: string }
+            | { type: "error"; error: string }
+            | { type: "done" };
+
+          if (parsed.type === "text") onToken(parsed.text);
+          if (parsed.type === "error") return { error: parsed.error };
+        } catch {
+          // skip malformed lines
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return {};
+}
 
 export default function ChatPage() {
-  const { rooms, activeRoomId, setActiveRoom, addMessage, createRoom } = useChatStore();
-  const { agents } = useAgentStore();
+  const { rooms, activeRoomId, setActiveRoom, addMessage, updateMessage, createRoom } =
+    useChatStore();
+  const { agents, updateAgentStatus } = useAgentStore();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<string>("");
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
   const roomAgents = agents.filter((a) => activeRoom?.agents.includes(a.id));
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeRoom?.messages]);
+  }, [activeRoom?.messages.length, isThinking]);
 
-  const handleSend = () => {
-    if (!input.trim() || !activeRoomId) return;
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || !activeRoomId || isThinking) return;
 
+    const userContent = input.trim();
+    setInput("");
+
+    // Add user message
     addMessage(activeRoomId, {
-      id: `msg-${Date.now()}`,
+      id: `msg-user-${Date.now()}`,
       chatId: activeRoomId,
       role: "user",
-      content: input.trim(),
+      content: userContent,
       timestamp: new Date(),
     });
 
-    const userInput = input.trim();
-    setInput("");
+    // Pick responding agent
+    const mentionedAgent = parseMention(userContent, roomAgents);
+    const respondingAgent = mentionedAgent ?? roomAgents[0];
+    if (!respondingAgent) return;
+
+    updateAgentStatus(respondingAgent.id, "busy");
     setIsThinking(true);
 
-    // Simulate agent response
-    setTimeout(() => {
-      const respondingAgent = roomAgents[0];
-      if (!respondingAgent) { setIsThinking(false); return; }
+    // Build history from existing messages (skip system, last 20)
+    const history = (activeRoom?.messages ?? [])
+      .filter((m) => m.role !== "system")
+      .slice(-20)
+      .map((m) => ({
+        role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+        content: m.content,
+      }));
+    history.push({ role: "user", content: userContent });
+
+    let msgId: string | null = null;
+    contentRef.current = "";
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history, agentId: respondingAgent.id }),
+      });
+
+      setIsThinking(false);
+      msgId = `msg-agent-${Date.now()}`;
+      setStreamingMsgId(msgId);
 
       addMessage(activeRoomId, {
-        id: `msg-${Date.now() + 1}`,
+        id: msgId,
         chatId: activeRoomId,
         role: "agent",
         agentId: respondingAgent.id,
         agentName: respondingAgent.name,
         agentColor: respondingAgent.color,
         agentAvatar: respondingAgent.avatar,
-        content: getSimulatedResponse(respondingAgent.name, userInput),
+        content: "",
         timestamp: new Date(),
+        isStreaming: true,
       });
+
+      const { error } = await readSSEStream(response, (text) => {
+        contentRef.current += text;
+        updateMessage(activeRoomId, msgId!, { content: contentRef.current });
+      });
+
+      if (error) {
+        updateMessage(activeRoomId, msgId, {
+          content: `⚠ ${error}`,
+          isStreaming: false,
+        });
+      } else {
+        updateMessage(activeRoomId, msgId, { isStreaming: false });
+      }
+    } catch (err) {
       setIsThinking(false);
-    }, 1200 + Math.random() * 800);
-  };
+      const errorText =
+        err instanceof Error ? err.message : "Failed to reach API";
+
+      if (msgId) {
+        updateMessage(activeRoomId, msgId, {
+          content: `⚠ ${errorText}`,
+          isStreaming: false,
+        });
+      } else {
+        addMessage(activeRoomId, {
+          id: `msg-err-${Date.now()}`,
+          chatId: activeRoomId,
+          role: "system",
+          content: `⚠ ${errorText}`,
+          timestamp: new Date(),
+        });
+      }
+    } finally {
+      setStreamingMsgId(null);
+      updateAgentStatus(respondingAgent.id, "online");
+    }
+  }, [
+    input,
+    activeRoomId,
+    isThinking,
+    roomAgents,
+    activeRoom?.messages,
+    addMessage,
+    updateMessage,
+    updateAgentStatus,
+  ]);
 
   return (
     <div className="flex h-full">
@@ -93,7 +222,9 @@ export default function ChatPage() {
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-0.5">
             {rooms.map((room) => {
-              const roomAgentList = agents.filter((a) => room.agents.includes(a.id));
+              const roomAgentList = agents.filter((a) =>
+                room.agents.includes(a.id)
+              );
               return (
                 <button
                   key={room.id}
@@ -107,7 +238,9 @@ export default function ChatPage() {
                 >
                   <div className="flex items-center gap-1.5 mb-1">
                     <Users className="w-3 h-3 shrink-0" />
-                    <span className="text-xs font-medium truncate">{room.name}</span>
+                    <span className="text-xs font-medium truncate">
+                      {room.name}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     {roomAgentList.slice(0, 3).map((a) => (
@@ -135,14 +268,16 @@ export default function ChatPage() {
             {/* Room header */}
             <div className="h-14 border-b border-[--border] px-4 flex items-center gap-3 bg-[--card] shrink-0">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-sm text-[--foreground]">{activeRoom.name}</span>
+                <span className="font-medium text-sm text-[--foreground]">
+                  {activeRoom.name}
+                </span>
                 <div className="flex items-center gap-1">
                   {roomAgents.map((a) => (
                     <div
                       key={a.id}
                       className="w-6 h-6 rounded-full flex items-center justify-center text-xs border border-[--border]"
                       style={{ backgroundColor: a.color + "22" }}
-                      title={a.name}
+                      title={`${a.name} · ${a.status}`}
                     >
                       {a.avatar}
                     </div>
@@ -151,8 +286,15 @@ export default function ChatPage() {
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Badge variant="outline" className="text-[10px] gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  {roomAgents.length} agents
+                  <div
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      streamingMsgId
+                        ? "bg-amber-400 animate-pulse"
+                        : "bg-emerald-400"
+                    )}
+                  />
+                  {streamingMsgId ? "responding…" : `${roomAgents.length} agents`}
                 </Badge>
                 <Button size="sm" variant="ghost" className="h-7 text-xs gap-1">
                   <Bot className="w-3 h-3" />
@@ -174,16 +316,16 @@ export default function ChatPage() {
                       {activeRoom.name}
                     </div>
                     <div className="text-xs text-[--muted-foreground] max-w-xs">
-                      {roomAgents.map((a) => a.name).join(", ")} {roomAgents.length === 1 ? "is" : "are"} ready. Start a conversation or type @agent to mention someone specifically.
+                      {roomAgents.map((a) => a.name).join(", ")}{" "}
+                      {roomAgents.length === 1 ? "is" : "are"} ready. Start a
+                      conversation or type @Agent to mention someone.
                     </div>
                   </div>
                 )}
                 {activeRoom.messages.map((msg) => (
                   <MessageBubble key={msg.id} message={msg} />
                 ))}
-                {isThinking && (
-                  <ThinkingIndicator agent={roomAgents[0]} />
-                )}
+                {isThinking && <ThinkingIndicator agent={roomAgents[0]} />}
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
@@ -202,8 +344,9 @@ export default function ChatPage() {
                           handleSend();
                         }
                       }}
-                      placeholder={`Message ${activeRoom.name}… (@ to mention an agent)`}
+                      placeholder={`Message ${activeRoom.name}… (@Agent to mention)`}
                       className="pr-10 bg-[--muted] border-[--border] text-sm"
+                      disabled={isThinking || !!streamingMsgId}
                     />
                     <button className="absolute right-2 top-1/2 -translate-y-1/2 text-[--muted-foreground] hover:text-[--foreground]">
                       <AtSign className="w-3.5 h-3.5" />
@@ -211,21 +354,35 @@ export default function ChatPage() {
                   </div>
                   <Button
                     onClick={handleSend}
-                    disabled={!input.trim() || isThinking}
+                    disabled={!input.trim() || isThinking || !!streamingMsgId}
                     size="icon"
                     className="shrink-0"
                   >
-                    <Send className="w-4 h-4" />
+                    {isThinking || streamingMsgId ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </Button>
                 </div>
                 <div className="flex items-center gap-3 mt-2 px-1">
                   {roomAgents.map((a) => (
                     <button
                       key={a.id}
+                      onClick={() =>
+                        setInput((prev) =>
+                          prev.trim()
+                            ? `${prev} @${a.name} `
+                            : `@${a.name} `
+                        )
+                      }
                       className="flex items-center gap-1 text-[10px] text-[--muted-foreground] hover:text-[--foreground] transition-colors"
                     >
                       <span>{a.avatar}</span>
                       <span>{a.name}</span>
+                      {a.status === "busy" && (
+                        <span className="text-amber-400">●</span>
+                      )}
                     </button>
                   ))}
                   <span className="ml-auto text-[10px] text-[--muted-foreground]">
@@ -239,7 +396,9 @@ export default function ChatPage() {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <Users className="w-10 h-10 text-[--muted-foreground] mx-auto mb-3" />
-              <div className="text-sm text-[--muted-foreground]">Select a room to start</div>
+              <div className="text-sm text-[--muted-foreground]">
+                Select a room to start
+              </div>
             </div>
           </div>
         )}
@@ -250,7 +409,23 @@ export default function ChatPage() {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const isSystem = message.role === "system";
   const [expanded, setExpanded] = useState(false);
+
+  if (isSystem) {
+    return (
+      <div className="flex items-center gap-2 py-1 animate-fade-in">
+        <div className="flex-1 h-px bg-[--border]" />
+        <span className="text-[11px] text-[--muted-foreground] px-2 shrink-0 flex items-center gap-1">
+          {message.content.startsWith("⚠") && (
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+          )}
+          {message.content}
+        </span>
+        <div className="flex-1 h-px bg-[--border]" />
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex gap-3 animate-fade-in", isUser && "flex-row-reverse")}>
@@ -258,7 +433,7 @@ function MessageBubble({ message }: { message: Message }) {
       <div className="shrink-0 mt-0.5">
         {isUser ? (
           <div className="w-7 h-7 rounded-full bg-[--primary]/20 flex items-center justify-center text-xs text-[--primary] font-medium">
-            R
+            U
           </div>
         ) : (
           <div
@@ -273,13 +448,26 @@ function MessageBubble({ message }: { message: Message }) {
       {/* Content */}
       <div className={cn("flex-1 min-w-0", isUser && "flex flex-col items-end")}>
         {/* Header */}
-        <div className={cn("flex items-center gap-2 mb-1", isUser && "flex-row-reverse")}>
+        <div
+          className={cn(
+            "flex items-center gap-2 mb-1",
+            isUser && "flex-row-reverse"
+          )}
+        >
           <span className="text-xs font-medium text-[--foreground]">
-            {isUser ? "You" : message.agentName ?? "Agent"}
+            {isUser ? "You" : (message.agentName ?? "Agent")}
           </span>
           <span className="text-[10px] text-[--muted-foreground]">
-            {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
+            {formatDistanceToNow(new Date(message.timestamp), {
+              addSuffix: true,
+            })}
           </span>
+          {message.isStreaming && (
+            <span className="text-[10px] text-amber-400 flex items-center gap-1">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              typing
+            </span>
+          )}
         </div>
 
         {/* Reasoning */}
@@ -288,7 +476,12 @@ function MessageBubble({ message }: { message: Message }) {
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1 text-[10px] text-[--muted-foreground] mb-1.5 hover:text-[--foreground] transition-colors"
           >
-            <ChevronRight className={cn("w-3 h-3 transition-transform", expanded && "rotate-90")} />
+            <ChevronRight
+              className={cn(
+                "w-3 h-3 transition-transform",
+                expanded && "rotate-90"
+              )}
+            />
             View reasoning
           </button>
         )}
@@ -301,13 +494,19 @@ function MessageBubble({ message }: { message: Message }) {
         {/* Bubble */}
         <div
           className={cn(
-            "px-3.5 py-2.5 rounded-xl text-sm leading-relaxed max-w-[80%]",
+            "px-3.5 py-2.5 rounded-xl text-sm leading-relaxed max-w-[80%] whitespace-pre-wrap",
             isUser
               ? "bg-[--primary] text-white"
-              : "bg-[--card] border border-[--border] text-[--foreground]"
+              : "bg-[--card] border border-[--border] text-[--foreground]",
+            message.isStreaming && "border-[--primary]/40"
           )}
         >
-          {message.content}
+          {message.content || (
+            <span className="text-[--muted-foreground] italic">…</span>
+          )}
+          {message.isStreaming && (
+            <span className="inline-block w-1 h-3.5 bg-[--primary] ml-0.5 animate-pulse rounded-sm align-middle" />
+          )}
         </div>
 
         {/* Tool calls */}
@@ -321,7 +520,13 @@ function MessageBubble({ message }: { message: Message }) {
                 <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
                 <span className="text-amber-400 font-mono">{tc.name}</span>
                 <Badge
-                  variant={tc.status === "complete" ? "success" : tc.status === "error" ? "destructive" : "secondary"}
+                  variant={
+                    tc.status === "complete"
+                      ? "success"
+                      : tc.status === "error"
+                      ? "destructive"
+                      : "secondary"
+                  }
                   className="text-[9px] ml-auto"
                 >
                   {tc.status}
@@ -335,7 +540,7 @@ function MessageBubble({ message }: { message: Message }) {
   );
 }
 
-function ThinkingIndicator({ agent }: { agent?: import("@/types").Agent }) {
+function ThinkingIndicator({ agent }: { agent?: Agent }) {
   return (
     <div className="flex gap-3 animate-fade-in">
       <div
@@ -352,23 +557,4 @@ function ThinkingIndicator({ agent }: { agent?: import("@/types").Agent }) {
       </div>
     </div>
   );
-}
-
-function getSimulatedResponse(agentName: string, input: string): string {
-  const responses: Record<string, string[]> = {
-    "Hermes Lisa": [
-      `I've analyzed your request: "${input.slice(0, 50)}${input.length > 50 ? "…" : ""}". Let me coordinate with the team to provide the best response. I'll synthesize the outputs and get back to you shortly.`,
-      `Understood. I'm routing this task to the appropriate specialist agents. Expect a comprehensive response with full context preservation.`,
-    ],
-    "Claude Code": [
-      `Looking at this from an engineering perspective — here's my initial assessment: we should start with the data layer, then build up the API contracts, and finally wire the UI components. Want me to draft the schema?`,
-      `I can help with that. Let me think through the architecture... I'd recommend a clean separation of concerns here, with typed interfaces at each boundary.`,
-    ],
-  };
-
-  const agentResponses = responses[agentName] ?? [
-    `I've received your message and I'm processing it. Here's what I found relevant to your query about "${input.slice(0, 30)}${input.length > 30 ? "…" : ""}". I'll provide a detailed analysis in a moment.`,
-  ];
-
-  return agentResponses[Math.floor(Math.random() * agentResponses.length)];
 }
