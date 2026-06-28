@@ -11,11 +11,12 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
+  id        String     @id @default(cuid())
+  email     String     @unique
   name      String?
-  createdAt DateTime  @default(now())
+  createdAt DateTime   @default(now())
   projects  Project[]
+  chatRooms ChatRoom[]
   auditLogs AuditLog[]
 
   @@map("users")
@@ -61,10 +62,12 @@ model ChatRoom {
   id        String    @id @default(cuid())
   name      String
   projectId String?
+  userId    String?
   agentIds  String[]
   createdAt DateTime  @default(now())
 
   project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@map("chat_rooms")

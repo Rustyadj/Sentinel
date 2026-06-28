@@ -6,9 +6,12 @@ interface ChatState {
   rooms: ChatRoom[];
   activeRoomId: string | null;
   isLoading: boolean;
+  hydrated: boolean;
 }
 
 interface ChatActions {
+  setRooms: (rooms: ChatRoom[]) => void;
+  setRoomMessages: (roomId: string, messages: Message[]) => void;
   createRoom: (name: string, agents: string[], projectId?: string) => ChatRoom;
   setActiveRoom: (roomId: string) => void;
   addMessage: (roomId: string, message: Message) => void;
@@ -17,6 +20,7 @@ interface ChatActions {
     messageId: string,
     updates: Partial<Message>
   ) => void;
+  setHydrated: (value: boolean) => void;
 }
 
 type ChatStore = ChatState & ChatActions;
@@ -43,8 +47,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   rooms: [defaultRoom],
   activeRoomId: DEFAULT_ROOM_ID,
   isLoading: false,
+  hydrated: false,
 
   // Actions
+  setRooms: (rooms) => {
+    const current = get();
+    // Preserve in-memory messages for rooms we already have loaded
+    const merged = rooms.map((r) => {
+      const existing = current.rooms.find((e) => e.id === r.id);
+      return existing ? { ...r, messages: existing.messages } : r;
+    });
+    set({
+      rooms: merged,
+      activeRoomId: merged.length > 0 ? merged[0].id : null,
+    });
+  },
+
+  setRoomMessages: (roomId, messages) =>
+    set((state) => ({
+      rooms: state.rooms.map((room) =>
+        room.id === roomId ? { ...room, messages } : room
+      ),
+    })),
+
   createRoom: (name, agents, projectId) => {
     const newRoom: ChatRoom = {
       id: `room-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -85,6 +110,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : room
       ),
     })),
+
+  setHydrated: (value) => set({ hydrated: value }),
 }));
 
 // Selector helpers

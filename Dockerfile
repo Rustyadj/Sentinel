@@ -19,7 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma client with Alpine-compatible binary
-RUN npx prisma generate
+# Pin version to match @prisma/client in package.json
+RUN npx prisma@7.8.0 generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
 

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
+import { db } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
 const encoder = new TextEncoder();
@@ -38,10 +39,31 @@ function pickProvider(model: string) {
   return "openrouter";
 }
 
+async function persistMessages(
+  roomId: string,
+  userContent: string,
+  agentId: string,
+  assistantContent: string
+) {
+  try {
+    await db.message.createMany({
+      data: [
+        { chatRoomId: roomId, role: "user", content: userContent },
+        { chatRoomId: roomId, role: "agent", agentId, content: assistantContent },
+      ],
+    });
+  } catch (err) {
+    // Non-fatal: log but don't break the streaming response
+    console.error("[chat] persist failed:", err);
+  }
+}
+
 export async function POST(request: NextRequest) {
   let body: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     agentId: string;
+    roomId?: string;
+    userContent?: string;
   };
 
   try {
@@ -50,7 +72,7 @@ export async function POST(request: NextRequest) {
     return sseError("Invalid request body");
   }
 
-  const { messages, agentId } = body;
+  const { messages, agentId, roomId, userContent } = body;
   if (!messages?.length || !agentId) {
     return sseError("Missing required fields: messages, agentId");
   }
@@ -73,6 +95,7 @@ export async function POST(request: NextRequest) {
     if (!anthropicKey) return sseError("Anthropic API key not configured — add it in Settings → API Keys");
 
     return sseStream(async (ctrl) => {
+      let fullContent = "";
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
         const response = await anthropic.messages.create({
@@ -88,6 +111,7 @@ export async function POST(request: NextRequest) {
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           ) {
+            fullContent += event.delta.text;
             ctrl.enqueue(sse({ type: "text", text: event.delta.text }));
           }
           if (event.type === "message_stop") break;
@@ -99,6 +123,9 @@ export async function POST(request: NextRequest) {
       } finally {
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
+        if (roomId && userContent && fullContent) {
+          await persistMessages(roomId, userContent, agentId, fullContent);
+        }
       }
     });
   }
@@ -108,6 +135,7 @@ export async function POST(request: NextRequest) {
     if (!openaiKey) return sseError("OpenAI API key not configured — add it in Settings → API Keys");
 
     return sseStream(async (ctrl) => {
+      let fullContent = "";
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
         const stream = await openai.chat.completions.create({
@@ -122,7 +150,10 @@ export async function POST(request: NextRequest) {
 
         for await (const chunk of stream) {
           const text = chunk.choices[0]?.delta?.content;
-          if (text) ctrl.enqueue(sse({ type: "text", text }));
+          if (text) {
+            fullContent += text;
+            ctrl.enqueue(sse({ type: "text", text }));
+          }
           if (chunk.choices[0]?.finish_reason) break;
         }
       } catch (err) {
@@ -132,6 +163,9 @@ export async function POST(request: NextRequest) {
       } finally {
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
+        if (roomId && userContent && fullContent) {
+          await persistMessages(roomId, userContent, agentId, fullContent);
+        }
       }
     });
   }
@@ -140,6 +174,7 @@ export async function POST(request: NextRequest) {
   if (!openrouterKey) return sseError("OpenRouter API key not configured — add it in Settings → API Keys");
 
   return sseStream(async (ctrl) => {
+    let fullContent = "";
     try {
       const openai = new OpenAI({
         apiKey: openrouterKey,
@@ -162,7 +197,10 @@ export async function POST(request: NextRequest) {
 
       for await (const chunk of stream) {
         const text = chunk.choices[0]?.delta?.content;
-        if (text) ctrl.enqueue(sse({ type: "text", text }));
+        if (text) {
+          fullContent += text;
+          ctrl.enqueue(sse({ type: "text", text }));
+        }
         if (chunk.choices[0]?.finish_reason) break;
       }
     } catch (err) {
@@ -172,6 +210,9 @@ export async function POST(request: NextRequest) {
     } finally {
       ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
       ctrl.close();
+      if (roomId && userContent && fullContent) {
+        await persistMessages(roomId, userContent, agentId, fullContent);
+      }
     }
   });
 }

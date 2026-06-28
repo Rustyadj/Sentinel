@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: hermesos
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -20,7 +21,7 @@ services:
     build:
       context: .
       target: builder
-    command: npx prisma migrate deploy
+    command: npx prisma@7.8.0 migrate deploy
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
     depends_on:
@@ -38,10 +39,17 @@ services:
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
       AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
