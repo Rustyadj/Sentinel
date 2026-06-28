@@ -167,7 +167,7 @@ function CampaignsPanel() {
 function ContentPanel() {
   const content = [
     { title: "The Future of AI Agents in Enterprise", type: "Blog", status: "published", date: "Jun 20" },
-    { title: "HermesOS Product Announcement", type: "Press Release", status: "draft", date: "Jun 28" },
+    { title: "Sentinel OS Product Announcement", type: "Press Release", status: "draft", date: "Jun 28" },
     { title: "AI Workflow Automation Guide", type: "Whitepaper", status: "in-review", date: "Jul 5" },
     { title: "Weekly AI Newsletter #12", type: "Email", status: "scheduled", date: "Jun 30" },
   ];
@@ -207,7 +207,7 @@ function SEOPanel() {
     { keyword: "AI mission control", position: 4, volume: 2400, difficulty: 42 },
     { keyword: "multi-agent AI platform", position: 7, volume: 1800, difficulty: 58 },
     { keyword: "AI workflow automation", position: 12, volume: 8900, difficulty: 71 },
-    { keyword: "HermesOS", position: 1, volume: 560, difficulty: 8 },
+    { keyword: "Sentinel OS", position: 1, volume: 560, difficulty: 8 },
   ];
 
   return (

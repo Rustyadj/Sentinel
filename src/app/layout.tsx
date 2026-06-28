@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 
 export const metadata: Metadata = {
-  title: "HermesOS · Mission Control",
+  title: "Sentinel OS · Mission Control",
   description: "AI-powered mission control platform",
 };
 

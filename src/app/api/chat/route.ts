@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   const model = agentTemplate?.model ?? "claude-sonnet-4-6";
   const systemPrompt =
     agentTemplate?.systemPrompt ??
-    `You are an AI assistant in the HermesOS platform. Be concise and professional.`;
+    `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
 
   const provider = pickProvider(model);
 
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
         baseURL: "https://openrouter.ai/api/v1",
         defaultHeaders: {
           "HTTP-Referer": "https://hermesos.ai",
-          "X-Title": "HermesOS",
+          "X-Title": "Sentinel OS",
         },
       });
 

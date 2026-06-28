@@ -34,7 +34,7 @@ export default function SignInPage({
             <span className="text-2xl">🌸</span>
           </div>
           <h1 className="text-xl font-semibold text-[--foreground] tracking-tight">
-            HermesOS
+            Sentinel OS
           </h1>
           <p className="text-sm text-[--muted-foreground] mt-1">
             Sign in to Mission Control
@@ -98,7 +98,7 @@ export default function SignInPage({
         <p className="text-center text-[11px] text-[--muted-foreground] mt-6">
           Your API keys are stored only in your browser.
           <br />
-          HermesOS never stores your AI provider credentials.
+          Sentinel OS never stores your AI provider credentials.
         </p>
       </div>
     </div>

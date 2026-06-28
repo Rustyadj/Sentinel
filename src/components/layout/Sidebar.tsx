@@ -74,7 +74,7 @@ export function Sidebar() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-[--foreground] leading-none">
-                    HermesOS
+                    Sentinel OS
                   </div>
                   <div className="text-[10px] text-[--muted-foreground] leading-none mt-0.5">
                     Mission Control
