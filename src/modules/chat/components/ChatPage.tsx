@@ -23,6 +23,8 @@ import { useAgentStore } from "@/store/useAgentStore";
 import { useMemoryStore } from "@/store/useMemoryStore";
 import { useKeyStore } from "@/store/useKeyStore";
 import { AGENT_TEMPLATES } from "@/lib/constants";
+import { KnowledgeGraph } from "./KnowledgeGraph";
+import { Network } from "lucide-react";
 import type { Agent } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -409,8 +411,41 @@ function RightPanel({
   activeProject: Project | null;
   recentMemories: { id: string; content: string; type: string; confidence: number }[];
 }) {
+  const [tab, setTab] = useState<"context" | "graph">("context");
+
   return (
     <div className="w-64 flex flex-col h-full bg-[--sidebar] border-l border-[--border] overflow-hidden shrink-0">
+      {/* Tab bar */}
+      <div className="flex border-b border-[--border] shrink-0">
+        <button
+          onClick={() => setTab("context")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] uppercase tracking-wide transition-colors border-b-2",
+            tab === "context" ? "border-indigo-500 text-indigo-400" : "border-transparent text-[--muted-foreground] hover:text-[--foreground]"
+          )}
+        >
+          <Brain className="w-3 h-3" /> Context
+        </button>
+        <button
+          onClick={() => setTab("graph")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] uppercase tracking-wide transition-colors border-b-2",
+            tab === "graph" ? "border-indigo-500 text-indigo-400" : "border-transparent text-[--muted-foreground] hover:text-[--foreground]"
+          )}
+        >
+          <Network className="w-3 h-3" /> Graph
+        </button>
+      </div>
+
+      {/* Knowledge graph tab */}
+      {tab === "graph" && (
+        <div className="flex-1 p-2 overflow-hidden">
+          <KnowledgeGraph className="h-full" />
+        </div>
+      )}
+
+      {/* Context tab */}
+      {tab === "context" && <>
       {/* Active agent */}
       <div className="p-3 border-b border-[--border]">
         <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2">
@@ -511,6 +546,7 @@ function RightPanel({
           )}
         </div>
       </div>
+      </>}
     </div>
   );
 }
