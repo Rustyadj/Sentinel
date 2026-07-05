@@ -1,13 +1,11 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
-  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [pgvector(map: "vector")]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -95,15 +93,17 @@ model Memory {
   owner           String
   content         String
   tags            String[]
-  embedding       Unsupported("vector(1536)")?
+  embedding       String?
   confidence      Float                       @default(1.0)
   importanceScore Float                       @default(0.5)
   source          String
   pinned          Boolean                     @default(false)
   archived        Boolean                     @default(false)
+  projectId       String?
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
 
+  @@index([projectId])
   @@map("memories")
 }
 
@@ -161,4 +161,112 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+model KnowledgeObject {
+  id             String   @id @default(cuid())
+  type           String   // Note, Memory, Project, Workspace, Agent, Person, Organization, Task, Decision, Workflow, File, Repository, Module, Artifact, Conversation, Message
+  title          String
+  summary        String?
+  sourceType     String   // which table this bridges from (e.g. "memory", "agent", "project", "chat_room")
+  sourceId       String   // the id in the source table
+  scope          String   @default("project") // session, project, workspace, organization, user, global
+  workspaceId    String?
+  projectId      String?
+  organizationId String?
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fromEdges KnowledgeEdge[] @relation("EdgeFrom")
+  toEdges   KnowledgeEdge[] @relation("EdgeTo")
+
+  @@index([sourceType, sourceId])
+  @@index([scope])
+  @@index([projectId])
+  @@map("knowledge_objects")
+}
+
+model KnowledgeEdge {
+  id           String   @id @default(cuid())
+  fromObjectId String
+  toObjectId   String
+  type         String   // references, belongs_to, created_by, assigned_to, generated_by, depends_on, remembers, related_to, supersedes
+  weight       Float    @default(1.0)
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  fromObject KnowledgeObject @relation("EdgeFrom", fields: [fromObjectId], references: [id], onDelete: Cascade)
+  toObject   KnowledgeObject @relation("EdgeTo", fields: [toObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([fromObjectId, toObjectId, type])
+  @@index([fromObjectId, type])
+  @@index([toObjectId, type])
+  @@map("knowledge_edges")
+}
+
+model Decision {
+  id                   String   @id @default(cuid())
+  title                String
+  summary              String
+  status               String   @default("proposed") // proposed, approved, rejected, superseded
+  rationale            String?
+  alternatives         Json     @default("[]")
+  sourceLinks          Json     @default("[]")
+  approvalHistory      Json     @default("[]")
+  createdBy            String
+  approvedBy           String?
+  supersedesDecisionId String?
+  projectId            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  supersedes   Decision?  @relation("DecisionSupersedes", fields: [supersedesDecisionId], references: [id])
+  supersededBy Decision[] @relation("DecisionSupersedes")
+
+  @@index([projectId])
+  @@map("decisions")
+}
+
+model Artifact {
+  id          String   @id @default(cuid())
+  type        String   // generated_app, generated_website, generated_api, generated_module, generated_prompt, generated_diagram, generated_workflow
+  title       String
+  description String?
+  content     String?  // text content if small enough
+  storageUrl  String?  // external storage reference
+  mimeType    String?
+  projectId   String?
+  createdBy   String   // agent id or user id
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("artifacts")
+}
+
+model Entity {
+  id          String   @id @default(cuid())
+  type        String   // Person, Organization, Product, Concept, Location, Event
+  name        String
+  aliases     String[]
+  description String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, type])
+  @@map("entities")
+}
+
+model KnowledgeEvent {
+  id          String   @id @default(cuid())
+  type        String   // object_created, object_updated, edge_created, candidate_proposed, candidate_accepted, candidate_rejected
+  payload     Json
+  roomId      String?
+  workspaceId String?
+  projectId   String?
+  createdAt   DateTime @default(now())
+
+  @@map("knowledge_events")
 }

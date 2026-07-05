@@ -1,6 +1,6 @@
 "use client";
 
-import { Sidebar } from "./Sidebar";
+import { Rail } from "./Rail";
 import { TopBar } from "./TopBar";
 import { RightPanel } from "./RightPanel";
 import { useAppStore } from "@/store/useAppStore";
@@ -10,20 +10,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* Left sidebar */}
-      <Sidebar />
+      {/* Hover-expand rail — fixed, overlays content */}
+      <Rail />
 
-      {/* Main content area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* Top bar */}
+      {/* Main area — offset by the collapsed rail width (w-14 = 56px) */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden pl-14">
         <TopBar />
 
-        {/* Workspace */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <main className="flex-1 overflow-hidden min-w-0 bg-[--background]">{children}</main>
-
-          {/* Right panel */}
-          {rightPanelOpen && <RightPanel />}
+          <main className="flex-1 overflow-auto min-w-0">{children}</main>
+          {rightPanelOpen && (
+            <div className="hidden xl:flex">
+              <RightPanel />
+            </div>
+          )}
         </div>
       </div>
     </div>

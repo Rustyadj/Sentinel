@@ -1,0 +1,48 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  createKnowledgeObject,
+  listKnowledgeObjects,
+} from "@/lib/knowledge/objects";
+import type { KnowledgeObjectType, KnowledgeScope } from "@/lib/knowledge/types";
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = req.nextUrl;
+    const projectId = searchParams.get("projectId") ?? undefined;
+    const type = searchParams.get("type") as KnowledgeObjectType | undefined;
+    const scope = searchParams.get("scope") as KnowledgeScope | undefined;
+
+    const objects = await listKnowledgeObjects({ projectId, type, scope });
+    return NextResponse.json({ objects });
+  } catch {
+    return NextResponse.json({ objects: [] });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { type, title, summary, sourceType, sourceId, scope, workspaceId, projectId, metadata } = body;
+
+    if (!type || !title) {
+      return NextResponse.json({ error: "Missing required fields: type, title" }, { status: 400 });
+    }
+
+    const object = await createKnowledgeObject({
+      type: type as KnowledgeObjectType,
+      title,
+      summary,
+      sourceType: sourceType ?? "api",
+      sourceId: sourceId ?? "unknown",
+      scope: scope as KnowledgeScope | undefined,
+      workspaceId,
+      projectId,
+      metadata,
+    });
+
+    return NextResponse.json(object, { status: 201 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

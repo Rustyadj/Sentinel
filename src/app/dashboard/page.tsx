@@ -1,1 +1,5 @@
-export { DashboardPage as default } from "@/modules/dashboard";
+import { redirect } from "next/navigation";
+
+export default function DashboardPage() {
+  redirect("/");
+}

@@ -71,17 +71,18 @@ export function RightPanel() {
   );
 }
 
-const _NOW = Date.now();
-const ACTIVITY_EVENTS = [
-  { id: "1", agent: "Hermes Lisa", action: "Analyzed project requirements", time: new Date(_NOW - 2 * 60 * 1000), color: "#8B5CF6" },
-  { id: "2", agent: "Claude Code", action: "Generated API schema draft", time: new Date(_NOW - 8 * 60 * 1000), color: "#3B82F6" },
-  { id: "3", agent: "OpenClaw", action: "Research complete: 12 sources", time: new Date(_NOW - 15 * 60 * 1000), color: "#F59E0B" },
-  { id: "4", agent: "System", action: "WebSocket server started", time: new Date(_NOW - 32 * 60 * 1000), color: "#10B981" },
-  { id: "5", agent: "Hermes Lisa", action: "Memory checkpoint saved", time: new Date(_NOW - 45 * 60 * 1000), color: "#8B5CF6" },
+const PANEL_EVENTS = [
+  { id: "1", agent: "Hermes Lisa", action: "Analyzed project requirements", msAgo: 2 * 60 * 1000,  color: "#8B5CF6" },
+  { id: "2", agent: "Claude Code", action: "Generated API schema draft",    msAgo: 8 * 60 * 1000,  color: "#3B82F6" },
+  { id: "3", agent: "OpenClaw",    action: "Research complete: 12 sources", msAgo: 15 * 60 * 1000, color: "#F59E0B" },
+  { id: "4", agent: "System",      action: "WebSocket server started",      msAgo: 32 * 60 * 1000, color: "#10B981" },
+  { id: "5", agent: "Hermes Lisa", action: "Memory checkpoint saved",       msAgo: 45 * 60 * 1000, color: "#8B5CF6" },
 ];
 
+const PANEL_NOW = new Date();
+
 function ActivityTab({ agents }: { agents: import("@/types").Agent[] }) {
-  const events = ACTIVITY_EVENTS;
+  const events = PANEL_EVENTS.map((e) => ({ ...e, time: new Date(PANEL_NOW.getTime() - e.msAgo) }));
 
   return (
     <div className="p-3 space-y-1">

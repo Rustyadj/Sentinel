@@ -2,7 +2,44 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { emitEvent } from "@/lib/knowledge/events";
+import { retrieveContext } from "@/lib/knowledge/retrieval";
 import type { NextRequest } from "next/server";
+
+async function buildContextBlock(
+  roomId: string | undefined,
+  memoryScope: string
+): Promise<string> {
+  if (!roomId) return "";
+  try {
+    const room = await db.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { projectId: true, userId: true },
+    });
+
+    // Agents scoped to "session" only ever see session/user/global memory —
+    // never let them pull in project-wide context even if the room has a project.
+    const projectId = memoryScope === "session" ? undefined : room?.projectId ?? undefined;
+
+    const { memories, notes, decisions, totalItems } = await retrieveContext({
+      roomId,
+      projectId,
+      userId: room?.userId ?? undefined,
+      maxItems: 10,
+    });
+
+    if (totalItems === 0) return "";
+
+    const lines: string[] = ["\n\n## Relevant context"];
+    for (const m of memories) lines.push(`- (memory, ${m.scope}) ${m.content}`);
+    for (const n of notes) lines.push(`- (note) ${n.title}: ${n.content.slice(0, 200)}`);
+    for (const d of decisions) lines.push(`- (decision, ${d.status}) ${d.title}: ${d.summary}`);
+    return lines.join("\n");
+  } catch (err) {
+    console.error("[chat] context retrieval failed:", err);
+    return "";
+  }
+}
 
 const encoder = new TextEncoder();
 
@@ -52,6 +89,12 @@ async function persistMessages(
         { chatRoomId: roomId, role: "agent", agentId, content: assistantContent },
       ],
     });
+    // Non-fatal: emit knowledge event for graph live updates
+    await emitEvent({
+      type: "object_created",
+      payload: { roomId, agentId, messageCount: 2, trigger: "chat_response" },
+      roomId,
+    }).catch(() => {}); // ignore failures — DB may not be running
   } catch (err) {
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);
@@ -77,18 +120,23 @@ export async function POST(request: NextRequest) {
     return sseError("Missing required fields: messages, agentId");
   }
 
+  const dbAgent = await db.agent.findUnique({ where: { id: agentId } }).catch(() => null);
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
-  const model = agentTemplate?.model ?? "claude-sonnet-4-6";
-  const systemPrompt =
-    agentTemplate?.systemPrompt ??
+  const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
+  const basePrompt =
+    dbAgent?.systemPrompt ||
+    agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
+  const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
+  const contextBlock = await buildContextBlock(roomId, memoryScope);
+  const systemPrompt = basePrompt + contextBlock;
 
   const provider = pickProvider(model);
 
   // Keys passed from the browser (user's own credentials)
   const anthropicKey = request.headers.get("x-anthropic-key") ?? "";
   const openaiKey = request.headers.get("x-openai-key") ?? "";
-  const openrouterKey = request.headers.get("x-openrouter-key") ?? "";
+  const openrouterKey = request.headers.get("x-openrouter-key") ?? process.env.OPENROUTER_API_KEY ?? "";
 
   // ── Anthropic ─────────────────────────────────────────────────────────────
   if (provider === "anthropic") {
@@ -96,6 +144,7 @@ export async function POST(request: NextRequest) {
 
     return sseStream(async (ctrl) => {
       let fullContent = "";
+      ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
         const response = await anthropic.messages.create({
@@ -121,11 +170,14 @@ export async function POST(request: NextRequest) {
           sse({ type: "error", error: err instanceof Error ? err.message : "Anthropic API error" })
         );
       } finally {
-        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-        ctrl.close();
         if (roomId && userContent && fullContent) {
           await persistMessages(roomId, userContent, agentId, fullContent);
+          // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
+          ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
+        ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
+        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+        ctrl.close();
       }
     });
   }
@@ -136,6 +188,7 @@ export async function POST(request: NextRequest) {
 
     return sseStream(async (ctrl) => {
       let fullContent = "";
+      ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
         const stream = await openai.chat.completions.create({
@@ -161,11 +214,14 @@ export async function POST(request: NextRequest) {
           sse({ type: "error", error: err instanceof Error ? err.message : "OpenAI API error" })
         );
       } finally {
-        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-        ctrl.close();
         if (roomId && userContent && fullContent) {
           await persistMessages(roomId, userContent, agentId, fullContent);
+          // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
+          ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
+        ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
+        ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+        ctrl.close();
       }
     });
   }
@@ -175,12 +231,13 @@ export async function POST(request: NextRequest) {
 
   return sseStream(async (ctrl) => {
     let fullContent = "";
+    ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
     try {
       const openai = new OpenAI({
         apiKey: openrouterKey,
         baseURL: "https://openrouter.ai/api/v1",
         defaultHeaders: {
-          "HTTP-Referer": "https://sentinel-os.ai",
+          "HTTP-Referer": "https://hermesos.ai",
           "X-Title": "Sentinel OS",
         },
       });
@@ -208,11 +265,14 @@ export async function POST(request: NextRequest) {
         sse({ type: "error", error: err instanceof Error ? err.message : "OpenRouter API error" })
       );
     } finally {
-      ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
-      ctrl.close();
       if (roomId && userContent && fullContent) {
         await persistMessages(roomId, userContent, agentId, fullContent);
+        // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
+        ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
       }
+      ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
+      ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+      ctrl.close();
     }
   });
 }

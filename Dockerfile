@@ -20,7 +20,7 @@ COPY . .
 
 # Generate Prisma client with Alpine-compatible binary
 # Pin version to match @prisma/client in package.json
-RUN npx prisma@7.8.0 generate
+RUN npx prisma@6 generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
 

@@ -1,1 +1,5 @@
-export { StudioPage as default } from "@/modules/studio";
+import { redirect } from "next/navigation";
+
+export default function BuilderPage() {
+  redirect("/workspaces/studio");
+}

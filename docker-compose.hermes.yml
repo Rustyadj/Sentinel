@@ -1,0 +1,20 @@
+services:
+  hermes-hub:
+    image: hermes-hub:0.17.0
+    container_name: sentinel-os-hermes-hub
+    restart: unless-stopped
+    network_mode: host
+    labels:
+      - "hvps.open-url=http://187.124.66.30:4860"
+    env_file:
+      - /opt/sentinel-os/hermes-hub/.env
+    environment:
+      HERMES_HOME: /data/hub
+      HERMES_UID: "0"
+      HERMES_GID: "0"
+      HERMES_ALLOW_ROOT_GATEWAY: "1"
+    volumes:
+      - /opt/sentinel-os/hermes-hub/entrypoint.sh:/entrypoint.sh:ro
+      - /opt/sentinel-os/hermes-hub/data:/data/hub
+      - /docker/hermes-lisa/data:/data/hub/profiles/lisa
+      - /docker/hermes-client/data:/data/hub/profiles/client

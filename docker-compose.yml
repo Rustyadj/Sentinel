@@ -68,6 +68,7 @@ services:
       HERMES_CLINT_ENDPOINT: ${HERMES_CLINT_ENDPOINT:-http://host.docker.internal:4861}
       OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:3001}
       HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-claude-sonnet-4-6}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       HERMES_CLINT_MODEL: ${HERMES_CLINT_MODEL:-claude-sonnet-4-6}
       OPENCLAW_MODEL: ${OPENCLAW_MODEL:-claude-opus-4-8}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents

@@ -102,10 +102,10 @@ export async function POST(req: NextRequest) {
     const user = await requireUser();
     const body = await req.json() as {
       type: string; scope: string; owner: string;
-      content: string; tags?: string[];
+      content: string; tags?: string[]; projectId?: string;
       confidence?: number; importanceScore?: number; source: string;
     };
-    const { type, scope, owner, content, tags = [], confidence = 1.0, importanceScore = 0.5, source } = body;
+    const { type, scope, owner, content, tags = [], projectId, confidence = 1.0, importanceScore = 0.5, source } = body;
     if (!type || !scope || !owner || !content || !source) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -115,8 +115,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Cannot create session/user memory for another user" }, { status: 403 });
     }
 
+    // Enforce: project-scoped memories must declare which project they belong to
+    if (scope === "project" && !projectId) {
+      return NextResponse.json({ error: "projectId is required for project-scoped memories" }, { status: 400 });
+    }
+
     const memory = await db.memory.create({
-      data: { type, scope, owner, content, tags, confidence, importanceScore, source },
+      data: { type, scope, owner, content, tags, confidence, importanceScore, source, projectId: scope === "project" ? projectId : null },
       select: {
         id: true, type: true, scope: true, owner: true, content: true,
         tags: true, confidence: true, importanceScore: true, source: true,

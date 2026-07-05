@@ -65,23 +65,16 @@ export function CredentialsForm() {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-[--border]" />
-        <span className="text-[10px] text-[--muted-foreground] uppercase tracking-widest">or</span>
-        <div className="flex-1 h-px bg-[--border]" />
-      </div>
-
+    <div className="space-y-4">
       {/* Mode toggle */}
-      <div className="flex bg-[--muted] border border-[--border] rounded-lg p-0.5">
+      <div className="flex rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] p-1">
         {(["signin", "register"] as const).map((m) => (
           <button
             key={m}
             onClick={() => { setMode(m); setError(""); }}
-            className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-colors ${
+            className={`flex-1 rounded-xl py-2 text-xs font-medium transition-colors ${
               mode === m
-                ? "bg-[--card] text-[--foreground] shadow-sm"
+                ? "bg-[rgba(255,255,255,0.05)] text-[--foreground] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                 : "text-[--muted-foreground] hover:text-[--foreground]"
             }`}
           >
@@ -90,14 +83,15 @@ export function CredentialsForm() {
         ))}
       </div>
 
-      <form onSubmit={mode === "signin" ? handleSignIn : handleRegister} className="space-y-2.5">
+      <form onSubmit={mode === "signin" ? handleSignIn : handleRegister} className="space-y-3">
         {mode === "register" && (
           <input
             type="text"
             placeholder="Name"
             value={name}
             onChange={e => setName(e.target.value)}
-            className="w-full h-10 px-3 rounded-lg border border-[--border] bg-[--muted] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+            autoComplete="name"
+            className="w-full h-12 px-4 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
           />
         )}
 
@@ -107,7 +101,8 @@ export function CredentialsForm() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
-          className="w-full h-10 px-3 rounded-lg border border-[--border] bg-[--muted] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+          autoComplete="email"
+          className="w-full h-12 px-4 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
         />
 
         <div className="relative">
@@ -118,19 +113,20 @@ export function CredentialsForm() {
             onChange={e => setPassword(e.target.value)}
             required
             minLength={8}
-            className="w-full h-10 px-3 pr-9 rounded-lg border border-[--border] bg-[--muted] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
+            className="w-full h-12 px-4 pr-10 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
           />
           <button
             type="button"
             onClick={() => setShowPw(v => !v)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--muted-foreground] hover:text-[--foreground] transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[--muted-foreground] hover:text-[--foreground] transition-colors"
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
 
         {error && (
-          <div className="px-3 py-2 rounded-lg bg-[--destructive]/10 border border-[--destructive]/20 text-xs text-[--destructive]">
+          <div className="rounded-2xl border border-[--destructive]/20 bg-[--destructive]/10 px-3 py-2.5 text-xs text-[--destructive]">
             {error}
           </div>
         )}
@@ -138,7 +134,7 @@ export function CredentialsForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full h-10 flex items-center justify-center gap-2 rounded-lg bg-[--primary] hover:bg-[--primary]/90 disabled:opacity-60 text-white text-sm font-medium transition-colors"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[--primary] text-sm font-medium text-white shadow-[0_12px_30px_rgba(108,124,255,0.22)] transition-all hover:-translate-y-px hover:bg-[--primary]/92 disabled:opacity-60"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {mode === "signin" ? "Sign in" : "Create account"}

@@ -1,1 +1,5 @@
-export { CybersecurityPage as default } from "@/modules/cybersecurity";
+import { redirect } from "next/navigation";
+
+export default function SecurityPage() {
+  redirect("/workspaces/cybersecurity");
+}

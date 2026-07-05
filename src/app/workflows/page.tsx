@@ -1,1 +1,5 @@
-export { WorkflowsPage as default } from "@/modules/workflows";
+import { redirect } from "next/navigation";
+
+export default function WorkflowsPage() {
+  redirect("/workspaces/organization");
+}

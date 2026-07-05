@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-
-function extractWikiLinks(content: string): string[] {
-  const matches = content.matchAll(/\[\[([^\]]+)\]\]/g);
-  return [...matches].map((m) => m[1].trim());
-}
+import { resolveBacklinks, removeBacklinksTo } from "@/lib/knowledge/wikilinks";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,6 +13,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const body = await req.json();
 
+  const previous = await db.obsidianNote.findUnique({ where: { id }, select: { content: true } });
+
   const note = await db.obsidianNote.update({
     where: { id },
     data: {
@@ -27,36 +25,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     },
   });
 
-  // Update backlinks: find all notes this note links to, add this note's id to their backlinks
-  const linkedTitles = extractWikiLinks(body.content ?? "");
-  if (linkedTitles.length > 0) {
-    const linkedNotes = await db.obsidianNote.findMany({
-      where: { title: { in: linkedTitles } },
-      select: { id: true, backlinks: true },
-    });
-    for (const linked of linkedNotes) {
-      if (!linked.backlinks.includes(id)) {
-        await db.obsidianNote.update({
-          where: { id: linked.id },
-          data: { backlinks: [...linked.backlinks, id] },
-        });
-      }
-    }
-  }
+  // Reconcile backlinks: add newly-linked notes, remove no-longer-linked ones
+  await resolveBacklinks(id, body.content ?? "", previous?.content ?? "");
 
   return NextResponse.json(note);
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Remove this note from other notes' backlinks
-  const note = await db.obsidianNote.findUnique({ where: { id }, select: { backlinks: true } });
-  if (note) {
-    await db.obsidianNote.updateMany({
-      where: { backlinks: { has: id } },
-      data: { backlinks: { set: [] } },
-    });
-  }
+  await removeBacklinksTo(id);
   await db.obsidianNote.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
