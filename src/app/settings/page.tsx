@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Settings,
   User,
@@ -15,6 +15,7 @@ import {
   Check,
   X,
   LogOut,
+  Mic,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
@@ -24,11 +25,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useKeyStore, maskKey } from "@/store/useKeyStore";
+import { VOICE_PROVIDER_STORAGE_KEY } from "@/lib/voice/providers/index";
 
 const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile", icon: User },
   { id: "agents", label: "Agent Defaults", icon: Bot },
   { id: "memory", label: "Memory", icon: Brain },
+  { id: "voice", label: "Voice", icon: Mic },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "security", label: "Security", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
@@ -70,6 +73,7 @@ export default function SettingsPage() {
           {activeSection === "profile" && <ProfileSettings />}
           {activeSection === "agents" && <AgentSettings />}
           {activeSection === "memory" && <MemorySettings />}
+          {activeSection === "voice" && <VoiceSettings />}
           {activeSection === "appearance" && <AppearanceSettings />}
           {activeSection === "security" && <SecuritySettings />}
           {activeSection === "api" && <APIKeySettings />}
@@ -261,6 +265,41 @@ function MemorySettings() {
           type="number"
           className="w-20 h-8 text-sm"
         />
+      </FieldRow>
+    </SettingsSection>
+  );
+}
+
+function VoiceSettings() {
+  const [provider, setProvider] = useState<"browser_stt" | "mock">("browser_stt");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY);
+    if (stored === "mock" || stored === "browser_stt") setProvider(stored);
+  }, []);
+
+  const handleChange = (next: "browser_stt" | "mock") => {
+    setProvider(next);
+    window.localStorage.setItem(VOICE_PROVIDER_STORAGE_KEY, next);
+  };
+
+  return (
+    <SettingsSection
+      title="Voice Input"
+      description="Choose how the microphone button transcribes speech"
+    >
+      <FieldRow
+        label="Speech provider"
+        description="Browser Speech uses your browser's built-in recognition (no server key needed). Mock is for environments without mic access."
+      >
+        <select
+          value={provider}
+          onChange={(e) => handleChange(e.target.value as "browser_stt" | "mock")}
+          className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"
+        >
+          <option value="browser_stt">Browser Speech (default)</option>
+          <option value="mock">Mock (no mic)</option>
+        </select>
       </FieldRow>
     </SettingsSection>
   );

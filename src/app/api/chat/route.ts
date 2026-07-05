@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { emitEvent } from "@/lib/knowledge/events";
-import { retrieveContext } from "@/lib/knowledge/retrieval";
+import { retrieveContext, appendSessionMemory } from "@/lib/knowledge/retrieval";
 import type { NextRequest } from "next/server";
 
 async function buildContextBlock(
@@ -95,6 +95,12 @@ async function persistMessages(
       payload: { roomId, agentId, messageCount: 2, trigger: "chat_response" },
       roomId,
     }).catch(() => {}); // ignore failures — DB may not be running
+
+    // Non-fatal: roll this turn into ephemeral Redis-backed session memory
+    await appendSessionMemory(roomId, [
+      { role: "user", content: userContent },
+      { role: "agent", content: assistantContent },
+    ]).catch(() => {});
   } catch (err) {
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);

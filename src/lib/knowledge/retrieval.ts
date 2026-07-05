@@ -1,7 +1,52 @@
 // Knowledge Engine — scoped context retrieval
 
 import { db } from "@/lib/db";
+import { redisGet, redisSet } from "@/lib/redis";
 import type { RetrievalContext } from "./types";
+
+const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
+const SESSION_MEMORY_MAX_TURNS = 20;
+
+function sessionMemoryKey(roomId: string): string {
+  return `session:${roomId}:memory`;
+}
+
+interface SessionTurn {
+  role: string;
+  content: string;
+}
+
+// Append a turn to a room's ephemeral Redis-backed session memory, capped to
+// the last SESSION_MEMORY_MAX_TURNS turns and expiring after
+// SESSION_MEMORY_TTL_SECONDS of inactivity.
+export async function appendSessionMemory(
+  roomId: string,
+  turns: SessionTurn[]
+): Promise<void> {
+  const key = sessionMemoryKey(roomId);
+  const existingRaw = await redisGet(key);
+  const existing: SessionTurn[] = existingRaw ? JSON.parse(existingRaw) : [];
+  const updated = [...existing, ...turns].slice(-SESSION_MEMORY_MAX_TURNS);
+  await redisSet(key, JSON.stringify(updated), SESSION_MEMORY_TTL_SECONDS);
+}
+
+async function retrieveSessionMemory(
+  roomId?: string
+): Promise<Array<{ content: string; scope: string; tags: string[] }>> {
+  if (!roomId) return [];
+  const raw = await redisGet(sessionMemoryKey(roomId));
+  if (!raw) return [];
+  try {
+    const turns: SessionTurn[] = JSON.parse(raw);
+    return turns.map((t) => ({
+      content: `${t.role}: ${t.content}`,
+      scope: "session",
+      tags: [],
+    }));
+  } catch {
+    return [];
+  }
+}
 
 // Scope priority order: session → project → workspace → organization → user → global
 // Strictly enforced: project-scoped items never leak to other projects.
@@ -57,11 +102,13 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
       take: maxItems,
     });
 
-    const memories = memoriesRaw.map((m) => ({
+    const dbMemories = memoriesRaw.map((m) => ({
       content: m.content,
       scope: m.scope,
       tags: m.tags,
     }));
+    const sessionMemories = await retrieveSessionMemory(ctx.roomId);
+    const memories = [...sessionMemories, ...dbMemories];
 
     // --- ObsidianNotes ---
     const notesRaw = await db.obsidianNote.findMany({
