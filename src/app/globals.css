@@ -99,3 +99,40 @@ body {
 .animate-slide-in-right {
   animation: slide-in-right 0.15s ease-out;
 }
+
+/* Obsidian chat theme — glassy, jewel-toned surface scoped to the Chat page */
+@keyframes obsidian-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-2%, 2%) scale(1.05); }
+}
+
+@keyframes obsidian-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.obsidian-veil {
+  background:
+    radial-gradient(60% 50% at 15% 10%, rgba(139, 92, 246, 0.16), transparent 60%),
+    radial-gradient(50% 45% at 85% 20%, rgba(56, 189, 248, 0.10), transparent 60%),
+    radial-gradient(70% 60% at 50% 100%, rgba(217, 70, 239, 0.08), transparent 60%),
+    #06070a;
+}
+
+.obsidian-veil::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(40% 30% at 30% 40%, rgba(167, 139, 250, 0.08), transparent 70%);
+  animation: obsidian-drift 18s ease-in-out infinite;
+}
+
+.obsidian-shimmer-text {
+  background: linear-gradient(90deg, #c4b5fd, #f0abfc, #93c5fd, #c4b5fd);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: obsidian-shimmer 6s linear infinite;
+}

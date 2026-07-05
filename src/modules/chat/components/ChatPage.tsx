@@ -117,7 +117,7 @@ function RoomItem({
         "flex items-center gap-1.5 px-2 py-1.5 cursor-pointer rounded-md mx-1 group transition-colors",
         indent && "ml-4",
         active
-          ? "bg-indigo-500/15 text-indigo-700"
+          ? "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-violet-200 shadow-[0_0_14px_-4px_rgba(167,139,250,0.5)]"
           : "hover:bg-[--accent] text-[--muted-foreground]"
       )}
       onMouseEnter={() => onHover(room.id)}
@@ -127,7 +127,7 @@ function RoomItem({
       <Hash
         className={cn(
           "w-3 h-3 shrink-0",
-          active ? "text-indigo-500" : "text-[--muted-foreground] opacity-50"
+          active ? "text-violet-300" : "text-[--muted-foreground] opacity-50"
         )}
       />
       <span className="text-xs truncate flex-1">{room.name}</span>
@@ -193,15 +193,15 @@ function LeftPanel({
   const ungroupedRooms = rooms.filter((r) => !r.projectId);
 
   return (
-    <div className="w-60 flex flex-col h-full bg-[--sidebar] border-r border-[--border] overflow-hidden shrink-0">
+    <div className="w-60 flex flex-col h-full bg-[--sidebar] backdrop-blur-xl border-r border-[--border] overflow-hidden shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-[--border]">
-        <span className="text-[11px] font-semibold text-[--muted-foreground] uppercase tracking-wider">
+        <span className="obsidian-shimmer-text text-[11px] font-semibold uppercase tracking-wider">
           Workspaces
         </span>
         <button
           onClick={onCreateProject}
-          className="w-6 h-6 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 flex items-center justify-center text-indigo-500 transition-colors"
+          className="w-6 h-6 rounded-md bg-violet-500/15 hover:bg-violet-500/25 flex items-center justify-center text-violet-300 transition-colors"
           title="New Project"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -226,7 +226,7 @@ function LeftPanel({
                   <ChevronRight className="w-3 h-3 text-[--muted-foreground] shrink-0" />
                 )}
                 {isExpanded ? (
-                  <FolderOpen className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <FolderOpen className="w-3.5 h-3.5 text-violet-300 shrink-0" />
                 ) : (
                   <Folder className="w-3.5 h-3.5 text-[--muted-foreground] shrink-0" />
                 )}
@@ -238,7 +238,7 @@ function LeftPanel({
                     e.stopPropagation();
                     onCreateRoom(project.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[--muted-foreground] hover:text-indigo-500 transition-all"
+                  className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[--muted-foreground] hover:text-violet-300 transition-all"
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -260,7 +260,7 @@ function LeftPanel({
                 <div className="pl-10 pr-2 py-1">
                   <button
                     onClick={() => onCreateRoom(project.id)}
-                    className="text-[10px] text-[--muted-foreground] hover:text-indigo-500 transition-colors"
+                    className="text-[10px] text-[--muted-foreground] hover:text-violet-300 transition-colors"
                   >
                     + New room
                   </button>
@@ -299,7 +299,7 @@ function LeftPanel({
             <div className="text-xs text-[--muted-foreground]">No projects yet</div>
             <button
               onClick={onCreateProject}
-              className="mt-2 text-xs text-indigo-500 hover:underline"
+              className="mt-2 text-xs text-violet-300 hover:underline"
             >
               Create one
             </button>
@@ -350,7 +350,7 @@ function MessageBubble({
       {!isUser && (
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 border border-[--border]"
-          style={{ backgroundColor: (agent?.color ?? "#6366f1") + "22" }}
+          style={{ backgroundColor: (agent?.color ?? "#a78bfa") + "22" }}
         >
           {agent?.avatar ?? <Bot className="w-4 h-4 text-[--muted-foreground]" />}
         </div>
@@ -372,10 +372,10 @@ function MessageBubble({
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
             isUser
-              ? "bg-indigo-600 text-white rounded-tr-sm"
+              ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white rounded-tr-sm shadow-[0_0_16px_-6px_rgba(217,70,239,0.7)]"
               : msg.error
               ? "bg-red-500/10 text-red-400 border border-red-500/20 rounded-tl-sm"
-              : "bg-[--card] text-[--foreground] border border-[--border] rounded-tl-sm"
+              : "bg-[--card] backdrop-blur-xl text-[--foreground] border border-[--border] rounded-tl-sm"
           )}
         >
           {msg.error && (
@@ -390,7 +390,7 @@ function MessageBubble({
               ""
             ))}
           {msg.isStreaming && msg.content && (
-            <span className="inline-block w-1 h-4 bg-indigo-400 ml-0.5 animate-pulse rounded-sm" />
+            <span className="inline-block w-1 h-4 bg-violet-300 ml-0.5 animate-pulse rounded-sm" />
           )}
         </div>
       </div>
@@ -410,17 +410,17 @@ function RightPanel({
   recentMemories: { id: string; content: string; type: string; confidence: number }[];
 }) {
   return (
-    <div className="w-64 flex flex-col h-full bg-[--sidebar] border-l border-[--border] overflow-hidden shrink-0">
+    <div className="w-64 flex flex-col h-full bg-[--sidebar] backdrop-blur-xl border-l border-[--border] overflow-hidden shrink-0">
       {/* Active agent */}
       <div className="p-3 border-b border-[--border]">
         <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2">
           Active Agent
         </div>
         {activeAgent ? (
-          <div className="bg-[--card] rounded-xl p-3 border border-[--border]">
+          <div className="bg-[--card] backdrop-blur-xl rounded-xl p-3 border border-[--border]">
             <div className="flex items-center gap-2.5">
               <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-base border border-[--border]"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-base border border-[--border] shadow-[0_0_10px_-2px_rgba(167,139,250,0.5)]"
                 style={{ backgroundColor: activeAgent.color + "22" }}
               >
                 {activeAgent.avatar}
@@ -454,9 +454,9 @@ function RightPanel({
           <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2">
             Project
           </div>
-          <div className="bg-[--card] rounded-xl p-3 border border-[--border]">
+          <div className="bg-[--card] backdrop-blur-xl rounded-xl p-3 border border-[--border]">
             <div className="flex items-center gap-2 mb-1">
-              <Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <Folder className="w-3.5 h-3.5 text-violet-300 shrink-0" />
               <span className="text-sm font-medium text-[--foreground] truncate">
                 {activeProject.name}
               </span>
@@ -470,7 +470,7 @@ function RightPanel({
               {activeProject.tags?.slice(0, 3).map((tag: string) => (
                 <span
                   key={tag}
-                  className="text-[9px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded-md"
+                  className="text-[9px] bg-violet-500/10 text-violet-300 px-1.5 py-0.5 rounded-md"
                 >
                   {tag}
                 </span>
@@ -489,7 +489,7 @@ function RightPanel({
           {recentMemories.slice(0, 5).map((mem) => (
             <div
               key={mem.id}
-              className="bg-[--card] rounded-lg p-2.5 border border-[--border]"
+              className="bg-[--card] backdrop-blur-xl rounded-lg p-2.5 border border-[--border]"
             >
               <div className="text-[10px] text-[--foreground] line-clamp-2 leading-relaxed">
                 {mem.content}
@@ -765,7 +765,24 @@ export function ChatPage() {
   ]);
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div
+      className="obsidian-veil relative isolate h-full flex overflow-hidden text-[#ece9f6] [&>*]:relative [&>*]:z-10"
+      style={
+        {
+          "--background": "#06070a",
+          "--foreground": "#ece9f6",
+          "--card": "rgba(24, 20, 36, 0.55)",
+          "--card-foreground": "#ece9f6",
+          "--border": "rgba(167, 139, 250, 0.16)",
+          "--muted": "rgba(255, 255, 255, 0.05)",
+          "--muted-foreground": "rgba(236, 233, 246, 0.45)",
+          "--accent": "rgba(255, 255, 255, 0.08)",
+          "--accent-foreground": "#ece9f6",
+          "--sidebar": "rgba(18, 16, 28, 0.5)",
+          "--sidebar-border": "rgba(167, 139, 250, 0.16)",
+        } as React.CSSProperties
+      }
+    >
       {/* Left: Projects + Rooms */}
       <LeftPanel
         projects={projects}
@@ -781,7 +798,7 @@ export function ChatPage() {
       {/* Center: Chat */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[--border] bg-[--card] shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[--border] bg-[--card] backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-2">
             {activeRoom ? (
               <>
@@ -797,8 +814,8 @@ export function ChatPage() {
               </>
             ) : (
               <>
-                <Cpu className="w-4 h-4 text-indigo-500" />
-                <span className="text-sm font-semibold text-[--foreground]">
+                <Cpu className="w-4 h-4 text-violet-300" />
+                <span className="obsidian-shimmer-text text-sm font-semibold">
                   Sentinel OS Chat
                 </span>
               </>
@@ -815,7 +832,7 @@ export function ChatPage() {
                 className="w-4 h-4 rounded-full flex items-center justify-center text-[10px]"
                 style={{
                   backgroundColor:
-                    (activeAgent?.color ?? "#6366f1") + "22",
+                    (activeAgent?.color ?? "#a78bfa") + "22",
                 }}
               >
                 {selectedTemplate?.avatar ?? "🤖"}
@@ -827,7 +844,7 @@ export function ChatPage() {
             </button>
 
             {agentDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-[--card] border border-[--border] rounded-xl shadow-xl z-50 overflow-hidden py-1">
+              <div className="absolute right-0 top-full mt-1 w-56 bg-[--card] backdrop-blur-xl border border-[--border] rounded-xl shadow-xl z-50 overflow-hidden py-1">
                 {AGENT_TEMPLATES.map((a) => (
                   <button
                     key={a.id}
@@ -838,7 +855,7 @@ export function ChatPage() {
                     className={cn(
                       "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
                       selectedAgentId === a.id
-                        ? "bg-indigo-500/10"
+                        ? "bg-violet-500/10"
                         : "hover:bg-[--accent]"
                     )}
                   >
@@ -857,7 +874,7 @@ export function ChatPage() {
                       </div>
                     </div>
                     {selectedAgentId === a.id && (
-                      <Circle className="w-2 h-2 fill-indigo-500 text-indigo-500 ml-auto" />
+                      <Circle className="w-2 h-2 fill-violet-400 text-violet-400 ml-auto" />
                     )}
                   </button>
                 ))}
@@ -873,10 +890,10 @@ export function ChatPage() {
         >
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-4">
-                <Cpu className="w-7 h-7 text-indigo-500" />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border border-violet-400/20 flex items-center justify-center mb-4 shadow-[0_0_30px_-8px_rgba(167,139,250,0.6)]">
+                <Cpu className="w-7 h-7 text-violet-300" />
               </div>
-              <div className="text-sm font-semibold text-[--foreground] mb-1">
+              <div className="obsidian-shimmer-text text-sm font-semibold mb-1">
                 {activeRoom ? activeRoom.name : "Start a conversation"}
               </div>
               <div className="text-xs text-[--muted-foreground] max-w-xs">
@@ -903,11 +920,11 @@ export function ChatPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-[--border] bg-[--card] px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2 bg-[--muted] border border-[--border] rounded-2xl px-3 py-2 focus-within:border-indigo-500/50 focus-within:ring-2 focus-within:ring-indigo-500/10 transition-all">
+        <div className="border-t border-[--border] bg-[--card] backdrop-blur-xl px-4 py-3 shrink-0">
+          <div className="flex items-center gap-2 bg-[--muted] border border-[--border] rounded-2xl px-3 py-2 focus-within:border-violet-400/40 focus-within:ring-2 focus-within:ring-violet-400/15 transition-all">
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0"
-              style={{ backgroundColor: (activeAgent?.color ?? "#6366f1") + "22" }}
+              style={{ backgroundColor: (activeAgent?.color ?? "#a78bfa") + "22" }}
             >
               {activeAgent?.avatar ?? "🤖"}
             </div>
@@ -927,7 +944,7 @@ export function ChatPage() {
             <button
               onClick={() => void sendMessage()}
               disabled={!input.trim() || sending}
-              className="w-8 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
+              className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 hover:brightness-110 shadow-[0_0_16px_-4px_rgba(217,70,239,0.7)] disabled:opacity-30 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0"
             >
               {sending ? (
                 <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
