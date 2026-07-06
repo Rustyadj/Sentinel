@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { KnowledgeGraphFilters } from "./KnowledgeGraphFilters";
 import { KnowledgeNodeDrawer } from "./KnowledgeNodeDrawer";
 import type { KnowledgeNode, KnowledgeEdge } from "@/lib/knowledge/types";
+import { knowledgeNodeColor } from "@/lib/knowledge/colors";
 
 // react-force-graph-2d must be dynamically imported with ssr: false
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -16,20 +17,6 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ),
 });
 
-const NODE_COLORS: Record<string, string> = {
-  Conversation: "#6366f1",
-  Message: "#8b5cf6",
-  Memory: "#10b981",
-  Note: "#f59e0b",
-  Decision: "#ef4444",
-  Task: "#3b82f6",
-  Agent: "#ec4899",
-  Project: "#6366f1",
-  Workspace: "#0891b2",
-  Artifact: "#84cc16",
-  File: "#64748b",
-  default: "#6b7280",
-};
 
 interface GraphNode {
   id: string;
@@ -207,7 +194,7 @@ export function KnowledgeGraphPanel({
     (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as GraphNode;
       const radius = (n.val ?? 4);
-      const color = NODE_COLORS[n.type] ?? NODE_COLORS.default;
+      const color = knowledgeNodeColor(n.type);
       const x = n.x ?? 0;
       const y = n.y ?? 0;
 
@@ -280,7 +267,7 @@ export function KnowledgeGraphPanel({
           graphData={fgData}
           backgroundColor="#0c0d0f"
           nodeLabel="label"
-          nodeColor={(n) => NODE_COLORS[(n as GraphNode).type] ?? NODE_COLORS.default}
+          nodeColor={(n) => knowledgeNodeColor((n as GraphNode).type)}
           nodeVal={(n) => (n as GraphNode).val ?? 4}
           nodeCanvasObject={nodeCanvasObject}
           linkColor={() => "#1e2124"}

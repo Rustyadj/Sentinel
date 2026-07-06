@@ -4,8 +4,8 @@ import { auth } from "@/auth";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 
 export const metadata: Metadata = {
-  title: "Sentinel OS · Mission Control",
-  description: "AI-powered mission control platform",
+  title: "Sentinel OS",
+  description: "Agent workspace with a live knowledge graph",
 };
 
 export default async function RootLayout({

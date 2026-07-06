@@ -5,7 +5,14 @@ import { TopBar } from "./TopBar";
 import { RightPanel } from "./RightPanel";
 import { useAppStore } from "@/store/useAppStore";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  showRightPanel = true,
+}: {
+  children: React.ReactNode;
+  /** Pages with their own right-hand pane (e.g. home) can opt out */
+  showRightPanel?: boolean;
+}) {
   const { rightPanelOpen } = useAppStore();
 
   return (
@@ -19,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <main className="flex-1 overflow-auto min-w-0">{children}</main>
-          {rightPanelOpen && (
+          {showRightPanel && rightPanelOpen && (
             <div className="hidden xl:flex">
               <RightPanel />
             </div>
