@@ -25,6 +25,32 @@
   --color-canvas-card-border: var(--canvas-card-border);
 }
 
+/* Sentinel Neural Space */
+.neural-space-canvas {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
+    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
+    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
+    #020711;
+}
+
+.neural-space-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
+    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
+  opacity: 0.72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-space * {
+    scroll-behavior: auto !important;
+  }
+}
+
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
   --background: #0c0d0f;

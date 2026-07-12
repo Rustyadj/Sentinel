@@ -5,6 +5,7 @@ import type { KnowledgeNode } from "@/lib/knowledge/types";
 interface KnowledgeNodeDrawerProps {
   node: KnowledgeNode | null;
   onClose: () => void;
+  immersive?: boolean;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -22,12 +23,12 @@ const TYPE_COLORS: Record<string, string> = {
   default: "#6b7280",
 };
 
-export function KnowledgeNodeDrawer({ node, onClose }: KnowledgeNodeDrawerProps) {
+export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: KnowledgeNodeDrawerProps) {
   const isOpen = node !== null;
 
   return (
     <div
-      className="absolute top-0 right-0 bottom-0 w-64 bg-[--card] border-l border-[--border] z-10 overflow-y-auto"
+      className={immersive ? "absolute bottom-4 right-4 top-16 z-30 w-64 overflow-y-auto rounded-lg border border-white/10 bg-[#07101c]/90 shadow-2xl backdrop-blur-xl" : "absolute top-0 right-0 bottom-0 w-64 bg-[--card] border-l border-[--border] z-10 overflow-y-auto"}
       style={{
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
         transition: "transform 0.2s ease",
