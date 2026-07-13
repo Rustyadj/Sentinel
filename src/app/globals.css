@@ -27,22 +27,22 @@
 
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #0c0d0f;
+  --background: #070a10;
   --foreground: #e8eaed;
-  --card: #131518;
+  --card: #0f141d;
   --card-foreground: #e8eaed;
-  --border: #1e2124;
-  --muted: #1a1d21;
+  --border: #202937;
+  --muted: #111722;
   --muted-foreground: #6b7280;
-  --accent: #1e2124;
+  --accent: #202937;
   --accent-foreground: #e8eaed;
-  --primary: #6366f1;
+  --primary: #7c3aed;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
-  --ring: #6366f1;
-  --sidebar: #0f1013;
-  --sidebar-border: #1a1d21;
-  --panel: #131518;
+  --ring: #7c3aed;
+  --sidebar: #080c13;
+  --sidebar-border: #111722;
+  --panel: #0f141d;
 
   /* Light canvas tokens (workspace main areas) */
   --canvas: #f0f2f5;
@@ -71,9 +71,9 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.14), transparent 26%),
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.14), transparent 26%),
     radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 20%),
-    linear-gradient(180deg, #0d1015 0%, #0c0d0f 100%);
+    linear-gradient(180deg, #0d1015 0%, #070a10 100%);
 }
 
 ::-webkit-scrollbar {
@@ -92,7 +92,7 @@ body {
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(124, 58, 237, 0.3);
 }
 
 @keyframes pulse-dot {

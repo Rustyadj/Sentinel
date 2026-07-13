@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Settings,
   User,
@@ -271,12 +271,11 @@ function MemorySettings() {
 }
 
 function VoiceSettings() {
-  const [provider, setProvider] = useState<"browser_stt" | "mock">("browser_stt");
-
-  useEffect(() => {
+  const [provider, setProvider] = useState<"browser_stt" | "mock">(() => {
+    if (typeof window === "undefined") return "browser_stt";
     const stored = window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY);
-    if (stored === "mock" || stored === "browser_stt") setProvider(stored);
-  }, []);
+    return stored === "mock" || stored === "browser_stt" ? stored : "browser_stt";
+  });
 
   const handleChange = (next: "browser_stt" | "mock") => {
     setProvider(next);

@@ -105,7 +105,7 @@ function MessageBubble({ message }: { message: Message }) {
           <span className="text-xs font-medium text-[--foreground]">
             {isUser ? "You" : (message.agentName ?? "Agent")}
           </span>
-          <span className="text-[10px] text-[--muted-foreground]">
+          <span suppressHydrationWarning className="text-[10px] text-[--muted-foreground]">
             {formatDistanceToNow(new Date(message.timestamp), {
               addSuffix: true,
             })}

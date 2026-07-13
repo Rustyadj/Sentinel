@@ -1,50 +1,28 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
+import { createProject, listProjects } from "@/lib/workspaces";
+import { accessErrorResponse, requireWorkspacePermission } from "@/lib/workspaces/authorization";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
-    const projects = await db.project.findMany({
-      where: { userId: user.id },
-      orderBy: { updatedAt: "desc" },
-    });
-    return NextResponse.json(projects);
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("[GET /api/projects]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const workspaceId = req.nextUrl.searchParams.get("workspaceId") ?? undefined;
+    if (workspaceId) await requireWorkspacePermission(workspaceId, "project.read");
+    const projects = await listProjects(workspaceId ? { workspaceId } : { userId: user.id });
+    return NextResponse.json({ projects });
+  } catch (error) {
+    return accessErrorResponse(error);
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
-    const body = await req.json() as {
-      name?: string;
-      description?: string;
-      status?: string;
-      agents?: string[];
-      tags?: string[];
-    };
-    const project = await db.project.create({
-      data: {
-        name: body.name ?? "New Project",
-        description: body.description ?? "",
-        status: body.status ?? "active",
-        agents: body.agents ?? [],
-        tags: body.tags ?? [],
-        userId: user.id,
-      },
-    });
-    return NextResponse.json(project, { status: 201 });
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("[POST /api/projects]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const body = await req.json();
+    if (!body.name?.trim()) return NextResponse.json({ error: "Missing required field: name" }, { status: 400 });
+    if (body.workspaceId) await requireWorkspacePermission(body.workspaceId, "project.create");
+    return NextResponse.json(await createProject(body, user.id), { status: 201 });
+  } catch (error) {
+    return accessErrorResponse(error);
   }
 }

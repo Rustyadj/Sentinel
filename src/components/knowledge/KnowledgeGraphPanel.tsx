@@ -209,8 +209,11 @@ export function KnowledgeGraphPanel({
       // Main circle
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, 2 * Math.PI);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = n.type === "Agent" ? 18 : 10;
       ctx.fillStyle = color;
       ctx.fill();
+      ctx.shadowBlur = 0;
 
       // Label (only show if zoomed in)
       if (globalScale > 1.5) {
@@ -237,7 +240,7 @@ export function KnowledgeGraphPanel({
     <div className="flex flex-col h-full bg-[--card] border-l border-[--border]">
       {/* Header */}
       <div className="h-10 border-b border-[--border] px-3 flex items-center gap-2 shrink-0">
-        <span className="text-xs font-medium text-[--foreground]">Knowledge Graph</span>
+        <span className="text-xs font-medium text-[--foreground]">Live Knowledge Graph</span>
         <span className="text-[10px] text-[--muted-foreground] ml-1">
           {filteredNodes.length} nodes
         </span>
@@ -265,13 +268,16 @@ export function KnowledgeGraphPanel({
         <ForceGraph2D
           ref={fgRef}
           graphData={fgData}
-          backgroundColor="#0c0d0f"
+          backgroundColor="#080b12"
           nodeLabel="label"
           nodeColor={(n) => knowledgeNodeColor((n as GraphNode).type)}
           nodeVal={(n) => (n as GraphNode).val ?? 4}
           nodeCanvasObject={nodeCanvasObject}
-          linkColor={() => "#1e2124"}
+          linkColor={() => "rgba(124, 58, 237, 0.28)"}
           linkWidth={1}
+        linkDirectionalParticles={2}
+        linkDirectionalParticleWidth={1.4}
+        linkDirectionalParticleSpeed={0.004}
           linkDirectionalArrowLength={3}
           linkDirectionalArrowRelPos={1}
           onNodeClick={handleNodeClick}

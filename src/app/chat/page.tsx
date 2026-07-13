@@ -131,7 +131,7 @@ export default function ChatPage() {
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ExtractionCandidate[]>([]);
   const [showCandidates, setShowCandidates] = useState(false);
-  const [showGraph, setShowGraph] = useState(false);
+  const [showGraph, setShowGraph] = useState(true);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<string>("");
@@ -488,7 +488,7 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="relative flex h-full overflow-hidden">
       <ChatRoomList
         rooms={rooms}
         activeRoomId={activeRoomId}
@@ -550,7 +550,7 @@ export default function ChatPage() {
         )}
       </div>
       {showGraph && (
-        <div className="w-80 shrink-0">
+        <div className="absolute right-4 top-4 z-30 hidden h-[min(62vh,560px)] w-[min(34vw,520px)] min-w-[360px] overflow-hidden rounded-2xl border border-violet-400/15 bg-[#080b12]/95 shadow-[-28px_20px_80px_rgba(0,0,0,.48)] backdrop-blur-xl lg:block">
           <KnowledgeGraphPanel
             roomId={activeRoomId ?? undefined}
             isStreaming={!!streamingMsgId}
