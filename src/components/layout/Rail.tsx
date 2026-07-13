@@ -25,7 +25,7 @@ import {
   SETTINGS_NAV,
   getActiveWorkspace,
   type PrimaryNavItem,
-  type SubNavItem,
+  type SubnavItem,
 } from "@/lib/workspaces";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -75,7 +75,7 @@ function PrimaryItem({
   );
 }
 
-function SubItem({ item, isActive }: { item: SubNavItem; isActive: boolean }) {
+function SubItem({ item, isActive }: { item: SubnavItem; isActive: boolean }) {
   return (
     <Link
       href={item.href}

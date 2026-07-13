@@ -25,24 +25,50 @@
   --color-canvas-card-border: var(--canvas-card-border);
 }
 
+/* Sentinel Neural Space */
+.neural-space-canvas {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
+    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
+    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
+    #020711;
+}
+
+.neural-space-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
+    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
+  opacity: 0.72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-space * {
+    scroll-behavior: auto !important;
+  }
+}
+
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #070a10;
+  --background: #0c0d0f;
   --foreground: #e8eaed;
-  --card: #0f141d;
+  --card: #131518;
   --card-foreground: #e8eaed;
-  --border: #202937;
-  --muted: #111722;
+  --border: #1e2124;
+  --muted: #1a1d21;
   --muted-foreground: #6b7280;
-  --accent: #202937;
+  --accent: #1e2124;
   --accent-foreground: #e8eaed;
-  --primary: #7c3aed;
+  --primary: #6366f1;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
-  --ring: #7c3aed;
-  --sidebar: #080c13;
-  --sidebar-border: #111722;
-  --panel: #0f141d;
+  --ring: #6366f1;
+  --sidebar: #0f1013;
+  --sidebar-border: #1a1d21;
+  --panel: #131518;
 
   /* Light canvas tokens (workspace main areas) */
   --canvas: #f0f2f5;
@@ -71,9 +97,9 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(124, 58, 237, 0.14), transparent 26%),
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.14), transparent 26%),
     radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 20%),
-    linear-gradient(180deg, #0d1015 0%, #070a10 100%);
+    linear-gradient(180deg, #0d1015 0%, #0c0d0f 100%);
 }
 
 ::-webkit-scrollbar {
@@ -92,7 +118,7 @@ body {
 }
 
 ::selection {
-  background: rgba(124, 58, 237, 0.3);
+  background: rgba(99, 102, 241, 0.3);
 }
 
 @keyframes pulse-dot {

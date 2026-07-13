@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Users } from "lucide-react";
+import { Focus, Maximize2, MessageSquare, Users } from "lucide-react";
 import { KnowledgeGraphPanel } from "@/components/knowledge/KnowledgeGraphPanel";
 import { SuggestedKnowledgePanel } from "@/components/knowledge/SuggestedKnowledgePanel";
 import { ChatRoomList } from "@/components/chat/ChatRoomList";
@@ -131,11 +131,25 @@ export default function ChatPage() {
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ExtractionCandidate[]>([]);
   const [showCandidates, setShowCandidates] = useState(false);
-  const [showGraph, setShowGraph] = useState(true);
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphMode, setGraphMode] = useState<"conversation" | "hybrid" | "neural">("hybrid");
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<string>("");
   const loadedRoomsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleGraphShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
+        event.preventDefault();
+        setShowGraph(true);
+        setGraphMode((mode) => mode === "neural" ? "hybrid" : "neural");
+      }
+      if (event.key === "Escape" && graphMode === "neural") setGraphMode("hybrid");
+    };
+    window.addEventListener("keydown", handleGraphShortcut);
+    return () => window.removeEventListener("keydown", handleGraphShortcut);
+  }, [graphMode]);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
   const roomAgents = agents.filter((a) => activeRoom?.agents.includes(a.id));
@@ -488,7 +502,7 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <div className="relative flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       <ChatRoomList
         rooms={rooms}
         activeRoomId={activeRoomId}
@@ -498,26 +512,47 @@ export default function ChatPage() {
       />
 
       {/* Chat area */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#020711]">
+        {showGraph && activeRoom && (
+          <div className={`absolute inset-0 transition-[filter,opacity] duration-500 ${graphMode === "conversation" ? "opacity-40 blur-[1px]" : "opacity-100"}`}>
+            <KnowledgeGraphPanel
+              roomId={activeRoomId ?? undefined}
+              projectId={activeRoom.projectId}
+              isStreaming={!!streamingMsgId}
+              refreshKey={graphRefreshKey}
+              onClose={() => setShowGraph(false)}
+              immersive
+            />
+          </div>
+        )}
+        {showGraph && (
+          <div className="pointer-events-none absolute right-4 top-16 z-40 flex items-center rounded-lg border border-white/10 bg-[#07101c]/82 p-1 shadow-2xl backdrop-blur-xl">
+            <button onClick={() => setGraphMode("conversation")} className={`pointer-events-auto flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] ${graphMode === "conversation" ? "bg-white/10 text-white" : "text-white/45"}`}><MessageSquare className="h-3.5 w-3.5" />Conversation</button>
+            <button onClick={() => setGraphMode("hybrid")} className={`pointer-events-auto flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] ${graphMode === "hybrid" ? "bg-white/10 text-white" : "text-white/45"}`}><Focus className="h-3.5 w-3.5" />Hybrid</button>
+            <button onClick={() => setGraphMode("neural")} className={`pointer-events-auto flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] ${graphMode === "neural" ? "bg-indigo-500/20 text-indigo-300" : "text-white/45"}`}><Maximize2 className="h-3.5 w-3.5" />Neural</button>
+          </div>
+        )}
         {activeRoom ? (
           <>
-            <ChatHeader
-              room={activeRoom}
-              agents={roomAgents}
-              isStreaming={!!streamingMsgId}
-              showGraph={showGraph}
-              onToggleGraph={() => setShowGraph(!showGraph)}
-            />
+            <div className={showGraph ? `pointer-events-auto absolute inset-x-0 z-30 mx-auto flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#07101c]/90 shadow-[0_24px_80px_rgba(0,0,0,.6)] backdrop-blur-xl transition-all duration-500 ${graphMode === "neural" ? "bottom-5 h-[122px] w-[min(560px,calc(100%-32px))]" : graphMode === "conversation" ? "bottom-5 top-16 w-[min(800px,calc(100%-32px))]" : "bottom-5 h-[48%] min-h-[340px] w-[min(660px,calc(100%-32px))]"}` : "flex h-full flex-col"}>
+            {(!showGraph || graphMode !== "neural") && (
+              <ChatHeader
+                room={activeRoom}
+                agents={roomAgents}
+                isStreaming={!!streamingMsgId}
+                showGraph={showGraph}
+                onToggleGraph={() => setShowGraph(!showGraph)}
+              />
+            )}
 
-            <ChatMessageList
-              room={activeRoom}
-              agents={roomAgents}
-              isThinking={isThinking}
-              messagesEndRef={messagesEndRef}
-            />
+            {graphMode !== "neural" || !showGraph ? (
+              <ChatMessageList room={activeRoom} agents={roomAgents} isThinking={isThinking} messagesEndRef={messagesEndRef} />
+            ) : (
+              <div className="flex h-9 items-center border-b border-white/8 px-3 font-mono text-[9px] uppercase tracking-[.18em] text-white/45">Neural chat dock <span className="ml-auto text-indigo-300">Ctrl + G</span></div>
+            )}
 
             {/* Knowledge extraction candidates */}
-            {showCandidates && candidates.length > 0 && (
+            {(!showGraph || graphMode !== "neural") && showCandidates && candidates.length > 0 && (
               <SuggestedKnowledgePanel
                 candidates={candidates}
                 onAccept={handleAcceptCandidate}
@@ -537,6 +572,7 @@ export default function ChatPage() {
               onMentionAgent={handleMentionAgent}
               onTranscript={(text) => setInput(text)}
             />
+            </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
@@ -549,16 +585,6 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {showGraph && (
-        <div className="absolute right-4 top-4 z-30 hidden h-[min(62vh,560px)] w-[min(34vw,520px)] min-w-[360px] overflow-hidden rounded-2xl border border-violet-400/15 bg-[#080b12]/95 shadow-[-28px_20px_80px_rgba(0,0,0,.48)] backdrop-blur-xl lg:block">
-          <KnowledgeGraphPanel
-            roomId={activeRoomId ?? undefined}
-            isStreaming={!!streamingMsgId}
-            refreshKey={graphRefreshKey}
-            onClose={() => setShowGraph(false)}
-          />
-        </div>
-      )}
     </div>
   );
 }
