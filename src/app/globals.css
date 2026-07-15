@@ -25,58 +25,32 @@
   --color-canvas-card-border: var(--canvas-card-border);
 }
 
-/* Sentinel Neural Space */
-.neural-space-canvas {
-  background:
-    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
-    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
-    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
-    #020711;
-}
-
-.neural-space-canvas::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
-    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
-  opacity: 0.72;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .neural-space * {
-    scroll-behavior: auto !important;
-  }
-}
-
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #0c0d0f;
+  --background: #08090b;
   --foreground: #e8eaed;
-  --card: #131518;
+  --card: #101216;
   --card-foreground: #e8eaed;
-  --border: #1e2124;
-  --muted: #1a1d21;
+  --border: #1c1f24;
+  --muted: #15181c;
   --muted-foreground: #6b7280;
-  --accent: #1e2124;
+  --accent: #1a1d22;
   --accent-foreground: #e8eaed;
-  --primary: #6366f1;
+  --primary: #7c6cf6;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
-  --ring: #6366f1;
-  --sidebar: #0f1013;
-  --sidebar-border: #1a1d21;
-  --panel: #131518;
+  --ring: #7c6cf6;
+  --sidebar: #0b0c0f;
+  --sidebar-border: #17191e;
+  --panel: #0e1014;
 
-  /* Light canvas tokens (workspace main areas) */
-  --canvas: #f0f2f5;
-  --canvas-foreground: #111318;
+  /* Canvas tokens (workspace main areas) — dark to match the shell */
+  --canvas: #0a0b0e;
+  --canvas-foreground: #e8eaed;
   --canvas-muted: #6b7280;
-  --canvas-card: #1a1d24;
+  --canvas-card: #101318;
   --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #252830;
+  --canvas-card-border: #20242b;
 }
 
 * {
@@ -92,14 +66,6 @@ body {
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
-}
-
-body {
-  background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.14), transparent 26%),
-    radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 20%),
-    linear-gradient(180deg, #0d1015 0%, #0c0d0f 100%);
 }
 
 ::-webkit-scrollbar {
@@ -148,6 +114,27 @@ body {
   animation: slide-in-right 0.15s ease-out;
 }
 
+/* Subtle interactive card lift used across workspace surfaces */
+.card-hover {
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: rgba(124, 108, 246, 0.35);
+  background-color: #12151b;
+}
+
+/* Faint grid texture for canvas backdrops (e.g. graph views) */
+.canvas-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.035) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+}
+
+/* ── Feature surfaces (neural space, panels) ──────────────────────────────── */
 .bg-grid {
   background-image:
     linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
@@ -174,4 +161,30 @@ body {
   pointer-events: none;
   border-radius: inherit;
   background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 22%);
+}
+
+/* Sentinel Neural Space */
+.neural-space-canvas {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
+    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
+    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
+    #020711;
+}
+
+.neural-space-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
+    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
+  opacity: 0.72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-space * {
+    scroll-behavior: auto !important;
+  }
 }
