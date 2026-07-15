@@ -17,14 +17,12 @@ import {
   Wand2,
   Megaphone,
   DollarSign,
-  Cpu,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   PRIMARY_NAV,
   SETTINGS_NAV,
-  WORKSPACES,
   getActiveWorkspace,
   type PrimaryNavItem,
   type SubnavItem,
@@ -103,28 +101,13 @@ export function Rail() {
   return (
     <aside
       className={cn(
-        "group/rail fixed left-0 top-0 h-full z-40 flex flex-col",
+        "group/rail absolute left-0 top-0 bottom-0 z-40 flex flex-col",
         "w-14 hover:w-60 transition-[width] duration-200 ease-out overflow-hidden",
-        "bg-[--sidebar] border-r border-[--sidebar-border]"
+        "bg-[--sidebar] border-r border-[--sidebar-border] shadow-[4px_0_24px_-12px_rgba(0,0,0,0.6)]"
       )}
     >
-      {/* Logo */}
-      <div className="h-14 shrink-0 flex items-center gap-3 px-3 border-b border-[--sidebar-border]">
-        <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-[--primary]/10">
-          <Cpu className="w-4 h-4 text-[--primary]" />
-        </div>
-        <div className="opacity-0 group-hover/rail:opacity-100 transition-opacity duration-100 delay-75 min-w-0">
-          <div className="text-sm font-semibold text-[--foreground] leading-none whitespace-nowrap">
-            Sentinel OS
-          </div>
-          <div className="text-[10px] text-[--muted-foreground] leading-none mt-0.5 whitespace-nowrap">
-            AI Workspace
-          </div>
-        </div>
-      </div>
-
       {/* Primary nav */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5">
         {PRIMARY_NAV.map((item) => {
           const isActive = item.exact
             ? pathname === item.href

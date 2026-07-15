@@ -1,3 +1,4 @@
+import { Crosshair, ShieldAlert, Boxes, MousePointerClick } from "lucide-react";
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { WorkspaceCard, StatCard } from "@/components/workspace/WorkspaceCard";
@@ -44,10 +45,10 @@ export default function RangeConsolePage() {
     <WorkspaceShell>
       <WorkspaceHeader
         title="Range Console"
-        description="Active attack simulation — authorized red team environment"
+        description="Red Team Operations and Attack Simulation Platform"
         accent="#EF4444"
         actions={
-          <button className="h-8 px-4 rounded-lg text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors">
+          <button className="h-9 px-4 rounded-lg text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors">
             + New Campaign
           </button>
         }
@@ -55,10 +56,10 @@ export default function RangeConsolePage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Active Campaigns" value={3}   sub="2 red · 1 purple"   color="#EF4444" />
-        <StatCard label="Threats Detected"  value={127} sub="last 30 days"       color="#F59E0B" />
-        <StatCard label="Techniques Used"   value={34}  sub="across all ops"     color="#6366f1" />
-        <StatCard label="Avg Click Rate"    value="26%" sub="phishing campaigns" color="#10B981" />
+        <StatCard label="Active Campaigns" value={3}   sub="2 red · 1 purple"   color="#EF4444" icon={Crosshair}         trend="+2 today"  trendTone="up" />
+        <StatCard label="Threats Detected"  value={127} sub="last 30 days"       color="#F59E0B" icon={ShieldAlert}       trend="+14"       trendTone="up" />
+        <StatCard label="Techniques Used"   value={34}  sub="across all ops"     color="#6366f1" icon={Boxes}            trend="8 critical" trendTone="down" />
+        <StatCard label="Avg Click Rate"    value="26%" sub="phishing campaigns" color="#10B981" icon={MousePointerClick} trend="+4.3%"     trendTone="up" />
       </div>
 
       {/* Attack Chain + Technique Library */}

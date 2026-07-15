@@ -27,30 +27,30 @@
 
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #0c0d0f;
+  --background: #08090b;
   --foreground: #e8eaed;
-  --card: #131518;
+  --card: #101216;
   --card-foreground: #e8eaed;
-  --border: #1e2124;
-  --muted: #1a1d21;
+  --border: #1c1f24;
+  --muted: #15181c;
   --muted-foreground: #6b7280;
-  --accent: #1e2124;
+  --accent: #1a1d22;
   --accent-foreground: #e8eaed;
-  --primary: #6366f1;
+  --primary: #7c6cf6;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
-  --ring: #6366f1;
-  --sidebar: #0f1013;
-  --sidebar-border: #1a1d21;
-  --panel: #131518;
+  --ring: #7c6cf6;
+  --sidebar: #0b0c0f;
+  --sidebar-border: #17191e;
+  --panel: #0e1014;
 
-  /* Light canvas tokens (workspace main areas) */
-  --canvas: #f0f2f5;
-  --canvas-foreground: #111318;
+  /* Canvas tokens (workspace main areas) — dark to match the shell */
+  --canvas: #0a0b0e;
+  --canvas-foreground: #e8eaed;
   --canvas-muted: #6b7280;
-  --canvas-card: #1a1d24;
+  --canvas-card: #101318;
   --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #252830;
+  --canvas-card-border: #20242b;
 }
 
 * {
@@ -112,4 +112,24 @@ body {
 
 .animate-slide-in-right {
   animation: slide-in-right 0.15s ease-out;
+}
+
+/* Subtle interactive card lift used across workspace surfaces */
+.card-hover {
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: rgba(124, 108, 246, 0.35);
+  background-color: #12151b;
+}
+
+/* Faint grid texture for canvas backdrops (e.g. graph views) */
+.canvas-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.035) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
 }
