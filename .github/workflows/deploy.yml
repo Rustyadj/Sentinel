@@ -1,0 +1,90 @@
+name: Deploy to VPS
+
+# Redeploys the Docker stack on the VPS whenever `main` updates.
+# Uses native OpenSSH on the runner (no third-party actions).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VPS_HOST     - host or IP, e.g. 187.124.66.30
+#   VPS_USER     - SSH user, e.g. root
+#   VPS_SSH_KEY  - the PRIVATE key whose public half is in the VPS's
+#                  ~/.ssh/authorized_keys (generate a dedicated deploy key)
+#   VPS_APP_DIR  - absolute path to the app on the VPS (dir with docker-compose.yml)
+# Optional:
+#   VPS_PORT     - SSH port (defaults to 22)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once; let an in-flight deploy finish.
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+          DEPLOY_BRANCH: main
+        run: |
+          set -euo pipefail
+
+          for v in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              exit 1
+            fi
+          done
+          PORT="${VPS_PORT:-22}"
+
+          # Write the deploy key and trust the host.
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Run the deploy on the VPS. The heredoc is sent over stdin; APP_DIR and
+          # DEPLOY_BRANCH are passed as environment for the remote shell.
+          ssh -i ~/.ssh/deploy_key -p "$PORT" \
+            -o StrictHostKeyChecking=accept-new \
+            "${VPS_USER}@${VPS_HOST}" \
+            "APP_DIR='${VPS_APP_DIR}' DEPLOY_BRANCH='${DEPLOY_BRANCH}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "${APP_DIR:?APP_DIR not set}"
+
+          echo "==> Repo: $(git config --get remote.origin.url)"
+          git fetch origin --prune
+          git checkout "$DEPLOY_BRANCH"
+          # Mirror the remote exactly (deploy box should match origin).
+          # .env and other untracked files are preserved.
+          git reset --hard "origin/$DEPLOY_BRANCH"
+          echo "==> Now at: $(git log --oneline -1)"
+
+          echo "==> Rebuilding containers"
+          docker compose up -d --build
+
+          echo "==> Container status"
+          docker compose ps
+
+          echo "==> Waiting for health check"
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
+              echo "==> Health check passed"
+              exit 0
+            fi
+            echo "    not ready yet ($i/20)…"
+            sleep 6
+          done
+
+          echo "::error::Health check did not pass in time"
+          docker compose logs --tail=50 app || true
+          exit 1
+          REMOTE
