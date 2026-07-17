@@ -16,10 +16,13 @@ import type { Message, Agent } from "@/types";
 
 // Parse @AgentName from user input — returns matched agent or null
 function parseMention(content: string, agents: Agent[]): Agent | null {
-  const match = content.match(/@([\w\s]+)/);
-  if (!match) return null;
-  const name = match[1].trim().toLowerCase();
-  return agents.find((a) => a.name.toLowerCase().includes(name)) ?? null;
+  const normalized = content.toLowerCase();
+  return (
+    agents.find((agent) =>
+      normalized.includes(`@${agent.name.toLowerCase()}`) ||
+      normalized.includes(`@${agent.id.toLowerCase()}`)
+    ) ?? null
+  );
 }
 
 // Read an SSE stream, calling onToken for each text chunk
@@ -134,6 +137,7 @@ export default function ChatPage() {
   const [showGraph, setShowGraph] = useState(false);
   const [graphMode, setGraphMode] = useState<"conversation" | "hybrid" | "neural">("hybrid");
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
+  const [presence, setPresence] = useState<Record<string, "thinking" | "idle">>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<string>("");
   const loadedRoomsRef = useRef<Set<string>>(new Set());
@@ -208,7 +212,6 @@ export default function ChatPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCandidates([]);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowCandidates(false);
   }, [activeRoomId]);
 
@@ -267,6 +270,7 @@ export default function ChatPage() {
             if (updatedRoomId === roomId) setGraphRefreshKey((k) => k + 1);
           },
           (presenceAgentId, status) => {
+            setPresence((current) => ({ ...current, [presenceAgentId]: status }));
             updateAgentStatus(presenceAgentId, status === "thinking" ? "busy" : "online");
           }
         );
@@ -295,7 +299,7 @@ export default function ChatPage() {
 
     // Pick responding agent
     const mentionedAgent = parseMention(userContent, roomAgents);
-    const respondingAgent = mentionedAgent ?? roomAgents[0];
+    const respondingAgent = roomAgents[0];
     if (!respondingAgent) return;
 
     updateAgentStatus(respondingAgent.id, "busy");
@@ -356,6 +360,7 @@ export default function ChatPage() {
           setGraphRefreshKey(k => k + 1);
         }
       }, (presenceAgentId, status) => {
+        setPresence((current) => ({ ...current, [presenceAgentId]: status }));
         updateAgentStatus(presenceAgentId, status === "thinking" ? "busy" : "online");
       });
 
@@ -371,6 +376,7 @@ export default function ChatPage() {
         const fullContent = contentRef.current;
         if (fullContent) {
           const capturedRoomId = activeRoomId;
+          const capturedProjectId = activeRoom?.projectId;
           const capturedKey = anthropicKey;
           const capturedHistory = history.slice(-6);
           void (async () => {
@@ -384,6 +390,7 @@ export default function ChatPage() {
                 body: JSON.stringify({
                   messages: capturedHistory,
                   roomId: capturedRoomId,
+                  projectId: capturedProjectId,
                 }),
               });
               if (res.ok) {
@@ -399,11 +406,10 @@ export default function ChatPage() {
           })();
         }
 
-        // Agent-to-agent handoff: if the reply @mentions a *different* room agent,
-        // let that agent respond once (single hop — no further chained handoffs).
-        const handoffTarget = fullContent
-          ? parseMention(fullContent, roomAgents.filter((a) => a.id !== respondingAgent.id))
-          : null;
+        // Agent-to-agent handoff: a user @mention asks the primary agent to answer
+        // first, then the mentioned room agent gets one follow-up turn.
+        const handoffTarget =
+          mentionedAgent && mentionedAgent.id !== respondingAgent.id ? mentionedAgent : null;
         if (handoffTarget) {
           const handoffHistory = [
             ...history,
@@ -440,7 +446,7 @@ export default function ChatPage() {
     activeRoomId,
     isThinking,
     roomAgents,
-    activeRoom?.messages,
+    activeRoom,
     addMessage,
     updateMessage,
     updateAgentStatus,
@@ -456,11 +462,16 @@ export default function ChatPage() {
       await fetch("/api/knowledge/candidates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "accept", candidate, roomId: activeRoomId }),
+        body: JSON.stringify({
+          action: "accept",
+          candidate,
+          roomId: activeRoomId,
+          projectId: activeRoom?.projectId,
+        }),
       });
       setGraphRefreshKey(k => k + 1);
     } catch { /* non-fatal */ }
-  }, [activeRoomId]);
+  }, [activeRoomId, activeRoom]);
 
   const handleRejectCandidate = useCallback(async (candidate: ExtractionCandidate) => {
     setCandidates(prev => prev.filter(c => c.id !== candidate.id));
@@ -540,13 +551,20 @@ export default function ChatPage() {
                 room={activeRoom}
                 agents={roomAgents}
                 isStreaming={!!streamingMsgId}
+                presence={presence}
                 showGraph={showGraph}
                 onToggleGraph={() => setShowGraph(!showGraph)}
               />
             )}
 
             {graphMode !== "neural" || !showGraph ? (
-              <ChatMessageList room={activeRoom} agents={roomAgents} isThinking={isThinking} messagesEndRef={messagesEndRef} />
+              <ChatMessageList
+                room={activeRoom}
+                agents={roomAgents}
+                presence={presence}
+                isThinking={isThinking}
+                messagesEndRef={messagesEndRef}
+              />
             ) : (
               <div className="flex h-9 items-center border-b border-white/8 px-3 font-mono text-[9px] uppercase tracking-[.18em] text-white/45">Neural chat dock <span className="ml-auto text-indigo-300">Ctrl + G</span></div>
             )}

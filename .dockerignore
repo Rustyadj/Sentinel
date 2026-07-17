@@ -17,6 +17,8 @@ build/
 .gitignore
 
 # Dev tooling
+.claude/
+.superpowers/
 .vscode/
 .idea/
 *.swp

@@ -10,6 +10,7 @@ interface ChatHeaderProps {
   room: ChatRoom;
   agents: Agent[];
   isStreaming: boolean;
+  presence?: Record<string, "thinking" | "idle">;
   showGraph: boolean;
   onToggleGraph: () => void;
 }
@@ -18,9 +19,12 @@ export function ChatHeader({
   room,
   agents,
   isStreaming,
+  presence = {},
   showGraph,
   onToggleGraph,
 }: ChatHeaderProps) {
+  const thinkingAgents = agents.filter((agent) => presence[agent.id] === "thinking");
+
   return (
     <div className="h-14 border-b border-[--border] px-4 flex items-center gap-3 bg-[--card] shrink-0">
       <div className="flex items-center gap-2">
@@ -31,9 +35,12 @@ export function ChatHeader({
           {agents.map((a) => (
             <div
               key={a.id}
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs border border-[--border]"
+              className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center text-xs border border-[--border]",
+                presence[a.id] === "thinking" && "border-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.18)]"
+              )}
               style={{ backgroundColor: a.color + "22" }}
-              title={`${a.name} · ${a.status}`}
+              title={`${a.name} · ${presence[a.id] === "thinking" ? "thinking" : a.status}`}
             >
               {a.avatar}
             </div>
@@ -50,7 +57,11 @@ export function ChatHeader({
                 : "bg-emerald-400"
             )}
           />
-          {isStreaming ? "responding…" : `${agents.length} agents`}
+          {thinkingAgents.length > 0
+            ? `${thinkingAgents.map((agent) => agent.name).join(", ")} thinking…`
+            : isStreaming
+              ? "responding…"
+              : `${agents.length} agents`}
         </Badge>
         <Button
           size="sm"

@@ -29,6 +29,7 @@ next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.build.log
 
 # OS
 .DS_Store
@@ -42,3 +43,5 @@ prisma/.env
 .idea/
 *.swp
 *.swo
+.claude/
+.superpowers/

@@ -3,17 +3,22 @@ import { acceptCandidate, rejectCandidate } from "@/lib/knowledge/extraction";
 import type { ExtractionCandidate } from "@/lib/knowledge/types";
 
 export async function POST(req: NextRequest) {
-  let body: { action: "accept" | "reject"; candidate: ExtractionCandidate; roomId?: string };
+  let body: { action: "accept" | "reject"; candidate: ExtractionCandidate; roomId?: string; projectId?: string };
 
   try {
-    body = await req.json() as { action: "accept" | "reject"; candidate: ExtractionCandidate; roomId?: string };
+    body = await req.json() as {
+      action: "accept" | "reject";
+      candidate: ExtractionCandidate;
+      roomId?: string;
+      projectId?: string;
+    };
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
   if (body.action === "accept") {
     try {
-      const node = await acceptCandidate(body.candidate, body.roomId);
+      const node = await acceptCandidate(body.candidate, body.roomId, body.projectId);
       return NextResponse.json({ ok: true, node });
     } catch (err) {
       return NextResponse.json(

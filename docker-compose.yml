@@ -66,7 +66,8 @@ services:
       CONTROL_PLANE_OWNERS: ${CONTROL_PLANE_OWNERS:-}
       HERMES_ENDPOINT: ${HERMES_ENDPOINT:-http://host.docker.internal:4860}
       HERMES_CLINT_ENDPOINT: ${HERMES_CLINT_ENDPOINT:-http://host.docker.internal:4861}
-      OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:3001}
+      HERMES_CLINT_ENABLED: ${HERMES_CLINT_ENABLED:-false}
+      OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:50348}
       HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-claude-sonnet-4-6}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       HERMES_CLINT_MODEL: ${HERMES_CLINT_MODEL:-claude-sonnet-4-6}

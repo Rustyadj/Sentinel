@@ -17,6 +17,7 @@ import type { Message, Agent, ChatRoom } from "@/types";
 interface ChatMessageListProps {
   room: ChatRoom;
   agents: Agent[];
+  presence?: Record<string, "thinking" | "idle">;
   isThinking: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -24,9 +25,12 @@ interface ChatMessageListProps {
 export function ChatMessageList({
   room,
   agents,
+  presence = {},
   isThinking,
   messagesEndRef,
 }: ChatMessageListProps) {
+  const thinkingAgents = agents.filter((agent) => presence[agent.id] === "thinking");
+
   return (
     <ScrollArea className="flex-1 p-4">
       <div className="space-y-4 max-w-3xl mx-auto">
@@ -46,16 +50,23 @@ export function ChatMessageList({
           </div>
         )}
         {room.messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            agent={agents.find((a) => a.id === msg.agentId)}
+          />
         ))}
-        {isThinking && <ThinkingIndicator agent={agents[0]} />}
+        {thinkingAgents.map((agent) => (
+          <ThinkingIndicator key={agent.id} agent={agent} />
+        ))}
+        {isThinking && thinkingAgents.length === 0 && <ThinkingIndicator agent={agents[0]} />}
         <div ref={messagesEndRef} />
       </div>
     </ScrollArea>
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, agent }: { message: Message; agent?: Agent }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const [expanded, setExpanded] = useState(false);
@@ -86,9 +97,9 @@ function MessageBubble({ message }: { message: Message }) {
         ) : (
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
-            style={{ backgroundColor: (message.agentColor ?? "#666") + "22" }}
+            style={{ backgroundColor: (message.agentColor ?? agent?.color ?? "#666") + "22" }}
           >
-            {message.agentAvatar ?? "🤖"}
+            {message.agentAvatar ?? agent?.avatar ?? "🤖"}
           </div>
         )}
       </div>
@@ -103,7 +114,7 @@ function MessageBubble({ message }: { message: Message }) {
           )}
         >
           <span className="text-xs font-medium text-[--foreground]">
-            {isUser ? "You" : (message.agentName ?? "Agent")}
+            {isUser ? "You" : (message.agentName ?? agent?.name ?? "Agent")}
           </span>
           <span suppressHydrationWarning className="text-[10px] text-[--muted-foreground]">
             {formatDistanceToNow(new Date(message.timestamp), {

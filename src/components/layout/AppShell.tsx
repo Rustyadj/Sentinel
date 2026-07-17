@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
 import { Rail } from "./Rail";
 import { TopBar } from "./TopBar";
 import { RightPanel } from "./RightPanel";
+import { StatusBar } from "./StatusBar";
 import { useAppStore } from "@/store/useAppStore";
 
 export function AppShell({
@@ -17,18 +17,25 @@ export function AppShell({
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-[--background] text-[--foreground]">
+      {/* Full-width command bar */}
       <TopBar />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+
+      {/* Body: hover-expand rail overlays the content, content offset by collapsed rail width */}
+      <div className="relative flex flex-1 min-h-0 overflow-hidden">
         <Rail />
-        <div className="flex min-w-0 flex-1 overflow-hidden">
-          <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+
+        <div className="flex flex-1 min-w-0 overflow-hidden pl-14">
+          <main className="flex-1 overflow-auto min-w-0">{children}</main>
           {showRightPanel && rightPanelOpen && (
-            <div className="hidden shrink-0 xl:flex">
+            <div className="hidden xl:flex">
               <RightPanel />
             </div>
           )}
         </div>
       </div>
+
+      {/* Persistent system status strip */}
+      <StatusBar />
     </div>
   );
 }

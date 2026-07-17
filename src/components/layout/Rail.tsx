@@ -58,32 +58,35 @@ function PrimaryItem({
       href={item.href}
       title={item.label}
       className={cn(
-        "group/item relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition",
+        "flex items-center gap-3 h-9 px-3 rounded-md transition-colors",
         isActive
-          ? "bg-violet-500/12 text-violet-200"
-          : "text-slate-400 hover:bg-white/[0.045] hover:text-slate-100",
+          ? "bg-[--primary]/15 text-[--primary]"
+          : "text-[--muted-foreground] hover:bg-white/5 hover:text-[--foreground]"
       )}
     >
-      {isActive && (
-        <span className="absolute -left-2 h-6 w-0.5 rounded-r-full bg-violet-400 shadow-[0_0_12px_rgba(167,139,250,.8)]" />
-      )}
-      <Icon className="h-[18px] w-[18px] shrink-0" />
-      <span className="whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100">
+      <Icon className="w-4 h-4 shrink-0" />
+      <span className="text-sm whitespace-nowrap opacity-0 group-hover/rail:opacity-100 transition-opacity duration-100 delay-75">
         {item.label}
       </span>
     </Link>
   );
 }
 
-function SubItem({ item, isActive }: { item: SubnavItem; isActive: boolean }) {
+function SubItem({
+  item,
+  isActive,
+}: {
+  item: SubnavItem;
+  isActive: boolean;
+}) {
   return (
     <Link
       href={item.href}
       className={cn(
-        "flex h-8 items-center rounded-md pl-10 pr-3 text-xs transition",
+        "flex items-center h-7 pl-10 pr-3 rounded text-xs transition-colors whitespace-nowrap",
         isActive
-          ? "bg-violet-500/10 text-violet-200"
-          : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-200",
+          ? "text-[--primary] bg-[--primary]/10"
+          : "text-[--muted-foreground] hover:bg-white/5 hover:text-[--foreground]"
       )}
     >
       {item.label}
@@ -96,42 +99,59 @@ export function Rail() {
   const activeWorkspace = getActiveWorkspace(pathname);
 
   return (
-    <aside className="group/rail relative z-40 hidden h-full w-16 shrink-0 flex-col overflow-hidden border-r border-[#202937] bg-[#080c13] shadow-[12px_0_36px_rgba(0,0,0,.18)] transition-[width] duration-200 ease-out hover:w-60 md:flex">
-      <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+    <aside
+      className={cn(
+        "group/rail absolute left-0 top-0 bottom-0 z-40 flex flex-col",
+        "w-14 hover:w-60 transition-[width] duration-200 ease-out overflow-hidden",
+        "bg-[--sidebar] border-r border-[--sidebar-border] shadow-[4px_0_24px_-12px_rgba(0,0,0,0.6)]"
+      )}
+    >
+      {/* Primary nav */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5">
         {PRIMARY_NAV.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/" && pathname.startsWith(item.href));
+          const isActive = item.exact
+            ? pathname === item.href
+            : item.id === "workspaces"
+            ? pathname.startsWith("/workspaces")
+            : pathname.startsWith(item.href);
           return <PrimaryItem key={item.id} item={item} isActive={isActive} />;
         })}
 
+        {/* Workspace subnav — visible only when rail is expanded (hover) */}
         {activeWorkspace && activeWorkspace.subnav.length > 0 && (
-          <div className="mt-4 border-t border-[#202937] pt-3 opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100">
-            <div
-              className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.18em]"
-              style={{ color: activeWorkspace.color }}
-            >
-              {activeWorkspace.label}
+          <div className="mt-3 pt-2 border-t border-[--sidebar-border] space-y-0.5">
+            <div className="px-3 mb-1 opacity-0 group-hover/rail:opacity-100 transition-opacity duration-100 delay-75">
+              <span
+                className="text-[10px] font-semibold uppercase tracking-widest whitespace-nowrap"
+                style={{ color: activeWorkspace.color }}
+              >
+                {activeWorkspace.label}
+              </span>
             </div>
-            {activeWorkspace.subnav.map((item) => (
-              <SubItem
-                key={item.id}
-                item={item}
-                isActive={pathname === item.href}
-              />
-            ))}
+            {activeWorkspace.subnav.map((sub) => {
+              const isActive = pathname === sub.href;
+              return (
+                <div
+                  key={sub.id}
+                  className="opacity-0 group-hover/rail:opacity-100 transition-opacity duration-100 delay-75"
+                >
+                  <SubItem item={sub} isActive={isActive} />
+                </div>
+              );
+            })}
           </div>
         )}
       </nav>
 
-      <div className="shrink-0 border-t border-[#202937] p-2">
+      {/* Settings — pinned at bottom */}
+      <div className="shrink-0 border-t border-[--sidebar-border] px-2 py-2">
         <div className="mb-2 hidden rounded-lg border border-emerald-400/10 bg-emerald-400/[0.035] p-2.5 group-hover/rail:block">
           <div className="flex items-center gap-2">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-400/10">
               <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[11px] font-semibold text-slate-200">
+              <span className="block truncate text-[11px] font-semibold text-[--foreground]">
                 Hermes Lisa
               </span>
               <span className="block text-[9px] text-emerald-400">Online</span>

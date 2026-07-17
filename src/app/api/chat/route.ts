@@ -140,8 +140,8 @@ export async function POST(request: NextRequest) {
   const provider = pickProvider(model);
 
   // Keys passed from the browser (user's own credentials)
-  const anthropicKey = request.headers.get("x-anthropic-key") ?? "";
-  const openaiKey = request.headers.get("x-openai-key") ?? "";
+  const anthropicKey = request.headers.get("x-anthropic-key") ?? process.env.ANTHROPIC_API_KEY ?? "";
+  const openaiKey = request.headers.get("x-openai-key") ?? process.env.OPENAI_API_KEY ?? "";
   const openrouterKey = request.headers.get("x-openrouter-key") ?? process.env.OPENROUTER_API_KEY ?? "";
 
   // ── Anthropic ─────────────────────────────────────────────────────────────

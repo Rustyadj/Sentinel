@@ -106,6 +106,7 @@ export interface ExtractionCandidate {
   summary: string;
   confidence: number;
   sourceRoomId?: string;
+  projectId?: string;
   sourceMessageIds?: string[];
   metadata: Record<string, unknown>;
 }
