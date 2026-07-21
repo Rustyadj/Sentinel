@@ -1,29 +1,39 @@
 "use client";
 
-import { Rail } from "./Rail";
+import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { ModuleTabs } from "./ModuleTabs";
 import { RightPanel } from "./RightPanel";
 import { useAppStore } from "@/store/useAppStore";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+interface AppShellProps {
+  children: React.ReactNode;
+  /** Set false for full-canvas screens (e.g. Chat) that manage their own panels. */
+  rightPanel?: boolean;
+}
+
+export function AppShell({ children, rightPanel = true }: AppShellProps) {
   const { rightPanelOpen } = useAppStore();
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      {/* Hover-expand rail — fixed, overlays content */}
-      <Rail />
+    <div className="flex h-full w-full flex-col overflow-hidden">
+      <TopBar />
 
-      {/* Main area — offset by the collapsed rail width (w-14 = 56px) */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden pl-14">
-        <TopBar />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* The rail begins below the brand bar and expands over module content. */}
+        <Sidebar />
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <main className="flex-1 overflow-auto min-w-0">{children}</main>
-          {rightPanelOpen && (
-            <div className="hidden xl:flex">
-              <RightPanel />
-            </div>
-          )}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden pl-16">
+          <ModuleTabs />
+
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+            {rightPanel && rightPanelOpen ? (
+              <div className="hidden xl:flex">
+                <RightPanel />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

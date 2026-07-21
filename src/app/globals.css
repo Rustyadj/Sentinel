@@ -28,10 +28,10 @@
 /* Sentinel Neural Space */
 .neural-space-canvas {
   background:
-    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
-    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
-    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
-    #020711;
+    radial-gradient(circle at 49% 48%, rgba(17, 55, 101, 0.46), transparent 39%),
+    radial-gradient(circle at 73% 24%, rgba(8, 145, 178, 0.08), transparent 28%),
+    radial-gradient(circle at 30% 66%, rgba(109, 40, 217, 0.1), transparent 31%),
+    #010711;
 }
 
 .neural-space-canvas::after {
@@ -40,35 +40,84 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
-    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
-  opacity: 0.72;
+    radial-gradient(circle at center, transparent 30%, rgba(1, 4, 10, 0.66) 100%),
+    radial-gradient(circle, rgba(168, 220, 255, 0.8) 0 0.65px, transparent 0.9px) 0 0 / 67px 71px,
+    radial-gradient(circle, rgba(99, 102, 241, 0.72) 0 0.55px, transparent 0.85px) 24px 18px / 83px 79px,
+    radial-gradient(circle, rgba(34, 211, 238, 0.56) 0 0.45px, transparent 0.75px) 11px 36px / 101px 97px;
+  opacity: 0.52;
+  animation: sentinel-star-drift 78s linear infinite;
+}
+
+/* Organization editor: a quieter neural field that keeps the hierarchy legible. */
+.org-neural-canvas {
+  background:
+    radial-gradient(circle at 51% 42%, rgba(30, 64, 175, 0.12), transparent 32%),
+    radial-gradient(circle at 76% 68%, rgba(109, 40, 217, 0.08), transparent 28%),
+    #020812;
+}
+
+.org-neural-canvas .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.28));
+}
+
+.org-neural-canvas .react-flow__edge.animated path {
+  stroke: #a78bfa;
+  stroke-dasharray: 5 8;
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.62));
+}
+
+.org-neural-canvas .react-flow__connection-path {
+  stroke: #67e8f9;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 7px rgba(103, 232, 249, 0.6));
+}
+
+.org-neural-canvas .react-flow__node {
+  font-family: inherit;
+}
+
+@keyframes sentinel-star-drift {
+  from { background-position: center, 0 0, 24px 18px, 11px 36px; }
+  to { background-position: center, 67px 71px, -59px 97px, 112px -61px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .neural-space * {
     scroll-behavior: auto !important;
   }
+
+  .neural-space-canvas::after {
+    animation: none;
+  }
+
+  .mission-control-page *,
+  .mission-control-page *::before,
+  .mission-control-page *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #0c0d0f;
-  --foreground: #e8eaed;
-  --card: #131518;
+  --background: #040811;
+  --foreground: #e9edf5;
+  --card: #0b1420;
   --card-foreground: #e8eaed;
-  --border: #1e2124;
-  --muted: #1a1d21;
-  --muted-foreground: #6b7280;
-  --accent: #1e2124;
+  --border: #18263a;
+  --muted: #111b28;
+  --muted-foreground: #77859a;
+  --accent: #18233a;
   --accent-foreground: #e8eaed;
   --primary: #6366f1;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
   --ring: #6366f1;
-  --sidebar: #0f1013;
-  --sidebar-border: #1a1d21;
-  --panel: #131518;
+  --sidebar: #050d17;
+  --sidebar-border: #172438;
+  --panel: #09131f;
 
   /* Light canvas tokens (workspace main areas) */
   --canvas: #f0f2f5;
@@ -97,9 +146,9 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.14), transparent 26%),
-    radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 20%),
-    linear-gradient(180deg, #0d1015 0%, #0c0d0f 100%);
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.09), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.055), transparent 22%),
+    linear-gradient(180deg, #050a12 0%, #030710 100%);
 }
 
 ::-webkit-scrollbar {
@@ -134,6 +183,20 @@ body {
 @keyframes slide-in-right {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* Voice waveform bars — animate only while listening/speaking */
+@keyframes wave-bar {
+  0%, 100% { height: 3px; opacity: 0.45; }
+  50% { height: 16px; opacity: 1; }
+}
+
+.animate-wave-bar {
+  animation: wave-bar 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wave-bar { animation: none; height: 6px; }
 }
 
 .animate-pulse-dot {
@@ -174,4 +237,16 @@ body {
   pointer-events: none;
   border-radius: inherit;
   background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 22%);
+}
+
+.mission-control-page {
+  color-scheme: light;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18)),
+    var(--canvas);
+}
+
+.mission-control-page section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 420px;
 }
