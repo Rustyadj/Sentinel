@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useKeyStore, maskKey } from "@/store/useKeyStore";
 
+const VOICE_PROVIDER_STORAGE_KEY = "sentinel.voice.provider";
+
 const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile", icon: User },
   { id: "agents", label: "Agent Defaults", icon: Bot },
@@ -261,6 +263,41 @@ function MemorySettings() {
           type="number"
           className="w-20 h-8 text-sm"
         />
+      </FieldRow>
+    </SettingsSection>
+  );
+}
+
+function VoiceSettings() {
+  const [provider, setProvider] = useState<"browser_stt" | "mock" | "openai_realtime">(() => {
+    if (typeof window === "undefined") return "browser_stt";
+    const stored = window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY);
+    return stored === "mock" || stored === "browser_stt" || stored === "openai_realtime" ? stored : "browser_stt";
+  });
+
+  const handleChange = (next: "browser_stt" | "mock" | "openai_realtime") => {
+    setProvider(next);
+    window.localStorage.setItem(VOICE_PROVIDER_STORAGE_KEY, next);
+  };
+
+  return (
+    <SettingsSection
+      title="Voice Input"
+      description="Choose how the microphone button transcribes speech"
+    >
+      <FieldRow
+        label="Speech provider"
+        description="Browser Speech uses your browser's built-in recognition (no server key needed). Mock is for environments without mic access."
+      >
+        <select
+          value={provider}
+          onChange={(e) => handleChange(e.target.value as "browser_stt" | "mock" | "openai_realtime")}
+          className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"
+        >
+          <option value="browser_stt">Browser Speech (default)</option>
+          <option value="mock">Mock (no mic)</option>
+          <option value="openai_realtime">OpenAI Realtime (server setup required)</option>
+        </select>
       </FieldRow>
     </SettingsSection>
   );

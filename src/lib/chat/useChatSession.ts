@@ -92,7 +92,6 @@ interface ApiMessage {
   agentId: string | null;
   content: string;
   toolCalls: unknown;
-  reasoning: string | null;
   createdAt: string;
 }
 
@@ -198,7 +197,6 @@ export function useChatSession(): ChatSession {
           role: m.role === "user" ? "user" : m.role === "agent" ? "agent" : "system",
           agentId: m.agentId ?? undefined,
           content: m.content,
-          reasoning: m.reasoning ?? undefined,
           timestamp: new Date(m.createdAt),
         }));
         // Only hydrate if the room is still empty (don't overwrite optimistic messages)

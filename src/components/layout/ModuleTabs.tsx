@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ContextStrip } from "@/modules/mission-control/components/ContextStrip";
 import { MOCK_MISSION_CONTROL } from "@/lib/mission-control/mock";
@@ -137,12 +137,14 @@ export function ModuleTabs() {
 }
 
 function StandardModuleTabs({ pathname }: { pathname: string }) {
+  const searchParams = useSearchParams();
   const config = useMemo(
     () => CONFIGS.find((entry) => entry.match(pathname))?.config ?? FALLBACK,
     [pathname]
   );
-  const [selection, setSelection] = useState({ moduleId: config.id, tabId: config.defaultTab });
-  const activeTab = selection.moduleId === config.id ? selection.tabId : config.defaultTab;
+  const requestedTab = config.id === "chat" && searchParams.get("space") === "graph" ? "graph" : config.defaultTab;
+  const [selection, setSelection] = useState({ moduleId: config.id, tabId: requestedTab });
+  const activeTab = selection.moduleId === config.id ? selection.tabId : requestedTab;
 
   const selectTab = (tabId: string) => {
     setSelection({ moduleId: config.id, tabId });

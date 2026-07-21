@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
 
   if (body.action === "reject") {
     try {
-      await requireUser();
-      await rejectCandidate(body.candidate);
+      const user = await requireUser();
+      await rejectCandidate(body.candidate, user.id);
       return NextResponse.json({ ok: true });
     } catch (err) {
       // Non-fatal — rejection failure shouldn't break UX

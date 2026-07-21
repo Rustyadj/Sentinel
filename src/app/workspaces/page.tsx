@@ -1,81 +1,43 @@
 import Link from "next/link";
-import { Shield, Building2, Wand2, Megaphone, DollarSign, type LucideIcon } from "lucide-react";
-import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
+import { Building2, LayoutGrid, Megaphone, Shield, Wand2, type LucideIcon } from "lucide-react";
+import { requireUser } from "@/lib/current-user";
+import { listWorkspaces } from "@/lib/workspaces";
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
-import { WORKSPACES } from "@/lib/workspaces";
+import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 
-const ICON_MAP: Record<string, LucideIcon> = {
-  Shield, Building2, Wand2, Megaphone, DollarSign,
-};
+const icons: Record<string, LucideIcon> = { Building2, LayoutGrid, Megaphone, Shield, Wand2 };
 
-export default function WorkspacesPage() {
+export default async function WorkspacesPage() {
+  const user = await requireUser();
+  const workspaces = await listWorkspaces(user.id);
+
   return (
     <WorkspaceShell>
-      <WorkspaceHeader
-        title="Workspaces"
-        description="AI-powered domain modules — plug in what you need."
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {WORKSPACES.map((ws) => {
-          const Icon = ICON_MAP[ws.icon] ?? Shield;
+      <WorkspaceHeader title="Workspaces" description="Persistent operating environments for teams, agents, and projects." />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {workspaces.map((workspace) => {
+          const Icon = icons[workspace.icon] ?? LayoutGrid;
           return (
-            <div key={ws.id} className="relative">
-              {ws.enabled ? (
-                <Link
-                  href={ws.route}
-                  className="block rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] p-5 hover:border-[--primary]/40 transition-colors group"
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: ws.color + "22" }}
-                    >
-                      <Icon className="w-5 h-5" style={{ color: ws.color }} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-semibold text-[--canvas-card-foreground] group-hover:text-white transition-colors">
-                          {ws.label}
-                        </h2>
-                      </div>
-                      <p className="text-xs text-[--muted-foreground] mt-1 leading-relaxed">
-                        {ws.description}
-                      </p>
-                      <p className="text-xs mt-3" style={{ color: ws.color }}>
-                        {ws.subnav.length} modules →
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              ) : (
-                <div className="rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] p-5 opacity-50 cursor-not-allowed">
-                  <div className="flex items-start gap-4">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: ws.color + "22" }}
-                    >
-                      <Icon className="w-5 h-5" style={{ color: ws.color }} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-semibold text-[--canvas-card-foreground]">
-                          {ws.label}
-                        </h2>
-                        {ws.badge && (
-                          <span className="text-[10px] border border-[--canvas-card-border] rounded px-1.5 py-0.5 text-[--muted-foreground]">
-                            {ws.badge}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-[--muted-foreground] mt-1 leading-relaxed">
-                        {ws.description}
-                      </p>
-                    </div>
+            <Link
+              key={workspace.id}
+              href={`/workspaces/${workspace.slug}`}
+              className="group rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] p-5 transition-colors hover:border-[--primary]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[--muted]">
+                  <Icon className="h-5 w-5" style={{ color: workspace.color }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-[--canvas-card-foreground]">{workspace.name}</h2>
+                  <p className="mt-1 min-h-10 text-xs leading-relaxed text-[--muted-foreground]">{workspace.description}</p>
+                  <div className="mt-4 flex gap-3 text-[11px] text-[--muted-foreground]">
+                    <span>{workspace._count.projects} projects</span>
+                    <span>{workspace._count.teams} teams</span>
+                    <span>{workspace._count.approvals} approvals</span>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            </Link>
           );
         })}
       </div>

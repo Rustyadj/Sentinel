@@ -2,9 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { emitEvent } from "@/lib/knowledge/events";
 import { retrieveContext } from "@/lib/knowledge/retrieval";
 import { requireUser } from "@/lib/current-user";
+import { persistChatExchange } from "@/lib/chat/persistence";
+import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permissions";
+import { getVpsAgent } from "@/lib/agents/registry";
 import type { NextRequest } from "next/server";
 
 async function buildContextBlock(
@@ -26,7 +28,7 @@ async function buildContextBlock(
     const { memories, notes, decisions, totalItems } = await retrieveContext({
       roomId,
       projectId,
-      userId: room?.userId ?? undefined,
+      userId,
       maxItems: 10,
     });
 
@@ -83,21 +85,11 @@ async function persistMessages(
   roomId: string,
   userContent: string,
   agentId: string,
-  assistantContent: string
+  assistantContent: string,
+  userId: string
 ) {
   try {
-    await db.message.createMany({
-      data: [
-        { chatRoomId: roomId, role: "user", content: userContent },
-        { chatRoomId: roomId, role: "agent", agentId, content: assistantContent },
-      ],
-    });
-    // Non-fatal: emit knowledge event for graph live updates
-    await emitEvent({
-      type: "object_created",
-      payload: { roomId, agentId, messageCount: 2, trigger: "chat_response" },
-      roomId,
-    }).catch(() => {}); // ignore failures — DB may not be running
+    await persistChatExchange({ roomId, userId, userContent, agentId, assistantContent });
   } catch (err) {
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);
@@ -135,6 +127,13 @@ export async function POST(request: NextRequest) {
   }
 
   const dbAgent = await db.agent.findUnique({ where: { id: agentId } }).catch(() => null);
+  if (dbAgent) {
+    if (!(await requireAgentRecordUser(agentId))) return sseError("Agent not found", 404);
+  } else if (getVpsAgent(agentId)) {
+    if (!(await getControlPlaneUser(agentId))) return sseError("Agent not found", 404);
+  } else if (!(process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true")) {
+    return sseError("Agent not found", 404);
+  }
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
   const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
   const basePrompt =
@@ -148,9 +147,10 @@ export async function POST(request: NextRequest) {
   const provider = pickProvider(model);
 
   // Keys passed from the browser (user's own credentials)
-  const anthropicKey = request.headers.get("x-anthropic-key") ?? "";
-  const openaiKey = request.headers.get("x-openai-key") ?? "";
-  const openrouterKey = request.headers.get("x-openrouter-key") ?? process.env.OPENROUTER_API_KEY ?? "";
+  const allowBrowserKeys = process.env.NODE_ENV !== "production" || process.env.ALLOW_BROWSER_PROVIDER_KEYS === "true";
+  const anthropicKey = process.env.ANTHROPIC_API_KEY ?? (allowBrowserKeys ? request.headers.get("x-anthropic-key") ?? "" : "");
+  const openaiKey = process.env.OPENAI_API_KEY ?? (allowBrowserKeys ? request.headers.get("x-openai-key") ?? "" : "");
+  const openrouterKey = process.env.OPENROUTER_API_KEY ?? (allowBrowserKeys ? request.headers.get("x-openrouter-key") ?? "" : "");
 
   // ── Anthropic ─────────────────────────────────────────────────────────────
   if (provider === "anthropic") {
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
       );
     } finally {
       if (roomId && userContent && fullContent) {
-        await persistMessages(roomId, userContent, agentId, fullContent);
+        await persistMessages(roomId, userContent, agentId, fullContent, user.id);
         // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
         ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
       }

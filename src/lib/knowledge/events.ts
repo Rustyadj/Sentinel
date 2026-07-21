@@ -9,6 +9,7 @@ function toInputJson(value: Record<string, unknown>): Prisma.InputJsonValue {
 }
 
 export async function emitEvent(params: {
+  userId: string;
   type: KnowledgeEventType;
   payload: Record<string, unknown>;
   roomId?: string;
@@ -23,6 +24,7 @@ export async function emitEvent(params: {
         roomId: params.roomId ?? null,
         workspaceId: params.workspaceId ?? null,
         projectId: params.projectId ?? null,
+        userId: params.userId,
       },
     });
   } catch (err) {
@@ -33,6 +35,7 @@ export async function emitEvent(params: {
 }
 
 export async function getRecentEvents(filter: {
+  userId: string;
   roomId?: string;
   projectId?: string;
   limit?: number;
@@ -40,6 +43,7 @@ export async function getRecentEvents(filter: {
   try {
     const records = await db.knowledgeEvent.findMany({
       where: {
+        userId: filter.userId,
         ...(filter.roomId ? { roomId: filter.roomId } : {}),
         ...(filter.projectId ? { projectId: filter.projectId } : {}),
       },

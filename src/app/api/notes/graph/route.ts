@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/current-user";
+import { getReadableProjectIds } from "@/lib/knowledge/access";
 
 export async function GET() {
+  const user = await requireUser().catch(() => null);
+  if (!user) return NextResponse.json({ error: "Unauthorized", nodes: [], edges: [] }, { status: 401 });
+  const projectIds = await getReadableProjectIds(user.id);
   const notes = await db.obsidianNote.findMany({
+    where: {
+      OR: [
+        { projectId: null, userId: user.id },
+        ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
+      ],
+    },
     select: { id: true, title: true, tags: true, backlinks: true, projectId: true },
   });
-  const projects = await db.project.findMany({ select: { id: true, name: true } });
+  const projects = await db.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, name: true } });
 
   const nodes = [
     ...notes.map((n) => ({
@@ -21,11 +32,14 @@ export async function GET() {
   ];
 
   const edges: { id: string; source: string; target: string }[] = [];
+  const noteIds = new Set(notes.map((note) => note.id));
 
   // Wiki link edges between notes
   for (const note of notes) {
     for (const backlinkId of note.backlinks) {
-      edges.push({ id: `bl-${backlinkId}-${note.id}`, source: backlinkId, target: note.id });
+      if (noteIds.has(backlinkId)) {
+        edges.push({ id: `bl-${backlinkId}-${note.id}`, source: backlinkId, target: note.id });
+      }
     }
   }
 

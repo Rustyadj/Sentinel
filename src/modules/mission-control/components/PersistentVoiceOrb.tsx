@@ -99,7 +99,7 @@ export function PersistentVoiceOrb({ providerFactory = createVoiceProvider, subm
         )}
       >
         <span className="absolute inset-1 rounded-full border border-white/[0.07]" />
-        {status === "thinking" || status === "transcribing" ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : active ? <MicOff className="h-4 w-4" /> : status === "speaking" ? <AudioLines className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        {status === "thinking" || status === "transcribing" ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : status === "speaking" ? <AudioLines className="h-4 w-4" /> : active ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         <span className={cn("absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-[#111a25]", status === "error" ? "bg-red-400" : active ? "bg-emerald-400" : "bg-slate-500")} />
       </button>
     </div>

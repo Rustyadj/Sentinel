@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getAllVpsAgents } from "@/lib/agents/registry";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -9,19 +10,21 @@ async function checkDb(): Promise<{ ok: boolean; latencyMs?: number; error?: str
     await db.$queryRaw`SELECT 1`;
     return { ok: true, latencyMs: Date.now() - start };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    logger.error("readiness.database_failed", { error: err instanceof Error ? err.message : String(err) });
+    return { ok: false, error: "Database unavailable" };
   }
 }
 
 async function checkRedis(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
-  if (!process.env.REDIS_URL) return { ok: true, latencyMs: 0 };
+  if (!process.env.REDIS_URL) return { ok: false, error: "REDIS_URL is not configured" };
   const start = Date.now();
   try {
     const { redisGet } = await import("@/lib/redis");
     await redisGet("__ready_check__");
     return { ok: true, latencyMs: Date.now() - start };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    logger.error("readiness.redis_failed", { error: err instanceof Error ? err.message : String(err) });
+    return { ok: false, error: "Redis unavailable" };
   }
 }
 
@@ -46,7 +49,8 @@ export async function GET() {
     agents.map(async (a) => ({ id: a.id, ...(await checkAgent(a.endpoint)) }))
   );
 
-  const allReady = db_check.ok && redis_check.ok;
+  const agentsReady = agentChecks.every((agent) => agent.ok);
+  const allReady = db_check.ok && redis_check.ok && agentsReady;
   const status = allReady ? 200 : 503;
 
   return Response.json(

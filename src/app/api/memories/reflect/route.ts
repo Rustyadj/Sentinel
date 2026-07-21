@@ -4,9 +4,9 @@ import { requireUser } from "@/lib/current-user";
 
 export async function POST() {
   try {
-    await requireUser();
+    const user = await requireUser();
     const memories = await db.memory.findMany({
-      where: { archived: false },
+      where: { owner: user.id, archived: false },
       select: { id: true, content: true, type: true, scope: true, tags: true, confidence: true },
       orderBy: { createdAt: "desc" },
       take: 500,
@@ -31,14 +31,14 @@ export async function POST() {
 
     // Boost importance of pinned memories
     await db.memory.updateMany({
-      where: { pinned: true, archived: false },
+      where: { owner: user.id, pinned: true, archived: false },
       data: { importanceScore: 0.95 },
     });
 
     // Decay old low-confidence memories
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const old = await db.memory.findMany({
-      where: { archived: false, confidence: { lt: 0.4 }, createdAt: { lt: thirtyDaysAgo } },
+      where: { owner: user.id, archived: false, confidence: { lt: 0.4 }, createdAt: { lt: thirtyDaysAgo } },
       select: { id: true, confidence: true },
     });
     for (const m of old) {

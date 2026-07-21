@@ -167,7 +167,7 @@ body {
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(124, 58, 237, 0.3);
 }
 
 @keyframes pulse-dot {

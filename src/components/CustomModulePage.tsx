@@ -8,7 +8,7 @@ interface CustomModuleData {
   moduleId: string;
   label: string;
   icon: string;
-  description: string;
+  description: string | null;
   contentType: string;
   content: string;
 }

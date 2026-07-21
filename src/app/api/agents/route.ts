@@ -1,47 +1,44 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { AGENT_TEMPLATES } from "@/lib/constants";
-
-async function seedIfEmpty() {
-  const count = await db.agent.count();
-  if (count === 0) {
-    await db.agent.createMany({
-      data: AGENT_TEMPLATES.map((t) => ({
-        id: t.id,
-        name: t.name,
-        role: t.role,
-        avatar: t.avatar,
-        color: t.color,
-        model: t.model,
-        systemPrompt: t.systemPrompt ?? "",
-        toolPermissions: t.toolPermissions ?? [],
-        memoryScope: t.memoryScope ?? "session",
-        description: t.description ?? "",
-        skills: t.skills ?? [],
-        status: "online",
-      })),
-      skipDuplicates: true,
-    });
-  }
-}
+import {
+  canEditConfig,
+  getAccessibleWorkspaceIds,
+  getControlPlaneUser,
+  getWorkspaceControlPlaneUser,
+  forbidden,
+  unauthorized,
+} from "@/lib/agents/permissions";
 
 export async function GET() {
-  await seedIfEmpty();
-  const agents = await db.agent.findMany({ orderBy: { createdAt: "asc" } });
+  const user = await getControlPlaneUser();
+  if (!user) return unauthorized();
+  const workspaceIds = await getAccessibleWorkspaceIds(user.id);
+  const agents = await db.agent.findMany({
+    where: { workspaceId: { in: workspaceIds } },
+    orderBy: { createdAt: "asc" },
+  });
   return NextResponse.json(agents);
 }
 
 export async function POST(req: Request) {
   const body = await req.json() as {
-    name: string; role: string; avatar: string; color: string;
-    model: string; systemPrompt?: string; toolPermissions?: string[];
+    workspaceId?: string; name?: string; role?: string; avatar?: string; color?: string;
+    model?: string; systemPrompt?: string; toolPermissions?: string[];
     memoryScope?: string; description?: string; skills?: string[];
   };
+  if (!body.workspaceId || !body.name?.trim() || !body.role?.trim()) {
+    return NextResponse.json({ error: "workspaceId, name, and role are required" }, { status: 400 });
+  }
+  const user = await getWorkspaceControlPlaneUser(body.workspaceId);
+  if (!user) return unauthorized();
+  if (!canEditConfig(user.role)) return forbidden("create agents");
+
   const agent = await db.agent.create({
     data: {
-      name: body.name,
-      role: body.role,
-      avatar: body.avatar ?? "🤖",
+      workspaceId: body.workspaceId,
+      name: body.name.trim(),
+      role: body.role.trim(),
+      avatar: body.avatar ?? "AI",
       color: body.color ?? "#6366f1",
       model: body.model ?? "claude-sonnet-4-6",
       systemPrompt: body.systemPrompt ?? "",

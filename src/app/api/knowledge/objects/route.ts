@@ -5,7 +5,7 @@ import {
 } from "@/lib/knowledge/objects";
 import type { KnowledgeObjectType, KnowledgeScope } from "@/lib/knowledge/types";
 import { requireUser } from "@/lib/current-user";
-import { db } from "@/lib/db";
+import { requireProjectPermission, requireWorkspacePermission } from "@/lib/workspaces/authorization";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,8 +16,7 @@ export async function GET(req: NextRequest) {
     const scope = searchParams.get("scope") as KnowledgeScope | undefined;
 
     if (projectId) {
-      const project = await db.project.findFirst({ where: { id: projectId, userId: user.id }, select: { id: true } });
-      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      await requireProjectPermission(projectId, "project.read");
     }
 
     const objects = await listKnowledgeObjects({ userId: user.id, projectId, type, scope });
@@ -38,9 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (projectId) {
-      const project = await db.project.findFirst({ where: { id: projectId, userId: user.id }, select: { id: true } });
-      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      await requireProjectPermission(projectId, "project.update");
     }
+    if (workspaceId) await requireWorkspacePermission(workspaceId, "document.create");
 
     const object = await createKnowledgeObject({
       userId: user.id,

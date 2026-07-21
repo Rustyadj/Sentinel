@@ -26,6 +26,7 @@ interface GraphUIState {
 interface GraphUIActions {
   setSearch: (search: string) => void;
   toggleType: (type: string) => void;
+  setTypes: (types: string[]) => void;
   clearTypes: () => void;
   setFocusMode: (on: boolean) => void;
   setClustering: (on: boolean) => void;
@@ -56,6 +57,7 @@ export const useGraphStore = create<GraphStore>((set) => ({
       else next.add(type);
       return { activeTypes: next };
     }),
+  setTypes: (types) => set({ activeTypes: new Set(types) }),
   clearTypes: () => set({ activeTypes: new Set() }),
   setFocusMode: (focusMode) => set({ focusMode }),
   setClustering: (clustering) => set({ clustering }),

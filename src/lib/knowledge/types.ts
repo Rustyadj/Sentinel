@@ -114,7 +114,8 @@ export interface RetrievalContext {
   projectId?: string;
   workspaceId?: string;
   organizationId?: string;
-  userId?: string;
+  userId: string;
   roomId?: string;
   maxItems?: number;
+  scopePolicy?: "isolated" | "user-context";
 }

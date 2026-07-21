@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/current-user";
 
 export async function GET() {
+  const user = await requireUser().catch(() => null);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const projects = await db.obsidianNote.findMany({
-    where: { tags: { has: "studio-project" } },
+    where: { userId: user.id, projectId: null, tags: { has: "studio-project" } },
     orderBy: { updatedAt: "desc" },
     select: { id: true, title: true, tags: true, updatedAt: true, createdAt: true },
   });
@@ -11,6 +14,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const user = await requireUser().catch(() => null);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = (await req.json()) as {
     title: string;
     content: string;
@@ -22,6 +27,7 @@ export async function POST(req: Request) {
       content: body.content ?? "",
       tags: ["studio-project", ...(body.tags ?? [])],
       backlinks: [],
+      userId: user.id,
     },
   });
   return NextResponse.json(project);

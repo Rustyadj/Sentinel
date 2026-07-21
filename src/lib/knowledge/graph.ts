@@ -8,6 +8,7 @@ import type {
   KnowledgeEdgeType,
   KnowledgeObjectType,
 } from "./types";
+import { getReadableProjectIds } from "./access";
 
 function toKnowledgeEdge(record: {
   id: string;
@@ -37,24 +38,20 @@ export async function buildGraphData(
   userId: string
 ): Promise<GraphData> {
   try {
-    const [room, ownedProjects] = await Promise.all([
+    const [room, readableProjectIds] = await Promise.all([
       filter.roomId
         ? db.chatRoom.findFirst({
             where: { id: filter.roomId, userId },
             select: { projectId: true },
           })
         : Promise.resolve(null),
-      db.project.findMany({
-        where: { userId },
-        select: { id: true },
-      }),
+      getReadableProjectIds(userId),
     ]);
 
     if (filter.roomId && !room) throw new Error("Room not found");
 
-    const ownedProjectIds = ownedProjects.map((project) => project.id);
     const projectId = filter.projectId ?? room?.projectId ?? undefined;
-    if (projectId && !ownedProjectIds.includes(projectId)) {
+    if (projectId && !readableProjectIds.includes(projectId)) {
       throw new Error("Project not found");
     }
 
@@ -66,18 +63,15 @@ export async function buildGraphData(
           {
             OR: [
               { userId },
-              ...(ownedProjectIds.length > 0
-                ? [{ projectId: { in: ownedProjectIds } }]
+              ...(readableProjectIds.length > 0
+                ? [{ projectId: { in: readableProjectIds } }]
                 : []),
             ],
           },
           ...(projectId
             ? [
                 {
-                  OR: [
-                    { projectId },
-                    { userId, scope: { in: ["global", "user"] } },
-                  ],
+                  projectId,
                 },
               ]
             : []),

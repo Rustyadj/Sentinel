@@ -15,6 +15,7 @@ import { NodeInspector } from "@/components/graph/NodeInspector";
 import { StatusBar } from "@/components/layout/StatusBar";
 import type { KnowledgeNode } from "@/lib/knowledge/types";
 import type { VoiceStatus } from "@/lib/voice/types";
+import { NeuralLens } from "@/components/graph/NeuralLens";
 
 /**
  * Chat — the Sentinel OS operating surface.
@@ -28,6 +29,7 @@ export default function ChatPage() {
   const { requestFocus, requestFit } = useGraphStore();
 
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [graphFocus, setGraphFocus] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
@@ -36,6 +38,17 @@ export default function ChatPage() {
   const activeAgent = session.roomAgents[0];
 
   // Ctrl/Cmd+G toggles the chat panel so the graph can go nearly full-screen
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("space") === "graph") {
+      const frame = window.requestAnimationFrame(() => {
+        setChatCollapsed(true);
+        setGraphFocus(true);
+        requestFit();
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [requestFit]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
@@ -57,22 +70,27 @@ export default function ChatPage() {
       switch (detail.tabId) {
         case "mission":
           setChatCollapsed(false);
+          setGraphFocus(false);
           requestFit();
           break;
         case "graph":
           setChatCollapsed(true);
+          setGraphFocus(true);
           requestFit();
           break;
         case "conversation":
           setChatCollapsed(false);
+          setGraphFocus(false);
           setMobileChatOpen(true);
           break;
         case "sources":
           setChatCollapsed(true);
+          setGraphFocus(true);
           requestFocus("Audience Research");
           break;
         case "workflows":
           setChatCollapsed(true);
+          setGraphFocus(true);
           requestFocus("Workflows");
           break;
       }
@@ -128,6 +146,15 @@ export default function ChatPage() {
       </div>
 
       <GraphToolbar nodeTypes={nodeTypes} onFit={requestFit} />
+
+      <NeuralLens
+        visible={graphFocus}
+        nodeTypes={nodeTypes}
+        nodeCount={graphData.nodes.length}
+        edgeCount={graphData.edges.length}
+        source={graphSource}
+        projectName={session.activeRoom?.name}
+      />
 
       <NodeInspector
         nodes={graphData.nodes}

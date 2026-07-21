@@ -27,7 +27,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Placeholder values satisfy next-auth and Prisma at build time.
 # These are NOT used at runtime — supply real values via .env or docker-compose.
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
-ENV AUTH_SECRET="build-time-placeholder-not-used-at-runtime-xx"
 
 RUN npm run build
 

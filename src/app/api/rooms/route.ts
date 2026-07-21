@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
+import { requireProjectPermission } from "@/lib/workspaces/authorization";
 
 export async function GET() {
   try {
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
     if (!name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
+    if (projectId) await requireProjectPermission(projectId, "project.read");
 
     const room = await db.chatRoom.create({
       data: {

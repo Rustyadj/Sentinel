@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { auth } from "@/auth";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { ToastProvider } from "@/components/providers/ToastProvider";
 
 export const metadata: Metadata = {
   title: "Sentinel OS · Mission Control",
@@ -17,7 +18,7 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="h-full overflow-hidden">
-        <SessionProvider session={session}>{children}</SessionProvider>
+        <SessionProvider session={session}><ToastProvider>{children}</ToastProvider></SessionProvider>
       </body>
     </html>
   );
