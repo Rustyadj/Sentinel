@@ -111,7 +111,7 @@
   --muted-foreground: #77859a;
   --accent: #18233a;
   --accent-foreground: #e8eaed;
-  --primary: #6366f1;
+  --primary: #7c6cf6;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
   --ring: #6366f1;
@@ -119,13 +119,13 @@
   --sidebar-border: #172438;
   --panel: #09131f;
 
-  /* Light canvas tokens (workspace main areas) */
-  --canvas: #f0f2f5;
-  --canvas-foreground: #111318;
+  /* Canvas tokens (workspace main areas) — dark to match the shell */
+  --canvas: #0a0b0e;
+  --canvas-foreground: #e8eaed;
   --canvas-muted: #6b7280;
-  --canvas-card: #1a1d24;
+  --canvas-card: #101318;
   --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #252830;
+  --canvas-card-border: #20242b;
 }
 
 * {
@@ -211,6 +211,27 @@ body {
   animation: slide-in-right 0.15s ease-out;
 }
 
+/* Subtle interactive card lift used across workspace surfaces */
+.card-hover {
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: rgba(124, 108, 246, 0.35);
+  background-color: #12151b;
+}
+
+/* Faint grid texture for canvas backdrops (e.g. graph views) */
+.canvas-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.035) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+}
+
+/* ── Feature surfaces (neural space, panels) ──────────────────────────────── */
 .bg-grid {
   background-image:
     linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
