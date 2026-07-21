@@ -149,16 +149,20 @@ function candidateTypeToObjectType(
 // Accept a candidate — creates KnowledgeObject + KnowledgeEvent
 export async function acceptCandidate(
   candidate: ExtractionCandidate,
-  roomId?: string
+  userId: string,
+  roomId?: string,
+  projectId?: string
 ): Promise<KnowledgeNode> {
   try {
     const node = await createKnowledgeObject({
+      userId,
       type: candidateTypeToObjectType(candidate.candidateType),
       title: candidate.title,
       summary: candidate.summary,
       sourceType: "extraction",
       sourceId: candidate.id,
       scope: (roomId ? "project" : "global") as KnowledgeScope,
+      projectId,
       metadata: {
         confidence: candidate.confidence,
         candidateType: candidate.candidateType,

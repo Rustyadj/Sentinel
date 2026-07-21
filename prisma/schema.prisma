@@ -12,10 +12,12 @@ model User {
   id        String     @id @default(cuid())
   email     String     @unique
   name      String?
+  passwordHash String?
   createdAt DateTime   @default(now())
   projects  Project[]
   chatRooms ChatRoom[]
   auditLogs AuditLog[]
+  knowledgeObjects KnowledgeObject[]
 
   @@map("users")
 }
@@ -174,16 +176,19 @@ model KnowledgeObject {
   workspaceId    String?
   projectId      String?
   organizationId String?
+  userId         String?
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   fromEdges KnowledgeEdge[] @relation("EdgeFrom")
   toEdges   KnowledgeEdge[] @relation("EdgeTo")
+  user      User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([sourceType, sourceId])
+  @@unique([sourceType, sourceId, userId])
   @@index([scope])
   @@index([projectId])
+  @@index([userId])
   @@map("knowledge_objects")
 }
 

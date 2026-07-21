@@ -4,15 +4,23 @@ import {
   listKnowledgeObjects,
 } from "@/lib/knowledge/objects";
 import type { KnowledgeObjectType, KnowledgeScope } from "@/lib/knowledge/types";
+import { requireUser } from "@/lib/current-user";
+import { db } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   try {
+    const user = await requireUser();
     const { searchParams } = req.nextUrl;
     const projectId = searchParams.get("projectId") ?? undefined;
     const type = searchParams.get("type") as KnowledgeObjectType | undefined;
     const scope = searchParams.get("scope") as KnowledgeScope | undefined;
 
-    const objects = await listKnowledgeObjects({ projectId, type, scope });
+    if (projectId) {
+      const project = await db.project.findFirst({ where: { id: projectId, userId: user.id }, select: { id: true } });
+      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const objects = await listKnowledgeObjects({ userId: user.id, projectId, type, scope });
     return NextResponse.json({ objects });
   } catch {
     return NextResponse.json({ objects: [] });
@@ -21,6 +29,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await requireUser();
     const body = await req.json();
     const { type, title, summary, sourceType, sourceId, scope, workspaceId, projectId, metadata } = body;
 
@@ -28,7 +37,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: type, title" }, { status: 400 });
     }
 
+    if (projectId) {
+      const project = await db.project.findFirst({ where: { id: projectId, userId: user.id }, select: { id: true } });
+      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
     const object = await createKnowledgeObject({
+      userId: user.id,
       type: type as KnowledgeObjectType,
       title,
       summary,

@@ -4,16 +4,18 @@ import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { emitEvent } from "@/lib/knowledge/events";
 import { retrieveContext } from "@/lib/knowledge/retrieval";
+import { requireUser } from "@/lib/current-user";
 import type { NextRequest } from "next/server";
 
 async function buildContextBlock(
   roomId: string | undefined,
-  memoryScope: string
+  memoryScope: string,
+  userId: string
 ): Promise<string> {
   if (!roomId) return "";
   try {
-    const room = await db.chatRoom.findUnique({
-      where: { id: roomId },
+    const room = await db.chatRoom.findFirst({
+      where: { id: roomId, userId },
       select: { projectId: true, userId: true },
     });
 
@@ -62,12 +64,13 @@ function sseStream(
   );
 }
 
-function sseError(message: string): Response {
-  return sseStream(async (ctrl) => {
+function sseError(message: string, status = 400): Response {
+  const response = sseStream(async (ctrl) => {
     ctrl.enqueue(sse({ type: "error", error: message }));
     ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
     ctrl.close();
   });
+  return new Response(response.body, { status, headers: response.headers });
 }
 
 function pickProvider(model: string) {
@@ -120,6 +123,17 @@ export async function POST(request: NextRequest) {
     return sseError("Missing required fields: messages, agentId");
   }
 
+  const user = await requireUser().catch(() => null);
+  if (!user) return sseError("Unauthorized", 401);
+
+  if (roomId) {
+    const room = await db.chatRoom.findFirst({
+      where: { id: roomId, userId: user.id },
+      select: { id: true },
+    });
+    if (!room) return sseError("Room not found", 404);
+  }
+
   const dbAgent = await db.agent.findUnique({ where: { id: agentId } }).catch(() => null);
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
   const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
@@ -128,7 +142,7 @@ export async function POST(request: NextRequest) {
     agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
   const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
-  const contextBlock = await buildContextBlock(roomId, memoryScope);
+  const contextBlock = await buildContextBlock(roomId, memoryScope, user.id);
   const systemPrompt = basePrompt + contextBlock;
 
   const provider = pickProvider(model);

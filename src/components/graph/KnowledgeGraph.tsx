@@ -1,0 +1,902 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Lock, Maximize2, Minus, Plus } from "lucide-react";
+import { useGraphStore } from "@/store/useGraphStore";
+import { cn } from "@/lib/utils";
+import {
+  GRAPH_COLORS,
+  nodeColor,
+  nodeRadius,
+} from "@/lib/graph/theme";
+import type { KnowledgeNode, KnowledgeEdge } from "@/lib/knowledge/types";
+
+// react-force-graph-2d must be dynamically imported with ssr: false
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center gap-2 text-[11px] text-[#697084]">
+      <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-indigo-400" />
+      Preparing knowledge graph…
+    </div>
+  ),
+});
+
+export interface GraphData {
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+  source?: "postgres";
+}
+
+export type GraphSource = "live" | "demo" | "offline";
+
+interface FGNode {
+  id: string;
+  label: string;
+  type: KnowledgeNode["type"];
+  color: string;
+  radius: number;
+  degree: number;
+  createdAt: Date;
+  metadata: Record<string, unknown>;
+  x?: number;
+  y?: number;
+  fx?: number;
+  fy?: number;
+  [key: string]: unknown;
+}
+
+interface KnowledgeGraphProps {
+  roomId?: string;
+  projectId?: string;
+  isStreaming?: boolean;
+  refreshKey?: number;
+  onDataChange?: (data: GraphData, source: GraphSource) => void;
+}
+
+// ---------------------------------------------------------------------------
+// Demo dataset — shown until Postgres has real knowledge
+// ---------------------------------------------------------------------------
+
+type DemoTier = "root" | "hub" | "leaf";
+type DemoSpec = {
+  id: string;
+  title: string;
+  type: KnowledgeNode["type"];
+  x: number;
+  y: number;
+  color: string;
+  tier: DemoTier;
+  clusterId?: string;
+};
+
+const CLUSTER_SPECS: Array<{
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  color: string;
+  type: KnowledgeNode["type"];
+  leaves: string[];
+}> = [
+  { id: "lead", title: "Lead Generation", x: -235, y: -110, color: "#35e69a", type: "Project", leaves: ["Landing Pages", "Lead Magnets", "Contact Forms", "Email Campaigns", "CRM Integration", "Nurture Scoring"] },
+  { id: "strategy", title: "Marketing Strategy", x: -62, y: -245, color: "#8b5cf6", type: "Memory", leaves: ["Audience Research", "Content Strategy", "Market Intelligence", "Competitor Analysis", "Campaign Goals"] },
+  { id: "projects", title: "Projects Portfolio", x: 206, y: -138, color: "#22d3ee", type: "Project", leaves: ["Residential Projects", "Commercial Projects", "Case Studies", "Testimonials", "Delivery Roadmap"] },
+  { id: "content", title: "Content Hub", x: 266, y: 80, color: "#a855f7", type: "Workspace", leaves: ["Blog Posts", "Video Content", "White Papers", "Guides & Downloads", "News & Updates"] },
+  { id: "workflows", title: "Workflows", x: 196, y: 250, color: "#f59e0b", type: "Task", leaves: ["Lead Capture Flow", "Follow-up Campaigns", "Project Onboarding", "Approval Automation", "Reporting Sync"] },
+  { id: "industry", title: "Industry Intelligence", x: 18, y: 220, color: "#38bdf8", type: "Organization", leaves: ["ICF Benefits", "Construction Trends", "Sustainability", "Cost Analysis", "Market Forecast"] },
+  { id: "digital", title: "Digital Marketing", x: -204, y: 135, color: "#2583ff", type: "Conversation", leaves: ["SEO Strategy", "Google Ads", "Social Media", "Email Marketing", "Local Marketing", "Analytics & Tracking"] },
+];
+
+const ROOT_SPEC: DemoSpec = { id: "sentinel", title: "Sentinel OS", type: "Organization", x: 0, y: 0, color: "#2f8cff", tier: "root" };
+
+const DEMO_SPECS: DemoSpec[] = [
+  ROOT_SPEC,
+  ...CLUSTER_SPECS.flatMap((cluster) => {
+    const hub: DemoSpec = { id: cluster.id, title: cluster.title, type: cluster.type, x: cluster.x, y: cluster.y, color: cluster.color, tier: "hub", clusterId: cluster.id };
+    const radiusX = cluster.leaves.length > 5 ? 88 : 82;
+    const radiusY = cluster.leaves.length > 5 ? 82 : 74;
+    const leaves = cluster.leaves.map((title, index): DemoSpec => {
+      const angle = (Math.PI * 2 * index) / cluster.leaves.length - Math.PI / 2;
+      return {
+        id: `${cluster.id}-${index}`,
+        title,
+        type: index % 3 === 0 ? "Artifact" : index % 3 === 1 ? "Note" : "File",
+        x: cluster.x + Math.cos(angle) * radiusX,
+        y: cluster.y + Math.sin(angle) * radiusY,
+        color: cluster.color,
+        tier: "leaf",
+        clusterId: cluster.id,
+      };
+    });
+    return [hub, ...leaves];
+  }),
+];
+
+const DEMO_NODES: KnowledgeNode[] = DEMO_SPECS.map((spec) => ({
+  id: `demo-${spec.id}`,
+  type: spec.type,
+  title: spec.title,
+  scope: "project",
+  metadata: { demo: true, accent: spec.color, tier: spec.tier, clusterId: spec.clusterId, x: spec.x + 80, y: spec.y },
+  createdAt: new Date(),
+}));
+
+const CLUSTER_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterIndex) => {
+  const rootEdge: KnowledgeEdge = {
+    id: `demo-edge-root-${cluster.id}`,
+    fromObjectId: "demo-sentinel",
+    toObjectId: `demo-${cluster.id}`,
+    type: "related_to",
+    weight: 1.8,
+    metadata: { demo: true, accent: cluster.color },
+  };
+  const leafEdges = cluster.leaves.map((_, index): KnowledgeEdge => ({
+    id: `demo-edge-${clusterIndex}-${index}`,
+    fromObjectId: `demo-${cluster.id}`,
+    toObjectId: `demo-${cluster.id}-${index}`,
+    type: "belongs_to",
+    weight: 1,
+    metadata: { demo: true, accent: cluster.color },
+  }));
+  return [rootEdge, ...leafEdges];
+});
+
+const AMBIENT_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, index) => {
+  const next = CLUSTER_SPECS[(index + 1) % CLUSTER_SPECS.length];
+  return [
+    {
+      id: `demo-edge-ambient-a-${index}`,
+      fromObjectId: `demo-${cluster.id}-${(index + 1) % cluster.leaves.length}`,
+      toObjectId: `demo-${next.id}-${(index + 2) % next.leaves.length}`,
+      type: "related_to",
+      weight: 0.28,
+      metadata: { demo: true, accent: "#334155" },
+    },
+    {
+      id: `demo-edge-ambient-b-${index}`,
+      fromObjectId: `demo-${cluster.id}-${(index + 3) % cluster.leaves.length}`,
+      toObjectId: `demo-${next.id}-${(index + 4) % next.leaves.length}`,
+      type: "references",
+      weight: 0.2,
+      metadata: { demo: true, accent: "#243247" },
+    },
+  ];
+});
+
+// Fine secondary pathways make the topology read as a neural mesh instead of
+// a set of isolated spokes. They remain low-weight so the authored hierarchy
+// and labels stay dominant.
+const SYNAPTIC_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterIndex) => {
+  const local = cluster.leaves.flatMap((_, leafIndex) => {
+    const nextIndex = (leafIndex + 1) % cluster.leaves.length;
+    const skipIndex = (leafIndex + 2) % cluster.leaves.length;
+    return [
+      {
+        id: `demo-edge-synapse-ring-${clusterIndex}-${leafIndex}`,
+        fromObjectId: `demo-${cluster.id}-${leafIndex}`,
+        toObjectId: `demo-${cluster.id}-${nextIndex}`,
+        type: "references",
+        weight: 0.18,
+        metadata: { demo: true, synaptic: true, phase: leafIndex, accent: cluster.color },
+      },
+      {
+        id: `demo-edge-synapse-skip-${clusterIndex}-${leafIndex}`,
+        fromObjectId: `demo-${cluster.id}-${leafIndex}`,
+        toObjectId: `demo-${cluster.id}-${skipIndex}`,
+        type: "related_to",
+        weight: 0.12,
+        metadata: { demo: true, synaptic: true, phase: leafIndex + 3, accent: cluster.color },
+      },
+    ] satisfies KnowledgeEdge[];
+  });
+  const skipCluster = CLUSTER_SPECS[(clusterIndex + 2) % CLUSTER_SPECS.length];
+  return [
+    ...local,
+    {
+      id: `demo-edge-synapse-hub-${clusterIndex}`,
+      fromObjectId: `demo-${cluster.id}`,
+      toObjectId: `demo-${skipCluster.id}`,
+      type: "related_to",
+      weight: 0.14,
+      metadata: { demo: true, synaptic: true, phase: clusterIndex + 7, accent: "#4f72a3" },
+    },
+  ];
+});
+
+const DEMO_EDGES: KnowledgeEdge[] = [
+  ...CLUSTER_EDGES,
+  ...AMBIENT_EDGES,
+  ...SYNAPTIC_EDGES,
+];
+
+const DEMO_GRAPH: GraphData = { nodes: DEMO_NODES, edges: DEMO_EDGES };
+
+function endpointId(endpoint: unknown): string | null {
+  if (typeof endpoint === "string") return endpoint;
+  if (endpoint && typeof endpoint === "object" && "id" in endpoint) {
+    return String((endpoint as { id: unknown }).id);
+  }
+  return null;
+}
+
+/**
+ * Full-screen interactive knowledge graph.
+ *
+ * The graph visualizes retrieved context, sources, entities, actions, and
+ * approved reasoning summaries — never private chain-of-thought.
+ */
+export function KnowledgeGraph({
+  roomId,
+  projectId,
+  isStreaming,
+  refreshKey,
+  onDataChange,
+}: KnowledgeGraphProps) {
+  const [graphData, setGraphData] = useState<GraphData>(DEMO_GRAPH);
+  const [source, setSource] = useState<GraphSource>("demo");
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [size, setSize] = useState({ width: 800, height: 600 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fgRef = useRef<any>(undefined);
+  const wasStreamingRef = useRef(false);
+  const zoomRef = useRef(1);
+
+  const {
+    search,
+    activeTypes,
+    focusMode,
+    clustering,
+    timeWindowCutoff,
+    selectedNodeId,
+    focusRequest,
+    fitRequest,
+    selectNode,
+  } = useGraphStore();
+
+  // ------------------------------------------------------------------ fetch
+  const fetchGraph = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (roomId) params.set("roomId", roomId);
+      if (projectId) params.set("projectId", projectId);
+      const res = await fetch(`/api/graph?${params.toString()}`);
+      if (res.ok) {
+        const data = (await res.json()) as GraphData;
+        if (data.nodes.length > 0) {
+          setGraphData(data);
+          setSource("live");
+        } else {
+          setGraphData(DEMO_GRAPH);
+          setSource("demo");
+        }
+      } else {
+        setGraphData(DEMO_GRAPH);
+        setSource("demo");
+      }
+    } catch {
+      setGraphData(DEMO_GRAPH);
+      setSource("offline");
+    }
+  }, [roomId, projectId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchGraph();
+  }, [fetchGraph]);
+
+  // Refetch after streaming completes
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      wasStreamingRef.current = false;
+      const timeout = setTimeout(() => void fetchGraph(), 500);
+      return () => clearTimeout(timeout);
+    }
+    wasStreamingRef.current = !!isStreaming;
+  }, [isStreaming, fetchGraph]);
+
+  // Refetch on knowledge_update SSE events
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (refreshKey !== undefined && refreshKey > 0) void fetchGraph();
+  }, [refreshKey, fetchGraph]);
+
+  // Gentle polling keeps the graph live
+  useEffect(() => {
+    const id = setInterval(() => void fetchGraph(), 8000);
+    return () => clearInterval(id);
+  }, [fetchGraph]);
+
+  useEffect(() => {
+    onDataChange?.(graphData, source);
+  }, [graphData, source, onDataChange]);
+
+  // ------------------------------------------------------------------ size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    observer.observe(el);
+    setSize({ width: el.offsetWidth, height: el.offsetHeight });
+    return () => observer.disconnect();
+  }, []);
+
+  // ---------------------------------------------------------------- derive
+  const degreeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of graphData.edges) {
+      map.set(e.fromObjectId, (map.get(e.fromObjectId) ?? 0) + 1);
+      map.set(e.toObjectId, (map.get(e.toObjectId) ?? 0) + 1);
+    }
+    return map;
+  }, [graphData.edges]);
+
+  const filteredNodes = useMemo(() => {
+    return graphData.nodes.filter((n) => {
+      if (search && !n.title.toLowerCase().includes(search.toLowerCase())) return false;
+      if (activeTypes.size > 0 && !activeTypes.has(n.type)) return false;
+      if (timeWindowCutoff > 0 && new Date(n.createdAt).getTime() < timeWindowCutoff)
+        return false;
+      return true;
+    });
+  }, [graphData.nodes, search, activeTypes, timeWindowCutoff]);
+
+  const filteredNodeIds = useMemo(
+    () => new Set(filteredNodes.map((n) => n.id)),
+    [filteredNodes]
+  );
+
+  const filteredEdges = useMemo(
+    () =>
+      graphData.edges.filter(
+        (e) => filteredNodeIds.has(e.fromObjectId) && filteredNodeIds.has(e.toObjectId)
+      ),
+    [graphData.edges, filteredNodeIds]
+  );
+
+  const neighborsOfSelected = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const set = new Set<string>([selectedNodeId]);
+    for (const e of filteredEdges) {
+      if (e.fromObjectId === selectedNodeId) set.add(e.toObjectId);
+      if (e.toObjectId === selectedNodeId) set.add(e.fromObjectId);
+    }
+    return set;
+  }, [selectedNodeId, filteredEdges]);
+
+  // Approved reasoning-summary hubs + their neighbors pulse while the agent is
+  // active. This visualizes retrieved context and actions, never private CoT.
+  const pulseIds = useMemo(() => {
+    if (!isStreaming) return null;
+    const activeContext = new Set(
+      filteredNodes
+        .filter((n) => n.type === "Agent" || n.type === "Memory" || n.type === "Task")
+        .map((n) => n.id)
+    );
+    const set = new Set(activeContext);
+    for (const e of filteredEdges) {
+      if (activeContext.has(e.fromObjectId)) set.add(e.toObjectId);
+      if (activeContext.has(e.toObjectId)) set.add(e.fromObjectId);
+    }
+    return set;
+  }, [isStreaming, filteredNodes, filteredEdges]);
+
+  const fgData = useMemo(() => {
+    const nodes: FGNode[] = filteredNodes.map((n) => {
+      const degree = degreeMap.get(n.id) ?? 0;
+      const metadata = n.metadata as {
+        demo?: boolean;
+        x?: number;
+        y?: number;
+        tier?: DemoTier;
+      };
+      const radius = metadata.tier === "root" ? 25 : metadata.tier === "hub" ? 9 : metadata.tier === "leaf" ? 3.6 : nodeRadius(n.type, degree);
+      return {
+        ...n,
+        id: n.id,
+        label: n.title,
+        type: n.type,
+        color: nodeColor(n),
+        radius,
+        degree,
+        createdAt: n.createdAt,
+        metadata: n.metadata,
+        ...(metadata.demo && typeof metadata.x === "number" && typeof metadata.y === "number"
+          ? { x: metadata.x, y: metadata.y, fx: metadata.x, fy: metadata.y }
+          : {}),
+      };
+    });
+    const tierRank: Record<DemoTier, number> = { leaf: 0, hub: 1, root: 2 };
+    nodes.sort((a, b) => {
+      const aTier = (a.metadata as { tier?: DemoTier }).tier ?? "leaf";
+      const bTier = (b.metadata as { tier?: DemoTier }).tier ?? "leaf";
+      return tierRank[aTier] - tierRank[bTier];
+    });
+    const links = filteredEdges.map((e) => ({
+      source: e.fromObjectId,
+      target: e.toObjectId,
+      type: e.type,
+      weight: e.weight,
+      color: (e.metadata as { accent?: string } | undefined)?.accent,
+      synaptic: Boolean((e.metadata as { synaptic?: boolean } | undefined)?.synaptic),
+      phase: Number((e.metadata as { phase?: number } | undefined)?.phase ?? 0),
+    }));
+    return { nodes, links };
+  }, [filteredNodes, filteredEdges, degreeMap]);
+
+  // A coordinated orbital system: hubs revolve around Sentinel, while each
+  // leaf cluster rotates around its hub. The authored hierarchy stays intact
+  // and the movement remains slow enough for labels to stay readable.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const root = fgData.nodes.find(
+      (node) => (node.metadata as { tier?: DemoTier }).tier === "root"
+    );
+    if (!root) return;
+
+    const rootMetadata = root.metadata as { x?: number; y?: number };
+    const rootX = rootMetadata.x ?? 0;
+    const rootY = rootMetadata.y ?? 0;
+    const hubAnchors = new Map<string, { x: number; y: number }>();
+    for (const node of fgData.nodes) {
+      const metadata = node.metadata as {
+        tier?: DemoTier;
+        clusterId?: string;
+        x?: number;
+        y?: number;
+      };
+      if (
+        metadata.tier === "hub" &&
+        metadata.clusterId &&
+        metadata.x != null &&
+        metadata.y != null
+      ) {
+        hubAnchors.set(metadata.clusterId, { x: metadata.x, y: metadata.y });
+      }
+    }
+    const clusterOrder = new Map(CLUSTER_SPECS.map((cluster, index) => [cluster.id, index]));
+    const startedAt = performance.now();
+    let frame = 0;
+    let lastPaint = 0;
+    const animate = (time: number) => {
+      if (time - lastPaint >= 34) {
+        const elapsed = time - startedAt;
+        for (const node of fgData.nodes) {
+          const metadata = node.metadata as {
+            demo?: boolean;
+            x?: number;
+            y?: number;
+            tier?: DemoTier;
+            clusterId?: string;
+          };
+          if (!metadata.demo || metadata.x == null || metadata.y == null) continue;
+
+          let x = rootX;
+          let y = rootY;
+          if (metadata.tier !== "root" && metadata.clusterId) {
+            const clusterIndex = clusterOrder.get(metadata.clusterId) ?? 0;
+            const hubAnchor = hubAnchors.get(metadata.clusterId);
+            if (!hubAnchor) continue;
+
+            const orbitSpeed = (Math.PI * 2) / (155_000 + clusterIndex * 7_000);
+            const orbitAngle = elapsed * orbitSpeed;
+            const hubDx = hubAnchor.x - rootX;
+            const hubDy = hubAnchor.y - rootY;
+            const hubX = rootX + hubDx * Math.cos(orbitAngle) - hubDy * Math.sin(orbitAngle);
+            const hubY = rootY + hubDx * Math.sin(orbitAngle) + hubDy * Math.cos(orbitAngle);
+
+            x = hubX;
+            y = hubY;
+            if (metadata.tier === "leaf") {
+              const localSpeed = (Math.PI * 2) / (92_000 + clusterIndex * 5_500);
+              const localAngle = elapsed * localSpeed;
+              const localDx = metadata.x - hubAnchor.x;
+              const localDy = metadata.y - hubAnchor.y;
+              const breathing = 1 + Math.sin(elapsed * 0.0012 + clusterIndex) * 0.018;
+              x += (localDx * Math.cos(localAngle) - localDy * Math.sin(localAngle)) * breathing;
+              y += (localDx * Math.sin(localAngle) + localDy * Math.cos(localAngle)) * breathing;
+            }
+          }
+
+          node.x = x;
+          node.y = y;
+          node.fx = x;
+          node.fy = y;
+        }
+        fgRef.current?.refresh?.();
+        lastPaint = time;
+      }
+      frame = window.requestAnimationFrame(animate);
+    };
+
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [fgData.nodes]);
+
+  // ------------------------------------------------------- cluster force
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    if (clustering) {
+      const centers = new Map<string, { x: number; y: number }>();
+      const groups = Array.from(new Set(fgData.nodes.map((n) => n.color)));
+      const R = Math.min(size.width, size.height) * 0.28;
+      groups.forEach((g, i) => {
+        const angle = (i / Math.max(1, groups.length)) * Math.PI * 2;
+        centers.set(g, { x: Math.cos(angle) * R, y: Math.sin(angle) * R });
+      });
+      const clusterForce = (alpha: number) => {
+        for (const node of fgData.nodes) {
+          const c = centers.get(node.color);
+          if (!c || node.x == null || node.y == null) continue;
+          node.vx = ((node.vx as number) ?? 0) + (c.x - node.x) * alpha * 0.08;
+          node.vy = ((node.vy as number) ?? 0) + (c.y - node.y) * alpha * 0.08;
+        }
+      };
+      fg.d3Force("cluster", clusterForce);
+    } else {
+      fg.d3Force("cluster", null);
+    }
+    fg.d3ReheatSimulation?.();
+  }, [clustering, fgData.nodes, size.width, size.height]);
+
+  // ------------------------------------------------------- focus requests
+  useEffect(() => {
+    if (!focusRequest) return;
+    const target = graphData.nodes.find((n) =>
+      n.title.toLowerCase().includes(focusRequest.title.toLowerCase())
+    );
+    if (!target) return;
+    selectNode(target.id);
+    const fgNode = fgData.nodes.find((n) => n.id === target.id);
+    if (fgNode?.x != null && fgNode?.y != null) {
+      fgRef.current?.centerAt?.(fgNode.x, fgNode.y, 650);
+      fgRef.current?.zoom?.(2.4, 650);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
+
+  // Initial fit
+  useEffect(() => {
+    if (fgData.nodes.length === 0) return;
+    const frame = window.setTimeout(() => fgRef.current?.zoomToFit?.(700, 90), 450);
+    return () => window.clearTimeout(frame);
+  }, [fgData.nodes.length]);
+
+  // Toolbar-requested fit
+  useEffect(() => {
+    if (fitRequest > 0) fgRef.current?.zoomToFit?.(600, 90);
+  }, [fitRequest]);
+
+  // ------------------------------------------------------------- drawing
+  const nodeCanvasObject = useCallback(
+    (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const n = node as FGNode;
+      const x = n.x ?? 0;
+      const y = n.y ?? 0;
+      const meta = n.metadata as { tier?: DemoTier };
+      const tier = meta.tier;
+      const isSelected = selectedNodeId === n.id;
+      const isHovered = hoveredNodeId === n.id;
+      const isPulsing = pulseIds?.has(n.id) ?? false;
+      const dimmed = Boolean(focusMode && neighborsOfSelected && !neighborsOfSelected.has(n.id));
+      const emphasis = isSelected ? 1.2 : isHovered ? 1.1 : 1;
+      const pulse = isPulsing ? 1 + Math.sin(Date.now() * 0.004 + x * 0.01) * 0.1 : 1;
+      const r = n.radius * emphasis * pulse;
+      const progressiveAlpha =
+        tier !== "leaf" || isSelected || isHovered
+          ? 1
+          : globalScale < 0.42
+            ? 0.16
+            : globalScale < 0.62
+              ? 0.7
+              : 0.94;
+
+      ctx.save();
+      ctx.globalAlpha = dimmed ? 0.1 : progressiveAlpha;
+
+      if (tier === "root") {
+        const halo = r + 12 + Math.sin(Date.now() * 0.0016) * 1.4;
+        const gradient = ctx.createRadialGradient(x, y, r * 0.4, x, y, halo);
+        gradient.addColorStop(0, "rgba(47,140,255,0.75)");
+        gradient.addColorStop(0.55, "rgba(47,140,255,0.16)");
+        gradient.addColorStop(1, "rgba(47,140,255,0)");
+        ctx.beginPath();
+        ctx.arc(x, y, halo, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(129,190,255,0.78)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur = tier === "root" ? 22 : tier === "hub" ? 12 : 7;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.2, r * 0.42), 0, Math.PI * 2);
+      ctx.fillStyle = tier === "root" ? "#e6f3ff" : "rgba(255,255,255,0.72)";
+      ctx.fill();
+
+      if (tier === "root") {
+        ctx.textAlign = "center";
+        ctx.font = `700 ${10 / globalScale}px ui-sans-serif, system-ui`;
+        ctx.fillStyle = "#2176d9";
+        ctx.fillText("S", x, y + 3.5 / globalScale);
+        const titleSize = 11.5 / globalScale;
+        const subtitleSize = 7 / globalScale;
+        ctx.textAlign = "center";
+        ctx.font = `600 ${titleSize}px ui-sans-serif, system-ui`;
+        ctx.fillStyle = "#f3f8ff";
+        ctx.fillText(n.label, x, y + r + titleSize + 4 / globalScale);
+        ctx.font = `${subtitleSize}px ui-sans-serif, system-ui`;
+        ctx.fillStyle = "#8fa1b7";
+        ctx.fillText("Intelligence Platform", x, y + r + titleSize + subtitleSize + 7 / globalScale);
+      } else if (tier === "hub") {
+        const fontSize = 11 / globalScale;
+        ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#e9f0f8";
+        ctx.shadowColor = "#020711";
+        ctx.shadowBlur = 4;
+        ctx.fillText(n.label, x, y + r + fontSize + 3 / globalScale);
+        ctx.shadowBlur = 0;
+      } else if (tier === "leaf" && globalScale > 0.46) {
+        const fontSize = 7.2 / globalScale;
+        const padX = 5 / globalScale;
+        const boxHeight = 15 / globalScale;
+        ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui`;
+        const textWidth = ctx.measureText(n.label).width;
+        const boxWidth = textWidth + padX * 2 + 10 / globalScale;
+        const boxX = x + r + 3 / globalScale;
+        const boxY = y - boxHeight / 2;
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 4 / globalScale);
+        ctx.fillStyle = "rgba(7,17,29,0.9)";
+        ctx.fill();
+        ctx.strokeStyle = `${n.color}55`;
+        ctx.lineWidth = 0.55 / globalScale;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(boxX + 5 / globalScale, y, 2.2 / globalScale, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.fill();
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillText(n.label, boxX + 10 / globalScale, y + fontSize * 0.35);
+      }
+
+      if (isSelected || isHovered) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    [selectedNodeId, hoveredNodeId, pulseIds, focusMode, neighborsOfSelected]
+  );
+
+  const isHighlightedLink = useCallback(
+    (link: { source: unknown; target: unknown }) => {
+      const s = endpointId(link.source);
+      const t = endpointId(link.target);
+      if (hoveredNodeId && (s === hoveredNodeId || t === hoveredNodeId)) return true;
+      if (selectedNodeId && (s === selectedNodeId || t === selectedNodeId)) return true;
+      return false;
+    },
+    [hoveredNodeId, selectedNodeId]
+  );
+
+  const isPulseLink = useCallback(
+    (link: { source: unknown; target: unknown }) => {
+      if (!pulseIds) return false;
+      const sourceId = endpointId(link.source);
+      const targetId = endpointId(link.target);
+      return Boolean(
+        (sourceId && pulseIds.has(sourceId)) || (targetId && pulseIds.has(targetId))
+      );
+    },
+    [pulseIds]
+  );
+
+  const handleNodeClick = useCallback(
+    (node: object) => {
+      const n = node as FGNode;
+      selectNode(n.id);
+      if (n.x != null && n.y != null) {
+        fgRef.current?.centerAt?.(n.x, n.y, 600);
+      }
+    },
+    [selectNode]
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="neural-space-canvas absolute inset-0 overflow-hidden"
+      role="application"
+      aria-label="Knowledge graph canvas"
+    >
+      <ForceGraph2D
+        ref={fgRef}
+        graphData={fgData}
+        backgroundColor={GRAPH_COLORS.background}
+        nodeLabel="label"
+        nodeVal={(n) => (n as FGNode).radius}
+        nodeRelSize={1}
+        nodeCanvasObject={nodeCanvasObject}
+        nodeCanvasObjectMode={() => "replace"}
+        linkColor={(link) => {
+          const typedLink = link as { source: unknown; target: unknown; color?: string; synaptic?: boolean };
+          if (isHighlightedLink(typedLink)) return GRAPH_COLORS.edgeHighlight;
+          if (typedLink.synaptic && typedLink.color) return `${typedLink.color}38`;
+          return typedLink.color ? `${typedLink.color}66` : GRAPH_COLORS.edge;
+        }}
+        linkWidth={(link) => {
+          const typedLink = link as { source: unknown; target: unknown; weight?: number; synaptic?: boolean };
+          if (isHighlightedLink(typedLink)) return 1.6;
+          if (typedLink.synaptic) return 0.34;
+          return Math.max(0.45, Number(typedLink.weight ?? 1) * 0.7);
+        }}
+        linkCurvature={(link) => (link as { synaptic?: boolean }).synaptic ? 0.16 : 0.06}
+        linkDirectionalParticles={(link) => {
+          const typedLink = link as { source: unknown; target: unknown; synaptic?: boolean };
+          if (isStreaming && isPulseLink(typedLink)) return 2;
+          return typedLink.synaptic ? 1 : 0;
+        }}
+        linkDirectionalParticleWidth={(link) => (link as { synaptic?: boolean }).synaptic ? 0.9 : 1.6}
+        linkDirectionalParticleSpeed={(link) => {
+          const typedLink = link as { synaptic?: boolean; phase?: number };
+          return typedLink.synaptic ? 0.0014 + (typedLink.phase ?? 0) % 4 * 0.00018 : 0.004;
+        }}
+        linkDirectionalParticleColor={(link) => {
+          const typedLink = link as { synaptic?: boolean; color?: string };
+          return typedLink.synaptic && typedLink.color ? typedLink.color : GRAPH_COLORS.pulse;
+        }}
+        onNodeClick={handleNodeClick}
+        onNodeHover={(node) => setHoveredNodeId((node as FGNode | null)?.id ?? null)}
+        onNodeDragEnd={(node) => {
+          const n = node as FGNode;
+          n.fx = n.x;
+          n.fy = n.y;
+        }}
+        onBackgroundClick={() => selectNode(null)}
+        onZoom={({ k }) => {
+          zoomRef.current = k;
+        }}
+        warmupTicks={10}
+        cooldownTicks={40}
+        d3AlphaDecay={0.035}
+        d3VelocityDecay={0.38}
+        autoPauseRedraw={false}
+        width={size.width}
+        height={size.height}
+        enableZoomInteraction
+        enablePanInteraction
+      />
+
+      <GraphMinimap fgRef={fgRef} nodes={fgData.nodes} size={size} />
+
+      {filteredNodes.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-8">
+          <div className="max-w-xs rounded-xl border border-white/[0.08] bg-[#0b0f17]/90 px-5 py-4 text-center shadow-2xl backdrop-blur-xl">
+            <div className="text-xs font-medium text-[#e8eaed]">
+              {source === "offline" ? "Knowledge graph offline" : "Nothing matches"}
+            </div>
+            <div className="mt-1.5 text-[10px] leading-4 text-[#697084]">
+              {source === "offline"
+                ? "The graph service is unreachable. Showing cached demo topology."
+                : "Adjust search, filters, or the time window to reveal nodes."}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Minimap — lightweight overview with viewport indicator
+// ---------------------------------------------------------------------------
+
+function GraphMinimap({
+  fgRef,
+  nodes,
+  size,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fgRef: React.MutableRefObject<any>;
+  nodes: FGNode[];
+  size: { width: number; height: number };
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [locked, setLocked] = useState(false);
+  const W = 148;
+  const H = 132;
+
+  useEffect(() => {
+    let raf = 0;
+    let last = 0;
+    const draw = (t: number) => {
+      raf = requestAnimationFrame(draw);
+      if (t - last < 250) return; // ~4fps is plenty for an overview
+      last = t;
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx || nodes.length === 0) return;
+
+      const xs = nodes.map((n) => n.x ?? 0);
+      const ys = nodes.map((n) => n.y ?? 0);
+      const minX = Math.min(...xs) - 20;
+      const maxX = Math.max(...xs) + 20;
+      const minY = Math.min(...ys) - 20;
+      const maxY = Math.max(...ys) + 20;
+      const scale = Math.min(W / (maxX - minX), H / (maxY - minY));
+      const ox = (W - (maxX - minX) * scale) / 2;
+      const oy = (H - (maxY - minY) * scale) / 2;
+
+      ctx.clearRect(0, 0, W, H);
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(
+          ox + ((n.x ?? 0) - minX) * scale,
+          oy + ((n.y ?? 0) - minY) * scale,
+          Math.max(0.8, n.radius * scale * 0.6),
+          0,
+          Math.PI * 2
+        );
+        ctx.fillStyle = n.color;
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+      }
+
+      // Viewport rectangle
+      try {
+        const k: number = fgRef.current?.zoom?.() ?? 1;
+        const center: { x: number; y: number } =
+          fgRef.current?.centerAt?.() ?? { x: 0, y: 0 };
+        const vw = (size.width / k) * scale;
+        const vh = (size.height / k) * scale;
+        const vx = ox + (center.x - minX) * scale - vw / 2;
+        const vy = oy + (center.y - minY) * scale - vh / 2;
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(vx, vy, vw, vh);
+      } catch {
+        // viewport getters unavailable — skip indicator
+      }
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [fgRef, nodes, size.width, size.height]);
+
+  return (
+    <div className="pointer-events-auto absolute bottom-14 right-3 z-20 hidden overflow-hidden rounded-xl border border-[#203248] bg-[#07131f]/92 p-1.5 shadow-2xl backdrop-blur-xl md:block">
+      <canvas ref={canvasRef} width={W} height={H} aria-label="Graph minimap" />
+      <div className="mt-1.5 flex items-center gap-1 border-t border-white/[0.055] pt-1.5">
+        <button type="button" aria-label="Zoom out" onClick={() => { const zoom = fgRef.current?.zoom?.() ?? 1; fgRef.current?.zoom?.(zoom * 0.82, 240); }} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Minus className="h-3 w-3" /></button>
+        <div className="h-1 flex-1 rounded-full bg-white/[0.08]"><div className="h-full w-1/2 rounded-full bg-sky-400" /></div>
+        <button type="button" aria-label="Zoom in" onClick={() => { const zoom = fgRef.current?.zoom?.() ?? 1; fgRef.current?.zoom?.(zoom * 1.22, 240); }} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Plus className="h-3 w-3" /></button>
+        <button type="button" aria-label="Fit graph" onClick={() => fgRef.current?.zoomToFit?.(420, 90)} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Maximize2 className="h-3 w-3" /></button>
+        <button type="button" aria-label="Lock graph viewport" aria-pressed={locked} onClick={() => setLocked((value) => !value)} className={cn("flex h-6 w-6 items-center justify-center rounded hover:bg-white/[0.06] hover:text-white", locked ? "text-cyan-300" : "text-[#8795a8]")}><Lock className="h-3 w-3" /></button>
+      </div>
+    </div>
+  );
+}

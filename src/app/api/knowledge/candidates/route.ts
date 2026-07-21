@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acceptCandidate, rejectCandidate } from "@/lib/knowledge/extraction";
 import type { ExtractionCandidate } from "@/lib/knowledge/types";
+import { requireUser } from "@/lib/current-user";
+import { db } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   let body: { action: "accept" | "reject"; candidate: ExtractionCandidate; roomId?: string };
@@ -13,7 +15,22 @@ export async function POST(req: NextRequest) {
 
   if (body.action === "accept") {
     try {
-      const node = await acceptCandidate(body.candidate, body.roomId);
+      const user = await requireUser();
+      const room = body.roomId
+        ? await db.chatRoom.findFirst({
+            where: { id: body.roomId, userId: user.id },
+            select: { projectId: true },
+          })
+        : null;
+      if (body.roomId && !room) {
+        return NextResponse.json({ ok: false, error: "Room not found" }, { status: 404 });
+      }
+      const node = await acceptCandidate(
+        body.candidate,
+        user.id,
+        body.roomId,
+        room?.projectId ?? undefined
+      );
       return NextResponse.json({ ok: true, node });
     } catch (err) {
       return NextResponse.json(
@@ -25,6 +42,7 @@ export async function POST(req: NextRequest) {
 
   if (body.action === "reject") {
     try {
+      await requireUser();
       await rejectCandidate(body.candidate);
       return NextResponse.json({ ok: true });
     } catch (err) {

@@ -5,6 +5,12 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 
+declare module "next-auth/jwt" {
+  interface JWT {
+    userId?: string;
+  }
+}
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -60,11 +66,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return !!session;
     },
     session({ session, token }) {
-      if (token.sub) session.user.id = token.sub;
+      if (token.userId) session.user.id = token.userId;
       return session;
     },
-    jwt({ token, account }) {
+    async jwt({ token, account, user }) {
       if (account) token.provider = account.provider;
+      if (!token.userId && (user?.email || token.email)) {
+        const email = user?.email ?? token.email;
+        if (email) {
+          const dbUser = await db.user.upsert({
+            where: { email },
+            update: { name: user?.name ?? token.name ?? undefined },
+            create: { email, name: user?.name ?? token.name ?? undefined },
+          });
+          token.userId = dbUser.id;
+        }
+      }
       return token;
     },
   },

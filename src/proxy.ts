@@ -5,6 +5,6 @@ export const proxy = auth;
 
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };
