@@ -59,7 +59,7 @@ interface KnowledgeGraphProps {
 // Demo dataset — shown until Postgres has real knowledge
 // ---------------------------------------------------------------------------
 
-type DemoTier = "root" | "hub" | "leaf";
+type DemoTier = "root" | "hub" | "leaf" | "micro";
 type DemoSpec = {
   id: string;
   title: string;
@@ -90,6 +90,12 @@ const CLUSTER_SPECS: Array<{
 ];
 
 const ROOT_SPEC: DemoSpec = { id: "sentinel", title: "Sentinel OS", type: "Organization", x: 0, y: 0, color: "#2f8cff", tier: "root" };
+const MICRO_NODE_COUNT = 40;
+
+function seededUnit(seed: number, salt: number): number {
+  const value = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
 
 const DEMO_SPECS: DemoSpec[] = [
   ROOT_SPEC,
@@ -98,13 +104,15 @@ const DEMO_SPECS: DemoSpec[] = [
     const radiusX = cluster.leaves.length > 5 ? 88 : 82;
     const radiusY = cluster.leaves.length > 5 ? 82 : 74;
     const leaves = cluster.leaves.map((title, index): DemoSpec => {
-      const angle = (Math.PI * 2 * index) / cluster.leaves.length - Math.PI / 2;
+      const angleJitter = Math.sin((index + 1) * 12.9898 + cluster.x * 0.013) * 0.38;
+      const radialJitter = 0.78 + (Math.sin((index + 2) * 7.31 + cluster.y * 0.017) + 1) * 0.19;
+      const angle = (Math.PI * 2 * index) / cluster.leaves.length - Math.PI / 2 + angleJitter;
       return {
         id: `${cluster.id}-${index}`,
         title,
         type: index % 3 === 0 ? "Artifact" : index % 3 === 1 ? "Note" : "File",
-        x: cluster.x + Math.cos(angle) * radiusX,
-        y: cluster.y + Math.sin(angle) * radiusY,
+        x: cluster.x + Math.cos(angle) * radiusX * radialJitter,
+        y: cluster.y + Math.sin(angle) * radiusY * radialJitter,
         color: cluster.color,
         tier: "leaf",
         clusterId: cluster.id,
@@ -120,6 +128,50 @@ const DEMO_NODES: KnowledgeNode[] = DEMO_SPECS.map((spec) => ({
   title: spec.title,
   scope: "project",
   metadata: { demo: true, accent: spec.color, tier: spec.tier, clusterId: spec.clusterId, x: spec.x + 80, y: spec.y },
+  createdAt: new Date(),
+}));
+
+const MICRO_SPECS = CLUSTER_SPECS.flatMap((cluster, clusterIndex) =>
+  Array.from({ length: MICRO_NODE_COUNT }, (_, index) => {
+    const seed = clusterIndex * 97 + index + 1;
+    const progress = -0.08 + seededUnit(seed, 1) * 1.54;
+    const spread = 36 + Math.max(0.2, progress) * 102;
+    const perpendicular = (seededUnit(seed, 2) - 0.5) * spread;
+    const along = (seededUnit(seed, 3) - 0.5) * 34;
+    const length = Math.hypot(cluster.x, cluster.y) || 1;
+    const unitX = cluster.x / length;
+    const unitY = cluster.y / length;
+    const tailAngle = clusterIndex * 1.17 + 0.45;
+    const tail = Math.pow(seededUnit(seed, 6), 2.35) * 170;
+    const x = cluster.x * progress + unitX * along - unitY * perpendicular + Math.cos(tailAngle) * tail;
+    const y = cluster.y * progress + unitY * along + unitX * perpendicular + Math.sin(tailAngle) * tail;
+    const palette = ["#8fb0c2", "#789bb2", "#74a48e", "#627f9b"];
+    return {
+      id: `micro-${cluster.id}-${index}`,
+      clusterId: cluster.id,
+      x: x + 80,
+      y,
+      color: palette[Math.floor(seededUnit(seed, 4) * palette.length)],
+      radius: 0.85 + seededUnit(seed, 5) * 2.8,
+    };
+  })
+);
+
+const MICRO_NODES: KnowledgeNode[] = MICRO_SPECS.map((spec, index) => ({
+  id: `demo-${spec.id}`,
+  type: "Note",
+  title: `Context trace ${String(index + 1).padStart(3, "0")}`,
+  scope: "project",
+  metadata: {
+    demo: true,
+    atmospheric: true,
+    accent: spec.color,
+    tier: "micro",
+    clusterId: spec.clusterId,
+    x: spec.x,
+    y: spec.y,
+    radius: spec.radius,
+  },
   createdAt: new Date(),
 }));
 
@@ -205,13 +257,69 @@ const SYNAPTIC_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterI
   ];
 });
 
+const MICRO_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterIndex) => {
+  const count = MICRO_NODE_COUNT;
+  return Array.from({ length: count }, (_, index) => {
+    const nodeId = `demo-micro-${cluster.id}-${index}`;
+    const nextId = `demo-micro-${cluster.id}-${(index + 1) % count}`;
+    const skipId = `demo-micro-${cluster.id}-${(index + 5 + clusterIndex) % count}`;
+    const leafId = `demo-${cluster.id}-${index % cluster.leaves.length}`;
+    const accent = index % 4 === 0 ? "#4e8f72" : "#517a98";
+    const shared = { demo: true, atmospheric: true, accent };
+    return [
+      {
+        id: `demo-edge-micro-hub-${clusterIndex}-${index}`,
+        fromObjectId: nodeId,
+        toObjectId: index % 3 === 0 ? `demo-${cluster.id}` : leafId,
+        type: "related_to",
+        weight: 0.13,
+        metadata: shared,
+      },
+      {
+        id: `demo-edge-micro-next-${clusterIndex}-${index}`,
+        fromObjectId: nodeId,
+        toObjectId: nextId,
+        type: "references",
+        weight: 0.08,
+        metadata: shared,
+      },
+      {
+        id: `demo-edge-micro-skip-${clusterIndex}-${index}`,
+        fromObjectId: nodeId,
+        toObjectId: skipId,
+        type: "related_to",
+        weight: 0.06,
+        metadata: shared,
+      },
+    ] satisfies KnowledgeEdge[];
+  }).flat();
+});
+
+const MICRO_BRIDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterIndex) => {
+  const next = CLUSTER_SPECS[(clusterIndex + 1) % CLUSTER_SPECS.length];
+  return Array.from({ length: 8 }, (_, index) => ({
+    id: `demo-edge-micro-bridge-${clusterIndex}-${index}`,
+    fromObjectId: `demo-micro-${cluster.id}-${(index * 3 + clusterIndex) % MICRO_NODE_COUNT}`,
+    toObjectId: `demo-micro-${next.id}-${(index * 5 + 7) % MICRO_NODE_COUNT}`,
+    type: "related_to" as const,
+    weight: 0.05,
+    metadata: {
+      demo: true,
+      atmospheric: true,
+      accent: index % 3 === 0 ? "#4e8f72" : "#476983",
+    },
+  }));
+});
+
 const DEMO_EDGES: KnowledgeEdge[] = [
   ...CLUSTER_EDGES,
   ...AMBIENT_EDGES,
   ...SYNAPTIC_EDGES,
+  ...MICRO_EDGES,
+  ...MICRO_BRIDGES,
 ];
 
-const DEMO_GRAPH: GraphData = { nodes: DEMO_NODES, edges: DEMO_EDGES };
+const DEMO_GRAPH: GraphData = { nodes: [...MICRO_NODES, ...DEMO_NODES], edges: DEMO_EDGES };
 
 function endpointId(endpoint: unknown): string | null {
   if (typeof endpoint === "string") return endpoint;
@@ -219,6 +327,19 @@ function endpointId(endpoint: unknown): string | null {
     return String((endpoint as { id: unknown }).id);
   }
   return null;
+}
+
+function driftPhase(id: string, salt: number): number {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 4294967295) * Math.PI * 2;
+}
+
+function slowWave(elapsed: number, period: number, phase: number): number {
+  return Math.sin((elapsed / period) * Math.PI * 2 + phase);
 }
 
 /**
@@ -395,8 +516,17 @@ export function KnowledgeGraph({
         x?: number;
         y?: number;
         tier?: DemoTier;
+        radius?: number;
       };
-      const radius = metadata.tier === "root" ? 25 : metadata.tier === "hub" ? 9 : metadata.tier === "leaf" ? 3.6 : nodeRadius(n.type, degree);
+      const radius = metadata.tier === "root"
+        ? 25
+        : metadata.tier === "hub"
+          ? 9
+          : metadata.tier === "leaf"
+            ? 3.6
+            : metadata.tier === "micro"
+              ? metadata.radius ?? 1.4
+              : nodeRadius(n.type, degree);
       return {
         ...n,
         id: n.id,
@@ -412,7 +542,7 @@ export function KnowledgeGraph({
           : {}),
       };
     });
-    const tierRank: Record<DemoTier, number> = { leaf: 0, hub: 1, root: 2 };
+    const tierRank: Record<DemoTier, number> = { micro: 0, leaf: 1, hub: 2, root: 3 };
     nodes.sort((a, b) => {
       const aTier = (a.metadata as { tier?: DemoTier }).tier ?? "leaf";
       const bTier = (b.metadata as { tier?: DemoTier }).tier ?? "leaf";
@@ -425,14 +555,16 @@ export function KnowledgeGraph({
       weight: e.weight,
       color: (e.metadata as { accent?: string } | undefined)?.accent,
       synaptic: Boolean((e.metadata as { synaptic?: boolean } | undefined)?.synaptic),
+      atmospheric: Boolean((e.metadata as { atmospheric?: boolean } | undefined)?.atmospheric),
       phase: Number((e.metadata as { phase?: number } | undefined)?.phase ?? 0),
     }));
     return { nodes, links };
   }, [filteredNodes, filteredEdges, degreeMap]);
 
-  // A coordinated orbital system: hubs revolve around Sentinel, while each
-  // leaf cluster rotates around its hub. The authored hierarchy stays intact
-  // and the movement remains slow enough for labels to stay readable.
+  // Bounded quasi-chaotic drift. Several incommensurate waves pull each
+  // cluster in different directions, so the topology wanders and regroups
+  // without tracing obvious circles. Shared cluster motion preserves the
+  // authored hierarchy while each leaf gets a small independent current.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -444,23 +576,6 @@ export function KnowledgeGraph({
     const rootMetadata = root.metadata as { x?: number; y?: number };
     const rootX = rootMetadata.x ?? 0;
     const rootY = rootMetadata.y ?? 0;
-    const hubAnchors = new Map<string, { x: number; y: number }>();
-    for (const node of fgData.nodes) {
-      const metadata = node.metadata as {
-        tier?: DemoTier;
-        clusterId?: string;
-        x?: number;
-        y?: number;
-      };
-      if (
-        metadata.tier === "hub" &&
-        metadata.clusterId &&
-        metadata.x != null &&
-        metadata.y != null
-      ) {
-        hubAnchors.set(metadata.clusterId, { x: metadata.x, y: metadata.y });
-      }
-    }
     const clusterOrder = new Map(CLUSTER_SPECS.map((cluster, index) => [cluster.id, index]));
     const startedAt = performance.now();
     let frame = 0;
@@ -478,30 +593,45 @@ export function KnowledgeGraph({
           };
           if (!metadata.demo || metadata.x == null || metadata.y == null) continue;
 
-          let x = rootX;
-          let y = rootY;
+          const rootDriftX =
+            slowWave(elapsed, 73_000, 0.4) * 4.5 +
+            slowWave(elapsed, 131_000, 2.2) * 2.5;
+          const rootDriftY =
+            slowWave(elapsed, 89_000, 2.7) * 4 +
+            slowWave(elapsed, 113_000, 0.9) * 2.75;
+
+          let x = rootX + rootDriftX;
+          let y = rootY + rootDriftY;
           if (metadata.tier !== "root" && metadata.clusterId) {
             const clusterIndex = clusterOrder.get(metadata.clusterId) ?? 0;
-            const hubAnchor = hubAnchors.get(metadata.clusterId);
-            if (!hubAnchor) continue;
+            const clusterPhaseX = driftPhase(metadata.clusterId, 17);
+            const clusterPhaseY = driftPhase(metadata.clusterId, 41);
+            const expansion = 1 + slowWave(elapsed, 109_000, clusterPhaseX + 0.8) * 0.035;
+            const anchorX = rootX + (metadata.x - rootX) * expansion;
+            const anchorY = rootY + (metadata.y - rootY) * expansion;
 
-            const orbitSpeed = (Math.PI * 2) / (155_000 + clusterIndex * 7_000);
-            const orbitAngle = elapsed * orbitSpeed;
-            const hubDx = hubAnchor.x - rootX;
-            const hubDy = hubAnchor.y - rootY;
-            const hubX = rootX + hubDx * Math.cos(orbitAngle) - hubDy * Math.sin(orbitAngle);
-            const hubY = rootY + hubDx * Math.sin(orbitAngle) + hubDy * Math.cos(orbitAngle);
+            const clusterDriftX =
+              slowWave(elapsed, 67_000 + clusterIndex * 3_700, clusterPhaseX) * 17 +
+              slowWave(elapsed, 127_000 + clusterIndex * 5_300, clusterPhaseY + 1.4) * 9 +
+              slowWave(elapsed, 43_000 + clusterIndex * 2_100, clusterPhaseX + 2.8) * 4;
+            const clusterDriftY =
+              slowWave(elapsed, 79_000 + clusterIndex * 4_100, clusterPhaseY) * 15 +
+              slowWave(elapsed, 137_000 + clusterIndex * 4_700, clusterPhaseX + 2.1) * 10 +
+              slowWave(elapsed, 51_000 + clusterIndex * 2_300, clusterPhaseY + 3.2) * 4;
 
-            x = hubX;
-            y = hubY;
-            if (metadata.tier === "leaf") {
-              const localSpeed = (Math.PI * 2) / (92_000 + clusterIndex * 5_500);
-              const localAngle = elapsed * localSpeed;
-              const localDx = metadata.x - hubAnchor.x;
-              const localDy = metadata.y - hubAnchor.y;
-              const breathing = 1 + Math.sin(elapsed * 0.0012 + clusterIndex) * 0.018;
-              x += (localDx * Math.cos(localAngle) - localDy * Math.sin(localAngle)) * breathing;
-              y += (localDx * Math.sin(localAngle) + localDy * Math.cos(localAngle)) * breathing;
+            x = anchorX + rootDriftX * 0.35 + clusterDriftX;
+            y = anchorY + rootDriftY * 0.35 + clusterDriftY;
+
+            if (metadata.tier === "leaf" || metadata.tier === "micro") {
+              const nodePhaseX = driftPhase(node.id, 73);
+              const nodePhaseY = driftPhase(node.id, 101);
+              const driftScale = metadata.tier === "micro" ? 0.62 : 1;
+              x +=
+                (slowWave(elapsed, 47_000 + clusterIndex * 1_900, nodePhaseX) * 7 +
+                  slowWave(elapsed, 91_000 + clusterIndex * 2_600, nodePhaseY + 1.1) * 3) * driftScale;
+              y +=
+                (slowWave(elapsed, 59_000 + clusterIndex * 1_700, nodePhaseY) * 6 +
+                  slowWave(elapsed, 103_000 + clusterIndex * 2_200, nodePhaseX + 2.4) * 3.5) * driftScale;
             }
           }
 
@@ -566,7 +696,7 @@ export function KnowledgeGraph({
   // Initial fit
   useEffect(() => {
     if (fgData.nodes.length === 0) return;
-    const frame = window.setTimeout(() => fgRef.current?.zoomToFit?.(700, 90), 450);
+    const frame = window.setTimeout(() => fgRef.current?.zoomToFit?.(700, 38), 450);
     return () => window.clearTimeout(frame);
   }, [fgData.nodes.length]);
 
@@ -581,7 +711,7 @@ export function KnowledgeGraph({
       const n = node as FGNode;
       const x = n.x ?? 0;
       const y = n.y ?? 0;
-      const meta = n.metadata as { tier?: DemoTier };
+      const meta = n.metadata as { tier?: DemoTier; atmospheric?: boolean };
       const tier = meta.tier;
       const isSelected = selectedNodeId === n.id;
       const isHovered = hoveredNodeId === n.id;
@@ -601,6 +731,23 @@ export function KnowledgeGraph({
 
       ctx.save();
       ctx.globalAlpha = dimmed ? 0.1 : progressiveAlpha;
+
+      if (tier === "micro") {
+        ctx.globalAlpha = dimmed ? 0.04 : globalScale < 0.42 ? 0.38 : 0.76;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.shadowColor = n.color;
+        ctx.shadowBlur = r > 2 ? 5 : 2.5;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(x - r * 0.22, y - r * 0.22, Math.max(0.35, r * 0.3), 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(222,241,247,0.72)";
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
 
       if (tier === "root") {
         const halo = r + 12 + Math.sin(Date.now() * 0.0016) * 1.4;
@@ -655,7 +802,7 @@ export function KnowledgeGraph({
         ctx.shadowBlur = 4;
         ctx.fillText(n.label, x, y + r + fontSize + 3 / globalScale);
         ctx.shadowBlur = 0;
-      } else if (tier === "leaf" && globalScale > 0.46) {
+      } else if (tier === "leaf" && (globalScale > 1.18 || isSelected || isHovered)) {
         const fontSize = 7.2 / globalScale;
         const padX = 5 / globalScale;
         const boxHeight = 15 / globalScale;
@@ -737,24 +884,29 @@ export function KnowledgeGraph({
         ref={fgRef}
         graphData={fgData}
         backgroundColor={GRAPH_COLORS.background}
-        nodeLabel="label"
+        nodeLabel={(node) => (node as FGNode).metadata && (node as FGNode).metadata.tier === "micro" ? "" : (node as FGNode).label}
         nodeVal={(n) => (n as FGNode).radius}
         nodeRelSize={1}
         nodeCanvasObject={nodeCanvasObject}
         nodeCanvasObjectMode={() => "replace"}
         linkColor={(link) => {
-          const typedLink = link as { source: unknown; target: unknown; color?: string; synaptic?: boolean };
+          const typedLink = link as { source: unknown; target: unknown; color?: string; synaptic?: boolean; atmospheric?: boolean };
           if (isHighlightedLink(typedLink)) return GRAPH_COLORS.edgeHighlight;
+          if (typedLink.atmospheric && typedLink.color) return `${typedLink.color}3d`;
           if (typedLink.synaptic && typedLink.color) return `${typedLink.color}38`;
           return typedLink.color ? `${typedLink.color}66` : GRAPH_COLORS.edge;
         }}
         linkWidth={(link) => {
-          const typedLink = link as { source: unknown; target: unknown; weight?: number; synaptic?: boolean };
+          const typedLink = link as { source: unknown; target: unknown; weight?: number; synaptic?: boolean; atmospheric?: boolean };
           if (isHighlightedLink(typedLink)) return 1.6;
+          if (typedLink.atmospheric) return 0.32;
           if (typedLink.synaptic) return 0.34;
           return Math.max(0.45, Number(typedLink.weight ?? 1) * 0.7);
         }}
-        linkCurvature={(link) => (link as { synaptic?: boolean }).synaptic ? 0.16 : 0.06}
+        linkCurvature={(link) => {
+          const typedLink = link as { synaptic?: boolean; atmospheric?: boolean };
+          return typedLink.atmospheric ? 0.025 : typedLink.synaptic ? 0.16 : 0.06;
+        }}
         linkDirectionalParticles={(link) => {
           const typedLink = link as { source: unknown; target: unknown; synaptic?: boolean };
           if (isStreaming && isPulseLink(typedLink)) return 2;
