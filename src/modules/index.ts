@@ -4,6 +4,7 @@ import "./chat";
 import "./agents";
 import "./memory";
 import "./knowledge";
+import "./neural";
 import "./workflows";
 import "./kanban";
 import "./organization";

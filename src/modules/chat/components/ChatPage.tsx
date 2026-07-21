@@ -23,6 +23,7 @@ import { useAgentStore } from "@/store/useAgentStore";
 import { useMemoryStore } from "@/store/useMemoryStore";
 import { useKeyStore } from "@/store/useKeyStore";
 import { AGENT_TEMPLATES } from "@/lib/constants";
+import { NeuralBackdrop } from "@/modules/neural";
 import type { Agent } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -796,7 +797,11 @@ export function ChatPage() {
       />
 
       {/* Center: Chat */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="relative isolate flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Chat Hybrid — ambient neural space drifting behind the conversation */}
+        <div className="absolute inset-0 -z-10">
+          <NeuralBackdrop />
+        </div>
         {/* Chat header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[--border] bg-[--card] backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-2">

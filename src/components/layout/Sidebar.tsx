@@ -17,6 +17,7 @@ import {
   BarChart3,
   Settings,
   Cpu,
+  Orbit,
   Pin,
   PinOff,
   type LucideIcon,
@@ -39,6 +40,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Kanban,
   Network,
   BarChart3,
+  Orbit,
   Settings,
 };
 
