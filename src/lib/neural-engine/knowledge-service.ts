@@ -41,3 +41,6 @@ export type {
 
 // Net-new Phase A surfaces layer on top of the above:
 export * from "./temporal-service";
+
+// Net-new Phase C surface: bridges Layer-1 rows into KnowledgeObject ids.
+export * from "./knowledge-bridge";

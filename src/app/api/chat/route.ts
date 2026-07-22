@@ -2,20 +2,27 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { retrieveContext } from "@/lib/knowledge/retrieval";
 import { requireUser } from "@/lib/current-user";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permissions";
 import { getVpsAgent } from "@/lib/agents/registry";
+import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bridge";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
 import type { NextRequest } from "next/server";
+
+interface ContextBlockResult {
+  block: string;
+  /** KnowledgeObject ids the retrieved context resolved to — feeds Experience.knowledgeUsed (Phase C). */
+  knowledgeObjectIds: string[];
+}
 
 async function buildContextBlock(
   roomId: string | undefined,
   memoryScope: string,
   userId: string
-): Promise<string> {
-  if (!roomId) return "";
+): Promise<ContextBlockResult> {
+  const empty: ContextBlockResult = { block: "", knowledgeObjectIds: [] };
+  if (!roomId) return empty;
   try {
     const room = await db.chatRoom.findFirst({
       where: { id: roomId, userId },
@@ -26,23 +33,24 @@ async function buildContextBlock(
     // never let them pull in project-wide context even if the room has a project.
     const projectId = memoryScope === "session" ? undefined : room?.projectId ?? undefined;
 
-    const { memories, notes, decisions, totalItems } = await retrieveContext({
-      roomId,
-      projectId,
-      userId,
-      maxItems: 10,
-    });
+    const { memories, notes, decisions, totalItems, knowledgeObjectIds } =
+      await retrieveContextWithProvenance({
+        roomId,
+        projectId,
+        userId,
+        maxItems: 10,
+      });
 
-    if (totalItems === 0) return "";
+    if (totalItems === 0) return empty;
 
     const lines: string[] = ["\n\n## Relevant context"];
     for (const m of memories) lines.push(`- (memory, ${m.scope}) ${m.content}`);
     for (const n of notes) lines.push(`- (note) ${n.title}: ${n.content.slice(0, 200)}`);
     for (const d of decisions) lines.push(`- (decision, ${d.status}) ${d.title}: ${d.summary}`);
-    return lines.join("\n");
+    return { block: lines.join("\n"), knowledgeObjectIds };
   } catch (err) {
     console.error("[chat] context retrieval failed:", err);
-    return "";
+    return empty;
   }
 }
 
@@ -143,7 +151,11 @@ export async function POST(request: NextRequest) {
     agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
   const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
-  const contextBlock = await buildContextBlock(roomId, memoryScope, user.id);
+  const { block: contextBlock, knowledgeObjectIds } = await buildContextBlock(
+    roomId,
+    memoryScope,
+    user.id,
+  );
   const systemPrompt = basePrompt + contextBlock;
 
   const provider = pickProvider(model);
@@ -202,6 +214,7 @@ export async function POST(request: NextRequest) {
             model,
             startedAtMs: requestStartedAtMs,
             fullContent,
+            knowledgeUsedIds: knowledgeObjectIds,
           });
         }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
@@ -259,6 +272,7 @@ export async function POST(request: NextRequest) {
             model,
             startedAtMs: requestStartedAtMs,
             fullContent,
+            knowledgeUsedIds: knowledgeObjectIds,
           });
         }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
@@ -323,6 +337,7 @@ export async function POST(request: NextRequest) {
           model,
           startedAtMs: requestStartedAtMs,
           fullContent,
+          knowledgeUsedIds: knowledgeObjectIds,
         });
       }
       ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));

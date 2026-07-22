@@ -50,9 +50,9 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
 }
 
 export async function retrieveContext(ctx: RetrievalContext): Promise<{
-  memories: Array<{ content: string; scope: string; tags: string[] }>;
-  notes: Array<{ title: string; content: string; tags: string[] }>;
-  decisions: Array<{ title: string; summary: string; status: string }>;
+  memories: Array<{ id: string; content: string; scope: string; tags: string[] }>;
+  notes: Array<{ id: string; title: string; content: string; tags: string[] }>;
+  decisions: Array<{ id: string; title: string; summary: string; status: string }>;
   totalItems: number;
 }> {
   const maxItems = Math.min(Math.max(ctx.maxItems ?? 40, 1), 100);
@@ -76,16 +76,19 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   ]);
 
   const memories = memoriesRaw.map((item) => ({
+    id: item.id,
     content: item.content,
     scope: item.scope,
     tags: item.tags,
   }));
   const notes = notesRaw.map((item) => ({
+    id: item.id,
     title: item.title,
     content: item.content,
     tags: item.tags,
   }));
   const decisions = decisionsRaw.map((item) => ({
+    id: item.id,
     title: item.title,
     summary: item.summary,
     status: item.status,
