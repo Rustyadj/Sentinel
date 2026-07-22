@@ -12,8 +12,9 @@ import {
 } from "@/lib/graph/theme";
 import type { KnowledgeNode, KnowledgeEdge } from "@/lib/knowledge/types";
 
-// react-force-graph-2d must be dynamically imported with ssr: false
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+// WebGL graph stays client-only. Keeping it behind a dynamic boundary avoids
+// pulling Three.js into the server-rendered shell.
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full items-center justify-center gap-2 text-[11px] text-[#697084]">
@@ -42,8 +43,10 @@ interface FGNode {
   metadata: Record<string, unknown>;
   x?: number;
   y?: number;
+  z?: number;
   fx?: number;
   fy?: number;
+  fz?: number;
   [key: string]: unknown;
 }
 
@@ -66,6 +69,7 @@ type DemoSpec = {
   type: KnowledgeNode["type"];
   x: number;
   y: number;
+  z: number;
   color: string;
   tier: DemoTier;
   clusterId?: string;
@@ -76,21 +80,22 @@ const CLUSTER_SPECS: Array<{
   title: string;
   x: number;
   y: number;
+  z: number;
   color: string;
   type: KnowledgeNode["type"];
   leaves: string[];
 }> = [
-  { id: "lead", title: "Lead Generation", x: -235, y: -110, color: "#35e69a", type: "Project", leaves: ["Landing Pages", "Lead Magnets", "Contact Forms", "Email Campaigns", "CRM Integration", "Nurture Scoring"] },
-  { id: "strategy", title: "Marketing Strategy", x: -62, y: -245, color: "#8b5cf6", type: "Memory", leaves: ["Audience Research", "Content Strategy", "Market Intelligence", "Competitor Analysis", "Campaign Goals"] },
-  { id: "projects", title: "Projects Portfolio", x: 206, y: -138, color: "#22d3ee", type: "Project", leaves: ["Residential Projects", "Commercial Projects", "Case Studies", "Testimonials", "Delivery Roadmap"] },
-  { id: "content", title: "Content Hub", x: 266, y: 80, color: "#a855f7", type: "Workspace", leaves: ["Blog Posts", "Video Content", "White Papers", "Guides & Downloads", "News & Updates"] },
-  { id: "workflows", title: "Workflows", x: 196, y: 250, color: "#f59e0b", type: "Task", leaves: ["Lead Capture Flow", "Follow-up Campaigns", "Project Onboarding", "Approval Automation", "Reporting Sync"] },
-  { id: "industry", title: "Industry Intelligence", x: 18, y: 220, color: "#38bdf8", type: "Organization", leaves: ["ICF Benefits", "Construction Trends", "Sustainability", "Cost Analysis", "Market Forecast"] },
-  { id: "digital", title: "Digital Marketing", x: -204, y: 135, color: "#2583ff", type: "Conversation", leaves: ["SEO Strategy", "Google Ads", "Social Media", "Email Marketing", "Local Marketing", "Analytics & Tracking"] },
+  { id: "lead", title: "Lead Generation", x: -235, y: -110, z: 76, color: "#35e69a", type: "Project", leaves: ["Landing Pages", "Lead Magnets", "Contact Forms", "Email Campaigns", "CRM Integration", "Nurture Scoring"] },
+  { id: "strategy", title: "Marketing Strategy", x: -62, y: -245, z: -118, color: "#d881c6", type: "Memory", leaves: ["Audience Research", "Content Strategy", "Market Intelligence", "Competitor Analysis", "Campaign Goals"] },
+  { id: "projects", title: "Projects Portfolio", x: 206, y: -138, z: 132, color: "#22d3ee", type: "Project", leaves: ["Residential Projects", "Commercial Projects", "Case Studies", "Testimonials", "Delivery Roadmap"] },
+  { id: "content", title: "Content Hub", x: 266, y: 80, z: -72, color: "#b78cff", type: "Workspace", leaves: ["Blog Posts", "Video Content", "White Papers", "Guides & Downloads", "News & Updates"] },
+  { id: "workflows", title: "Workflows", x: 196, y: 250, z: 92, color: "#f2c86b", type: "Task", leaves: ["Lead Capture Flow", "Follow-up Campaigns", "Project Onboarding", "Approval Automation", "Reporting Sync"] },
+  { id: "industry", title: "Industry Intelligence", x: 18, y: 220, z: -144, color: "#67d5ff", type: "Organization", leaves: ["ICF Benefits", "Construction Trends", "Sustainability", "Cost Analysis", "Market Forecast"] },
+  { id: "digital", title: "Digital Marketing", x: -204, y: 135, z: 34, color: "#5d8dff", type: "Conversation", leaves: ["SEO Strategy", "Google Ads", "Social Media", "Email Marketing", "Local Marketing", "Analytics & Tracking"] },
 ];
 
-const ROOT_SPEC: DemoSpec = { id: "sentinel", title: "Sentinel OS", type: "Organization", x: 0, y: 0, color: "#2f8cff", tier: "root" };
-const MICRO_NODE_COUNT = 40;
+const ROOT_SPEC: DemoSpec = { id: "sentinel", title: "Sentinel OS", type: "Organization", x: 0, y: 0, z: 0, color: "#fff6ff", tier: "root" };
+const MICRO_NODE_COUNT = 120;
 
 function seededUnit(seed: number, salt: number): number {
   const value = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453;
@@ -100,7 +105,7 @@ function seededUnit(seed: number, salt: number): number {
 const DEMO_SPECS: DemoSpec[] = [
   ROOT_SPEC,
   ...CLUSTER_SPECS.flatMap((cluster) => {
-    const hub: DemoSpec = { id: cluster.id, title: cluster.title, type: cluster.type, x: cluster.x, y: cluster.y, color: cluster.color, tier: "hub", clusterId: cluster.id };
+    const hub: DemoSpec = { id: cluster.id, title: cluster.title, type: cluster.type, x: cluster.x, y: cluster.y, z: cluster.z, color: cluster.color, tier: "hub", clusterId: cluster.id };
     const radiusX = cluster.leaves.length > 5 ? 88 : 82;
     const radiusY = cluster.leaves.length > 5 ? 82 : 74;
     const leaves = cluster.leaves.map((title, index): DemoSpec => {
@@ -113,6 +118,7 @@ const DEMO_SPECS: DemoSpec[] = [
         type: index % 3 === 0 ? "Artifact" : index % 3 === 1 ? "Note" : "File",
         x: cluster.x + Math.cos(angle) * radiusX * radialJitter,
         y: cluster.y + Math.sin(angle) * radiusY * radialJitter,
+        z: cluster.z + Math.sin(angle * 1.73 + index * 0.91) * 68 * radialJitter,
         color: cluster.color,
         tier: "leaf",
         clusterId: cluster.id,
@@ -127,32 +133,35 @@ const DEMO_NODES: KnowledgeNode[] = DEMO_SPECS.map((spec) => ({
   type: spec.type,
   title: spec.title,
   scope: "project",
-  metadata: { demo: true, accent: spec.color, tier: spec.tier, clusterId: spec.clusterId, x: spec.x + 80, y: spec.y },
+  metadata: { demo: true, accent: spec.color, tier: spec.tier, clusterId: spec.clusterId, x: spec.x + 80, y: spec.y, z: spec.z },
   createdAt: new Date(),
 }));
 
 const MICRO_SPECS = CLUSTER_SPECS.flatMap((cluster, clusterIndex) =>
   Array.from({ length: MICRO_NODE_COUNT }, (_, index) => {
     const seed = clusterIndex * 97 + index + 1;
-    const progress = -0.08 + seededUnit(seed, 1) * 1.54;
-    const spread = 36 + Math.max(0.2, progress) * 102;
-    const perpendicular = (seededUnit(seed, 2) - 0.5) * spread;
-    const along = (seededUnit(seed, 3) - 0.5) * 34;
-    const length = Math.hypot(cluster.x, cluster.y) || 1;
-    const unitX = cluster.x / length;
-    const unitY = cluster.y / length;
-    const tailAngle = clusterIndex * 1.17 + 0.45;
-    const tail = Math.pow(seededUnit(seed, 6), 2.35) * 170;
-    const x = cluster.x * progress + unitX * along - unitY * perpendicular + Math.cos(tailAngle) * tail;
-    const y = cluster.y * progress + unitY * along + unitX * perpendicular + Math.sin(tailAngle) * tail;
-    const palette = ["#8fb0c2", "#789bb2", "#74a48e", "#627f9b"];
+    const isCore = index % 5 === 0;
+    const radialUnit = seededUnit(seed, 1);
+    const radius = isCore
+      ? 18 + Math.pow(radialUnit, 1.9) * 155
+      : 68 + Math.pow(radialUnit, 0.62) * 282;
+    const theta = seededUnit(seed, 2) * Math.PI * 2;
+    const cosPhi = seededUnit(seed, 3) * 2 - 1;
+    const sinPhi = Math.sqrt(1 - cosPhi * cosPhi);
+    const clusterPull = 0.16 + seededUnit(seed, 7) * 0.12;
+    const outlier = index % 29 === 0 ? 62 : 0;
+    const x = 80 + Math.cos(theta) * sinPhi * (radius + outlier) + cluster.x * clusterPull;
+    const y = Math.sin(theta) * sinPhi * (radius + outlier) + cluster.y * clusterPull;
+    const z = cosPhi * (radius + outlier) + cluster.z * clusterPull;
+    const palette = ["#77e6e8", "#f29ac7", "#fff0a8", "#9da8ff", "#82d7aa", "#c6a0ff", "#8cb8d8", "#f5d8ef"];
     return {
       id: `micro-${cluster.id}-${index}`,
       clusterId: cluster.id,
-      x: x + 80,
+      x,
       y,
+      z,
       color: palette[Math.floor(seededUnit(seed, 4) * palette.length)],
-      radius: 0.85 + seededUnit(seed, 5) * 2.8,
+      radius: 0.42 + seededUnit(seed, 5) * 1.85,
     };
   })
 );
@@ -170,6 +179,7 @@ const MICRO_NODES: KnowledgeNode[] = MICRO_SPECS.map((spec, index) => ({
     clusterId: spec.clusterId,
     x: spec.x,
     y: spec.y,
+    z: spec.z,
     radius: spec.radius,
   },
   createdAt: new Date(),
@@ -264,7 +274,7 @@ const MICRO_EDGES: KnowledgeEdge[] = CLUSTER_SPECS.flatMap((cluster, clusterInde
     const nextId = `demo-micro-${cluster.id}-${(index + 1) % count}`;
     const skipId = `demo-micro-${cluster.id}-${(index + 5 + clusterIndex) % count}`;
     const leafId = `demo-${cluster.id}-${index % cluster.leaves.length}`;
-    const accent = index % 4 === 0 ? "#4e8f72" : "#517a98";
+    const accent = MICRO_SPECS[clusterIndex * count + index]?.color ?? "#7399b8";
     const shared = { demo: true, atmospheric: true, accent };
     return [
       {
@@ -342,6 +352,43 @@ function slowWave(elapsed: number, period: number, phase: number): number {
   return Math.sin((elapsed / period) * Math.PI * 2 + phase);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flyCameraToNode(graph: any, node: FGNode, distance: number) {
+  if (!graph || node.x == null || node.y == null || node.z == null) return;
+  const camera = graph.camera?.();
+  const cameraPosition = camera?.position ?? { x: node.x, y: node.y, z: node.z + distance };
+  const dx = cameraPosition.x - node.x;
+  const dy = cameraPosition.y - node.y;
+  const dz = cameraPosition.z - node.z;
+  const length = Math.hypot(dx, dy, dz) || 1;
+  graph.cameraPosition?.(
+    {
+      x: node.x + (dx / length) * distance,
+      y: node.y + (dy / length) * distance,
+      z: node.z + (dz / length) * distance,
+    },
+    { x: node.x, y: node.y, z: node.z },
+    850
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dollyCamera(graph: any, factor: number) {
+  const camera = graph?.camera?.();
+  const controls = graph?.controls?.();
+  if (!camera?.position) return;
+  const target = controls?.target ?? { x: 0, y: 0, z: 0 };
+  graph.cameraPosition?.(
+    {
+      x: target.x + (camera.position.x - target.x) * factor,
+      y: target.y + (camera.position.y - target.y) * factor,
+      z: target.z + (camera.position.z - target.z) * factor,
+    },
+    { x: target.x, y: target.y, z: target.z },
+    280
+  );
+}
+
 /**
  * Full-screen interactive knowledge graph.
  *
@@ -363,7 +410,6 @@ export function KnowledgeGraph({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(undefined);
   const wasStreamingRef = useRef(false);
-  const zoomRef = useRef(1);
 
   const {
     search,
@@ -515,6 +561,7 @@ export function KnowledgeGraph({
         demo?: boolean;
         x?: number;
         y?: number;
+        z?: number;
         tier?: DemoTier;
         radius?: number;
       };
@@ -537,8 +584,8 @@ export function KnowledgeGraph({
         degree,
         createdAt: n.createdAt,
         metadata: n.metadata,
-        ...(metadata.demo && typeof metadata.x === "number" && typeof metadata.y === "number"
-          ? { x: metadata.x, y: metadata.y, fx: metadata.x, fy: metadata.y }
+        ...(metadata.demo && typeof metadata.x === "number" && typeof metadata.y === "number" && typeof metadata.z === "number"
+          ? { x: metadata.x, y: metadata.y, z: metadata.z, fx: metadata.x, fy: metadata.y, fz: metadata.z }
           : {}),
       };
     });
@@ -573,9 +620,10 @@ export function KnowledgeGraph({
     );
     if (!root) return;
 
-    const rootMetadata = root.metadata as { x?: number; y?: number };
+    const rootMetadata = root.metadata as { x?: number; y?: number; z?: number };
     const rootX = rootMetadata.x ?? 0;
     const rootY = rootMetadata.y ?? 0;
+    const rootZ = rootMetadata.z ?? 0;
     const clusterOrder = new Map(CLUSTER_SPECS.map((cluster, index) => [cluster.id, index]));
     const startedAt = performance.now();
     let frame = 0;
@@ -588,10 +636,11 @@ export function KnowledgeGraph({
             demo?: boolean;
             x?: number;
             y?: number;
+            z?: number;
             tier?: DemoTier;
             clusterId?: string;
           };
-          if (!metadata.demo || metadata.x == null || metadata.y == null) continue;
+          if (!metadata.demo || metadata.x == null || metadata.y == null || metadata.z == null) continue;
 
           const rootDriftX =
             slowWave(elapsed, 73_000, 0.4) * 4.5 +
@@ -599,16 +648,22 @@ export function KnowledgeGraph({
           const rootDriftY =
             slowWave(elapsed, 89_000, 2.7) * 4 +
             slowWave(elapsed, 113_000, 0.9) * 2.75;
+          const rootDriftZ =
+            slowWave(elapsed, 97_000, 1.7) * 4.2 +
+            slowWave(elapsed, 149_000, 3.4) * 2.4;
 
           let x = rootX + rootDriftX;
           let y = rootY + rootDriftY;
+          let z = rootZ + rootDriftZ;
           if (metadata.tier !== "root" && metadata.clusterId) {
             const clusterIndex = clusterOrder.get(metadata.clusterId) ?? 0;
             const clusterPhaseX = driftPhase(metadata.clusterId, 17);
             const clusterPhaseY = driftPhase(metadata.clusterId, 41);
+            const clusterPhaseZ = driftPhase(metadata.clusterId, 59);
             const expansion = 1 + slowWave(elapsed, 109_000, clusterPhaseX + 0.8) * 0.035;
             const anchorX = rootX + (metadata.x - rootX) * expansion;
             const anchorY = rootY + (metadata.y - rootY) * expansion;
+            const anchorZ = rootZ + (metadata.z - rootZ) * expansion;
 
             const clusterDriftX =
               slowWave(elapsed, 67_000 + clusterIndex * 3_700, clusterPhaseX) * 17 +
@@ -618,13 +673,19 @@ export function KnowledgeGraph({
               slowWave(elapsed, 79_000 + clusterIndex * 4_100, clusterPhaseY) * 15 +
               slowWave(elapsed, 137_000 + clusterIndex * 4_700, clusterPhaseX + 2.1) * 10 +
               slowWave(elapsed, 51_000 + clusterIndex * 2_300, clusterPhaseY + 3.2) * 4;
+            const clusterDriftZ =
+              slowWave(elapsed, 83_000 + clusterIndex * 3_900, clusterPhaseZ) * 16 +
+              slowWave(elapsed, 143_000 + clusterIndex * 5_100, clusterPhaseX + 0.7) * 9 +
+              slowWave(elapsed, 57_000 + clusterIndex * 2_500, clusterPhaseY + 2.6) * 4;
 
             x = anchorX + rootDriftX * 0.35 + clusterDriftX;
             y = anchorY + rootDriftY * 0.35 + clusterDriftY;
+            z = anchorZ + rootDriftZ * 0.35 + clusterDriftZ;
 
             if (metadata.tier === "leaf" || metadata.tier === "micro") {
               const nodePhaseX = driftPhase(node.id, 73);
               const nodePhaseY = driftPhase(node.id, 101);
+              const nodePhaseZ = driftPhase(node.id, 137);
               const driftScale = metadata.tier === "micro" ? 0.62 : 1;
               x +=
                 (slowWave(elapsed, 47_000 + clusterIndex * 1_900, nodePhaseX) * 7 +
@@ -632,13 +693,18 @@ export function KnowledgeGraph({
               y +=
                 (slowWave(elapsed, 59_000 + clusterIndex * 1_700, nodePhaseY) * 6 +
                   slowWave(elapsed, 103_000 + clusterIndex * 2_200, nodePhaseX + 2.4) * 3.5) * driftScale;
+              z +=
+                (slowWave(elapsed, 53_000 + clusterIndex * 2_000, nodePhaseZ) * 6.5 +
+                  slowWave(elapsed, 111_000 + clusterIndex * 2_400, nodePhaseY + 1.9) * 3.2) * driftScale;
             }
           }
 
           node.x = x;
           node.y = y;
+          node.z = z;
           node.fx = x;
           node.fy = y;
+          node.fz = z;
         }
         fgRef.current?.refresh?.();
         lastPaint = time;
@@ -655,19 +721,24 @@ export function KnowledgeGraph({
     const fg = fgRef.current;
     if (!fg) return;
     if (clustering) {
-      const centers = new Map<string, { x: number; y: number }>();
+      const centers = new Map<string, { x: number; y: number; z: number }>();
       const groups = Array.from(new Set(fgData.nodes.map((n) => n.color)));
       const R = Math.min(size.width, size.height) * 0.28;
       groups.forEach((g, i) => {
         const angle = (i / Math.max(1, groups.length)) * Math.PI * 2;
-        centers.set(g, { x: Math.cos(angle) * R, y: Math.sin(angle) * R });
+        centers.set(g, {
+          x: Math.cos(angle) * R,
+          y: Math.sin(angle) * R,
+          z: Math.sin(angle * 1.7) * R * 0.65,
+        });
       });
       const clusterForce = (alpha: number) => {
         for (const node of fgData.nodes) {
           const c = centers.get(node.color);
-          if (!c || node.x == null || node.y == null) continue;
+          if (!c || node.x == null || node.y == null || node.z == null) continue;
           node.vx = ((node.vx as number) ?? 0) + (c.x - node.x) * alpha * 0.08;
           node.vy = ((node.vy as number) ?? 0) + (c.y - node.y) * alpha * 0.08;
+          node.vz = ((node.vz as number) ?? 0) + (c.z - node.z) * alpha * 0.08;
         }
       };
       fg.d3Force("cluster", clusterForce);
@@ -686,23 +757,20 @@ export function KnowledgeGraph({
     if (!target) return;
     selectNode(target.id);
     const fgNode = fgData.nodes.find((n) => n.id === target.id);
-    if (fgNode?.x != null && fgNode?.y != null) {
-      fgRef.current?.centerAt?.(fgNode.x, fgNode.y, 650);
-      fgRef.current?.zoom?.(2.4, 650);
-    }
+    if (fgNode) flyCameraToNode(fgRef.current, fgNode, 92);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest]);
 
   // Initial fit
   useEffect(() => {
     if (fgData.nodes.length === 0) return;
-    const frame = window.setTimeout(() => fgRef.current?.zoomToFit?.(700, 38), 450);
+    const frame = window.setTimeout(() => fgRef.current?.zoomToFit?.(900, 44), 550);
     return () => window.clearTimeout(frame);
   }, [fgData.nodes.length]);
 
   // Toolbar-requested fit
   useEffect(() => {
-    if (fitRequest > 0) fgRef.current?.zoomToFit?.(600, 90);
+    if (fitRequest > 0) fgRef.current?.zoomToFit?.(720, 44);
   }, [fitRequest]);
 
   // ------------------------------------------------------------- drawing
@@ -866,9 +934,12 @@ export function KnowledgeGraph({
     (node: object) => {
       const n = node as FGNode;
       selectNode(n.id);
-      if (n.x != null && n.y != null) {
-        fgRef.current?.centerAt?.(n.x, n.y, 600);
-      }
+      const tier = (n.metadata as { tier?: DemoTier }).tier;
+      flyCameraToNode(
+        fgRef.current,
+        n,
+        tier === "micro" ? 34 : tier === "leaf" ? 54 : tier === "hub" ? 96 : 150
+      );
     },
     [selectNode]
   );
@@ -880,39 +951,54 @@ export function KnowledgeGraph({
       role="application"
       aria-label="Knowledge graph canvas"
     >
-      <ForceGraph2D
+      <ForceGraph3D
         ref={fgRef}
         graphData={fgData}
-        backgroundColor={GRAPH_COLORS.background}
+        backgroundColor="#02030a"
+        showNavInfo={false}
+        controlType="orbit"
+        numDimensions={3}
         nodeLabel={(node) => (node as FGNode).metadata && (node as FGNode).metadata.tier === "micro" ? "" : (node as FGNode).label}
-        nodeVal={(n) => (n as FGNode).radius}
-        nodeRelSize={1}
-        nodeCanvasObject={nodeCanvasObject}
-        nodeCanvasObjectMode={() => "replace"}
+        nodeVal={(node) => {
+          const n = node as FGNode;
+          const tier = (n.metadata as { tier?: DemoTier }).tier;
+          const emphasis = selectedNodeId === n.id ? 2.6 : hoveredNodeId === n.id ? 1.7 : 1;
+          const scale = tier === "root" ? 2.7 : tier === "hub" ? 1.45 : 1;
+          return Math.max(0.22, n.radius * scale * emphasis);
+        }}
+        nodeColor={(node) => {
+          const n = node as FGNode;
+          if (focusMode && neighborsOfSelected && !neighborsOfSelected.has(n.id)) return "#0b1020";
+          if (selectedNodeId === n.id) return "#fff7ff";
+          return n.color;
+        }}
+        nodeRelSize={2.05}
+        nodeOpacity={0.94}
+        nodeResolution={8}
         linkColor={(link) => {
           const typedLink = link as { source: unknown; target: unknown; color?: string; synaptic?: boolean; atmospheric?: boolean };
-          if (isHighlightedLink(typedLink)) return GRAPH_COLORS.edgeHighlight;
-          if (typedLink.atmospheric && typedLink.color) return `${typedLink.color}3d`;
-          if (typedLink.synaptic && typedLink.color) return `${typedLink.color}38`;
-          return typedLink.color ? `${typedLink.color}66` : GRAPH_COLORS.edge;
+          if (isHighlightedLink(typedLink)) return "#c9f3ff";
+          if (typedLink.color) return typedLink.color;
+          return "#36516f";
         }}
+        linkOpacity={0.22}
         linkWidth={(link) => {
           const typedLink = link as { source: unknown; target: unknown; weight?: number; synaptic?: boolean; atmospheric?: boolean };
-          if (isHighlightedLink(typedLink)) return 1.6;
-          if (typedLink.atmospheric) return 0.32;
-          if (typedLink.synaptic) return 0.34;
-          return Math.max(0.45, Number(typedLink.weight ?? 1) * 0.7);
+          if (isHighlightedLink(typedLink)) return 1.25;
+          if (typedLink.atmospheric) return 0.13;
+          if (typedLink.synaptic) return 0.22;
+          return Math.max(0.28, Number(typedLink.weight ?? 1) * 0.48);
         }}
         linkCurvature={(link) => {
           const typedLink = link as { synaptic?: boolean; atmospheric?: boolean };
-          return typedLink.atmospheric ? 0.025 : typedLink.synaptic ? 0.16 : 0.06;
+          return typedLink.atmospheric ? 0.018 : typedLink.synaptic ? 0.09 : 0.035;
         }}
         linkDirectionalParticles={(link) => {
           const typedLink = link as { source: unknown; target: unknown; synaptic?: boolean };
           if (isStreaming && isPulseLink(typedLink)) return 2;
           return typedLink.synaptic ? 1 : 0;
         }}
-        linkDirectionalParticleWidth={(link) => (link as { synaptic?: boolean }).synaptic ? 0.9 : 1.6}
+        linkDirectionalParticleWidth={(link) => (link as { synaptic?: boolean }).synaptic ? 0.72 : 1.2}
         linkDirectionalParticleSpeed={(link) => {
           const typedLink = link as { synaptic?: boolean; phase?: number };
           return typedLink.synaptic ? 0.0014 + (typedLink.phase ?? 0) % 4 * 0.00018 : 0.004;
@@ -927,21 +1013,22 @@ export function KnowledgeGraph({
           const n = node as FGNode;
           n.fx = n.x;
           n.fy = n.y;
+          n.fz = n.z;
         }}
         onBackgroundClick={() => selectNode(null)}
-        onZoom={({ k }) => {
-          zoomRef.current = k;
-        }}
-        warmupTicks={10}
-        cooldownTicks={40}
+        warmupTicks={18}
+        cooldownTicks={64}
         d3AlphaDecay={0.035}
         d3VelocityDecay={0.38}
-        autoPauseRedraw={false}
         width={size.width}
         height={size.height}
-        enableZoomInteraction
-        enablePanInteraction
+        enableNavigationControls
+        enablePointerInteraction
       />
+
+      <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-white/[0.06] bg-[#050813]/72 px-3 py-1.5 text-[8px] uppercase tracking-[0.14em] text-[#6f8196] backdrop-blur-xl lg:flex">
+        <span>Drag to rotate</span><span className="h-1 w-1 rounded-full bg-cyan-300/50" /><span>Scroll to dive</span><span className="h-1 w-1 rounded-full bg-fuchsia-300/50" /><span>Click a node to focus</span>
+      </div>
 
       <GraphMinimap fgRef={fgRef} nodes={fgData.nodes} size={size} />
 
@@ -1043,11 +1130,18 @@ function GraphMinimap({
     <div className="pointer-events-auto absolute bottom-14 right-3 z-20 hidden overflow-hidden rounded-xl border border-[#203248] bg-[#07131f]/92 p-1.5 shadow-2xl backdrop-blur-xl md:block">
       <canvas ref={canvasRef} width={W} height={H} aria-label="Graph minimap" />
       <div className="mt-1.5 flex items-center gap-1 border-t border-white/[0.055] pt-1.5">
-        <button type="button" aria-label="Zoom out" onClick={() => { const zoom = fgRef.current?.zoom?.() ?? 1; fgRef.current?.zoom?.(zoom * 0.82, 240); }} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Minus className="h-3 w-3" /></button>
+        <button type="button" aria-label="Zoom out" onClick={() => dollyCamera(fgRef.current, 1.22)} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Minus className="h-3 w-3" /></button>
         <div className="h-1 flex-1 rounded-full bg-white/[0.08]"><div className="h-full w-1/2 rounded-full bg-sky-400" /></div>
-        <button type="button" aria-label="Zoom in" onClick={() => { const zoom = fgRef.current?.zoom?.() ?? 1; fgRef.current?.zoom?.(zoom * 1.22, 240); }} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Plus className="h-3 w-3" /></button>
+        <button type="button" aria-label="Zoom in" onClick={() => dollyCamera(fgRef.current, 0.82)} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Plus className="h-3 w-3" /></button>
         <button type="button" aria-label="Fit graph" onClick={() => fgRef.current?.zoomToFit?.(420, 90)} className="flex h-6 w-6 items-center justify-center rounded text-[#8795a8] hover:bg-white/[0.06] hover:text-white"><Maximize2 className="h-3 w-3" /></button>
-        <button type="button" aria-label="Lock graph viewport" aria-pressed={locked} onClick={() => setLocked((value) => !value)} className={cn("flex h-6 w-6 items-center justify-center rounded hover:bg-white/[0.06] hover:text-white", locked ? "text-cyan-300" : "text-[#8795a8]")}><Lock className="h-3 w-3" /></button>
+        <button type="button" aria-label="Lock graph viewport" aria-pressed={locked} onClick={() => {
+          setLocked((value) => {
+            const next = !value;
+            const controls = fgRef.current?.controls?.();
+            if (controls) controls.enabled = !next;
+            return next;
+          });
+        }} className={cn("flex h-6 w-6 items-center justify-center rounded hover:bg-white/[0.06] hover:text-white", locked ? "text-cyan-300" : "text-[#8795a8]")}><Lock className="h-3 w-3" /></button>
       </div>
     </div>
   );
