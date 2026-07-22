@@ -47,7 +47,7 @@ export function NeuralLensMinimap({ graph }: { graph: LensGraph }) {
   }, [graph]);
 
   return (
-    <div className="pointer-events-none absolute bottom-12 right-4 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#050a12]/85 shadow-2xl backdrop-blur-xl">
+    <div className="pointer-events-none absolute bottom-12 right-4 z-20 hidden overflow-hidden rounded-lg border border-white/10 bg-[#050a12]/85 shadow-2xl backdrop-blur-xl md:block">
       <canvas ref={ref} width={180} height={120} className="block" />
     </div>
   );

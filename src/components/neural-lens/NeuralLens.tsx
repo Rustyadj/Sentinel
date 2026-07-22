@@ -190,9 +190,13 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         }}
       />
 
-      {/* Live indicator + interaction hint (mirrors the reference chrome) */}
-      <div className="pointer-events-none absolute bottom-12 left-1/2 z-10 -translate-x-1/2 text-[9px] uppercase tracking-[0.22em] text-white/25">
-        Scroll to zoom · Click a node to focus · Hover to trace
+      {/* Interaction hint only; the production module bar owns live status. */}
+      <div className="pointer-events-none absolute bottom-12 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-2 rounded-full border border-white/[0.06] bg-[#050813]/70 px-3 py-1.5 text-[8px] uppercase tracking-[0.18em] text-white/30 backdrop-blur-xl lg:flex">
+        <span>Drag to rotate</span>
+        <span className="h-1 w-1 rounded-full bg-cyan-300/50" />
+        <span>Scroll to dive</span>
+        <span className="h-1 w-1 rounded-full bg-fuchsia-300/50" />
+        <span>Click a node to focus</span>
       </div>
 
       <NeuralLensStatusBar

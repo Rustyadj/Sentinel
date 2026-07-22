@@ -8,17 +8,16 @@ import {
   LENS_BG,
   PARTICLE_COLOR,
   nodeColor,
-  zoomLevelFor,
   type SemanticZoomLevel,
 } from "./palette";
-import { rotatePositions } from "./radialLayout";
 import type { LensGraph, LensLink, LensNode } from "./types";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center text-xs text-white/40">
-      Charting neural space…
+    <div className="flex h-full items-center justify-center gap-2 text-[11px] text-white/35">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300" />
+      Mapping neural space…
     </div>
   ),
 });
@@ -31,9 +30,23 @@ interface NeuralLensGraphProps {
   paused?: boolean;
 }
 
+type LensNode3D = LensNode & {
+  z: number;
+  fx: number;
+  fy: number;
+  fz: number;
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  driftPhase: number;
+  driftScale: number;
+};
+
 function endpointId(end: unknown): string | null {
   if (typeof end === "string") return end;
-  if (end && typeof end === "object" && "id" in end) return String((end as { id: unknown }).id);
+  if (end && typeof end === "object" && "id" in end) {
+    return String((end as { id: unknown }).id);
+  }
   return null;
 }
 
@@ -45,189 +58,185 @@ export function NeuralLensGraph({
   paused,
 }: NeuralLensGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // react-force-graph exposes an imperative Three.js camera surface.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [dims, setDims] = useState({ width: 0, height: 0 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const zoomLevelRef = useRef<SemanticZoomLevel>("galaxy");
 
-  // Fixed-position radial layout: fx/fy pin each node so the constellation
-  // keeps its dandelion shape instead of collapsing under force simulation.
   const data = useMemo(() => {
-    const nodes = graph.nodes.map((n) => ({ ...n, fx: n.x, fy: n.y }));
-    const links = graph.links.map((l) => ({ ...l }));
-    return { nodes, links };
+    const nodes: LensNode3D[] = graph.nodes.map((node, index) => {
+      const z = Math.sin(index * 1.618) * 128 + Math.cos(index * 0.371) * 44;
+      return {
+        ...node,
+        z,
+        fx: node.x,
+        fy: node.y,
+        fz: z,
+        baseX: node.x,
+        baseY: node.y,
+        baseZ: z,
+        driftPhase: index * 0.731,
+        driftScale: node.val >= 6 ? 1.5 : 3 + (index % 7) * 0.42,
+      };
+    });
+    return { nodes, links: graph.links.map((link) => ({ ...link })) };
   }, [graph]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setDims({ width: el.clientWidth, height: el.clientHeight }));
-    ro.observe(el);
-    setDims({ width: el.clientWidth, height: el.clientHeight });
-    return () => ro.disconnect();
+    const element = containerRef.current;
+    if (!element) return;
+    const resizeObserver = new ResizeObserver(() => {
+      setDims({ width: element.clientWidth, height: element.clientHeight });
+    });
+    resizeObserver.observe(element);
+    setDims({ width: element.clientWidth, height: element.clientHeight });
+    return () => resizeObserver.disconnect();
   }, []);
 
-  // Fit the whole constellation into view once it has mounted + sized.
   useEffect(() => {
     if (dims.width === 0) return;
-    const t = setTimeout(() => fgRef.current?.zoomToFit?.(600, 80), 250);
-    return () => clearTimeout(t);
-  }, [dims.width, graph]);
+    const timer = setTimeout(() => {
+      fgRef.current?.cameraPosition?.(
+        { x: 0, y: 0, z: 1100 },
+        { x: 0, y: 0, z: 0 },
+        950,
+      );
+      fgRef.current?.refresh?.();
+      onZoomLevel?.("galaxy");
+    }, 650);
+    return () => clearTimeout(timer);
+  }, [dims.width, graph, onZoomLevel]);
 
-  // Slow rotation drift — the "living constellation" feel. Rotates the fixed
-  // positions about the origin; respects reduced-motion and tab visibility.
+  // Independent, very slow offsets keep the network alive without turning the
+  // entire structure into a rigid orbit. Motion stops for reduced-motion users.
   useEffect(() => {
     if (paused || typeof window === "undefined") return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    let raf = 0;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let frame = 0;
     let last = performance.now();
     const loop = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      if (document.visibilityState === "visible") {
-        const nodes = data.nodes as Array<{ fx: number; fy: number; x?: number; y?: number }>;
-        rotatePositions(nodes as Array<{ x: number; y: number }>, dt * 0.02);
-        // rotatePositions mutates x/y; mirror into the pinned fx/fy the sim reads.
-        for (const n of nodes as Array<{ fx: number; fy: number; x: number; y: number }>) {
-          n.fx = n.x;
-          n.fy = n.y;
+      if (document.visibilityState === "visible" && now - last >= 70) {
+        last = now;
+        const seconds = now / 1000;
+        for (const node of data.nodes) {
+          const phase = node.driftPhase;
+          const scale = node.driftScale;
+          node.fx = node.baseX + Math.sin(seconds * 0.13 + phase) * scale + Math.sin(seconds * 0.041 + phase * 1.7) * scale * 0.45;
+          node.fy = node.baseY + Math.cos(seconds * 0.11 + phase * 1.13) * scale + Math.sin(seconds * 0.053 + phase * 0.8) * scale * 0.4;
+          node.fz = node.baseZ + Math.sin(seconds * 0.09 + phase * 1.43) * scale * 0.75;
+          node.x = node.fx;
+          node.y = node.fy;
+          node.z = node.fz;
         }
-        fgRef.current?.d3ReheatSimulation?.();
+        fgRef.current?.refresh?.();
       }
-      raf = requestAnimationFrame(loop);
+      frame = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
   }, [data.nodes, paused]);
 
   const neighborIds = useMemo(() => {
     if (!hoveredId) return null;
-    const set = new Set<string>([hoveredId]);
-    for (const l of graph.links) {
-      if (l.source === hoveredId) set.add(l.target);
-      if (l.target === hoveredId) set.add(l.source);
+    const neighbors = new Set<string>([hoveredId]);
+    for (const link of graph.links) {
+      if (link.source === hoveredId) neighbors.add(link.target);
+      if (link.target === hoveredId) neighbors.add(link.source);
     }
-    return set;
-  }, [hoveredId, graph.links]);
-
-  const nodeCanvasObject = useCallback(
-    (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const n = node as LensNode & { x: number; y: number };
-      const isHub = n.val >= 6;
-      const dim = neighborIds != null && !neighborIds.has(n.id);
-      const color = nodeColor(n.type, !!n.accent, isHub);
-      const active = activeNodeIds.has(n.id);
-
-      const pulse = active ? 1 + Math.sin(Date.now() * 0.006) * 0.4 : 1;
-      const r = (n.val * pulse) / Math.max(0.4, globalScale) + (isHub ? 0.6 : 0);
-
-      ctx.save();
-      ctx.globalAlpha = dim ? 0.12 : 1;
-      if (active || isHub) {
-        ctx.shadowColor = color;
-        ctx.shadowBlur = (active ? 16 : 6) / globalScale;
-      }
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      if (isHub) {
-        ctx.globalAlpha = dim ? 0.1 : 0.5;
-        ctx.lineWidth = 0.6 / globalScale;
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r + 2 / globalScale, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // Semantic-zoom label reveal: hubs first, then children, then everything.
-      const level = zoomLevelRef.current;
-      const showLabel =
-        (isHub && (level === "cluster" || level === "neighborhood" || level === "detail")) ||
-        (!isHub && n.val >= 2.4 && (level === "neighborhood" || level === "detail")) ||
-        level === "detail";
-      if (showLabel && !dim) {
-        const label = n.label.length > 18 ? n.label.slice(0, 18) + "…" : n.label;
-        ctx.font = `${(isHub ? 11 : 9) / globalScale}px ui-sans-serif, system-ui`;
-        ctx.fillStyle = isHub ? "#e8eef7" : "rgba(220,230,245,0.7)";
-        ctx.textAlign = "center";
-        ctx.fillText(label, n.x, n.y - r - 4 / globalScale);
-      }
-    },
-    [activeNodeIds, neighborIds],
-  );
-
-  const linkColor = useCallback(
-    (link: object) => {
-      const l = link as LensLink;
-      if (!neighborIds) return EDGE_BASE;
-      const s = endpointId((l as unknown as { source: unknown }).source);
-      const t = endpointId((l as unknown as { target: unknown }).target);
-      return (s && neighborIds.has(s)) || (t && neighborIds.has(t)) ? EDGE_HIGHLIGHT : EDGE_BASE;
-    },
-    [neighborIds],
-  );
+    return neighbors;
+  }, [graph.links, hoveredId]);
 
   const handleClick = useCallback(
     (node: object) => {
-      const n = node as LensNode & { x: number; y: number };
-      onSelect(n);
-      fgRef.current?.centerAt?.(n.x, n.y, 700);
-      fgRef.current?.zoom?.(Math.max(2.6, 3), 700);
+      const selected = node as LensNode3D;
+      onSelect(selected);
+      onZoomLevel?.("detail");
+      const length = Math.hypot(selected.x, selected.y, selected.z) || 1;
+      const ratio = 1 + 105 / length;
+      fgRef.current?.cameraPosition?.(
+        {
+          x: selected.x * ratio,
+          y: selected.y * ratio,
+          z: selected.z * ratio + (length < 12 ? 105 : 0),
+        },
+        { x: selected.x, y: selected.y, z: selected.z },
+        850,
+      );
     },
-    [onSelect],
+    [onSelect, onZoomLevel],
   );
 
   return (
-    <div ref={containerRef} className="absolute inset-0 h-full w-full">
+    <div
+      ref={containerRef}
+      className="neural-space-canvas absolute inset-0 h-full w-full overflow-hidden"
+      role="application"
+      aria-label="Knowledge graph canvas"
+    >
       {dims.width > 0 && (
-        <ForceGraph2D
+        <ForceGraph3D
           ref={fgRef}
           width={dims.width}
           height={dims.height}
           graphData={data}
           backgroundColor={LENS_BG}
-          nodeLabel={() => ""}
-          nodeCanvasObject={nodeCanvasObject}
-          nodePointerAreaPaint={(node: object, color: string, ctx: CanvasRenderingContext2D) => {
-            const n = node as LensNode & { x: number; y: number };
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, Math.max(3, n.val), 0, Math.PI * 2);
-            ctx.fill();
+          showNavInfo={false}
+          controlType="orbit"
+          numDimensions={3}
+          nodeLabel={(node: object) => {
+            const typed = node as LensNode3D;
+            return typed.val >= 3 ? typed.label : "";
           }}
-          linkColor={linkColor}
-          linkWidth={(l: object) => {
-            const link = l as LensLink;
-            return 0.25 + link.weight * 0.8;
+          nodeVal={(node: object) => {
+            const typed = node as LensNode3D;
+            if (activeNodeIds.has(typed.id)) return Math.max(typed.val * 1.8, 4);
+            return typed.val >= 6 ? 5.4 : Math.max(0.32, typed.val * 0.48);
           }}
-          linkCurvature={0.06}
-          linkDirectionalParticles={(l: object) => {
-            const s = endpointId((l as { source: unknown }).source);
-            const t = endpointId((l as { target: unknown }).target);
-            return activeNodeIds.size > 0 && ((s && activeNodeIds.has(s)) || (t && activeNodeIds.has(t)))
-              ? 2
-              : 0;
+          nodeColor={(node: object) => {
+            const typed = node as LensNode3D;
+            if (neighborIds && !neighborIds.has(typed.id)) return "#0a1420";
+            if (activeNodeIds.has(typed.id)) return PARTICLE_COLOR;
+            return nodeColor(typed.type, !!typed.accent, typed.val >= 6);
           }}
-          linkDirectionalParticleWidth={1.6}
+          nodeRelSize={1.45}
+          nodeOpacity={0.92}
+          nodeResolution={8}
+          linkColor={(link: object) => {
+            const typed = link as LensLink & { source: unknown; target: unknown };
+            if (!neighborIds) return "#4a79ad";
+            const source = endpointId(typed.source);
+            const target = endpointId(typed.target);
+            return (source && neighborIds.has(source)) || (target && neighborIds.has(target))
+              ? EDGE_HIGHLIGHT
+              : EDGE_BASE;
+          }}
+          linkOpacity={0.23}
+          linkWidth={(link: object) => 0.12 + (link as LensLink).weight * 0.42}
+          linkCurvature={() => 0}
+          linkDirectionalParticles={(link: object) => {
+            const typed = link as { source: unknown; target: unknown };
+            const source = endpointId(typed.source);
+            const target = endpointId(typed.target);
+            return activeNodeIds.size > 0 && ((source && activeNodeIds.has(source)) || (target && activeNodeIds.has(target))) ? 1 : 0;
+          }}
+          linkDirectionalParticleWidth={0.75}
           linkDirectionalParticleColor={() => PARTICLE_COLOR}
-          linkDirectionalParticleSpeed={0.006}
-          enableNodeDrag={false}
-          cooldownTicks={0}
-          warmupTicks={0}
+          linkDirectionalParticleSpeed={0.0018}
+          enableNodeDrag
+          enableNavigationControls
+          enablePointerInteraction
+          warmupTicks={1}
+          cooldownTicks={1}
           onNodeHover={(node: object | null) => setHoveredId((node as LensNode | null)?.id ?? null)}
           onNodeClick={handleClick}
-          onBackgroundClick={() => onSelect(null)}
-          onZoom={(z: { k: number }) => {
-            const level = zoomLevelFor(z.k);
-            if (level !== zoomLevelRef.current) {
-              zoomLevelRef.current = level;
-              onZoomLevel?.(level);
-            }
+          onNodeDragEnd={(node: object) => {
+            const typed = node as LensNode3D;
+            typed.baseX = typed.x;
+            typed.baseY = typed.y;
+            typed.baseZ = typed.z;
           }}
+          onBackgroundClick={() => onSelect(null)}
         />
       )}
     </div>

@@ -46,30 +46,48 @@ export function computeRadialLayout(
   nodes: LayoutInputNode[],
   options: RadialLayoutOptions = {},
 ): Map<string, Positioned> {
-  const hubRingRadius = options.hubRingRadius ?? 520;
-  const childRadius = options.childRadius ?? 300;
-  const grandchildRadius = options.grandchildRadius ?? 120;
+  const hubRingRadius = options.hubRingRadius ?? 150;
+  const childRadius = options.childRadius ?? 220;
+  const grandchildRadius = options.grandchildRadius ?? 75;
 
   const positions = new Map<string, Positioned>();
 
   const hubs = nodes.filter((n) => n.tier === 0);
   const hubAngle = new Map<string, number>();
 
-  // Hubs around a ring. A single hub sits at the origin.
+  // Hubs form a compact, asymmetric neural core. The first four positions are
+  // the dominant dandelions; any additional hubs sit slightly farther out.
+  const corePositions = [
+    { x: 0, y: 0 },
+    { x: -130, y: 55 },
+    { x: 125, y: 80 },
+    { x: -35, y: 140 },
+    { x: 220, y: -105 },
+    { x: -225, y: -120 },
+  ];
+
   hubs.forEach((hub, i) => {
     if (hubs.length === 1) {
       positions.set(hub.id, { id: hub.id, x: 0, y: 0 });
       hubAngle.set(hub.id, 0);
       return;
     }
-    const angle = (i / hubs.length) * Math.PI * 2;
+    const anchor = corePositions[i];
+    const angle = anchor
+      ? Math.atan2(anchor.y, anchor.x)
+      : (i / hubs.length) * Math.PI * 2;
     hubAngle.set(hub.id, angle);
-    const jitter = 0.82 + hash(hub.id) * 0.36;
-    positions.set(hub.id, {
-      id: hub.id,
-      x: Math.cos(angle) * hubRingRadius * jitter,
-      y: Math.sin(angle) * hubRingRadius * jitter,
-    });
+    if (anchor) {
+      const scale = hubRingRadius / 225;
+      positions.set(hub.id, { id: hub.id, x: anchor.x * scale, y: anchor.y * scale });
+    } else {
+      const jitter = 0.82 + hash(hub.id) * 0.36;
+      positions.set(hub.id, {
+        id: hub.id,
+        x: Math.cos(angle) * hubRingRadius * 1.3 * jitter,
+        y: Math.sin(angle) * hubRingRadius * 1.3 * jitter,
+      });
+    }
   });
 
   // Children fan across a wedge that points away from center.
@@ -86,7 +104,7 @@ export function computeRadialLayout(
     const hubPos = positions.get(hubId);
     if (!hubPos) continue;
     const outward = hubs.length === 1 ? hash(hubId) * Math.PI * 2 : hubAngle.get(hubId) ?? 0;
-    const wedge = Math.PI * 1.5; // 270° spray
+    const wedge = Math.PI * 1.05; // coherent outward fan, not a full halo
     children.forEach((child, i) => {
       const t = children.length === 1 ? 0.5 : i / (children.length - 1);
       const angle = outward - wedge / 2 + t * wedge + (hash(child.id) - 0.5) * 0.22;

@@ -120,12 +120,12 @@
   --panel: #09131f;
 
   /* Canvas tokens (workspace main areas) — dark to match the shell */
-  --canvas: #0a0b0e;
+  --canvas: #010409;
   --canvas-foreground: #e8eaed;
   --canvas-muted: #6b7280;
-  --canvas-card: #101318;
+  --canvas-card: #070c14;
   --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #20242b;
+  --canvas-card-border: #152334;
 }
 
 * {
@@ -270,4 +270,19 @@ body {
 .mission-control-page section {
   content-visibility: auto;
   contain-intrinsic-size: 1px 420px;
+}
+
+.neural-space-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 42%, rgba(1, 4, 10, 0.68) 100%);
+  opacity: 0.78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-space * {
+    scroll-behavior: auto !important;
+  }
 }

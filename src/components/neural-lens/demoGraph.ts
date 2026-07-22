@@ -30,10 +30,11 @@ export interface DemoGraphOptions {
   seed?: number;
   hubCount?: number;
   targetNodes?: number;
+  targetEdges?: number;
 }
 
 export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
-  const { seed = 20260722, hubCount = 4, targetNodes = 880 } = options;
+  const { seed = 20260722, hubCount = 4, targetNodes = 885, targetEdges = 2715 } = options;
   const rnd = mulberry32(seed);
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
 
@@ -137,7 +138,9 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
   const nodes: LensNode[] = raw.map((n) => {
     const pos = positions.get(n.id)!;
     const isHub = n.tier === 0;
-    const accent = ACCENT_TYPES.includes(n.type) && rnd() > 0.55;
+    const hubIndex = isHub ? Number(n.id.replace("hub-", "")) : -1;
+    const isMajorHub = isHub && hubIndex >= 0 && hubIndex < hubCount;
+    const accent = ACCENT_TYPES.includes(n.type) && rnd() > 0.86;
     return {
       id: n.id,
       label: n.label,
@@ -145,7 +148,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
       hubId: n.hubId,
       x: pos.x,
       y: pos.y,
-      val: isHub ? 7 : n.tier === 1 ? 2.4 : 1.6,
+      val: isMajorHub ? 6.4 : isHub ? 3.2 : n.tier === 1 ? 2.15 : 1.35,
       accent,
       active: false,
     };
@@ -162,6 +165,34 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     if (seen.has(key)) continue;
     seen.add(key);
     cleanLinks.push(l);
+  }
+
+  // Fill the constellation with irregular intra-family synapses. Deterministic
+  // random pairing avoids the visible circular bands produced by linking
+  // adjacent members of a radial fan.
+  const membersByHub = new Map<string, typeof raw>();
+  for (const node of raw) {
+    const members = membersByHub.get(node.hubId) ?? [];
+    members.push(node);
+    membersByHub.set(node.hubId, members);
+  }
+  const families = [...membersByHub.values()];
+  for (let pass = 0; cleanLinks.length < targetEdges && pass < 40; pass++) {
+    for (const family of families) {
+      for (const source of family) {
+        if (cleanLinks.length >= targetEdges) break;
+        const target = family[Math.floor(rnd() * family.length)];
+        if (!target || target.id === source.id) continue;
+        const key = source.id < target.id ? `${source.id}|${target.id}` : `${target.id}|${source.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cleanLinks.push({
+          source: source.id,
+          target: target.id,
+          weight: 0.08 + rnd() * 0.14,
+        });
+      }
+    }
   }
 
   return {
