@@ -214,19 +214,21 @@ model AuditLog {
 }
 
 model Workspace {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  name        String
-  description String?
-  kind        String   @default("general")
-  color       String   @default("#6366F1")
-  icon        String   @default("LayoutGrid")
-  enabled     Boolean  @default(true)
-  ownerId     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  description    String?
+  kind           String   @default("general")
+  color          String   @default("#6366F1")
+  icon           String   @default("LayoutGrid")
+  enabled        Boolean  @default(true)
+  ownerId        String
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   owner           User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  organization    Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   projects        Project[]
   teams           Team[]
   roles           Role[]
@@ -241,6 +243,7 @@ model Workspace {
   agents          Agent[]
 
   @@index([ownerId])
+  @@index([organizationId])
   @@map("workspaces")
 }
 
@@ -491,14 +494,29 @@ model KnowledgeObject {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  fromEdges KnowledgeEdge[] @relation("EdgeFrom")
-  toEdges   KnowledgeEdge[] @relation("EdgeTo")
-  user      User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // --- Temporal Graph (Layer 3) — additive, nullable/defaulted so existing
+  // rows and call sites are unaffected. supersession over deletion.
+  version              Int       @default(1)
+  validFrom            DateTime  @default(now())
+  validTo              DateTime?
+  supersededByObjectId String?
+  changeReason         String?
+  changedBy            String?
+  sourceEventId        String?
+
+  fromEdges    KnowledgeEdge[]        @relation("EdgeFrom")
+  toEdges      KnowledgeEdge[]        @relation("EdgeTo")
+  agentWeights AgentKnowledgeWeight[]
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  supersedes   KnowledgeObject?  @relation("ObjectSupersession", fields: [supersededByObjectId], references: [id])
+  supersededBy KnowledgeObject[] @relation("ObjectSupersession")
 
   @@unique([sourceType, sourceId, userId])
   @@index([scope])
   @@index([projectId])
   @@index([userId])
+  @@index([validTo])
   @@map("knowledge_objects")
 }
 
@@ -506,10 +524,18 @@ model KnowledgeEdge {
   id           String   @id @default(cuid())
   fromObjectId String
   toObjectId   String
-  type         String // references, belongs_to, created_by, assigned_to, generated_by, depends_on, remembers, related_to, supersedes
+  type         String // references, belongs_to, created_by, assigned_to, generated_by, depends_on, remembers, related_to, supersedes, supports, contradicts, learned_from, used_by, trusted_by, failed_on, succeeded_on, governs, reports_to
   weight       Float    @default(1.0)
   metadata     Json     @default("{}")
   createdAt    DateTime @default(now())
+
+  // --- Temporal Graph (Layer 3) — additive.
+  version       Int       @default(1)
+  validFrom     DateTime  @default(now())
+  validTo       DateTime?
+  changeReason  String?
+  changedBy     String?
+  sourceEventId String?
 
   fromObject KnowledgeObject @relation("EdgeFrom", fields: [fromObjectId], references: [id], onDelete: Cascade)
   toObject   KnowledgeObject @relation("EdgeTo", fields: [toObjectId], references: [id], onDelete: Cascade)
@@ -517,6 +543,7 @@ model KnowledgeEdge {
   @@unique([fromObjectId, toObjectId, type])
   @@index([fromObjectId, type])
   @@index([toObjectId, type])
+  @@index([validTo])
   @@map("knowledge_edges")
 }
 
@@ -537,12 +564,318 @@ model Decision {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
+  // --- Temporal Graph (Layer 3) — additive.
+  version       Int       @default(1)
+  validFrom     DateTime  @default(now())
+  validTo       DateTime?
+  changeReason  String?
+  changedBy     String?
+  sourceEventId String?
+
   supersedes   Decision?  @relation("DecisionSupersedes", fields: [supersedesDecisionId], references: [id])
   supersededBy Decision[] @relation("DecisionSupersedes")
 
   @@index([projectId])
   @@index([userId])
   @@map("decisions")
+}
+
+// =====================================================================
+// Sentinel Neural Engine — Phase A additions
+// =====================================================================
+// Organization / Department / Workspace: real tables backing the scope
+// tags already present on KnowledgeObject (workspaceId/organizationId were
+// previously untyped strings with nothing to point at).
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String?
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments Department[]
+  workspaces  Workspace[]
+
+  @@map("neural_organizations")
+}
+
+model Department {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  organizationId     String
+  parentDepartmentId String?
+  leadUserId         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  children     Department[] @relation("DepartmentHierarchy")
+
+  @@index([organizationId])
+  @@map("neural_departments")
+}
+
+// --- Skill / Procedure / Policy ---------------------------------------
+// Deliberately separate tables (not one "reusable behavior" type) per the
+// hard rule against collapsing object types.
+
+model Skill {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  domain         String
+  steps          Json     @default("[]")
+  requiredTools  String[] @default([])
+  constraints    Json     @default("{}")
+  successMetrics Json     @default("{}")
+  evidenceLinks  String[] @default([])
+  version        Int      @default(1)
+  owner          String?
+  status         String   @default("proposed") // proposed, active, deprecated, rolled_back
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([domain])
+  @@index([status])
+  @@map("neural_skills")
+}
+
+model Procedure {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  domain         String
+  steps          Json     @default("[]")
+  requiredTools  String[] @default([])
+  constraints    Json     @default("{}")
+  successMetrics Json     @default("{}")
+  evidenceLinks  String[] @default([])
+  version        Int      @default(1)
+  owner          String?
+  status         String   @default("proposed") // proposed, active, deprecated, rolled_back
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([domain])
+  @@index([status])
+  @@map("neural_procedures")
+}
+
+model Policy {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String
+  description String
+  rules       Json     @default("{}")
+  appliesTo   Json     @default("{}")
+  riskLevel   String   @default("high") // low, medium, high — governs auto-approve eligibility
+  status      String   @default("active") // active, retired
+  owner       String?
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([domain])
+  @@map("neural_policies")
+}
+
+// --- Experience Graph (Layer 2) ----------------------------------------
+// Agents write Experiences. Agents do not directly rewrite canonical
+// knowledge — only approved LearningCandidates do (via learning-service).
+
+model Experience {
+  id                String    @id @default(cuid())
+  agentId           String
+  projectId         String?
+  workspaceId       String?
+  organizationId    String?
+  taskId            String?
+  conversationId    String?
+  objective         String
+  contextSnapshot   Json      @default("{}")
+  actionsTaken      Json      @default("[]")
+  toolsUsed         String[]  @default([])
+  knowledgeUsed     String[]  @default([]) // KnowledgeObject ids consulted
+  outputArtifactIds String[]  @default([])
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  cost              Float?
+  latencyMs         Int?
+  outcomeStatus     String    @default("in_progress") // in_progress, success, partial, failure, cancelled
+  userFeedback      String?
+  evaluatorScore    Float?
+  evaluatorSummary  String?
+  createdAt         DateTime  @default(now())
+
+  outcome            Outcome?
+  evaluations        Evaluation[]
+  learningCandidates LearningCandidate[]
+
+  @@index([agentId])
+  @@index([projectId])
+  @@index([outcomeStatus])
+  @@map("neural_experiences")
+}
+
+model Outcome {
+  id              String   @id @default(cuid())
+  experienceId    String   @unique
+  status          String // success, partial, failure, cancelled
+  metrics         Json     @default("{}")
+  errors          Json     @default("[]")
+  externalSignals Json     @default("{}")
+  userAccepted    Boolean?
+  createdAt       DateTime @default(now())
+
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+
+  @@map("neural_outcomes")
+}
+
+model Evaluation {
+  id               String   @id @default(cuid())
+  experienceId     String
+  evaluatorAgentId String?
+  successScore     Float?
+  qualityScore     Float?
+  efficiencyScore  Float?
+  safetyScore      Float?
+  confidence       Float    @default(0.5)
+  critique         String?
+  evidence         Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  experience         Experience          @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  learningCandidates LearningCandidate[]
+
+  @@index([experienceId])
+  @@map("neural_evaluations")
+}
+
+model LearningCandidate {
+  id              String    @id @default(cuid())
+  experienceId    String?
+  evaluationId    String?
+  type            String // memory, decision, skill, procedure, relationship, confidence_update, contradiction, prompt_change, tool_policy_change
+  proposedPayload Json
+  targetType      String? // knowledge_object, knowledge_edge, skill, procedure, agent_weight
+  appliedTargetId String? // id of the object created/updated once approved
+  riskLevel       String    @default("medium") // low, medium, high
+  evidenceCount   Int       @default(1)
+  confidence      Float     @default(0.5)
+  status          String    @default("proposed") // proposed, approved, rejected, auto_approved, rolled_back
+  reviewedBy      String?
+  rollbackOf      String? // LearningCandidate.id this one rolls back, if any
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+
+  experience Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
+  evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([riskLevel])
+  @@index([type])
+  @@map("neural_learning_candidates")
+}
+
+// --- Agent State Graph (Layer 4) ---------------------------------------
+
+model AgentKnowledgeProfile {
+  id                String   @id @default(cuid())
+  agentId           String   @unique
+  retrievalWeights  Json     @default("{}")
+  preferredSources  String[] @default([])
+  competencyScores  Json     @default("{}")
+  trustThresholds   Json     @default("{}")
+  memoryScopes      String[] @default([])
+  privateGraphScope String   @default("agent")
+  updatedAt         DateTime @updatedAt
+
+  @@map("neural_agent_knowledge_profiles")
+}
+
+model AgentCompetency {
+  id              String    @id @default(cuid())
+  agentId         String
+  domain          String
+  score           Float     @default(0.5)
+  evidenceCount   Int       @default(0)
+  successRate     Float     @default(0)
+  lastEvaluatedAt DateTime?
+
+  @@unique([agentId, domain])
+  @@map("neural_agent_competencies")
+}
+
+model AgentKnowledgeWeight {
+  id                String    @id @default(cuid())
+  agentId           String
+  knowledgeObjectId String
+  relevanceWeight   Float     @default(0.5)
+  trustWeight       Float     @default(0.5)
+  successWeight     Float     @default(0)
+  failureWeight     Float     @default(0)
+  lastUsedAt        DateTime?
+
+  knowledgeObject KnowledgeObject @relation(fields: [knowledgeObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, knowledgeObjectId])
+  @@index([agentId])
+  @@map("neural_agent_knowledge_weights")
+}
+
+// --- Contradiction handling ---------------------------------------------
+
+model Contradiction {
+  id             String    @id @default(cuid())
+  subject        String
+  status         String    @default("open") // open, resolved
+  resolutionNote String?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  claims Claim[]
+
+  @@index([status])
+  @@map("neural_contradictions")
+}
+
+model Claim {
+  id              String   @id @default(cuid())
+  contradictionId String
+  statement       String
+  sourceType      String
+  sourceId        String
+  confidence      Float    @default(0.5)
+  status          String   @default("competing") // competing, accepted, rejected, superseded
+  createdAt       DateTime @default(now())
+
+  contradiction Contradiction @relation(fields: [contradictionId], references: [id], onDelete: Cascade)
+  evidence      Evidence[]
+
+  @@index([contradictionId])
+  @@map("neural_claims")
+}
+
+model Evidence {
+  id         String   @id @default(cuid())
+  claimId    String
+  sourceType String
+  sourceId   String
+  weight     Float    @default(0.5)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId])
+  @@map("neural_evidence")
 }
 
 model Artifact {

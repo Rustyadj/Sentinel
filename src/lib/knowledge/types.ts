@@ -50,7 +50,23 @@ export type KnowledgeEventType =
   | "edge_created"
   | "candidate_proposed"
   | "candidate_accepted"
-  | "candidate_rejected";
+  | "candidate_rejected"
+  // Sentinel Neural Engine (Phase A) — additive. KnowledgeEvent.type stays a
+  // plain string column (see docs/neural-engine/PHASE_A_CONFLICTS.md); this
+  // union is the only place the allowed event vocabulary is enumerated.
+  | "experience.started"
+  | "experience.completed"
+  | "outcome.created"
+  | "evaluation.completed"
+  | "learning.proposed"
+  | "learning.approved"
+  | "learning.rejected"
+  | "learning.rolled_back"
+  | "edge.strengthened"
+  | "edge.weakened"
+  | "contradiction.detected"
+  | "contradiction.resolved"
+  | "skill.promoted";
 
 export interface KnowledgeNode {
   id: string;
