@@ -16,16 +16,17 @@ export function NeuralLensStatusBar({
   zoomLevel,
 }: NeuralLensStatusBarProps) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex h-10 max-w-[calc(100%-80px)] -translate-x-1/2 items-center gap-4 rounded-xl border border-[#17273a] bg-[#07131f]/94 px-4 text-[9px] text-[#8996a8] shadow-2xl backdrop-blur-xl md:gap-6">
-      <span className="flex items-center gap-1.5">
+    <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex h-10 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-4 rounded-xl border border-[#17273a] bg-[#07131f]/94 px-4 text-[9px] text-[#8996a8] shadow-2xl backdrop-blur-xl md:max-w-[calc(100%-80px)] md:gap-6">
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-        All systems operational
+        <span className="hidden sm:inline">All systems operational</span>
+        <span className="sm:hidden">Operational</span>
       </span>
-      <span className="flex items-center gap-1.5">
+      <span className="hidden items-center gap-1.5 sm:flex">
         <Activity className="h-3 w-3 text-emerald-300/70" />
         Graph active
       </span>
-      <span className="flex items-center gap-1.5">
+      <span className="hidden items-center gap-1.5 md:flex">
         <Radio className={`h-3 w-3 ${connected ? "text-emerald-300/70" : "text-white/30"}`} />
         {connected ? "Real-time sync" : "Reconnecting…"}
       </span>

@@ -40,7 +40,7 @@ export function NeuralLensPanel({
   onToggleDemoMode,
 }: NeuralLensPanelProps) {
   return (
-    <div className="pointer-events-auto absolute left-4 top-4 z-20 hidden w-56 rounded-xl border border-white/10 bg-[#070c14]/85 p-3 shadow-2xl backdrop-blur-xl sm:block">
+    <div className="pointer-events-auto absolute left-16 top-4 z-20 hidden w-56 rounded-xl border border-white/10 bg-[#070c14]/92 p-3 shadow-2xl backdrop-blur-xl sm:block">
       <div className="mb-3 flex items-center gap-2">
         <Layers className="h-4 w-4 text-indigo-300" />
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/80">
