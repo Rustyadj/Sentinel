@@ -73,6 +73,6 @@ export async function listExperienceEvaluations(experienceId: string) {
 }
 
 /** Coarse, deterministic domain bucketing until a real taxonomy exists. */
-function coarseDomain(objective: string): string {
+export function coarseDomain(objective: string): string {
   return objective.trim().slice(0, 40).toLowerCase() || "general";
 }
