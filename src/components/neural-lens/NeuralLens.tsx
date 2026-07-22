@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Radio } from "lucide-react";
 import { NeuralLensGraph } from "./NeuralLensGraph";
 import { NeuralLensPanel } from "./NeuralLensPanel";
 import { NeuralLensToolbar } from "./NeuralLensToolbar";
@@ -23,7 +22,7 @@ const LENS_TYPES: Record<LensId, string[]> = {
 
 const ACTIVE_PULSE_MS = 2600;
 
-export function NeuralLens() {
+export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
@@ -37,7 +36,7 @@ export function NeuralLens() {
   const [timeRange, setTimeRange] = useState<TimeRange>("Now");
   const [activeNodeIds, setActiveNodeIds] = useState<Set<string>>(new Set());
 
-  const { connected, events, lastEventAt } = useNeuralStream({ enabled: true });
+  const { connected, events, lastEventAt } = useNeuralStream({ projectId, enabled: true });
   const pulseTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Fetch real graph when SCOPED is selected.
@@ -46,7 +45,8 @@ export function NeuralLens() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/graph");
+        const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+        const res = await fetch(`/api/graph${query}`);
         if (!res.ok) return;
         const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
         if (!cancelled) setScopedGraph(buildLensGraphFromApi(data));
@@ -57,7 +57,7 @@ export function NeuralLens() {
     return () => {
       cancelled = true;
     };
-  }, [demoMode, scopedGraph]);
+  }, [demoMode, scopedGraph, projectId]);
 
   const baseGraph = demoMode ? demoGraph : scopedGraph ?? demoGraph;
 
@@ -191,10 +191,6 @@ export function NeuralLens() {
       />
 
       {/* Live indicator + interaction hint (mirrors the reference chrome) */}
-      <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#070c14]/85 px-2.5 py-1 text-[10px] text-white/60 backdrop-blur-xl">
-        <Radio className={`h-3 w-3 ${connected ? "text-emerald-300" : "text-white/30"}`} />
-        {connected ? "Live" : "Offline"}
-      </div>
       <div className="pointer-events-none absolute bottom-12 left-1/2 z-10 -translate-x-1/2 text-[9px] uppercase tracking-[0.22em] text-white/25">
         Scroll to zoom · Click a node to focus · Hover to trace
       </div>

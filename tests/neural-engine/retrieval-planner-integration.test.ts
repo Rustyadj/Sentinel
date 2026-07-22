@@ -5,6 +5,8 @@ import { adjustKnowledgeWeight } from "@/lib/neural-engine/agent-profile-service
 import { createEdge } from "@/lib/knowledge/edges";
 import { makeAgent, makeKnowledgeObject, makeProject, makeUser } from "./db-setup";
 
+const TEST_USER_ID = "retrieval-planner-integration";
+
 afterAll(async () => {
   await db.$disconnect();
 });
@@ -26,7 +28,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
       projectId: projectB.id,
     });
 
-    const plan = await planRetrieval({ query: "object", projectId: projectA.id });
+    const plan = await planRetrieval({ userId: user.id, query: "object", projectId: projectA.id });
     expect(plan.candidateObjectIds).toContain(objA.id);
     expect(plan.candidateObjectIds).not.toContain(objB.id);
   });
@@ -34,6 +36,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
   it("explicitObjectIds are always included as candidates even outside the normal cap/order", async () => {
     const explicit = await makeKnowledgeObject({ title: "Forced pick", scope: "global" });
     const plan = await planRetrieval({
+      userId: TEST_USER_ID,
       query: "irrelevant text",
       explicitObjectIds: [explicit.id],
     });
@@ -51,6 +54,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
     });
 
     const result = await retrieve({
+      userId: TEST_USER_ID,
       query: "deploy pipeline",
       explicitObjectIds: [explicitButWeak.id],
       maxItems: 10,
@@ -75,6 +79,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
     await adjustKnowledgeWeight(agent.id, boosted.id, "success", 0.3);
 
     const result = await retrieve({
+      userId: TEST_USER_ID,
       query: "shared topic runbook",
       agentId: agent.id,
       maxItems: 10,
@@ -93,6 +98,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
     await adjustKnowledgeWeight(agent.id, penalized.id, "failure", 0.3);
 
     const result = await retrieve({
+      userId: TEST_USER_ID,
       query: "risky topic runbook",
       agentId: agent.id,
       maxItems: 10,
@@ -109,6 +115,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
     await createEdge({ fromObjectId: hub.id, toObjectId: neighbor.id, type: "related_to" });
 
     const result = await retrieve({
+      userId: TEST_USER_ID,
       query: "unrelated query text",
       explicitObjectIds: [hub.id],
       maxItems: 20,
@@ -123,7 +130,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
 
   it("the trace never exposes chain-of-thought — only ids, factors, and paths", async () => {
     const obj = await makeKnowledgeObject({ title: "Traced object", scope: "global" });
-    const result = await retrieve({ query: "traced object", explicitObjectIds: [obj.id] });
+    const result = await retrieve({ userId: TEST_USER_ID, query: "traced object", explicitObjectIds: [obj.id] });
 
     const traceKeys = Object.keys(result.trace);
     expect(traceKeys).toEqual([
@@ -138,7 +145,7 @@ describe("retrieval-planner — integration (real Postgres)", () => {
 
   it("returns an empty result with zero confidence when there are no candidates", async () => {
     const result = await executeRetrievalPlan({
-      request: { query: "nothing" },
+      request: { userId: TEST_USER_ID, query: "nothing" },
       candidateObjectIds: [],
     });
     expect(result.items).toHaveLength(0);

@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/current-user";
+import { accessErrorResponse, requireProjectPermission } from "@/lib/workspaces/authorization";
 import type { NextRequest } from "next/server";
 
 // Sentinel Neural Engine — Phase D: live event stream (SSE)
@@ -20,8 +22,22 @@ function sse(event: string, data: unknown): Uint8Array {
 }
 
 export async function GET(req: NextRequest) {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get("projectId") ?? undefined;
+  if (projectId) {
+    try {
+      await requireProjectPermission(projectId, "project.read");
+    } catch (error) {
+      return accessErrorResponse(error);
+    }
+  }
 
   let lastCreatedAt = new Date();
   let closed = false;
@@ -36,7 +52,7 @@ export async function GET(req: NextRequest) {
           const events = await db.knowledgeEvent.findMany({
             where: {
               createdAt: { gt: lastCreatedAt },
-              ...(projectId ? { projectId } : {}),
+              ...(projectId ? { projectId } : { userId: user.id }),
             },
             orderBy: { createdAt: "asc" },
             take: 50,

@@ -15,7 +15,7 @@ import { NodeInspector } from "@/components/graph/NodeInspector";
 import { StatusBar } from "@/components/layout/StatusBar";
 import type { KnowledgeNode } from "@/lib/knowledge/types";
 import type { VoiceStatus } from "@/lib/voice/types";
-import { NeuralLens } from "@/components/graph/NeuralLens";
+import { NeuralLens } from "@/components/neural-lens/NeuralLens";
 
 /**
  * Chat — the Sentinel OS operating surface.
@@ -136,31 +136,28 @@ export default function ChatPage() {
     <div className="relative h-full w-full overflow-hidden bg-[#050810]">
       {/* Primary canvas — the knowledge graph */}
       <div className="absolute inset-0">
-        <KnowledgeGraph
-          roomId={session.activeRoomId ?? undefined}
-          projectId={session.activeRoom?.projectId}
-          isStreaming={session.isStreaming}
-          refreshKey={session.graphRefreshKey}
-          onDataChange={handleGraphData}
-        />
+        {graphFocus ? (
+          <NeuralLens projectId={session.activeRoom?.projectId} />
+        ) : (
+          <KnowledgeGraph
+            roomId={session.activeRoomId ?? undefined}
+            projectId={session.activeRoom?.projectId}
+            isStreaming={session.isStreaming}
+            refreshKey={session.graphRefreshKey}
+            onDataChange={handleGraphData}
+          />
+        )}
       </div>
 
-      <GraphToolbar nodeTypes={nodeTypes} onFit={requestFit} />
+      {!graphFocus ? <GraphToolbar nodeTypes={nodeTypes} onFit={requestFit} /> : null}
 
-      <NeuralLens
-        visible={graphFocus}
-        nodeTypes={nodeTypes}
-        nodeCount={graphData.nodes.length}
-        edgeCount={graphData.edges.length}
-        source={graphSource}
-        projectName={session.activeRoom?.name}
-      />
-
-      <NodeInspector
-        nodes={graphData.nodes}
-        edges={graphData.edges}
-        onSendToChat={handleSendNodeToChat}
-      />
+      {!graphFocus ? (
+        <NodeInspector
+          nodes={graphData.nodes}
+          edges={graphData.edges}
+          onSendToChat={handleSendNodeToChat}
+        />
+      ) : null}
 
       {/* Chat panel — glass overlay on desktop, drawer on small screens */}
       <div className="hidden lg:block">
@@ -209,14 +206,16 @@ export default function ChatPage() {
         )}
       </div>
 
-      <StatusBar
-        nodeCount={graphData.nodes.length}
-        edgeCount={graphData.edges.length}
-        graphSource={graphSource}
-        isStreaming={session.isStreaming || session.isThinking}
-        voiceStatus={voiceStatus}
-        activeAgentName={activeAgent?.name}
-      />
+      {!graphFocus ? (
+        <StatusBar
+          nodeCount={graphData.nodes.length}
+          edgeCount={graphData.edges.length}
+          graphSource={graphSource}
+          isStreaming={session.isStreaming || session.isThinking}
+          voiceStatus={voiceStatus}
+          activeAgentName={activeAgent?.name}
+        />
+      ) : null}
     </div>
   );
 }

@@ -58,7 +58,7 @@ describe("project isolation (existing src/lib/knowledge/retrieval.ts, verified u
       },
     });
 
-    const resultForA = await retrieveContext({ projectId: projectA.id, maxItems: 100 });
+    const resultForA = await retrieveContext({ userId: user.id, projectId: projectA.id, maxItems: 100 });
 
     expect(resultForA.memories.some((m) => m.content === "Project A secret")).toBe(true);
     expect(resultForA.memories.some((m) => m.content === "Project B secret")).toBe(false);

@@ -16,7 +16,7 @@ export function NeuralLensStatusBar({
   zoomLevel,
 }: NeuralLensStatusBarProps) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-9 items-center gap-4 border-t border-white/8 bg-[#050a12]/85 px-5 text-[10px] text-white/50 backdrop-blur-xl">
+    <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex h-10 max-w-[calc(100%-80px)] -translate-x-1/2 items-center gap-4 rounded-xl border border-[#17273a] bg-[#07131f]/94 px-4 text-[9px] text-[#8996a8] shadow-2xl backdrop-blur-xl md:gap-6">
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
         All systems operational
@@ -29,11 +29,11 @@ export function NeuralLensStatusBar({
         <Radio className={`h-3 w-3 ${connected ? "text-emerald-300/70" : "text-white/30"}`} />
         {connected ? "Real-time sync" : "Reconnecting…"}
       </span>
-      <span className="capitalize text-white/40">{zoomLevel} view</span>
-      <span className="ml-auto flex items-center gap-4">
+      <span className="hidden capitalize text-white/40 lg:inline">{zoomLevel} view</span>
+      <span className="ml-auto flex items-center gap-4 whitespace-nowrap">
         <span className="text-white/60">{nodeCount} nodes</span>
-        <span className="text-white/60">{edgeCount} connections</span>
-        <span className="flex items-center gap-1.5">
+        <span className="hidden text-white/60 sm:inline">{edgeCount} connections</span>
+        <span className="hidden items-center gap-1.5 md:flex">
           <Mic className="h-3 w-3 text-white/30" />
           Voice ready
         </span>

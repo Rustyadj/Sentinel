@@ -9,7 +9,7 @@ function toInputJson(value: Record<string, unknown>): Prisma.InputJsonValue {
 }
 
 export async function emitEvent(params: {
-  userId: string;
+  userId?: string;
   type: KnowledgeEventType;
   payload: Record<string, unknown>;
   roomId?: string;
@@ -24,7 +24,7 @@ export async function emitEvent(params: {
         roomId: params.roomId ?? null,
         workspaceId: params.workspaceId ?? null,
         projectId: params.projectId ?? null,
-        userId: params.userId,
+        userId: params.userId ?? null,
       },
     });
   } catch (err) {

@@ -10,6 +10,7 @@ import { emitEvent, getRecentEvents } from "@/lib/knowledge/events";
 import type { KnowledgeEventType } from "@/lib/knowledge/types";
 
 export interface NeuralEventParams {
+  userId?: string | null;
   type: KnowledgeEventType;
   payload: Record<string, unknown>;
   projectId?: string | null;
@@ -18,6 +19,7 @@ export interface NeuralEventParams {
 
 export async function emitNeuralEvent(params: NeuralEventParams): Promise<void> {
   await emitEvent({
+    userId: params.userId ?? undefined,
     type: params.type,
     payload: params.payload,
     projectId: params.projectId ?? undefined,
@@ -26,6 +28,7 @@ export async function emitNeuralEvent(params: NeuralEventParams): Promise<void> 
 }
 
 export async function getRecentNeuralEvents(filter: {
+  userId: string;
   projectId?: string;
   limit?: number;
 }) {

@@ -76,7 +76,7 @@ describe("knowledge-bridge — retrieveContextWithProvenance", () => {
       },
     });
 
-    const result = await retrieveContextWithProvenance({ projectId: project.id, maxItems: 100 });
+    const result = await retrieveContextWithProvenance({ userId: user.id, projectId: project.id, maxItems: 100 });
 
     expect(result.totalItems).toBeGreaterThan(0);
     expect(result.knowledgeObjectIds.length).toBe(
@@ -104,8 +104,8 @@ describe("knowledge-bridge — retrieveContextWithProvenance", () => {
       },
     });
 
-    const first = await retrieveContextWithProvenance({ projectId: project.id, maxItems: 10 });
-    const second = await retrieveContextWithProvenance({ projectId: project.id, maxItems: 10 });
+    const first = await retrieveContextWithProvenance({ userId: user.id, projectId: project.id, maxItems: 10 });
+    const second = await retrieveContextWithProvenance({ userId: user.id, projectId: project.id, maxItems: 10 });
 
     expect(second.knowledgeObjectIds.sort()).toEqual(first.knowledgeObjectIds.sort());
   });

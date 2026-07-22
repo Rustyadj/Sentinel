@@ -6,7 +6,7 @@ import {
   type RetrievalRequest,
 } from "@/lib/neural-engine/retrieval-planner";
 
-const baseRequest: RetrievalRequest = { query: "deploy pipeline", maxItems: 20 };
+const baseRequest: RetrievalRequest = { userId: "retrieval-planner-pure", query: "deploy pipeline", maxItems: 20 };
 
 function signals(overrides: Partial<Parameters<typeof scoreCandidateFactors>[0]> = {}) {
   return {
