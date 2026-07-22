@@ -17,6 +17,7 @@ import {
   Wand2,
   Megaphone,
   DollarSign,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Wand2,
   Megaphone,
   DollarSign,
+  Network,
 };
 
 function PrimaryItem({

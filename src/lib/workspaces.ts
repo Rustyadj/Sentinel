@@ -29,6 +29,7 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { id: "chat",        label: "Chat",         icon: "MessageSquare", href: "/chat" },
   { id: "projects",    label: "Projects",     icon: "Folder",        href: "/projects" },
   { id: "agents",      label: "Agents",       icon: "Bot",           href: "/agents" },
+  { id: "neural-lens", label: "Neural Lens",  icon: "Network",       href: "/neural-lens" },
   { id: "memory",      label: "Memory",       icon: "BookOpen",      href: "/memory" },
   { id: "files",       label: "Files",        icon: "FileStack",     href: "/files" },
   { id: "workspaces",  label: "Workspaces",   icon: "LayoutGrid",    href: "/workspaces" },
