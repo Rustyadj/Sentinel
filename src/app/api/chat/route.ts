@@ -4,6 +4,7 @@ import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { emitEvent } from "@/lib/knowledge/events";
 import { retrieveContext } from "@/lib/knowledge/retrieval";
+import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
 import type { NextRequest } from "next/server";
 
 async function buildContextBlock(
@@ -102,6 +103,7 @@ async function persistMessages(
 }
 
 export async function POST(request: NextRequest) {
+  const requestStartedAtMs = Date.now();
   let body: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     agentId: string;
@@ -175,6 +177,19 @@ export async function POST(request: NextRequest) {
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
+        if (userContent) {
+          // Phase B: record this agent turn as an Experience and run the
+          // evaluator. Fire-and-forget and fully self-guarded — must never
+          // block the stream or throw into the chat path.
+          void captureAgentTurn({
+            agentId,
+            roomId,
+            userContent,
+            model,
+            startedAtMs: requestStartedAtMs,
+            fullContent,
+          });
+        }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
@@ -218,6 +233,19 @@ export async function POST(request: NextRequest) {
           await persistMessages(roomId, userContent, agentId, fullContent);
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
+        }
+        if (userContent) {
+          // Phase B: record this agent turn as an Experience and run the
+          // evaluator. Fire-and-forget and fully self-guarded — must never
+          // block the stream or throw into the chat path.
+          void captureAgentTurn({
+            agentId,
+            roomId,
+            userContent,
+            model,
+            startedAtMs: requestStartedAtMs,
+            fullContent,
+          });
         }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -269,6 +297,19 @@ export async function POST(request: NextRequest) {
         await persistMessages(roomId, userContent, agentId, fullContent);
         // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
         ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
+      }
+      if (userContent) {
+        // Phase B: record this agent turn as an Experience and run the
+        // evaluator. Fire-and-forget and fully self-guarded — must never
+        // block the stream or throw into the chat path.
+        void captureAgentTurn({
+          agentId,
+          roomId,
+          userContent,
+          model,
+          startedAtMs: requestStartedAtMs,
+          fullContent,
+        });
       }
       ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
       ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
