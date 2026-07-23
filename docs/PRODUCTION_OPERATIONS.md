@@ -1,5 +1,15 @@
 # Sentinel OS production operations
 
+## Adaptive memory release gate
+
+Apply `20260723090000_adaptive_memory_skill_refinery` with `prisma migrate
+deploy` before starting the new image. Redis is required for working memory;
+the service fails visibly when it is absent. Configure `MCP_CREDENTIAL_PEPPER`,
+terminate TLS at the ingress, provision only short-lived scoped clients, and
+schedule reflection/consolidation externally. Full procedures are in
+[adaptive-memory/OPERATIONS.md](adaptive-memory/OPERATIONS.md) and
+[adaptive-memory/ROLLBACK.md](adaptive-memory/ROLLBACK.md).
+
 ## Release gate
 
 Deploy only an immutable commit that has passed lint, typecheck, unit tests, production build, Prisma migration validation, Playwright smoke tests, and Docker build. The GitHub Actions `deploy-gate` job is the required status check. On a push to `main`, `deploy-production` runs only after that gate succeeds and deploys the exact `${{ github.sha }}` in detached mode.

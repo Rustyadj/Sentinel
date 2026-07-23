@@ -43,13 +43,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       importanceScore: number;
     }>;
 
+    if (body.content !== undefined || body.tags !== undefined || body.confidence !== undefined || body.importanceScore !== undefined) {
+      return NextResponse.json({ error: "Trusted memory content is immutable through the legacy API. Submit a memory candidate that supersedes this record." }, { status: 409 });
+    }
+
     const data = {
       ...(typeof body.pinned === "boolean" ? { pinned: body.pinned } : {}),
       ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
-      ...(typeof body.content === "string" ? { content: body.content } : {}),
-      ...(Array.isArray(body.tags) ? { tags: body.tags } : {}),
-      ...(typeof body.confidence === "number" ? { confidence: body.confidence } : {}),
-      ...(typeof body.importanceScore === "number" ? { importanceScore: body.importanceScore } : {}),
     };
     const memory = await db.memory.update({
       where: { id },
@@ -87,7 +87,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     const { id } = await params;
     if (!(await requireMemoryAccess(id, user.id, true))) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    await db.memory.delete({ where: { id } });
+    await db.memory.update({ where: { id }, data: { archived: true } });
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {

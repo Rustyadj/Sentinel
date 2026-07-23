@@ -1,5 +1,9 @@
 # Sentinel OS — Architecture
 
+> Adaptive-memory extension: untrusted agent, connector, and import writes now
+> pass through the admission firewall; the existing temporal knowledge graph
+> remains canonical. See [adaptive-memory/ARCHITECTURE.md](adaptive-memory/ARCHITECTURE.md).
+
 ## Overview
 
 Sentinel OS is built as a layered system: a permanent shell that owns infrastructure concerns, with all feature surfaces implemented as self-registering modules.

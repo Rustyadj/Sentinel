@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
+import { proposeMemoryCandidate } from "@/lib/adaptive-memory/memory-candidate-service";
+import { MEMORY_CANDIDATE_TYPES, type MemoryCandidateType } from "@/lib/adaptive-memory/types";
 
 const SELECT = {
   id: true, type: true, scope: true, owner: true, content: true, tags: true,
@@ -60,9 +62,17 @@ export async function POST(req: NextRequest) {
   if (["workspace", "organization", "org", "public"].includes(body.scope)) {
     return NextResponse.json({ error: "This scope requires a workspace-aware memory model" }, { status: 400 });
   }
-  return NextResponse.json(await db.memory.create({ data: {
-    type: body.type, scope: body.scope, owner: user.id, content: body.content,
-    tags: body.tags ?? [], projectId: body.scope === "project" ? body.projectId : null,
-    confidence: body.confidence ?? 1, importanceScore: body.importanceScore ?? 0.5, source: body.source,
-  }, select: SELECT }), { status: 201 });
+  const candidateType = MEMORY_CANDIDATE_TYPES.includes(body.type as MemoryCandidateType)
+    ? body.type as MemoryCandidateType : "fact";
+  const candidate = await proposeMemoryCandidate({
+    projectId: body.scope === "project" ? body.projectId : undefined,
+    userId: body.scope === "project" ? undefined : user.id,
+    candidateType, content: body.content,
+    structuredPayload: { legacyTags: body.tags ?? [], legacyType: body.type },
+    sourceType: "explicit_user_statement", sourceTrust: 0.95,
+    confidence: body.confidence ?? 0.9, importance: body.importanceScore ?? 0.5,
+    risk: 0.2, provenance: { sourceIds: [body.source], evidenceIds: [body.source], capturedAt: new Date().toISOString() },
+    proposedBy: user.id,
+  }, user.id);
+  return NextResponse.json({ candidate, canonicalWrite: "admission_firewall" }, { status: 201 });
 }

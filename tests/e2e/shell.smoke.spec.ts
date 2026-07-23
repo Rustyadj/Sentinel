@@ -5,6 +5,7 @@ const routes = [
   ["Chat", "/chat"],
   ["Organization", "/workspaces/organization"],
   ["Agents", "/agents"],
+  ["Knowledge Governance", "/memory"],
 ] as const;
 
 for (const [name, route] of routes) {
@@ -15,3 +16,11 @@ for (const [name, route] of routes) {
     await expect(page.locator("body")).not.toContainText("Application error: a client-side exception");
   });
 }
+
+test("Knowledge Governance remains usable at mobile width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const response = await page.goto("/memory");
+  expect(response?.status()).toBeLessThan(500);
+  await expect(page.locator("body")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Application error: a client-side exception");
+});
