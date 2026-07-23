@@ -123,7 +123,7 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
   const accessibleProjects = await db.project.findMany({ where: projectScope, select: { id: true } });
   const accessibleProjectIds = accessibleProjects.map((project) => project.id);
 
-  const [workspaces, projects, rooms, tasks, agents, approvals, candidates, auditLogs, knowledgeEvents, knowledgeObjects, allExperiences, redis, telemetry] = await Promise.all([
+  const [workspaces, projects, rooms, tasks, agents, approvals, candidates, auditLogs, knowledgeEvents, knowledgeObjects, runningExperiences, costAggregates, redis, telemetry] = await Promise.all([
     db.workspace.findMany({ where: { id: { in: workspaceIds }, enabled: true }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, organization: { select: { name: true } }, updatedAt: true } }),
     db.project.findMany({ where: projectScope, orderBy: { updatedAt: "desc" }, take: 20, select: { id: true, name: true, description: true, status: true, workspaceId: true, updatedAt: true } }),
     db.chatRoom.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, name: true, projectId: true, agentIds: true, createdAt: true } }),
@@ -142,25 +142,48 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
     db.auditLog.findMany({ where: { OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, action: true, actorType: true, agentId: true, entityType: true, workspaceId: true, projectId: true, createdAt: true } }),
     db.knowledgeEvent.findMany({ where: { OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, type: true, workspaceId: true, projectId: true, createdAt: true } }),
     db.knowledgeObject.findMany({ where: { validTo: null, OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, title: true, type: true, workspaceId: true, projectId: true } }),
+    // A running experience isn't bounded to "today" (it may have started
+    // yesterday and still be in progress), so this is scoped and ordered by
+    // recency but deliberately not date-filtered. take:200 is a safety cap on
+    // concurrently in-flight runs, which is naturally small — not a proxy for
+    // "all of today's volume" the way the old combined query was.
     db.experience.findMany({
+      where: {
+        outcomeStatus: "in_progress",
+        OR: [{ workspaceId: { in: workspaceIds } }, { projectId: { in: accessibleProjectIds } }],
+      },
+      orderBy: { startedAt: "desc" },
+      take: 200,
+      select: { agentId: true, objective: true, startedAt: true },
+    }),
+    // Accurate per-agent cost totals via a scoped aggregate rather than
+    // summing a capped findMany — this stays correct regardless of how many
+    // experiences exist today, so "live" costToday never silently truncates.
+    db.experience.groupBy({
+      by: ["agentId"],
       where: {
         createdAt: { gte: sinceToday },
         OR: [{ workspaceId: { in: workspaceIds } }, { projectId: { in: accessibleProjectIds } }],
       },
-      take: 200,
-      select: { agentId: true, workspaceId: true, projectId: true, cost: true, outcomeStatus: true, objective: true, startedAt: true, completedAt: true },
+      _sum: { cost: true },
     }),
     redisHealth(),
     loadTelemetry(),
   ]);
 
-  const projectIds = new Set(projects.map((project) => project.id));
-  const filteredTasks = tasks.filter((task) => !task.projectId || projectIds.has(task.projectId) || Boolean(task.workspaceId && workspaceIds.includes(task.workspaceId)));
-  const visibleCandidates = candidates.filter((candidate) => Boolean(candidate.experience && ((candidate.experience.workspaceId && workspaceIds.includes(candidate.experience.workspaceId)) || (candidate.experience.projectId && projectIds.has(candidate.experience.projectId)))));
-  const experiences = allExperiences.filter((experience) => Boolean((experience.workspaceId && workspaceIds.includes(experience.workspaceId)) || (experience.projectId && projectIds.has(experience.projectId))));
+  // The full accessible-project set (accessibleProjectIds), not the top-20
+  // display list (projects) — filtering against the truncated list here
+  // would silently drop candidates/tasks belonging to a real accessible
+  // project that just isn't among the 20 most recently updated.
+  const accessibleProjectIdSet = new Set(accessibleProjectIds);
+  const filteredTasks = tasks.filter((task) => !task.projectId || accessibleProjectIdSet.has(task.projectId) || Boolean(task.workspaceId && workspaceIds.includes(task.workspaceId)));
+  const visibleCandidates = candidates.filter((candidate) => Boolean(candidate.experience && ((candidate.experience.workspaceId && workspaceIds.includes(candidate.experience.workspaceId)) || (candidate.experience.projectId && accessibleProjectIdSet.has(candidate.experience.projectId)))));
   const telemetryAgents = new Map((telemetry.payload?.agents ?? []).filter((item) => item.id).map((item) => [item.id as string, item]));
-  const agentExperiences = new Map<string, typeof experiences>();
-  experiences.forEach((experience) => agentExperiences.set(experience.agentId, [...(agentExperiences.get(experience.agentId) ?? []), experience]));
+  const runningByAgent = new Map<string, (typeof runningExperiences)[number]>();
+  for (const experience of runningExperiences) {
+    if (!runningByAgent.has(experience.agentId)) runningByAgent.set(experience.agentId, experience);
+  }
+  const costByAgent = new Map(costAggregates.map((row) => [row.agentId, row._sum.cost ?? 0]));
 
   const attention: AttentionItem[] = [
     ...approvals.map((item) => ({
@@ -189,16 +212,15 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
 
   const agentOperations: AgentOperation[] = agents.map((agent) => {
     const observed = telemetryAgents.get(agent.id);
-    const runs = agentExperiences.get(agent.id) ?? [];
-    const running = runs.find((run) => run.outcomeStatus === "in_progress");
-    const knownCost = runs.some((run) => run.cost !== null);
+    const running = runningByAgent.get(agent.id);
+    const cost = costByAgent.get(agent.id);
     return {
       id: agent.id, name: agent.name, role: agent.role, model: agent.model,
       status: agentStatus(observed?.status, agent.status), currentTask: observed?.currentTask ?? running?.objective ?? null,
       context: agent.workspaceId ? workspaces.find((workspace) => workspace.id === agent.workspaceId)?.name ?? null : null,
       progress: typeof observed?.progress === "number" ? observed.progress : null, voiceState: ["listening", "speaking", "silent"].includes(observed?.voiceState ?? "") ? observed?.voiceState as AgentOperation["voiceState"] : "unavailable",
       health: { cpu: observed?.cpuPercent ?? null, memory: bytes(observed?.memoryBytes), runtime: duration(observed?.runtimeSeconds ?? (running ? (Date.now() - running.startedAt.getTime()) / 1000 : undefined)) },
-      costToday: typeof observed?.costToday === "number" ? observed.costToday : knownCost ? runs.reduce((sum, run) => sum + (run.cost ?? 0), 0) : null,
+      costToday: typeof observed?.costToday === "number" ? observed.costToday : cost ?? null,
       href: `/agents/${agent.id}`,
     };
   });
