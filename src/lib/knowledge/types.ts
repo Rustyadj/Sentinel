@@ -76,6 +76,8 @@ export interface KnowledgeNode {
   scope: KnowledgeScope;
   metadata: Record<string, unknown>;
   createdAt: Date;
+  /** Owning workspace, when this object belongs to one — used to group/color related nodes in the graph. */
+  workspaceId?: string;
 }
 
 export interface KnowledgeEdge {
