@@ -117,6 +117,12 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
   const sinceToday = new Date();
   sinceToday.setHours(0, 0, 0, 0);
 
+  // Accessible project ids, fetched ahead of the main batch so the
+  // experience/learningCandidate queries below can be scoped at the query
+  // level rather than pulling every tenant's rows into memory to filter.
+  const accessibleProjects = await db.project.findMany({ where: projectScope, select: { id: true } });
+  const accessibleProjectIds = accessibleProjects.map((project) => project.id);
+
   const [workspaces, projects, rooms, tasks, agents, approvals, candidates, auditLogs, knowledgeEvents, knowledgeObjects, allExperiences, redis, telemetry] = await Promise.all([
     db.workspace.findMany({ where: { id: { in: workspaceIds }, enabled: true }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, organization: { select: { name: true } }, updatedAt: true } }),
     db.project.findMany({ where: projectScope, orderBy: { updatedAt: "desc" }, take: 20, select: { id: true, name: true, description: true, status: true, workspaceId: true, updatedAt: true } }),
@@ -124,11 +130,26 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
     db.task.findMany({ where: { OR: [{ workspaceId: { in: workspaceIds } }, { project: { userId: user.id } }] }, orderBy: { updatedAt: "desc" }, take: 100, select: { id: true, title: true, description: true, status: true, priority: true, assignee: true, agentId: true, workspaceId: true, projectId: true, updatedAt: true } }),
     db.agent.findMany({ where: { workspaceId: { in: workspaceIds } }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, role: true, status: true, model: true, workspaceId: true } }),
     db.approvalRequest.findMany({ where: { workspaceId: { in: workspaceIds }, status: "pending" }, orderBy: { createdAt: "asc" }, take: 50, select: { id: true, title: true, description: true, type: true, workspaceId: true, projectId: true, requesterAgent: { select: { name: true } }, createdAt: true } }),
-    db.learningCandidate.findMany({ where: { status: "proposed" }, orderBy: { createdAt: "asc" }, take: 100, select: { id: true, type: true, riskLevel: true, evidenceCount: true, confidence: true, createdAt: true, experience: { select: { workspaceId: true, projectId: true } } } }),
+    db.learningCandidate.findMany({
+      where: {
+        status: "proposed",
+        experience: { is: { OR: [{ workspaceId: { in: workspaceIds } }, { projectId: { in: accessibleProjectIds } }] } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 100,
+      select: { id: true, type: true, riskLevel: true, evidenceCount: true, confidence: true, createdAt: true, experience: { select: { workspaceId: true, projectId: true } } },
+    }),
     db.auditLog.findMany({ where: { OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, action: true, actorType: true, agentId: true, entityType: true, workspaceId: true, projectId: true, createdAt: true } }),
     db.knowledgeEvent.findMany({ where: { OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, type: true, workspaceId: true, projectId: true, createdAt: true } }),
     db.knowledgeObject.findMany({ where: { validTo: null, OR: [{ userId: user.id }, { workspaceId: { in: workspaceIds } }] }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, title: true, type: true, workspaceId: true, projectId: true } }),
-    db.experience.findMany({ where: { createdAt: { gte: sinceToday } }, select: { agentId: true, workspaceId: true, projectId: true, cost: true, outcomeStatus: true, objective: true, startedAt: true, completedAt: true } }),
+    db.experience.findMany({
+      where: {
+        createdAt: { gte: sinceToday },
+        OR: [{ workspaceId: { in: workspaceIds } }, { projectId: { in: accessibleProjectIds } }],
+      },
+      take: 200,
+      select: { agentId: true, workspaceId: true, projectId: true, cost: true, outcomeStatus: true, objective: true, startedAt: true, completedAt: true },
+    }),
     redisHealth(),
     loadTelemetry(),
   ]);
