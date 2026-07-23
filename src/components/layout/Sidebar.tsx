@@ -111,9 +111,12 @@ export function Sidebar() {
   const { data: session } = useSession();
   const [expanded, setExpanded] = useState(false);
   const user = session?.user;
+  const displayName = user?.name ?? user?.email ?? "Account";
   const initials = user?.name
     ? user.name.split(" ").map((part) => part[0]).join("").toUpperCase().slice(0, 2)
-    : "RJ";
+    : user?.email
+      ? user.email.slice(0, 2).toUpperCase()
+      : "?";
 
   return (
     <nav
@@ -184,8 +187,8 @@ export function Sidebar() {
           <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#06101a] bg-emerald-400" />
         </span>
         <span className={cn("min-w-0 transition-opacity duration-150", expanded ? "block opacity-100" : "sr-only opacity-0")}>
-          <span className="block truncate text-[12px] font-medium text-[#e8edf5]">{user?.name ?? "Rusty Johnson"}</span>
-          <span className="block truncate text-[10px] text-[#7f8b9d]">Administrator</span>
+          <span className="block truncate text-[12px] font-medium text-[#e8edf5]">{displayName}</span>
+          <span className="block truncate text-[10px] text-[#7f8b9d]">Settings</span>
         </span>
       </Link>
     </nav>
