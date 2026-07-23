@@ -8,6 +8,7 @@ import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permis
 import { getVpsAgent } from "@/lib/agents/registry";
 import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bridge";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
+import { retrieve } from "@/lib/neural-engine/retrieval-planner";
 import type { NextRequest } from "next/server";
 
 interface ContextBlockResult {
@@ -16,10 +17,26 @@ interface ContextBlockResult {
   knowledgeObjectIds: string[];
 }
 
+/**
+ * Phase E: the prompt text now reflects the Phase C retrieval planner's
+ * ranking (real query relevance, prior success/failure for this agent,
+ * agent competency, recency, ...) instead of plain pin/recency order.
+ *
+ * retrieveContextWithProvenance still does the actual DB fetch + bridges
+ * results into KnowledgeObject ids (real content stays authoritative there);
+ * retrieve() independently re-derives a ranked candidate set from those same
+ * now-bridged KnowledgeObject rows and reorders by its 12 factors. Ranked ids
+ * with no matching line in the bridged content (e.g. objects outside this
+ * narrower per-type fetch) are skipped rather than triggering a second fetch
+ * — a deliberate simplification, not a silent gap: retrieveContextWithProvenance's
+ * own order is the fallback if ranking finds nothing to reorder.
+ */
 async function buildContextBlock(
   roomId: string | undefined,
   memoryScope: string,
-  userId: string
+  userId: string,
+  agentId: string,
+  userContent: string,
 ): Promise<ContextBlockResult> {
   const empty: ContextBlockResult = { block: "", knowledgeObjectIds: [] };
   if (!roomId) return empty;
@@ -43,10 +60,32 @@ async function buildContextBlock(
 
     if (totalItems === 0) return empty;
 
-    const lines: string[] = ["\n\n## Relevant context"];
-    for (const m of memories) lines.push(`- (memory, ${m.scope}) ${m.content}`);
-    for (const n of notes) lines.push(`- (note) ${n.title}: ${n.content.slice(0, 200)}`);
-    for (const d of decisions) lines.push(`- (decision, ${d.status}) ${d.title}: ${d.summary}`);
+    const lineByObjectId = new Map<string, string>();
+    // knowledgeObjectIds is bridgeBatch's output, in the same
+    // [...memories, ...notes, ...decisions] concatenation order it was built from.
+    let cursor = 0;
+    for (const m of memories) lineByObjectId.set(knowledgeObjectIds[cursor++], `- (memory, ${m.scope}) ${m.content}`);
+    for (const n of notes) lineByObjectId.set(knowledgeObjectIds[cursor++], `- (note) ${n.title}: ${n.content.slice(0, 200)}`);
+    for (const d of decisions) lineByObjectId.set(knowledgeObjectIds[cursor++], `- (decision, ${d.status}) ${d.title}: ${d.summary}`);
+
+    let orderedIds = knowledgeObjectIds;
+    try {
+      const ranked = await retrieve({
+        query: userContent,
+        userId,
+        agentId,
+        projectId,
+        maxItems: knowledgeObjectIds.length || 10,
+      });
+      const rankedKnownIds = ranked.items.map((i) => i.objectId).filter((id) => lineByObjectId.has(id));
+      if (rankedKnownIds.length > 0) orderedIds = rankedKnownIds;
+    } catch (err) {
+      // Ranking is a reordering, not a correctness requirement — fall back
+      // to retrieveContextWithProvenance's own order rather than dropping context.
+      console.error("[chat] retrieval ranking failed, using unranked order:", err);
+    }
+
+    const lines = ["\n\n## Relevant context", ...orderedIds.map((id) => lineByObjectId.get(id)).filter((l): l is string => !!l)];
     return { block: lines.join("\n"), knowledgeObjectIds };
   } catch (err) {
     console.error("[chat] context retrieval failed:", err);
@@ -155,6 +194,8 @@ export async function POST(request: NextRequest) {
     roomId,
     memoryScope,
     user.id,
+    agentId,
+    userContent ?? messages[messages.length - 1]?.content ?? "",
   );
   const systemPrompt = basePrompt + contextBlock;
 

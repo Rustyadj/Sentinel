@@ -22,6 +22,24 @@ const LENS_TYPES: Record<LensId, string[]> = {
 
 const ACTIVE_PULSE_MS = 2600;
 
+/** Range -> how far back "at" reaches. "Today" means local midnight, not a rolling 24h. */
+function timestampForRange(range: TimeRange): Date {
+  const now = new Date();
+  switch (range) {
+    case "1h":
+      return new Date(now.getTime() - 60 * 60 * 1000);
+    case "Today":
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    case "Week":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case "Month":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case "Now":
+    default:
+      return now;
+  }
+}
+
 export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
@@ -34,7 +52,42 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [toolbarAction, setToolbarAction] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>("Now");
+  const [historicalGraph, setHistoricalGraph] = useState<LensGraph | null>(null);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
   const [activeNodeIds, setActiveNodeIds] = useState<Set<string>>(new Set());
+  const isHistorical = !demoMode && timeRange !== "Now";
+
+  // Reconstruct historical state via temporal-service (Phase E) — only
+  // meaningful in SCOPED mode, since the demo graph carries no real
+  // validFrom/validTo history to reconstruct.
+  useEffect(() => {
+    // Nothing to fetch when live or in demo mode — baseGraph's isHistorical
+    // check already ignores a stale historicalGraph in that case, so there's
+    // no state to reset here (only synchronous work belongs directly in an
+    // effect body; everything else happens inside the async callback below).
+    if (demoMode || timeRange === "Now") return;
+
+    let cancelled = false;
+    void (async () => {
+      setHistoricalLoading(true);
+      try {
+        const at = timestampForRange(timeRange).toISOString();
+        const query = new URLSearchParams({ at });
+        if (projectId) query.set("projectId", projectId);
+        const res = await fetch(`/api/neural/temporal?${query.toString()}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
+        if (!cancelled) setHistoricalGraph(buildLensGraphFromApi(data));
+      } catch {
+        /* keep whatever was showing before */
+      } finally {
+        if (!cancelled) setHistoricalLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [demoMode, timeRange, projectId]);
 
   const { connected, events, lastEventAt } = useNeuralStream({ projectId, enabled: true });
   const pulseTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -59,12 +112,19 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     };
   }, [demoMode, scopedGraph, projectId]);
 
-  const baseGraph = demoMode ? demoGraph : scopedGraph ?? demoGraph;
+  const baseGraph = isHistorical
+    ? historicalGraph ?? scopedGraph ?? demoGraph
+    : demoMode
+      ? demoGraph
+      : scopedGraph ?? demoGraph;
 
-  // Pulse nodes touched by live events. If a payload id matches a node, pulse
-  // it; otherwise (DEMO ids won't match real event ids) pulse a deterministic
-  // node derived from the event id so liveness is visible and honest.
+  // Pulse nodes touched by live events. Suppressed while viewing historical
+  // state — a past snapshot shouldn't animate as if it were live right now.
+  // If a payload id matches a node, pulse it; otherwise (DEMO ids won't match
+  // real event ids) pulse a deterministic node derived from the event id so
+  // liveness is visible and honest.
   useEffect(() => {
+    if (isHistorical) return;
     if (events.length === 0) return;
     const latest = events[0];
     const payloadIds = new Set(
@@ -187,7 +247,11 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         onClose={() => {
           setTimelineOpen(false);
           setToolbarAction(null);
+          setTimeRange("Now");
         }}
+        demoMode={demoMode}
+        loading={historicalLoading}
+        asOf={isHistorical ? timestampForRange(timeRange) : null}
       />
 
       {/* Interaction hint only; the production module bar owns live status. */}
@@ -204,6 +268,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         nodeCount={filteredGraph.meta.nodeCount}
         edgeCount={filteredGraph.meta.edgeCount}
         zoomLevel={zoomLevel}
+        asOf={isHistorical ? timestampForRange(timeRange) : null}
       />
     </div>
   );
