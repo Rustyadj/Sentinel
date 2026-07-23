@@ -55,6 +55,15 @@ export async function supersedeKnowledgeObject(
         workspaceId: current.workspaceId,
         projectId: current.projectId,
         organizationId: current.organizationId,
+        // NOT copying userId: the unique index on (sourceType, sourceId, userId)
+        // only tolerates repeated sourceType/sourceId pairs across supersession
+        // because Postgres treats NULL as distinct in unique constraints. A real
+        // userId here would collide with the original row on this create() and
+        // break supersession for every user-owned object. Fixing that requires a
+        // schema change (e.g. dropping userId from the unique key, or excluding
+        // superseded rows via a partial index) — flagging it rather than
+        // papering over it with a change that trades one bug for a worse one.
+        // See docs/neural-engine/PHASE_A_CONFLICTS.md.
         metadata: toJson(patch.metadata ?? (current.metadata as Record<string, unknown>)),
         version: current.version + 1,
         validFrom: now,
@@ -150,5 +159,59 @@ export async function listKnowledgeObjectsBetween(from: Date, to: Date, filter: 
       ...(filter.projectId !== undefined ? { projectId: filter.projectId } : {}),
     },
     orderBy: { validFrom: "asc" },
+  });
+}
+
+/**
+ * "at timestamp" API for the whole graph (Phase E) — a single query, not a
+ * per-object chain walk. Every row valid at `timestamp` in one pass:
+ * validFrom <= timestamp AND (validTo IS NULL OR validTo > timestamp). This
+ * is what powers the Neural Lens timeline scrubber's non-"Now" ranges.
+ *
+ * Access control mirrors src/lib/knowledge/graph.ts's buildGraphData (own
+ * objects OR objects in a readable project) — kept as explicit params rather
+ * than importing the RBAC layer here, so temporal-service stays a plain data
+ * layer and the access decision stays visible at the call site (the API route).
+ */
+export async function listKnowledgeObjectsAsOf(
+  timestamp: Date,
+  access: { userId: string; readableProjectIds: string[] },
+  filter: { projectId?: string; workspaceId?: string; type?: string } = {},
+) {
+  return db.knowledgeObject.findMany({
+    where: {
+      validFrom: { lte: timestamp },
+      OR: [{ validTo: null }, { validTo: { gt: timestamp } }],
+      AND: [
+        {
+          OR: [
+            { userId: access.userId },
+            ...(access.readableProjectIds.length > 0
+              ? [{ projectId: { in: access.readableProjectIds } }]
+              : []),
+          ],
+        },
+        ...(filter.projectId ? [{ projectId: filter.projectId }] : []),
+      ],
+      ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
+      ...(filter.type ? { type: filter.type } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 250,
+  });
+}
+
+/** Edges whose own validity window covers `timestamp`, restricted to a node set. */
+export async function listKnowledgeEdgesAsOf(timestamp: Date, nodeIds: string[]) {
+  if (nodeIds.length === 0) return [];
+  return db.knowledgeEdge.findMany({
+    where: {
+      validFrom: { lte: timestamp },
+      OR: [{ validTo: null }, { validTo: { gt: timestamp } }],
+      fromObjectId: { in: nodeIds },
+      toObjectId: { in: nodeIds },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 1000,
   });
 }

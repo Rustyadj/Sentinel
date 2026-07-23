@@ -4,10 +4,12 @@ import {
   getKnowledgeObjectAsOf,
   getKnowledgeObjectChain,
   listCurrentKnowledgeObjects,
+  listKnowledgeEdgesAsOf,
+  listKnowledgeObjectsAsOf,
   listKnowledgeObjectsBetween,
   supersedeKnowledgeObject,
 } from "@/lib/neural-engine/temporal-service";
-import { makeKnowledgeObject } from "./db-setup";
+import { makeKnowledgeObject, makeUser } from "./db-setup";
 
 afterAll(async () => {
   await db.$disconnect();
@@ -101,5 +103,72 @@ describe("temporal-service — Layer 3 (Temporal Graph)", () => {
     const titles = between.map((r) => r.title);
     expect(titles).toContain("between-v1");
     expect(titles).toContain("between-v2");
+  });
+
+  it("listKnowledgeObjectsAsOf reconstructs the whole-graph node set at a past timestamp", async () => {
+    // Project-scoped (not user-owned): supersedeKnowledgeObject carries
+    // projectId forward across versions, unlike userId (see the comment in
+    // temporal-service.ts — userId can't be copied without colliding with
+    // the (sourceType, sourceId, userId) unique index).
+    const projectId = `asof-project-${Date.now()}`;
+    const v1 = await makeKnowledgeObject({ title: "asof-nodes-v1", scope: "project", projectId });
+    const tBetween = new Date();
+    await new Promise((r) => setTimeout(r, 10));
+    await supersedeKnowledgeObject(v1.id, { title: "asof-nodes-v2" }, "tester", "r1");
+    await new Promise((r) => setTimeout(r, 10));
+    const tAfter = new Date();
+
+    const access = { userId: "nobody", readableProjectIds: [projectId] };
+    const atBetween = await listKnowledgeObjectsAsOf(tBetween, access);
+    expect(atBetween.map((o) => o.title)).toContain("asof-nodes-v1");
+    expect(atBetween.map((o) => o.title)).not.toContain("asof-nodes-v2");
+
+    const atAfter = await listKnowledgeObjectsAsOf(tAfter, access);
+    expect(atAfter.map((o) => o.title)).toContain("asof-nodes-v2");
+    expect(atAfter.map((o) => o.title)).not.toContain("asof-nodes-v1");
+  });
+
+  it("listKnowledgeObjectsAsOf only returns objects the caller can read (own user or readable projects)", async () => {
+    const owner = await makeUser();
+    const other = await makeUser();
+    await db.knowledgeObject.create({
+      data: {
+        type: "Note",
+        title: "asof-access-owned",
+        sourceType: "test",
+        sourceId: `asof-access-${Date.now()}`,
+        scope: "user",
+        userId: owner.id,
+      },
+    });
+
+    const now = new Date();
+    const asOwner = await listKnowledgeObjectsAsOf(now, { userId: owner.id, readableProjectIds: [] });
+    expect(asOwner.map((o) => o.title)).toContain("asof-access-owned");
+
+    const asOther = await listKnowledgeObjectsAsOf(now, { userId: other.id, readableProjectIds: [] });
+    expect(asOther.map((o) => o.title)).not.toContain("asof-access-owned");
+  });
+
+  it("listKnowledgeEdgesAsOf only returns edges valid at the timestamp between the given nodes", async () => {
+    const a = await makeKnowledgeObject({ title: "edge-asof-a" });
+    const b = await makeKnowledgeObject({ title: "edge-asof-b" });
+    const tBeforeEdge = new Date();
+    await new Promise((r) => setTimeout(r, 10));
+    const edge = await db.knowledgeEdge.create({
+      data: { fromObjectId: a.id, toObjectId: b.id, type: "related_to", weight: 0.7 },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    const tAfterEdge = new Date();
+
+    const beforeEdges = await listKnowledgeEdgesAsOf(tBeforeEdge, [a.id, b.id]);
+    expect(beforeEdges.map((e) => e.id)).not.toContain(edge.id);
+
+    const afterEdges = await listKnowledgeEdgesAsOf(tAfterEdge, [a.id, b.id]);
+    expect(afterEdges.map((e) => e.id)).toContain(edge.id);
+  });
+
+  it("listKnowledgeEdgesAsOf returns nothing for an empty node set", async () => {
+    expect(await listKnowledgeEdgesAsOf(new Date(), [])).toEqual([]);
   });
 });
