@@ -1,5 +1,13 @@
 # Sentinel OS — Roadmap
 
+## Adaptive memory and skill refinery
+
+The governed core is implemented on `claude/adaptive-memory-skill-refinery`.
+Next production increments are OAuth 2.1 for MCP, connector fetch workers,
+embedding-provider integration, scheduled consolidation/degradation, portable
+package export, and a tenant-safe legacy contradiction backfill. These remain
+planned and must not appear as live operational capability.
+
 ## Phase 1 — Platform Foundation (Current)
 
 Goal: Establish a clean, extensible shell. No rewrite — refactor existing code into the right architecture.

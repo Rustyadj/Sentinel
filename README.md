@@ -69,6 +69,15 @@ Sentinel OS
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full system design.
 
+### Adaptive memory and controlled learning
+
+Sentinel is the canonical memory and governance layer for connected agents.
+Untrusted observations enter an admission firewall, retrieval produces durable
+Recall Traces, agent runs retain frozen active-memory snapshots, skills require
+replay and human promotion, and remote clients use the scoped `/mcp` gateway.
+See [docs/adaptive-memory/ARCHITECTURE.md](docs/adaptive-memory/ARCHITECTURE.md)
+and [docs/adaptive-memory/OPERATIONS.md](docs/adaptive-memory/OPERATIONS.md).
+
 ---
 
 ## Module System
