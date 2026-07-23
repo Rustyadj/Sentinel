@@ -16,7 +16,7 @@ export function AppShell({ children, rightPanel = true }: AppShellProps) {
   const { rightPanelOpen } = useAppStore();
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="sentinel-app-shell flex h-full w-full flex-col overflow-hidden bg-[--background] text-[--foreground]">
       <TopBar />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -27,7 +27,7 @@ export function AppShell({ children, rightPanel = true }: AppShellProps) {
           <ModuleTabs />
 
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+            <main className="min-w-0 flex-1 overflow-auto bg-[--canvas]">{children}</main>
             {rightPanel && rightPanelOpen ? (
               <div className="hidden xl:flex">
                 <RightPanel />

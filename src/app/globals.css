@@ -260,11 +260,76 @@ body {
   background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 22%);
 }
 
-.mission-control-page {
-  color-scheme: light;
+.sentinel-app-shell {
+  color-scheme: dark;
+  isolation: isolate;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18)),
-    var(--canvas);
+    radial-gradient(circle at 16% 0%, rgba(124, 58, 237, 0.08), transparent 28%),
+    linear-gradient(180deg, #040912 0%, #02060d 100%);
+}
+
+.sentinel-app-shell main {
+  background:
+    radial-gradient(circle at 50% -12%, rgba(64, 79, 132, 0.1), transparent 34%),
+    linear-gradient(180deg, #050a12 0%, #02060d 100%);
+  color: var(--canvas-foreground);
+}
+
+/*
+ * Dark compatibility layer for legacy module surfaces. New work should use the
+ * semantic canvas/card tokens above; these mappings keep every existing module
+ * inside the same Sentinel shell while those screens are migrated incrementally.
+ */
+.sentinel-app-shell main :is(
+  .bg-white:not(.rounded-full),
+  .bg-\[\#f5f6f9\],
+  .bg-\[\#f8f9fb\],
+  .bg-\[\#f8fafc\],
+  .bg-\[\#eceef5\],
+  .bg-\[\#e8eaf0\]
+) {
+  background-color: var(--canvas-card) !important;
+}
+
+.sentinel-app-shell main :is(
+  .border-\[\#e0e3ea\],
+  .border-\[\#f0f2f7\],
+  .border-\[\#e8eaf0\],
+  .border-\[\#c8cdd8\]
+) {
+  border-color: var(--canvas-card-border) !important;
+}
+
+.sentinel-app-shell main .text-\[\#1a1d26\] {
+  color: #e9edf5 !important;
+}
+
+.sentinel-app-shell main .text-\[\#7a8099\] {
+  color: #9ca9ba !important;
+}
+
+.sentinel-app-shell main .text-\[\#aab0c0\] {
+  color: #718096 !important;
+}
+
+.sentinel-app-shell main :is(.text-\[\#5a5f6e\], .text-\[\#3a3f50\]) {
+  color: #8290a4 !important;
+}
+
+.sentinel-app-shell main .hover\:bg-\[\#f5f6f9\]:hover,
+.sentinel-app-shell main .hover\:bg-white:hover {
+  background-color: #111b28 !important;
+}
+
+.sentinel-app-shell main .hover\:text-\[\#1a1d26\]:hover {
+  color: #f8fafc !important;
+}
+
+.mission-control-page {
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 48% -8%, rgba(91, 73, 181, 0.09), transparent 34%),
+    linear-gradient(180deg, #050a12 0%, #02060d 100%);
 }
 
 .mission-control-page section {

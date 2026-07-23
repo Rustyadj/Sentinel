@@ -52,9 +52,9 @@ export function MissionControlPage({ service = missionControlService }: MissionC
     <div className="mission-control-page min-h-full bg-[--canvas] text-[--canvas-foreground]">
       <div className="mx-auto w-full max-w-[1680px] space-y-4 p-3 sm:p-4 lg:p-5">
         {data.stale ? (
-          <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-50 px-3 py-2 text-[10px] text-amber-900">
+          <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.055] px-3 py-2 text-[10px] text-amber-100/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
             <span><strong className="font-semibold">Partial live data.</strong> Unsupported or unavailable sources are using the typed fallback adapter.</span>
-            <time className="hidden shrink-0 text-amber-700 sm:block" dateTime={data.generatedAt}>Updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+            <time className="hidden shrink-0 text-amber-300/65 sm:block" dateTime={data.generatedAt}>Updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
           </div>
         ) : null}
 
@@ -92,10 +92,10 @@ export function MissionControlError({ message, variant = "error", onRetry }: { m
   const detail = variant === "permission" ? "Your current account cannot load this operational context." : variant === "offline" ? "Sentinel could not reach the control plane. Local context is preserved." : message;
   return (
     <div data-testid={`mission-control-${variant}`} className="flex min-h-full items-center justify-center bg-[--canvas] p-6 text-[--canvas-foreground]">
-      <section className="w-full max-w-md rounded-xl border border-slate-300 bg-white p-6 text-center shadow-sm" aria-labelledby="mission-error-title">
-        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600"><AlertTriangle className="h-5 w-5" /></span>
+      <section className="w-full max-w-md rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] p-6 text-center shadow-2xl shadow-black/30" aria-labelledby="mission-error-title">
+        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-400"><AlertTriangle className="h-5 w-5" /></span>
         <h1 id="mission-error-title" className="mt-4 text-lg font-semibold">{title}</h1>
-        <p className="mt-2 text-sm text-slate-600">{detail}</p>
+        <p className="mt-2 text-sm text-[#9ca9ba]">{detail}</p>
         <button type="button" onClick={onRetry} className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-4 text-xs font-medium text-white outline-none hover:bg-violet-500 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"><RefreshCw className="h-3.5 w-3.5" />Retry</button>
       </section>
     </div>
@@ -105,9 +105,9 @@ export function MissionControlError({ message, variant = "error", onRetry }: { m
 export function MissionControlEmpty() {
   return (
     <div data-testid="mission-control-empty" className="flex min-h-full items-center justify-center bg-[--canvas] p-6 text-[--canvas-foreground]">
-      <section className="w-full max-w-lg rounded-xl border border-slate-300 bg-white p-8 text-center shadow-sm" aria-labelledby="mission-empty-title">
+      <section className="w-full max-w-lg rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] p-8 text-center shadow-2xl shadow-black/30" aria-labelledby="mission-empty-title">
         <h1 id="mission-empty-title" className="text-lg font-semibold">You are all caught up</h1>
-        <p className="mt-2 text-sm text-slate-600">No active work, agent activity, or decisions need your attention right now.</p>
+        <p className="mt-2 text-sm text-[#9ca9ba]">No active work, agent activity, or decisions need your attention right now.</p>
         <a href="/projects" className="mt-5 inline-flex h-9 items-center rounded-md bg-violet-600 px-4 text-xs font-medium text-white outline-none hover:bg-violet-500 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">Start a new project</a>
       </section>
     </div>
