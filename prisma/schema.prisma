@@ -1,11 +1,13 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
 model User {
@@ -118,21 +120,21 @@ model Message {
 }
 
 model Memory {
-  id              String   @id @default(cuid())
+  id              String                       @id @default(cuid())
   type            String
   scope           String
   owner           String
   content         String
   tags            String[]
-  embedding       String?
-  confidence      Float    @default(1.0)
-  importanceScore Float    @default(0.5)
+  embedding       Unsupported("vector(1536)")?
+  confidence      Float                        @default(1.0)
+  importanceScore Float                        @default(0.5)
   source          String
-  pinned          Boolean  @default(false)
-  archived        Boolean  @default(false)
+  pinned          Boolean                      @default(false)
+  archived        Boolean                      @default(false)
   projectId       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
 
   @@index([projectId])
   @@map("memories")

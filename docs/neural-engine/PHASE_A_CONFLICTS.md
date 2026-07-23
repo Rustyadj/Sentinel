@@ -80,13 +80,12 @@ not reimplementations:
   no backing table) — there is no `Organization` or `Department` row to
   point at yet, and `Workspace` is a route concept
   (`/workspaces/{cybersecurity,...}`) in the app shell, not a domain table.
-- **pgvector**: previously enabled (`extensions = [pgvector]`,
-  `Memory.embedding Unsupported("vector(1536)")`), now **regressed** —
-  current schema has no `postgresqlExtensions` preview feature and
-  `Memory.embedding` is a plain `String?`. This is a pre-existing regression,
-  not something Phase A caused. Re-enabling it belongs to Phase C (retrieval
-  planner, semantic ranking) — Phase A does not touch `Memory.embedding` to
-  avoid a destructive column-type change outside this phase's scope.
+- **pgvector**: the pre-existing Prisma/schema mismatch is resolved by
+  `20260723010721_reconcile_memory_embedding_pgvector`. The database remains
+  `vector(1536)` and Prisma now declares
+  `Memory.embedding Unsupported("vector(1536)")`; the reconciliation migration
+  is intentionally a no-op, so no vector data or indexes are rewritten.
+  Retrieval ranking remains lexical until a future embedding pipeline is added.
 - **Retrieval planner** (Layer 6): `retrieval.ts` is real but single-factor
   (scope + pin + importance + recency). Multi-factor ranking (graph
   proximity, agent competency, prior success/failure, provenance quality) is

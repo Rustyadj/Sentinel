@@ -1,0 +1,6 @@
+-- Reconcile Prisma's Memory.embedding type with the existing pgvector column.
+--
+-- The initial migration already enables the vector extension and creates
+-- memories.embedding as vector(1536). This migration is intentionally a no-op:
+-- the fix is the matching Unsupported("vector(1536)") declaration in
+-- schema.prisma, and no database data or indexes need to be rewritten.
