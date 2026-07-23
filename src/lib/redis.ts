@@ -15,6 +15,19 @@ function getRedis(): Redis | null {
   return redis;
 }
 
+export async function redisHealth(): Promise<{ configured: boolean; ok: boolean; latencyMs?: number; error?: string }> {
+  const client = getRedis();
+  if (!client) return { configured: false, ok: false, error: "REDIS_URL is not configured" };
+  const startedAt = Date.now();
+  try {
+    if (client.status === "wait") await client.connect();
+    await client.ping();
+    return { configured: true, ok: true, latencyMs: Date.now() - startedAt };
+  } catch {
+    return { configured: true, ok: false, error: "Redis did not respond" };
+  }
+}
+
 export async function redisGet(key: string): Promise<string | null> {
   try {
     const client = getRedis();

@@ -92,3 +92,105 @@ jobs:
           test "${{ needs.verify.result }}" = success
           test "${{ needs.docker.result }}" = success
           test "${{ needs.smoke.result }}" = success
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: deploy-gate
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: sentinel-production
+      cancel-in-progress: false
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_APP_DIR"
+          test -n "${{ secrets.VPS_SSH_KEY }}"
+          test -n "${{ secrets.VPS_KNOWN_HOSTS }}"
+
+      - name: Configure pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > "$HOME/.ssh/sentinel_deploy"
+          chmod 600 "$HOME/.ssh/sentinel_deploy"
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Back up and deploy the exact green commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${VPS_SSH_PORT:-22}"
+          APP_DIR_B64="$(printf '%s' "$VPS_APP_DIR" | base64 -w0)"
+          ssh -i "$HOME/.ssh/sentinel_deploy" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "SENTINEL_RELEASE_SHA='$RELEASE_SHA' SENTINEL_APP_DIR_B64='$APP_DIR_B64' bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          APP_DIR="$(printf '%s' "$SENTINEL_APP_DIR_B64" | base64 -d)"
+          case "$APP_DIR" in
+            ""|"/"|"$HOME") echo "Refusing unsafe VPS_APP_DIR: $APP_DIR" >&2; exit 1 ;;
+          esac
+          test -d "$APP_DIR/.git"
+          cd "$APP_DIR"
+
+          PREVIOUS_SHA="$(git rev-parse HEAD)"
+          BACKUP_DIR="$APP_DIR/backups/releases/$(date -u +%Y%m%dT%H%M%SZ)-$SENTINEL_RELEASE_SHA"
+          mkdir -p "$BACKUP_DIR/agents"
+
+          git fetch --prune origin main
+          git cat-file -e "$SENTINEL_RELEASE_SHA^{commit}"
+          test "$(git rev-parse "origin/main^{commit}")" = "$SENTINEL_RELEASE_SHA"
+
+          docker compose config --quiet
+          docker compose exec -T postgres pg_dump -U hermes -d hermesos --format=custom > "$BACKUP_DIR/postgres.dump"
+          docker compose exec -T redis redis-cli SAVE >/dev/null
+          docker compose cp redis:/data/dump.rdb "$BACKUP_DIR/redis.rdb"
+          docker compose cp app:/opt/sentinel-os/agents/. "$BACKUP_DIR/agents/"
+          printf '%s\n' "$PREVIOUS_SHA" > "$BACKUP_DIR/previous-sha"
+
+          wait_for_health() {
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error http://127.0.0.1:3000/api/health >/dev/null \
+                && curl --fail --silent --show-error http://127.0.0.1:3000/api/ready >/dev/null; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+
+          rollback() {
+            trap - ERR
+            echo "Deployment failed; restoring application revision $PREVIOUS_SHA" >&2
+            git checkout --detach "$PREVIOUS_SHA"
+            export SENTINEL_RELEASE_SHA="$PREVIOUS_SHA"
+            docker compose build --pull app migrate
+            docker compose up -d --remove-orphans
+            wait_for_health
+          }
+          trap rollback ERR
+
+          git checkout --detach "$SENTINEL_RELEASE_SHA"
+          export SENTINEL_RELEASE_SHA
+          docker compose config --quiet
+          docker compose build --pull app migrate
+          docker compose run --rm migrate
+          docker compose up -d --remove-orphans
+          wait_for_health
+          trap - ERR
+
+          test "$(git rev-parse HEAD)" = "$SENTINEL_RELEASE_SHA"
+          echo "Deployed immutable release $SENTINEL_RELEASE_SHA"
+          REMOTE

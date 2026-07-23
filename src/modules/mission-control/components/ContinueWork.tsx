@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { FileText, Folder, LayoutGrid, MessageSquare, MoreHorizontal, Play, type LucideIcon } from "lucide-react";
-import type { ContinueItem, ContinueItemType } from "@/lib/mission-control/types";
+import type { ContinueItem, ContinueItemType, DataSourceState } from "@/lib/mission-control/types";
 import { selectContinueItems } from "@/lib/mission-control/selectors";
 import { cn } from "@/lib/utils";
-import { MissionPanel, PanelLink } from "./MissionPanel";
+import { MissionPanel, PanelLink, UnavailableState } from "./MissionPanel";
 
 const tabs: Array<{ id: ContinueItemType; label: string }> = [
   { id: "project", label: "Projects" },
@@ -21,7 +21,7 @@ const iconMap: Record<ContinueItemType, LucideIcon> = {
   workspace: LayoutGrid,
 };
 
-export function ContinueWork({ items }: { items: ContinueItem[] }) {
+export function ContinueWork({ items, sourceState }: { items: ContinueItem[]; sourceState: DataSourceState }) {
   const [activeTab, setActiveTab] = useState<ContinueItemType>("project");
   const filtered = useMemo(() => selectContinueItems(items, activeTab), [activeTab, items]);
 
@@ -31,6 +31,7 @@ export function ContinueWork({ items }: { items: ContinueItem[] }) {
         title="Continue Where You Left Off"
         action={<PanelLink href="/projects">View all</PanelLink>}
         className="h-full"
+        sourceState={sourceState}
         contentClassName="p-0"
       >
         <div className="flex min-w-0 gap-1 overflow-x-auto border-b border-white/[0.07] px-3" role="tablist" aria-label="Recent work type">
@@ -52,7 +53,7 @@ export function ContinueWork({ items }: { items: ContinueItem[] }) {
           ))}
         </div>
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-[11px] text-[#8793a5]">No recent {activeTab} activity.</div>
+          <UnavailableState source={sourceState} emptyMessage={`No recent ${activeTab} activity.`} />
         ) : (
           <ul role="list" className="divide-y divide-white/[0.07]">
             {filtered.slice(0, 5).map((item) => {

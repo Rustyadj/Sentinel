@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "prisma:validate": "prisma validate && prisma migrate status",
-    "check": "tsc --noEmit && eslint"
+    "check": "tsc --noEmit && eslint",
+    "telemetry:serve": "node scripts/vps-telemetry.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",

@@ -1,11 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { MissionContextLevel } from "@/lib/mission-control/types";
 
-export function ContextStrip({ levels }: { levels: MissionContextLevel[] }) {
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(levels.map((level) => [level.id, level.value])));
+export function ContextStrip({ levels: providedLevels }: { levels?: MissionContextLevel[] }) {
+  const [levels, setLevels] = useState<MissionContextLevel[]>(providedLevels ?? []);
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries((providedLevels ?? []).map((level) => [level.id, level.value])));
+  const [state, setState] = useState<"loading" | "live" | "unavailable">(providedLevels ? "live" : "loading");
+
+  useEffect(() => {
+    if (providedLevels) return;
+    const controller = new AbortController();
+    fetch("/api/workspaces", { signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Workspace context returned ${response.status}`);
+        const body = await response.json() as { workspaces?: Array<{ name: string }> };
+        const names = (body.workspaces ?? []).map((workspace) => workspace.name);
+        const next = names.length ? [{ id: "workspace" as const, label: "Workspace", value: names[0], options: names }] : [];
+        setLevels(next);
+        setValues(Object.fromEntries(next.map((level) => [level.id, level.value])));
+        setState("live");
+      })
+      .catch(() => { if (!controller.signal.aborted) setState("unavailable"); });
+    return () => controller.abort();
+  }, [providedLevels]);
 
   const updateContext = (id: string, value: string) => {
     setValues((current) => ({ ...current, [id]: value }));
@@ -36,7 +55,8 @@ export function ContextStrip({ levels }: { levels: MissionContextLevel[] }) {
           </div>
         ))}
       </div>
-      <div className="hidden shrink-0 items-center gap-2 pl-3 text-[8px] text-[#657287] sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Context live</div>
+      {levels.length === 0 ? <span className="text-[9px] text-[#718095]">{state === "loading" ? "Loading workspace context…" : state === "unavailable" ? "Workspace context unavailable" : "No accessible workspaces"}</span> : null}
+      <div className="hidden shrink-0 items-center gap-2 pl-3 text-[8px] text-[#657287] sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${state === "live" ? "bg-emerald-400" : state === "loading" ? "bg-amber-400" : "bg-slate-400"}`} />Context {state}</div>
     </nav>
   );
 }

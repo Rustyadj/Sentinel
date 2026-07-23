@@ -186,36 +186,11 @@ const nodeTypes: NodeTypes = {
   ),
 };
 
-const DEFAULT_NODES: OrgNode[] = [
-  { id: "rusty", type: "person", position: { x: 460, y: 20 }, data: { label: "Rusty Johnson", subtitle: "Chief Executive Officer", department: "Executive", status: "Active", accent: "#a78bfa", avatar: "RJ" } },
-  { id: "ops", type: "person", position: { x: 90, y: 180 }, data: { label: "Operations Lead", subtitle: "Chief Operating Officer", department: "Operations", status: "Active", accent: "#22c55e" } },
-  { id: "tech", type: "person", position: { x: 390, y: 180 }, data: { label: "Technology Lead", subtitle: "Chief Technology Officer", department: "Engineering", status: "Active", accent: "#38bdf8" } },
-  { id: "growth", type: "person", position: { x: 690, y: 180 }, data: { label: "Growth Lead", subtitle: "Chief Revenue Officer", department: "Growth", status: "Active", accent: "#f59e0b" } },
-  { id: "hermes", type: "agent", position: { x: 980, y: 180 }, data: { label: "Hermes Lisa", subtitle: "Strategic Orchestrator", department: "Sentinel Core", status: "Online", accent: "#8b5cf6", avatar: "✦" } },
-  { id: "people", type: "department", position: { x: 20, y: 350 }, data: { label: "People Operations", subtitle: "8 members", department: "Operations", status: "Scaling", accent: "#22c55e" } },
-  { id: "platform", type: "department", position: { x: 300, y: 350 }, data: { label: "Engineering", subtitle: "24 members", department: "Technology", status: "Active", accent: "#38bdf8" } },
-  { id: "product", type: "team", position: { x: 560, y: 350 }, data: { label: "Product Systems", subtitle: "12 members", department: "Technology", status: "Active", accent: "#2583ff" } },
-  { id: "marketing", type: "department", position: { x: 820, y: 350 }, data: { label: "Marketing", subtitle: "10 members", department: "Growth", status: "Active", accent: "#f59e0b" } },
-  { id: "guardian", type: "agent", position: { x: 260, y: 520 }, data: { label: "CodeGuardian", subtitle: "Security Agent", department: "Engineering", status: "Online", accent: "#8b5cf6", avatar: "AI" } },
-  { id: "research", type: "agent", position: { x: 560, y: 520 }, data: { label: "DataSynth", subtitle: "Research Agent", department: "Product Systems", status: "Idle", accent: "#a855f7", avatar: "AI" } },
-  { id: "campaign", type: "team", position: { x: 840, y: 520 }, data: { label: "Campaign Studio", subtitle: "6 members", department: "Marketing", status: "Active", accent: "#f59e0b" } },
-];
+const DEFAULT_NODES: OrgNode[] = [];
 
 const edgeStyle = { stroke: "#6aa9df", strokeWidth: 1.15 };
 
-const DEFAULT_EDGES: OrgEdge[] = [
-  ["rusty", "ops"], ["rusty", "tech"], ["rusty", "growth"], ["rusty", "hermes"],
-  ["ops", "people"], ["tech", "platform"], ["tech", "product"], ["growth", "marketing"],
-  ["platform", "guardian"], ["product", "research"], ["marketing", "campaign"], ["hermes", "research"],
-].map(([source, target], index) => ({
-  id: `edge-${index}`,
-  source,
-  target,
-  type: "smoothstep",
-  animated: source === "hermes",
-  markerEnd: { type: MarkerType.ArrowClosed, color: "#6aa9df" },
-  style: edgeStyle,
-}));
+const DEFAULT_EDGES: OrgEdge[] = [];
 
 function cloneSnapshot(nodes: OrgNode[], edges: OrgEdge[]): Snapshot {
   return {
@@ -385,6 +360,8 @@ export function OrgPage() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("hierarchy");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [historyState, setHistoryState] = useState({ past: 0, future: 0 });
   const pastRef = useRef<Snapshot[]>([]);
   const futureRef = useRef<Snapshot[]>([]);
@@ -403,12 +380,12 @@ export function OrgPage() {
       try {
         const response = await fetch("/api/org");
         if (!response.ok) throw new Error("Org API unavailable");
-        const data = (await response.json()) as { nodes?: OrgNode[]; edges?: OrgEdge[] };
-        if (data.nodes?.length) {
-          setNodes(data.nodes);
-          setEdges(data.edges ?? []);
-          return;
-        }
+        const data = (await response.json()) as { workspaceId?: string; nodes?: OrgNode[]; edges?: OrgEdge[] };
+        if (!data.workspaceId || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error("Org API returned an invalid chart");
+        setWorkspaceId(data.workspaceId);
+        setNodes(data.nodes);
+        setEdges(data.edges);
+        return;
       } catch {
         const cached = window.localStorage.getItem("sentinel-org-chart");
         if (cached) {
@@ -505,21 +482,31 @@ export function OrgPage() {
   };
 
   const save = async () => {
+    if (!workspaceId) {
+      setSaveError("No writable workspace is selected. Reload the chart and try again.");
+      return;
+    }
     setSaving(true);
+    setSaved(false);
+    setSaveError("");
     const snapshot = cloneSnapshot(nodes, edges);
-    window.localStorage.setItem("sentinel-org-chart", JSON.stringify(snapshot));
     try {
-      await fetch("/api/org", {
+      const response = await fetch("/api/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(snapshot),
+        body: JSON.stringify({ workspaceId, ...snapshot }),
       });
-    } catch {
-      // Local persistence remains the offline fallback.
-    } finally {
-      setSaving(false);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? `Save failed with ${response.status}`);
+      }
+      window.localStorage.setItem(`sentinel-org-chart:${workspaceId}`, JSON.stringify(snapshot));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Organization changes were not saved.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -583,7 +570,8 @@ export function OrgPage() {
           <input ref={importRef} type="file" accept="application/json" className="hidden" onChange={importChart} />
         </div>
 
-        <button type="button" onClick={save} disabled={saving} className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[10px] font-semibold text-white shadow-[0_0_24px_rgba(124,58,237,0.26)] hover:bg-violet-500 disabled:opacity-60">
+        {saveError ? <span role="alert" className="ml-auto max-w-64 truncate text-[9px] text-red-300" title={saveError}>{saveError}</span> : null}
+        <button type="button" onClick={save} disabled={saving || !workspaceId} className={`${saveError ? "" : "ml-auto"} flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[10px] font-semibold text-white shadow-[0_0_24px_rgba(124,58,237,0.26)] hover:bg-violet-500 disabled:opacity-60`}>
           {saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
           {saving ? "Saving…" : saved ? "Saved" : "Save changes"}
         </button>
