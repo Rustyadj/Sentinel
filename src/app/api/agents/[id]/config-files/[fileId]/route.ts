@@ -11,10 +11,9 @@ import {
 type Params = { params: Promise<{ id: string; fileId: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user || !canViewAgent(user.role)) return unauthorized();
-
   const { id, fileId } = await params;
+  const user = await getControlPlaneUser(id);
+  if (!user || !canViewAgent(user.role)) return unauthorized();
   if (!ALLOWED_AGENT_IDS.has(id)) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
@@ -29,11 +28,10 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
+  const { id, fileId } = await params;
+  const user = await getControlPlaneUser(id);
   if (!user) return unauthorized();
   if (!canEditConfig(user.role)) return forbidden("edit config files");
-
-  const { id, fileId } = await params;
   if (!ALLOWED_AGENT_IDS.has(id)) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
@@ -62,6 +60,7 @@ export async function PUT(req: Request, { params }: Params) {
   return NextResponse.json({
     ok: true,
     backupPath: result.backupPath,
+    diff: result.diff,
     savedAt: new Date().toISOString(),
     savedBy: user.email,
   });

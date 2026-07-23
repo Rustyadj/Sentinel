@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { ALLOWED_AGENT_IDS, getVpsAgent } from "@/lib/agents/registry";
 import { getControlPlaneUser, canRestartAgent, unauthorized, forbidden } from "@/lib/agents/permissions";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { reloadContainer, restartContainer } from "@/lib/agents/processControl";
 
 type Params = { params: Promise<{ id: string }> };
 
 // Reload sends SIGHUP to the container process to reload config without full restart.
 // Falls back to restart if SIGHUP isn't supported.
 export async function POST(_req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
+  const { id } = await params;
+  const user = await getControlPlaneUser(id);
   if (!user) return unauthorized();
   if (!canRestartAgent(user.role)) return forbidden("reload agents");
-
-  const { id } = await params;
   if (!ALLOWED_AGENT_IDS.has(id)) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
@@ -25,7 +21,7 @@ export async function POST(_req: Request, { params }: Params) {
 
   try {
     // Try SIGHUP first (graceful reload)
-    await execAsync(`docker kill --signal=SIGHUP ${id}`, { timeout: 10000 });
+    await reloadContainer(id);
     return NextResponse.json({
       ok: true,
       method: "sighup",
@@ -37,7 +33,7 @@ export async function POST(_req: Request, { params }: Params) {
   } catch {
     // Fall back to restart
     try {
-      await execAsync(`docker restart ${id}`, { timeout: 30000 });
+      await restartContainer(id);
       return NextResponse.json({
         ok: true,
         method: "restart",

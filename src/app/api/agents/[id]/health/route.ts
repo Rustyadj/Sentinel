@@ -5,10 +5,9 @@ import { getControlPlaneUser, canViewAgent, unauthorized } from "@/lib/agents/pe
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user || !canViewAgent(user.role)) return unauthorized();
-
   const { id } = await params;
+  const user = await getControlPlaneUser(id);
+  if (!user || !canViewAgent(user.role)) return unauthorized();
   const agent = getVpsAgent(id);
 
   if (!agent) {

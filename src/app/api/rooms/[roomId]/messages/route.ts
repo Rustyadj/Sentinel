@@ -32,7 +32,6 @@ export async function GET(request: NextRequest, { params }: Params) {
         agentId: true,
         content: true,
         toolCalls: true,
-        reasoning: true,
         createdAt: true,
       },
     });

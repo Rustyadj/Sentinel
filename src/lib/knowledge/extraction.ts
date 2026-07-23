@@ -19,7 +19,9 @@ export async function extractCandidates(params: {
   anthropicKey?: string;
 }): Promise<ExtractionCandidate[]> {
   if (!params.anthropicKey) {
-    return getMockCandidates(params.roomId);
+    return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true"
+      ? getMockCandidates(params.roomId)
+      : [];
   }
 
   try {
@@ -88,7 +90,9 @@ Return JSON array only.`,
   } catch (err) {
     // Graceful fallback — extraction failures should never break chat
     console.error("extractCandidates error:", err);
-    return getMockCandidates(params.roomId);
+    return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true"
+      ? getMockCandidates(params.roomId)
+      : [];
   }
 }
 
@@ -149,16 +153,20 @@ function candidateTypeToObjectType(
 // Accept a candidate — creates KnowledgeObject + KnowledgeEvent
 export async function acceptCandidate(
   candidate: ExtractionCandidate,
-  roomId?: string
+  userId: string,
+  roomId?: string,
+  projectId?: string
 ): Promise<KnowledgeNode> {
   try {
     const node = await createKnowledgeObject({
+      userId,
       type: candidateTypeToObjectType(candidate.candidateType),
       title: candidate.title,
       summary: candidate.summary,
       sourceType: "extraction",
       sourceId: candidate.id,
       scope: (roomId ? "project" : "global") as KnowledgeScope,
+      projectId,
       metadata: {
         confidence: candidate.confidence,
         candidateType: candidate.candidateType,
@@ -169,6 +177,7 @@ export async function acceptCandidate(
     });
 
     await emitEvent({
+      userId,
       type: "candidate_accepted",
       payload: {
         candidateId: candidate.id,
@@ -189,10 +198,12 @@ export async function acceptCandidate(
 
 // Reject a candidate — emits a rejected event (no DB write)
 export async function rejectCandidate(
-  candidate: ExtractionCandidate
+  candidate: ExtractionCandidate,
+  userId: string
 ): Promise<void> {
   try {
     await emitEvent({
+      userId,
       type: "candidate_rejected",
       payload: {
         candidateId: candidate.id,

@@ -41,6 +41,7 @@ function toDecisionRecord(record: {
 }
 
 export async function createDecision(params: {
+  userId: string;
   title: string;
   summary: string;
   rationale?: string;
@@ -66,6 +67,7 @@ export async function createDecision(params: {
         createdBy: params.createdBy,
         status: "proposed",
         projectId: params.projectId ?? null,
+        userId: params.userId,
       },
     });
     return toDecisionRecord(record);
@@ -165,11 +167,12 @@ export async function supersedeDecision(
 }
 
 export async function listDecisions(filter?: {
+  userId: string;
   status?: DecisionStatus;
 }): Promise<DecisionRecord[]> {
   try {
     const records = await db.decision.findMany({
-      where: filter?.status ? { status: filter.status } : undefined,
+      where: { userId: filter?.userId, ...(filter?.status ? { status: filter.status } : {}) },
       orderBy: { createdAt: "desc" },
     });
     return records.map(toDecisionRecord);
@@ -180,9 +183,9 @@ export async function listDecisions(filter?: {
   }
 }
 
-export async function getDecision(id: string): Promise<DecisionRecord | null> {
+export async function getDecision(id: string, userId: string): Promise<DecisionRecord | null> {
   try {
-    const record = await db.decision.findUnique({ where: { id } });
+    const record = await db.decision.findFirst({ where: { id, userId } });
     if (!record) return null;
     return toDecisionRecord(record);
   } catch (err) {

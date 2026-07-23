@@ -1,15 +1,14 @@
-// Knowledge Engine — graph snapshot builder
+// Knowledge Engine — authenticated graph snapshot builder
 
 import { db } from "@/lib/db";
-import { bridgeMemory, bridgeAgent, bridgeChatRoom, toKnowledgeNode } from "./objects";
+import { toKnowledgeNode } from "./objects";
 import type {
-  KnowledgeObjectType,
-  KnowledgeScope,
-  KnowledgeNode,
+  GraphData,
   KnowledgeEdge,
   KnowledgeEdgeType,
-  GraphData,
+  KnowledgeObjectType,
 } from "./types";
+import { getReadableProjectIds } from "./access";
 
 function toKnowledgeEdge(record: {
   id: string;
@@ -29,148 +28,80 @@ function toKnowledgeEdge(record: {
   };
 }
 
-export async function buildGraphData(filter: {
-  projectId?: string;
-  workspaceId?: string;
-  roomId?: string;
-  includeTypes?: KnowledgeObjectType[];
-}): Promise<GraphData> {
+export async function buildGraphData(
+  filter: {
+    projectId?: string;
+    workspaceId?: string;
+    roomId?: string;
+    includeTypes?: KnowledgeObjectType[];
+  },
+  userId: string
+): Promise<GraphData> {
   try {
-    // 1. Fetch KnowledgeObjects
+    const [room, readableProjectIds] = await Promise.all([
+      filter.roomId
+        ? db.chatRoom.findFirst({
+            where: { id: filter.roomId, userId },
+            select: { projectId: true },
+          })
+        : Promise.resolve(null),
+      getReadableProjectIds(userId),
+    ]);
+
+    if (filter.roomId && !room) throw new Error("Room not found");
+
+    const projectId = filter.projectId ?? room?.projectId ?? undefined;
+    if (projectId && !readableProjectIds.includes(projectId)) {
+      throw new Error("Project not found");
+    }
+
+    // KnowledgeObject and KnowledgeEdge are the graph's source of truth.
+    // This read path never invents virtual nodes or relationships.
     const objectRecords = await db.knowledgeObject.findMany({
       where: {
-        ...(filter.projectId !== undefined
-          ? { projectId: filter.projectId }
-          : {}),
-        ...(filter.workspaceId !== undefined
-          ? { workspaceId: filter.workspaceId }
-          : {}),
-        ...(filter.includeTypes && filter.includeTypes.length > 0
+        AND: [
+          {
+            OR: [
+              { userId },
+              ...(readableProjectIds.length > 0
+                ? [{ projectId: { in: readableProjectIds } }]
+                : []),
+            ],
+          },
+          ...(projectId
+            ? [
+                {
+                  projectId,
+                },
+              ]
+            : []),
+        ],
+        ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
+        ...(filter.includeTypes?.length
           ? { type: { in: filter.includeTypes } }
           : {}),
       },
       orderBy: { createdAt: "desc" },
+      take: 250,
     });
 
-    const storedNodes: KnowledgeNode[] = objectRecords.map(toKnowledgeNode);
-    const storedNodeIds = new Set(storedNodes.map((n) => n.id));
-
-    // 2. Fetch edges where either side is in the node set
-    const edgeRecords = await db.knowledgeEdge.findMany({
-      where: {
-        OR: [
-          { fromObjectId: { in: [...storedNodeIds] } },
-          { toObjectId: { in: [...storedNodeIds] } },
-        ],
-      },
-    });
-
-    const edges: KnowledgeEdge[] = edgeRecords.map(toKnowledgeEdge);
-
-    // 3. Bridge virtual nodes from existing records
-    const virtualNodes: KnowledgeNode[] = [];
-
-    // Bridge Memory records
-    const memoryRecords = await db.memory.findMany({
-      where: filter.projectId
-        ? { scope: "project" }
-        : { scope: { in: ["global", "user", "workspace"] } },
-      take: 50,
-      orderBy: { createdAt: "desc" },
-    });
-    for (const m of memoryRecords) {
-      virtualNodes.push(
-        bridgeMemory({
-          id: m.id,
-          content: m.content,
-          type: m.type,
-          scope: m.scope,
-          owner: m.owner,
-          tags: m.tags,
-          createdAt: m.createdAt,
-        })
-      );
-    }
-
-    // Bridge Agent records
-    const agentRecords = await db.agent.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    });
-    for (const a of agentRecords) {
-      virtualNodes.push(
-        bridgeAgent({
-          id: a.id,
-          name: a.name,
-          role: a.role,
-          status: a.status,
-          createdAt: a.createdAt,
-        })
-      );
-    }
-
-    // Bridge ChatRoom — scoped to roomId if provided, otherwise use projectId
-    if (filter.roomId) {
-      const room = await db.chatRoom.findUnique({
-        where: { id: filter.roomId },
-      });
-      if (room) {
-        virtualNodes.push(
-          bridgeChatRoom({
-            id: room.id,
-            name: room.name,
-            projectId: room.projectId,
-            createdAt: room.createdAt,
-          })
-        );
-        // Synthesize agent nodes linked to this room
-        if (room.agentIds && room.agentIds.length > 0) {
-          const roomAgents = await db.agent.findMany({
-            where: { id: { in: room.agentIds } },
+    const nodes = objectRecords.map(toKnowledgeNode);
+    const nodeIds = nodes.map((node) => node.id);
+    const edgeRecords =
+      nodeIds.length === 0
+        ? []
+        : await db.knowledgeEdge.findMany({
+            where: {
+              fromObjectId: { in: nodeIds },
+              toObjectId: { in: nodeIds },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 1000,
           });
-          for (const a of roomAgents) {
-            if (!virtualNodes.find((n) => n.id === `agent:${a.id}`)) {
-              virtualNodes.push(
-                bridgeAgent({
-                  id: a.id,
-                  name: a.name,
-                  role: a.role,
-                  status: a.status,
-                  createdAt: a.createdAt,
-                })
-              );
-            }
-          }
-        }
-      }
-    } else if (filter.projectId) {
-      const rooms = await db.chatRoom.findMany({
-        where: { projectId: filter.projectId },
-        take: 20,
-        orderBy: { createdAt: "desc" },
-      });
-      for (const room of rooms) {
-        virtualNodes.push(
-          bridgeChatRoom({
-            id: room.id,
-            name: room.name,
-            projectId: room.projectId,
-            createdAt: room.createdAt,
-          })
-        );
-      }
-    }
-
-    // Deduplicate nodes (prefer stored over virtual)
-    const nodeMap = new Map<string, KnowledgeNode>();
-    for (const n of storedNodes) nodeMap.set(n.id, n);
-    for (const n of virtualNodes) {
-      if (!nodeMap.has(n.id)) nodeMap.set(n.id, n);
-    }
 
     return {
-      nodes: Array.from(nodeMap.values()),
-      edges,
+      nodes,
+      edges: edgeRecords.map(toKnowledgeEdge),
     };
   } catch (err) {
     throw new Error(

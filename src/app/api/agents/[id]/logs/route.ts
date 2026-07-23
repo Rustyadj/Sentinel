@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { ALLOWED_AGENT_IDS, getVpsAgent } from "@/lib/agents/registry";
 import { getControlPlaneUser, canViewAgent, unauthorized } from "@/lib/agents/permissions";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { readFile } from "fs/promises";
-
-const execAsync = promisify(exec);
+import { getContainerLogs } from "@/lib/agents/processControl";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user || !canViewAgent(user.role)) return unauthorized();
-
   const { id } = await params;
+  const user = await getControlPlaneUser(id);
+  if (!user || !canViewAgent(user.role)) return unauthorized();
   if (!ALLOWED_AGENT_IDS.has(id)) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
@@ -22,16 +18,14 @@ export async function GET(req: Request, { params }: Params) {
   if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
   const url = new URL(req.url);
-  const lines_n = Math.min(parseInt(url.searchParams.get("lines") ?? "100"), 500);
+  const parsedLines = Number.parseInt(url.searchParams.get("lines") ?? "100", 10);
+  const lines_n = Number.isFinite(parsedLines) ? Math.min(Math.max(parsedLines, 1), 500) : 100;
   const source = url.searchParams.get("source") ?? "docker";
 
   // Try docker logs first, fall back to log file
   if (source === "docker" || source === "auto") {
     try {
-      const { stdout, stderr } = await execAsync(
-        `docker logs --tail ${lines_n} ${id} 2>&1`,
-        { timeout: 8000 }
-      );
+      const { stdout, stderr } = await getContainerLogs(id, lines_n);
       const logLines = (stdout + stderr).split("\n").filter(Boolean);
       return NextResponse.json({ lines: logLines, source: `docker:${id}`, agentId: id });
     } catch {

@@ -29,6 +29,10 @@ next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.next-start.*.log
+.pnpm-store/
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # OS
 .DS_Store

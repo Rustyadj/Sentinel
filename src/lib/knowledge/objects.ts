@@ -33,6 +33,7 @@ export function toKnowledgeNode(record: {
 }
 
 export async function createKnowledgeObject(params: {
+  userId: string;
   type: KnowledgeObjectType;
   title: string;
   summary?: string;
@@ -45,8 +46,26 @@ export async function createKnowledgeObject(params: {
   metadata?: Record<string, unknown>;
 }): Promise<KnowledgeNode> {
   try {
-    const record = await db.knowledgeObject.create({
-      data: {
+    const record = await db.knowledgeObject.upsert({
+      where: {
+        sourceType_sourceId_userId: {
+          sourceType: params.sourceType,
+          sourceId: params.sourceId,
+          userId: params.userId,
+        },
+      },
+      update: {
+        type: params.type,
+        title: params.title,
+        summary: params.summary ?? null,
+        scope: params.scope ?? "project",
+        projectId: params.projectId ?? null,
+        workspaceId: params.workspaceId ?? null,
+        organizationId: params.organizationId ?? null,
+        metadata: toInputJson(params.metadata ?? {}),
+      },
+      create: {
+        userId: params.userId,
         type: params.type,
         title: params.title,
         summary: params.summary ?? null,
@@ -68,10 +87,11 @@ export async function createKnowledgeObject(params: {
 }
 
 export async function getKnowledgeObject(
-  id: string
+  id: string,
+  userId: string
 ): Promise<KnowledgeNode | null> {
   try {
-    const record = await db.knowledgeObject.findUnique({ where: { id } });
+    const record = await db.knowledgeObject.findFirst({ where: { id, userId } });
     if (!record) return null;
     return toKnowledgeNode(record);
   } catch (err) {
@@ -82,6 +102,7 @@ export async function getKnowledgeObject(
 }
 
 export async function listKnowledgeObjects(filter: {
+  userId: string;
   scope?: KnowledgeScope;
   type?: KnowledgeObjectType;
   projectId?: string;
@@ -91,6 +112,7 @@ export async function listKnowledgeObjects(filter: {
   try {
     const records = await db.knowledgeObject.findMany({
       where: {
+        userId: filter.userId,
         ...(filter.scope ? { scope: filter.scope } : {}),
         ...(filter.type ? { type: filter.type } : {}),
         ...(filter.projectId !== undefined

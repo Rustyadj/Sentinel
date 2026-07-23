@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { requireUser } from "@/lib/current-user";
 
 const SYSTEM_PROMPT = `You are an expert UI/UX engineer and React developer specializing in Tailwind CSS.
 When the user asks you to build something, respond ONLY with complete, working React component code.
@@ -12,9 +13,11 @@ When the user asks you to build something, respond ONLY with complete, working R
 - Return ONLY the code, no explanation, no markdown fences`;
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser().catch(() => null);
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = (await req.json()) as { prompt: string; context?: string };
-  const apiKey =
-    req.headers.get("x-anthropic-key") ?? process.env.ANTHROPIC_API_KEY;
+  const allowBrowserKeys = process.env.NODE_ENV !== "production" || process.env.ALLOW_BROWSER_PROVIDER_KEYS === "true";
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? (allowBrowserKeys ? req.headers.get("x-anthropic-key") : null);
 
   if (!apiKey) {
     return Response.json({ error: "No Anthropic API key" }, { status: 400 });

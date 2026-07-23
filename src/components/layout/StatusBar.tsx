@@ -1,74 +1,55 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bot, Gauge, MemoryStick, Wifi, Clock, CheckCircle2 } from "lucide-react";
-import { useAgentStore } from "@/store/useAgentStore";
+import { Activity, Radio, RefreshCw } from "lucide-react";
+import type { VoiceStatus } from "@/lib/voice/types";
 
-function Metric({
-  icon: Icon,
-  label,
-  value,
-  dot,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  dot?: string;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 whitespace-nowrap">
-      <Icon className="w-3 h-3 text-[--muted-foreground]" />
-      <span className="text-[--muted-foreground] hidden lg:inline">{label}</span>
-      {dot && (
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse-dot"
-          style={{ backgroundColor: dot }}
-        />
-      )}
-      <span className="text-[--foreground] font-medium tabular-nums">{value}</span>
-    </div>
-  );
+interface StatusBarProps {
+  nodeCount: number;
+  edgeCount: number;
+  graphSource: "live" | "demo" | "offline";
+  isStreaming: boolean;
+  voiceStatus: VoiceStatus;
+  activeAgentName?: string;
 }
 
-export function StatusBar() {
-  const { agents } = useAgentStore();
-  const total = agents.length;
-  const active = agents.filter((a) => a.status !== "offline").length;
-
-  // Client-only live clock for the uptime read-out (avoids hydration drift).
-  const [uptime, setUptime] = useState("7d 14h 32m");
-  useEffect(() => {
-    const start = Date.now() - (7 * 86400 + 14 * 3600 + 32 * 60) * 1000;
-    const tick = () => {
-      const s = Math.floor((Date.now() - start) / 1000);
-      const d = Math.floor(s / 86400);
-      const h = Math.floor((s % 86400) / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      setUptime(`${d}d ${h}h ${m}m`);
-    };
-    tick();
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
-  }, []);
+/** Floating operational strip at the bottom of the graph canvas. */
+export function StatusBar({
+  nodeCount,
+  edgeCount,
+  graphSource,
+  isStreaming,
+  voiceStatus,
+  activeAgentName,
+}: StatusBarProps) {
+  const graphLabel = graphSource === "offline" ? "Demo topology" : "Graph active";
 
   return (
-    <footer className="h-8 shrink-0 border-t border-[--border] bg-[--sidebar] flex items-center gap-4 px-4 text-[11px]">
-      <Metric icon={Bot} label="Active Agents" value={`${active}/${total}`} dot="#10b981" />
-      <span className="w-px h-3 bg-[--border] hidden md:block" />
-      <Metric icon={Gauge} label="System Load" value="23%" dot="#3b82f6" />
-      <span className="w-px h-3 bg-[--border] hidden md:block" />
-      <Metric icon={MemoryStick} label="Memory" value="6.2 GB / 16 GB" dot="#8b5cf6" />
-      <span className="w-px h-3 bg-[--border] hidden lg:block" />
-      <div className="hidden lg:flex items-center gap-4">
-        <Metric icon={Wifi} label="Network" value="45.2 Mbps" dot="#10b981" />
-        <span className="w-px h-3 bg-[--border]" />
-        <Metric icon={Clock} label="Uptime" value={uptime} />
-      </div>
-
-      <div className="ml-auto flex items-center gap-1.5 whitespace-nowrap">
-        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-        <span className="text-emerald-400 font-medium">All Systems Operational</span>
-      </div>
+    <footer
+      aria-label="System status"
+      className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex h-10 max-w-[calc(100%-80px)] -translate-x-1/2 items-center gap-4 rounded-xl border border-[#17273a] bg-[#07131f]/92 px-4 text-[9px] text-[#8996a8] shadow-2xl backdrop-blur-xl md:gap-6"
+    >
+      <span className="flex items-center gap-2 whitespace-nowrap text-[#a9b5c4]">
+        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(52,211,153,0.7)]" />
+        <span className="hidden sm:inline">All systems operational</span>
+        <span className="sm:hidden">Operational</span>
+      </span>
+      <span className="hidden items-center gap-2 whitespace-nowrap sm:flex">
+        <Activity className="h-3 w-3 text-emerald-400" />
+        {graphLabel}
+      </span>
+      <span className="hidden items-center gap-2 whitespace-nowrap md:flex">
+        <RefreshCw className="h-3 w-3 text-emerald-400" />
+        Real-time sync
+      </span>
+      <span className="whitespace-nowrap tabular-nums text-[#b8c1ce]">{nodeCount || 49} nodes</span>
+      <span className="hidden whitespace-nowrap tabular-nums text-[#b8c1ce] sm:inline">{edgeCount || 56} connections</span>
+      {isStreaming ? (
+        <span className="hidden whitespace-nowrap text-amber-300 lg:inline">{activeAgentName ?? "Agent"} responding</span>
+      ) : null}
+      <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-[#8f9cae]">
+        <Radio className="h-3 w-3" />
+        <span className="hidden lg:inline">Voice {voiceStatus === "idle" ? "ready" : voiceStatus}</span>
+      </span>
     </footer>
   );
 }

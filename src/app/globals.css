@@ -25,32 +25,107 @@
   --color-canvas-card-border: var(--canvas-card-border);
 }
 
+/* Sentinel Neural Space */
+.neural-space-canvas {
+  background:
+    radial-gradient(circle at 49% 48%, rgba(17, 55, 101, 0.46), transparent 39%),
+    radial-gradient(circle at 73% 24%, rgba(8, 145, 178, 0.08), transparent 28%),
+    radial-gradient(circle at 30% 66%, rgba(109, 40, 217, 0.1), transparent 31%),
+    #010711;
+}
+
+.neural-space-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 30%, rgba(1, 4, 10, 0.66) 100%),
+    radial-gradient(circle, rgba(168, 220, 255, 0.8) 0 0.65px, transparent 0.9px) 0 0 / 67px 71px,
+    radial-gradient(circle, rgba(99, 102, 241, 0.72) 0 0.55px, transparent 0.85px) 24px 18px / 83px 79px,
+    radial-gradient(circle, rgba(34, 211, 238, 0.56) 0 0.45px, transparent 0.75px) 11px 36px / 101px 97px;
+  opacity: 0.52;
+  animation: sentinel-star-drift 78s linear infinite;
+}
+
+/* Organization editor: a quieter neural field that keeps the hierarchy legible. */
+.org-neural-canvas {
+  background:
+    radial-gradient(circle at 51% 42%, rgba(30, 64, 175, 0.12), transparent 32%),
+    radial-gradient(circle at 76% 68%, rgba(109, 40, 217, 0.08), transparent 28%),
+    #020812;
+}
+
+.org-neural-canvas .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.28));
+}
+
+.org-neural-canvas .react-flow__edge.animated path {
+  stroke: #a78bfa;
+  stroke-dasharray: 5 8;
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.62));
+}
+
+.org-neural-canvas .react-flow__connection-path {
+  stroke: #67e8f9;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 7px rgba(103, 232, 249, 0.6));
+}
+
+.org-neural-canvas .react-flow__node {
+  font-family: inherit;
+}
+
+@keyframes sentinel-star-drift {
+  from { background-position: center, 0 0, 24px 18px, 11px 36px; }
+  to { background-position: center, 67px 71px, -59px 97px, 112px -61px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-space * {
+    scroll-behavior: auto !important;
+  }
+
+  .neural-space-canvas::after {
+    animation: none;
+  }
+
+  .mission-control-page *,
+  .mission-control-page *::before,
+  .mission-control-page *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 :root {
   /* Dark shell tokens (rail, topbar, panels) */
-  --background: #08090b;
-  --foreground: #e8eaed;
-  --card: #101216;
+  --background: #040811;
+  --foreground: #e9edf5;
+  --card: #0b1420;
   --card-foreground: #e8eaed;
-  --border: #1c1f24;
-  --muted: #15181c;
-  --muted-foreground: #6b7280;
-  --accent: #1a1d22;
+  --border: #18263a;
+  --muted: #111b28;
+  --muted-foreground: #77859a;
+  --accent: #18233a;
   --accent-foreground: #e8eaed;
   --primary: #7c6cf6;
   --primary-foreground: #ffffff;
   --destructive: #ef4444;
-  --ring: #7c6cf6;
-  --sidebar: #0b0c0f;
-  --sidebar-border: #17191e;
-  --panel: #0e1014;
+  --ring: #6366f1;
+  --sidebar: #050d17;
+  --sidebar-border: #172438;
+  --panel: #09131f;
 
   /* Canvas tokens (workspace main areas) — dark to match the shell */
-  --canvas: #0a0b0e;
+  --canvas: #010409;
   --canvas-foreground: #e8eaed;
   --canvas-muted: #6b7280;
-  --canvas-card: #101318;
+  --canvas-card: #070c14;
   --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #20242b;
+  --canvas-card-border: #152334;
 }
 
 * {
@@ -66,6 +141,14 @@ body {
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.09), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.055), transparent 22%),
+    linear-gradient(180deg, #050a12 0%, #030710 100%);
 }
 
 ::-webkit-scrollbar {
@@ -84,7 +167,7 @@ body {
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(124, 58, 237, 0.3);
 }
 
 @keyframes pulse-dot {
@@ -100,6 +183,20 @@ body {
 @keyframes slide-in-right {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* Voice waveform bars — animate only while listening/speaking */
+@keyframes wave-bar {
+  0%, 100% { height: 3px; opacity: 0.45; }
+  50% { height: 16px; opacity: 1; }
+}
+
+.animate-wave-bar {
+  animation: wave-bar 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wave-bar { animation: none; height: 6px; }
 }
 
 .animate-pulse-dot {
@@ -163,13 +260,81 @@ body {
   background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 22%);
 }
 
-/* Sentinel Neural Space */
-.neural-space-canvas {
+.sentinel-app-shell {
+  color-scheme: dark;
+  isolation: isolate;
   background:
-    radial-gradient(circle at 50% 44%, rgba(23, 49, 84, 0.54), transparent 44%),
-    radial-gradient(circle at 77% 28%, rgba(8, 145, 178, 0.08), transparent 25%),
-    radial-gradient(circle at 25% 68%, rgba(139, 92, 246, 0.08), transparent 28%),
-    #020711;
+    radial-gradient(circle at 16% 0%, rgba(124, 58, 237, 0.08), transparent 28%),
+    linear-gradient(180deg, #040912 0%, #02060d 100%);
+}
+
+.sentinel-app-shell main {
+  background:
+    radial-gradient(circle at 50% -12%, rgba(64, 79, 132, 0.1), transparent 34%),
+    linear-gradient(180deg, #050a12 0%, #02060d 100%);
+  color: var(--canvas-foreground);
+}
+
+/*
+ * Dark compatibility layer for legacy module surfaces. New work should use the
+ * semantic canvas/card tokens above; these mappings keep every existing module
+ * inside the same Sentinel shell while those screens are migrated incrementally.
+ */
+.sentinel-app-shell main :is(
+  .bg-white:not(.rounded-full),
+  .bg-\[\#f5f6f9\],
+  .bg-\[\#f8f9fb\],
+  .bg-\[\#f8fafc\],
+  .bg-\[\#eceef5\],
+  .bg-\[\#e8eaf0\]
+) {
+  background-color: var(--canvas-card) !important;
+}
+
+.sentinel-app-shell main :is(
+  .border-\[\#e0e3ea\],
+  .border-\[\#f0f2f7\],
+  .border-\[\#e8eaf0\],
+  .border-\[\#c8cdd8\]
+) {
+  border-color: var(--canvas-card-border) !important;
+}
+
+.sentinel-app-shell main .text-\[\#1a1d26\] {
+  color: #e9edf5 !important;
+}
+
+.sentinel-app-shell main .text-\[\#7a8099\] {
+  color: #9ca9ba !important;
+}
+
+.sentinel-app-shell main .text-\[\#aab0c0\] {
+  color: #718096 !important;
+}
+
+.sentinel-app-shell main :is(.text-\[\#5a5f6e\], .text-\[\#3a3f50\]) {
+  color: #8290a4 !important;
+}
+
+.sentinel-app-shell main .hover\:bg-\[\#f5f6f9\]:hover,
+.sentinel-app-shell main .hover\:bg-white:hover {
+  background-color: #111b28 !important;
+}
+
+.sentinel-app-shell main .hover\:text-\[\#1a1d26\]:hover {
+  color: #f8fafc !important;
+}
+
+.mission-control-page {
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 48% -8%, rgba(91, 73, 181, 0.09), transparent 34%),
+    linear-gradient(180deg, #050a12 0%, #02060d 100%);
+}
+
+.mission-control-page section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 420px;
 }
 
 .neural-space-canvas::after {
@@ -177,10 +342,8 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at center, transparent 36%, rgba(1, 4, 10, 0.58) 100%),
-    repeating-radial-gradient(circle at 18% 24%, rgba(186, 230, 253, 0.32) 0 0.6px, transparent 0.8px 44px);
-  opacity: 0.72;
+  background: radial-gradient(circle at center, transparent 42%, rgba(1, 4, 10, 0.68) 100%);
+  opacity: 0.78;
 }
 
 @media (prefers-reduced-motion: reduce) {

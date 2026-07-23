@@ -6,9 +6,12 @@
  */
 import { readFile, writeFile, readdir, mkdir, stat } from "fs/promises";
 import path from "path";
+import { parseDocument } from "yaml";
 
-const AGENT_CONFIG_DIR = process.env.AGENT_CONFIG_DIR ?? "/opt/sentinel-os/agents";
-const ALLOWED_EXTENSIONS = new Set([".md", ".json", ".yaml", ".yml", ".txt"]);
+const AGENT_CONFIG_DIR = process.env.AGENT_CONFIG_DIR ?? (
+  process.platform === "win32" ? "C:\\ProgramData\\Sentinel OS\\agents" : "/opt/sentinel-os/agents"
+);
+const ALLOWED_EXTENSIONS = new Set([".md", ".json", ".yaml", ".yml"]);
 
 export interface ConfigFile {
   id: string;
@@ -30,14 +33,19 @@ export interface ConfigFileContent {
 // ─── Path safety ──────────────────────────────────────────────────────────────
 
 function resolvedConfigDir(): string {
-  return path.resolve(AGENT_CONFIG_DIR);
+  return path.resolve(/*turbopackIgnore: true*/ AGENT_CONFIG_DIR);
+}
+
+function isInside(parent: string, child: string) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function safeAgentDir(agentId: string): string | null {
   // Allowlist: agent id must be alphanumeric + dash only
   if (!/^[a-z0-9-]+$/.test(agentId)) return null;
-  const resolved = path.resolve(AGENT_CONFIG_DIR, agentId);
-  if (!resolved.startsWith(resolvedConfigDir())) return null;
+  const resolved = path.resolve(/*turbopackIgnore: true*/ AGENT_CONFIG_DIR, agentId);
+  if (!isInside(resolvedConfigDir(), resolved)) return null;
   return resolved;
 }
 
@@ -49,8 +57,8 @@ function safeFilePath(agentId: string, fileId: string): string | null {
   const fileName = fileId.replace(/--/g, path.sep);
   const ext = path.extname(fileName).toLowerCase();
   if (!ALLOWED_EXTENSIONS.has(ext)) return null;
-  const resolved = path.resolve(agentDir, fileName);
-  if (!resolved.startsWith(agentDir)) return null;
+  const resolved = path.resolve(/*turbopackIgnore: true*/ agentDir, fileName);
+  if (!isInside(agentDir, resolved)) return null;
   return resolved;
 }
 
@@ -67,11 +75,8 @@ function validateContent(ext: string, content: string): string | null {
     }
   }
   if (ext === ".yaml" || ext === ".yml") {
-    // Basic YAML sanity: no tabs at start of line (common YAML mistake)
-    const tabLines = content.split("\n").filter((l) => /^\t/.test(l));
-    if (tabLines.length > 0) {
-      return "Invalid YAML: tabs used for indentation (use spaces)";
-    }
+    const document = parseDocument(content);
+    if (document.errors.length) return `Invalid YAML: ${document.errors[0].message}`;
   }
   return null;
 }
@@ -155,7 +160,7 @@ export async function writeConfigFile(
   agentId: string,
   fileId: string,
   content: string
-): Promise<{ ok: boolean; backupPath?: string | null; error?: string }> {
+): Promise<{ ok: boolean; backupPath?: string | null; diff?: string[]; error?: string }> {
   const filePath = safeFilePath(agentId, fileId);
   if (!filePath) return { ok: false, error: "Invalid file path" };
 
@@ -166,10 +171,19 @@ export async function writeConfigFile(
   const agentDir = path.dirname(filePath);
   await mkdir(agentDir, { recursive: true });
 
+  const previous = await readFile(filePath, "utf-8").catch(() => "");
+  const before = previous.split("\n");
+  const after = content.split("\n");
+  const diff: string[] = [];
+  for (let index = 0; index < Math.max(before.length, after.length) && diff.length < 200; index += 1) {
+    if (before[index] === after[index]) continue;
+    if (before[index] !== undefined) diff.push(`-${index + 1}: ${before[index]}`);
+    if (after[index] !== undefined) diff.push(`+${index + 1}: ${after[index]}`);
+  }
   const backupPath = await createBackup(filePath);
   await writeFile(filePath, content, "utf-8");
 
-  return { ok: true, backupPath };
+  return { ok: true, backupPath, diff };
 }
 
 export async function listBackups(agentId: string, fileId: string): Promise<string[]> {
@@ -206,7 +220,7 @@ export async function rollbackConfigFile(
 
   const backupDir = path.join(path.dirname(filePath), ".backups");
   const backupPath = path.resolve(backupDir, backupName);
-  if (!backupPath.startsWith(path.resolve(backupDir))) {
+  if (!isInside(path.resolve(backupDir), backupPath)) {
     return { ok: false, error: "Invalid backup path" };
   }
 

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireAgentRecordUser, unauthorized, forbidden } from "@/lib/agents/permissions";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;
+  if (!(await requireAgentRecordUser(id))) return unauthorized();
   const agent = await db.agent.findUnique({ where: { id } });
   if (!agent) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(agent);
@@ -12,6 +14,8 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PUT(req: Request, { params }: Params) {
   const { id } = await params;
+  const user = await requireAgentRecordUser(id, true);
+  if (!user) return forbidden("edit agents");
   const body = await req.json() as Record<string, unknown>;
 
   // Save old system prompt to history before updating
@@ -50,6 +54,8 @@ export async function PUT(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   const { id } = await params;
+  const user = await requireAgentRecordUser(id, true);
+  if (!user) return forbidden("delete agents");
   await db.agent.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

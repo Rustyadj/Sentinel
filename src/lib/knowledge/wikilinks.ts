@@ -14,7 +14,8 @@ export function parseWikiLinks(content: string): string[] {
 export async function resolveBacklinks(
   noteId: string,
   content: string,
-  previousContent = ""
+  previousContent = "",
+  boundary: { userId: string; projectId?: string | null }
 ): Promise<void> {
   const nextTitles = new Set(parseWikiLinks(content));
   const prevTitles = new Set(parseWikiLinks(previousContent));
@@ -24,7 +25,13 @@ export async function resolveBacklinks(
 
   if (addedTitles.length > 0) {
     const targets = await db.obsidianNote.findMany({
-      where: { title: { in: addedTitles }, id: { not: noteId } },
+      where: {
+        title: { in: addedTitles },
+        id: { not: noteId },
+        ...(boundary.projectId
+          ? { projectId: boundary.projectId }
+          : { projectId: null, userId: boundary.userId }),
+      },
       select: { id: true, backlinks: true },
     });
     for (const target of targets) {
@@ -39,7 +46,13 @@ export async function resolveBacklinks(
 
   if (removedTitles.length > 0) {
     const targets = await db.obsidianNote.findMany({
-      where: { title: { in: removedTitles }, id: { not: noteId } },
+      where: {
+        title: { in: removedTitles },
+        id: { not: noteId },
+        ...(boundary.projectId
+          ? { projectId: boundary.projectId }
+          : { projectId: null, userId: boundary.userId }),
+      },
       select: { id: true, backlinks: true },
     });
     for (const target of targets) {
@@ -54,9 +67,17 @@ export async function resolveBacklinks(
 }
 
 // Remove `noteId` from every other note's backlinks (used on delete).
-export async function removeBacklinksTo(noteId: string): Promise<void> {
+export async function removeBacklinksTo(
+  noteId: string,
+  boundary: { userId: string; projectId?: string | null }
+): Promise<void> {
   const referencingNotes = await db.obsidianNote.findMany({
-    where: { backlinks: { has: noteId } },
+    where: {
+      backlinks: { has: noteId },
+      ...(boundary.projectId
+        ? { projectId: boundary.projectId }
+        : { projectId: null, userId: boundary.userId }),
+    },
     select: { id: true, backlinks: true },
   });
   for (const note of referencingNotes) {

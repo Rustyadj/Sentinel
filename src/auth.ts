@@ -63,8 +63,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.sub) session.user.id = token.sub;
       return session;
     },
-    jwt({ token, account }) {
+    async jwt({ token, account, user }) {
       if (account) token.provider = account.provider;
+      if (!token.sub && (user?.email || token.email)) {
+        const email = user?.email ?? token.email;
+        if (email) {
+          const dbUser = await db.user.upsert({
+            where: { email },
+            update: { name: user?.name ?? token.name ?? undefined },
+            create: { email, name: user?.name ?? token.name ?? undefined },
+          });
+          token.sub = dbUser.id;
+        }
+      }
       return token;
     },
   },

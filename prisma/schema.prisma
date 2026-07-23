@@ -1,68 +1,101 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  createdAt DateTime   @default(now())
-  projects  Project[]
-  chatRooms ChatRoom[]
-  auditLogs AuditLog[]
+  id                       String            @id @default(cuid())
+  email                    String            @unique
+  name                     String?
+  passwordHash             String?
+  createdAt                DateTime          @default(now())
+  projects                 Project[]
+  chatRooms                ChatRoom[]
+  ownedWorkspaces          Workspace[]       @relation("WorkspaceOwner")
+  roleAssignments          RoleAssignment[]
+  delegatedRoleAssignments RoleAssignment[]  @relation("RoleAssignmentDelegatedBy")
+  requestedApprovals       ApprovalRequest[] @relation("ApprovalRequesterUser")
+  reviewedApprovals        ApprovalRequest[] @relation("ApprovalReviewer")
+  meetingsCreated          Meeting[]         @relation("MeetingCreator")
+  auditLogs                AuditLog[]
+  knowledgeObjects         KnowledgeObject[]
+  notes                    ObsidianNote[]
+  workflows                Workflow[]
 
   @@map("users")
 }
 
 model Project {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
-  status      String    @default("active")
+  status      String   @default("active")
   userId      String
+  workspaceId String?
+  teamId      String?
   agents      String[]
   tags        String[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatRooms ChatRoom[]
-  workflows Workflow[]
-  notes     ObsidianNote[]
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  team         Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  chatRooms    ChatRoom[]
+  workflows    Workflow[]
+  notes        ObsidianNote[]
   kanbanBoards KanbanBoard[]
+  documents    Document[]
+  tasks        Task[]
+  meetings     Meeting[]
+  approvals    ApprovalRequest[]
+  auditLogs    AuditLog[]
 
+  @@index([workspaceId])
+  @@index([teamId])
   @@map("projects")
 }
 
 model Agent {
-  id              String   @id @default(cuid())
-  name            String
-  role            String
-  avatar          String
-  color           String
-  model           String
-  systemPrompt    String?
-  toolPermissions String[]
-  memoryScope     String   @default("session")
-  status          String   @default("online")
-  createdAt       DateTime @default(now())
+  id                 String            @id @default(cuid())
+  name               String
+  role               String
+  avatar             String
+  color              String
+  model              String
+  systemPrompt       String?
+  description        String            @default("")
+  skills             String[]
+  instructionFiles   Json              @default("{}")
+  promptHistory      Json              @default("[]")
+  toolPermissions    String[]
+  memoryScope        String            @default("session")
+  status             String            @default("online")
+  createdAt          DateTime          @default(now())
+  workspaceId        String?
+  workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  roleAssignments    RoleAssignment[]
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequesterAgent")
+  assignedTasks      Task[]            @relation("TaskAgent")
 
+  @@index([workspaceId])
   @@map("agents")
 }
 
 model ChatRoom {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
   projectId String?
   userId    String?
   agentIds  String[]
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -87,21 +120,21 @@ model Message {
 }
 
 model Memory {
-  id              String                      @id @default(cuid())
+  id              String                       @id @default(cuid())
   type            String
   scope           String
   owner           String
   content         String
   tags            String[]
-  embedding       String?
-  confidence      Float                       @default(1.0)
-  importanceScore Float                       @default(0.5)
+  embedding       Unsupported("vector(1536)")?
+  confidence      Float                        @default(1.0)
+  importanceScore Float                        @default(0.5)
   source          String
-  pinned          Boolean                     @default(false)
-  archived        Boolean                     @default(false)
+  pinned          Boolean                      @default(false)
+  archived        Boolean                      @default(false)
   projectId       String?
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
 
   @@index([projectId])
   @@map("memories")
@@ -127,11 +160,15 @@ model Workflow {
   edges       Json
   status      String   @default("draft")
   projectId   String?
+  userId      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([projectId])
   @@map("workflows")
 }
 
@@ -142,48 +179,346 @@ model ObsidianNote {
   tags      String[]
   backlinks String[]
   projectId String?
+  userId    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([projectId])
   @@map("obsidian_notes")
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  agentId   String
-  action    String
-  details   Json
-  userId    String?
-  createdAt DateTime @default(now())
+  id                String   @id @default(cuid())
+  workspaceId       String?
+  projectId         String?
+  approvalRequestId String?
+  actorType         String   @default("system")
+  agentId           String?
+  action            String
+  entityType        String?
+  entityId          String?
+  details           Json
+  userId            String?
+  createdAt         DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace       Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project         Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+model Workspace {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  description    String?
+  kind           String   @default("general")
+  color          String   @default("#6366F1")
+  icon           String   @default("LayoutGrid")
+  enabled        Boolean  @default(true)
+  ownerId        String
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner           User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  organization    Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  projects        Project[]
+  teams           Team[]
+  roles           Role[]
+  permissions     Permission[]
+  roleAssignments RoleAssignment[]
+  approvals       ApprovalRequest[]
+  meetings        Meeting[]
+  tasks           Task[]
+  documents       Document[]
+  auditLogs       AuditLog[]
+  orgCharts       OrgChart[]
+  agents          Agent[]
+
+  @@index([ownerId])
+  @@index([organizationId])
+  @@map("workspaces")
+}
+
+model Team {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  name           String
+  description    String?
+  memberUserIds  String[]
+  memberAgentIds String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projects        Project[]
+  roleAssignments RoleAssignment[]
+  tasks           Task[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("teams")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  system      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions Permission[]
+  assignments RoleAssignment[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  workspaceId String
+  key         String
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  roles     Role[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+  @@map("permissions")
+}
+
+model RoleAssignment {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  roleId        String
+  userId        String?
+  agentId       String?
+  teamId        String?
+  expiresAt     DateTime?
+  delegatedById String?
+  createdAt     DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  team        Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  delegatedBy User?     @relation("RoleAssignmentDelegatedBy", fields: [delegatedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([roleId])
+  @@index([userId])
+  @@index([agentId])
+  @@index([teamId])
+  @@index([expiresAt])
+  @@map("role_assignments")
+}
+
+model ApprovalRequest {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  projectId        String?
+  title            String
+  description      String?
+  type             String    @default("organization_change")
+  status           String    @default("pending")
+  payload          Json      @default("{}")
+  requesterUserId  String?
+  requesterAgentId String?
+  reviewerUserId   String?
+  decisionNote     String?
+  decidedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project        Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  requesterUser  User?      @relation("ApprovalRequesterUser", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  requesterAgent Agent?     @relation("ApprovalRequesterAgent", fields: [requesterAgentId], references: [id], onDelete: SetNull)
+  reviewer       User?      @relation("ApprovalReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  auditLogs      AuditLog[]
+
+  @@index([workspaceId, status])
+  @@index([projectId])
+  @@map("approval_requests")
+}
+
+model Meeting {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  projectId        String?
+  title            String
+  agenda           String?
+  startsAt         DateTime
+  endsAt           DateTime
+  status           String   @default("scheduled")
+  attendeeUserIds  String[]
+  attendeeAgentIds String[]
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, startsAt])
+  @@index([projectId])
+  @@map("meetings")
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  workspaceId String?
+  projectId   String?
+  teamId      String?
+  title       String
+  description String?
+  status      String    @default("backlog")
+  priority    String    @default("medium")
+  assignee    String?
+  agentId     String?
+  dueDate     DateTime?
+  tags        String[]
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team      Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  agent     Agent?     @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([projectId])
+  @@map("tasks")
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  projectId   String?
+  title       String
+  content     String   @default("")
+  type        String   @default("markdown")
+  tags        String[]
+  pinned      Boolean  @default(false)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("documents")
+}
+
+model OrgChart {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  name        String   @default("Main")
+  nodes       Json
+  edges       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("org_charts")
+}
+
+model InstalledModule {
+  id          String   @id @default(cuid())
+  moduleId    String   @unique
+  enabled     Boolean  @default(true)
+  version     String   @default("1.0.0")
+  manifest    Json     @default("{}")
+  config      Json     @default("{}")
+  installedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("installed_modules")
+}
+
+model CustomModule {
+  id          String   @id @default(cuid())
+  moduleId    String   @unique
+  label       String
+  name        String?
+  description String?
+  icon        String   @default("Package")
+  category    String   @default("custom")
+  href        String?
+  contentType String   @default("markdown")
+  content     String   @default("")
+  enabled     Boolean  @default(true)
+  order       Int      @default(0)
+  config      Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("custom_modules")
 }
 
 model KnowledgeObject {
   id             String   @id @default(cuid())
-  type           String   // Note, Memory, Project, Workspace, Agent, Person, Organization, Task, Decision, Workflow, File, Repository, Module, Artifact, Conversation, Message
+  type           String // Note, Memory, Project, Workspace, Agent, Person, Organization, Task, Decision, Workflow, File, Repository, Module, Artifact, Conversation, Message
   title          String
   summary        String?
-  sourceType     String   // which table this bridges from (e.g. "memory", "agent", "project", "chat_room")
-  sourceId       String   // the id in the source table
+  sourceType     String // which table this bridges from (e.g. "memory", "agent", "project", "chat_room")
+  sourceId       String // the id in the source table
   scope          String   @default("project") // session, project, workspace, organization, user, global
   workspaceId    String?
   projectId      String?
   organizationId String?
+  userId         String?
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  fromEdges KnowledgeEdge[] @relation("EdgeFrom")
-  toEdges   KnowledgeEdge[] @relation("EdgeTo")
+  // --- Temporal Graph (Layer 3) — additive, nullable/defaulted so existing
+  // rows and call sites are unaffected. supersession over deletion.
+  version              Int       @default(1)
+  validFrom            DateTime  @default(now())
+  validTo              DateTime?
+  supersededByObjectId String?
+  changeReason         String?
+  changedBy            String?
+  sourceEventId        String?
 
-  @@index([sourceType, sourceId])
+  fromEdges    KnowledgeEdge[]        @relation("EdgeFrom")
+  toEdges      KnowledgeEdge[]        @relation("EdgeTo")
+  agentWeights AgentKnowledgeWeight[]
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  supersedes   KnowledgeObject?  @relation("ObjectSupersession", fields: [supersededByObjectId], references: [id])
+  supersededBy KnowledgeObject[] @relation("ObjectSupersession")
+
+  @@unique([sourceType, sourceId, userId])
   @@index([scope])
   @@index([projectId])
+  @@index([userId])
+  @@index([validTo])
   @@map("knowledge_objects")
 }
 
@@ -191,10 +526,18 @@ model KnowledgeEdge {
   id           String   @id @default(cuid())
   fromObjectId String
   toObjectId   String
-  type         String   // references, belongs_to, created_by, assigned_to, generated_by, depends_on, remembers, related_to, supersedes
+  type         String // references, belongs_to, created_by, assigned_to, generated_by, depends_on, remembers, related_to, supersedes, supports, contradicts, learned_from, used_by, trusted_by, failed_on, succeeded_on, governs, reports_to
   weight       Float    @default(1.0)
   metadata     Json     @default("{}")
   createdAt    DateTime @default(now())
+
+  // --- Temporal Graph (Layer 3) — additive.
+  version       Int       @default(1)
+  validFrom     DateTime  @default(now())
+  validTo       DateTime?
+  changeReason  String?
+  changedBy     String?
+  sourceEventId String?
 
   fromObject KnowledgeObject @relation("EdgeFrom", fields: [fromObjectId], references: [id], onDelete: Cascade)
   toObject   KnowledgeObject @relation("EdgeTo", fields: [toObjectId], references: [id], onDelete: Cascade)
@@ -202,6 +545,7 @@ model KnowledgeEdge {
   @@unique([fromObjectId, toObjectId, type])
   @@index([fromObjectId, type])
   @@index([toObjectId, type])
+  @@index([validTo])
   @@map("knowledge_edges")
 }
 
@@ -218,26 +562,334 @@ model Decision {
   approvedBy           String?
   supersedesDecisionId String?
   projectId            String?
+  userId               String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+
+  // --- Temporal Graph (Layer 3) — additive.
+  version       Int       @default(1)
+  validFrom     DateTime  @default(now())
+  validTo       DateTime?
+  changeReason  String?
+  changedBy     String?
+  sourceEventId String?
 
   supersedes   Decision?  @relation("DecisionSupersedes", fields: [supersedesDecisionId], references: [id])
   supersededBy Decision[] @relation("DecisionSupersedes")
 
   @@index([projectId])
+  @@index([userId])
   @@map("decisions")
+}
+
+// =====================================================================
+// Sentinel Neural Engine — Phase A additions
+// =====================================================================
+// Organization / Department / Workspace: real tables backing the scope
+// tags already present on KnowledgeObject (workspaceId/organizationId were
+// previously untyped strings with nothing to point at).
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String?
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments Department[]
+  workspaces  Workspace[]
+
+  @@map("neural_organizations")
+}
+
+model Department {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  organizationId     String
+  parentDepartmentId String?
+  leadUserId         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  children     Department[] @relation("DepartmentHierarchy")
+
+  @@index([organizationId])
+  @@map("neural_departments")
+}
+
+// --- Skill / Procedure / Policy ---------------------------------------
+// Deliberately separate tables (not one "reusable behavior" type) per the
+// hard rule against collapsing object types.
+
+model Skill {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  domain         String
+  steps          Json     @default("[]")
+  requiredTools  String[] @default([])
+  constraints    Json     @default("{}")
+  successMetrics Json     @default("{}")
+  evidenceLinks  String[] @default([])
+  version        Int      @default(1)
+  owner          String?
+  status         String   @default("proposed") // proposed, active, deprecated, rolled_back
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([domain])
+  @@index([status])
+  @@map("neural_skills")
+}
+
+model Procedure {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  domain         String
+  steps          Json     @default("[]")
+  requiredTools  String[] @default([])
+  constraints    Json     @default("{}")
+  successMetrics Json     @default("{}")
+  evidenceLinks  String[] @default([])
+  version        Int      @default(1)
+  owner          String?
+  status         String   @default("proposed") // proposed, active, deprecated, rolled_back
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([domain])
+  @@index([status])
+  @@map("neural_procedures")
+}
+
+model Policy {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String
+  description String
+  rules       Json     @default("{}")
+  appliesTo   Json     @default("{}")
+  riskLevel   String   @default("high") // low, medium, high — governs auto-approve eligibility
+  status      String   @default("active") // active, retired
+  owner       String?
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([domain])
+  @@map("neural_policies")
+}
+
+// --- Experience Graph (Layer 2) ----------------------------------------
+// Agents write Experiences. Agents do not directly rewrite canonical
+// knowledge — only approved LearningCandidates do (via learning-service).
+
+model Experience {
+  id                String    @id @default(cuid())
+  agentId           String
+  projectId         String?
+  workspaceId       String?
+  organizationId    String?
+  taskId            String?
+  conversationId    String?
+  objective         String
+  contextSnapshot   Json      @default("{}")
+  actionsTaken      Json      @default("[]")
+  toolsUsed         String[]  @default([])
+  knowledgeUsed     String[]  @default([]) // KnowledgeObject ids consulted
+  outputArtifactIds String[]  @default([])
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  cost              Float?
+  latencyMs         Int?
+  outcomeStatus     String    @default("in_progress") // in_progress, success, partial, failure, cancelled
+  userFeedback      String?
+  evaluatorScore    Float?
+  evaluatorSummary  String?
+  createdAt         DateTime  @default(now())
+
+  outcome            Outcome?
+  evaluations        Evaluation[]
+  learningCandidates LearningCandidate[]
+
+  @@index([agentId])
+  @@index([projectId])
+  @@index([outcomeStatus])
+  @@map("neural_experiences")
+}
+
+model Outcome {
+  id              String   @id @default(cuid())
+  experienceId    String   @unique
+  status          String // success, partial, failure, cancelled
+  metrics         Json     @default("{}")
+  errors          Json     @default("[]")
+  externalSignals Json     @default("{}")
+  userAccepted    Boolean?
+  createdAt       DateTime @default(now())
+
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+
+  @@map("neural_outcomes")
+}
+
+model Evaluation {
+  id               String   @id @default(cuid())
+  experienceId     String
+  evaluatorAgentId String?
+  successScore     Float?
+  qualityScore     Float?
+  efficiencyScore  Float?
+  safetyScore      Float?
+  confidence       Float    @default(0.5)
+  critique         String?
+  evidence         Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  experience         Experience          @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  learningCandidates LearningCandidate[]
+
+  @@index([experienceId])
+  @@map("neural_evaluations")
+}
+
+model LearningCandidate {
+  id              String    @id @default(cuid())
+  experienceId    String?
+  evaluationId    String?
+  type            String // memory, decision, skill, procedure, relationship, confidence_update, contradiction, prompt_change, tool_policy_change
+  proposedPayload Json
+  targetType      String? // knowledge_object, knowledge_edge, skill, procedure, agent_weight
+  appliedTargetId String? // id of the object created/updated once approved
+  riskLevel       String    @default("medium") // low, medium, high
+  evidenceCount   Int       @default(1)
+  confidence      Float     @default(0.5)
+  status          String    @default("proposed") // proposed, approved, rejected, auto_approved, rolled_back
+  reviewedBy      String?
+  rollbackOf      String? // LearningCandidate.id this one rolls back, if any
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+
+  experience Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
+  evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([riskLevel])
+  @@index([type])
+  @@map("neural_learning_candidates")
+}
+
+// --- Agent State Graph (Layer 4) ---------------------------------------
+
+model AgentKnowledgeProfile {
+  id                String   @id @default(cuid())
+  agentId           String   @unique
+  retrievalWeights  Json     @default("{}")
+  preferredSources  String[] @default([])
+  competencyScores  Json     @default("{}")
+  trustThresholds   Json     @default("{}")
+  memoryScopes      String[] @default([])
+  privateGraphScope String   @default("agent")
+  updatedAt         DateTime @updatedAt
+
+  @@map("neural_agent_knowledge_profiles")
+}
+
+model AgentCompetency {
+  id              String    @id @default(cuid())
+  agentId         String
+  domain          String
+  score           Float     @default(0.5)
+  evidenceCount   Int       @default(0)
+  successRate     Float     @default(0)
+  lastEvaluatedAt DateTime?
+
+  @@unique([agentId, domain])
+  @@map("neural_agent_competencies")
+}
+
+model AgentKnowledgeWeight {
+  id                String    @id @default(cuid())
+  agentId           String
+  knowledgeObjectId String
+  relevanceWeight   Float     @default(0.5)
+  trustWeight       Float     @default(0.5)
+  successWeight     Float     @default(0)
+  failureWeight     Float     @default(0)
+  lastUsedAt        DateTime?
+
+  knowledgeObject KnowledgeObject @relation(fields: [knowledgeObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, knowledgeObjectId])
+  @@index([agentId])
+  @@map("neural_agent_knowledge_weights")
+}
+
+// --- Contradiction handling ---------------------------------------------
+
+model Contradiction {
+  id             String    @id @default(cuid())
+  subject        String
+  status         String    @default("open") // open, resolved
+  resolutionNote String?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  claims Claim[]
+
+  @@index([status])
+  @@map("neural_contradictions")
+}
+
+model Claim {
+  id              String   @id @default(cuid())
+  contradictionId String
+  statement       String
+  sourceType      String
+  sourceId        String
+  confidence      Float    @default(0.5)
+  status          String   @default("competing") // competing, accepted, rejected, superseded
+  createdAt       DateTime @default(now())
+
+  contradiction Contradiction @relation(fields: [contradictionId], references: [id], onDelete: Cascade)
+  evidence      Evidence[]
+
+  @@index([contradictionId])
+  @@map("neural_claims")
+}
+
+model Evidence {
+  id         String   @id @default(cuid())
+  claimId    String
+  sourceType String
+  sourceId   String
+  weight     Float    @default(0.5)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId])
+  @@map("neural_evidence")
 }
 
 model Artifact {
   id          String   @id @default(cuid())
-  type        String   // generated_app, generated_website, generated_api, generated_module, generated_prompt, generated_diagram, generated_workflow
+  type        String // generated_app, generated_website, generated_api, generated_module, generated_prompt, generated_diagram, generated_workflow
   title       String
   description String?
-  content     String?  // text content if small enough
-  storageUrl  String?  // external storage reference
+  content     String? // text content if small enough
+  storageUrl  String? // external storage reference
   mimeType    String?
   projectId   String?
-  createdBy   String   // agent id or user id
+  createdBy   String // agent id or user id
   metadata    Json     @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -247,7 +899,7 @@ model Artifact {
 
 model Entity {
   id          String   @id @default(cuid())
-  type        String   // Person, Organization, Product, Concept, Location, Event
+  type        String // Person, Organization, Product, Concept, Location, Event
   name        String
   aliases     String[]
   description String?
@@ -261,12 +913,15 @@ model Entity {
 
 model KnowledgeEvent {
   id          String   @id @default(cuid())
-  type        String   // object_created, object_updated, edge_created, candidate_proposed, candidate_accepted, candidate_rejected
+  type        String // object_created, object_updated, edge_created, candidate_proposed, candidate_accepted, candidate_rejected
   payload     Json
   roomId      String?
   workspaceId String?
   projectId   String?
+  userId      String?
   createdAt   DateTime @default(now())
 
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
   @@map("knowledge_events")
 }

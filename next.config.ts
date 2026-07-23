@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  typescript: { ignoreBuildErrors: true },
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
   images: {
     remotePatterns: [
       {
