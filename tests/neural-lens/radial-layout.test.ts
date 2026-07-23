@@ -73,6 +73,23 @@ describe("fromApiGraph — buildLensGraphFromApi", () => {
     expect(g.links.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("threads workspaceId through onto the LensNode, for the focus/neighborhood-color pipeline", () => {
+    const g = buildLensGraphFromApi({
+      nodes: [
+        { id: "p1", type: "Project", title: "Proj", workspaceId: "ws-1" },
+        { id: "n1", type: "Note", title: "Note 1", workspaceId: "ws-1" },
+        { id: "n2", type: "Note", title: "Note 2", workspaceId: null },
+      ],
+      edges: [
+        { fromObjectId: "p1", toObjectId: "n1" },
+        { fromObjectId: "p1", toObjectId: "n2" },
+      ],
+    });
+    expect(g.nodes.find((n) => n.id === "p1")?.workspaceId).toBe("ws-1");
+    expect(g.nodes.find((n) => n.id === "n1")?.workspaceId).toBe("ws-1");
+    expect(g.nodes.find((n) => n.id === "n2")?.workspaceId).toBeUndefined();
+  });
+
   it("routes nodes with no hub edge into a synthetic orphans hub instead of dropping them", () => {
     const g = buildLensGraphFromApi({
       nodes: [

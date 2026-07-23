@@ -18,6 +18,8 @@ export interface LensNode {
   accent?: boolean;
   /** Live-active (recently touched by a stream event) — pulses. */
   active?: boolean;
+  /** Owning workspace, when known — drives the focus/neighborhood highlight color. */
+  workspaceId?: string;
 }
 
 export interface LensLink {

@@ -20,6 +20,7 @@ export function toKnowledgeNode(record: {
   scope: string;
   metadata: unknown;
   createdAt: Date;
+  workspaceId?: string | null;
 }): KnowledgeNode {
   return {
     id: record.id,
@@ -29,6 +30,7 @@ export function toKnowledgeNode(record: {
     scope: record.scope as KnowledgeScope,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     createdAt: record.createdAt,
+    workspaceId: record.workspaceId ?? undefined,
   };
 }
 

@@ -9,6 +9,7 @@ interface ApiNode {
   id: string;
   type: string;
   title: string;
+  workspaceId?: string | null;
 }
 interface ApiEdge {
   fromObjectId: string;
@@ -90,6 +91,7 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
       val: isHub ? 7 : 2.2,
       accent: !!ACCENT_COLORS[n.type],
       active: false,
+      workspaceId: n.workspaceId ?? undefined,
     };
   });
 

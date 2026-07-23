@@ -4,9 +4,10 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EDGE_BASE,
-  EDGE_HIGHLIGHT,
   LENS_BG,
   PARTICLE_COLOR,
+  groupColor,
+  hexToRgba,
   nodeColor,
   type SemanticZoomLevel,
 } from "./palette";
@@ -63,6 +64,10 @@ export function NeuralLensGraph({
   const fgRef = useRef<any>(null);
   const [dims, setDims] = useState({ width: 0, height: 0 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // A click "focuses" a node: the camera settles nearby and its neighborhood
+  // stays lit until another node/background is clicked — independent of
+  // hover, which only lights the neighborhood while the pointer is over it.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const data = useMemo(() => {
     const nodes: LensNode3D[] = graph.nodes.map((node, index) => {
@@ -137,28 +142,58 @@ export function NeuralLensGraph({
     return () => cancelAnimationFrame(frame);
   }, [data.nodes, paused]);
 
+  // Hover takes priority (it's the more immediate signal); a clicked focus
+  // keeps lighting the same neighborhood once the pointer moves away.
+  const litId = hoveredId ?? focusedId;
+
   const neighborIds = useMemo(() => {
-    if (!hoveredId) return null;
-    const neighbors = new Set<string>([hoveredId]);
+    if (!litId) return null;
+    const neighbors = new Set<string>([litId]);
     for (const link of graph.links) {
-      if (link.source === hoveredId) neighbors.add(link.target);
-      if (link.target === hoveredId) neighbors.add(link.source);
+      if (link.source === litId) neighbors.add(link.target);
+      if (link.target === litId) neighbors.add(link.source);
     }
     return neighbors;
-  }, [graph.links, hoveredId]);
+  }, [graph.links, litId]);
+
+  // The lit neighborhood's color follows the focused node's
+  // workspace (real/SCOPED data) or hub (DEMO data, which has no real
+  // workspaces) — a consistent identity color per workspace rather than a
+  // single fixed highlight tint.
+  const litColor = useMemo(() => {
+    if (!litId) return PARTICLE_COLOR;
+    const node = data.nodes.find((n) => n.id === litId);
+    return groupColor(node?.workspaceId ?? node?.hubId);
+  }, [data.nodes, litId]);
+
+  // Distance the camera settles at after a click — a moderate, consistent
+  // pull-in rather than diving all the way to the node's surface.
+  const FOCUS_DISTANCE = 260;
 
   const handleClick = useCallback(
     (node: object) => {
       const selected = node as LensNode3D;
       onSelect(selected);
-      onZoomLevel?.("detail");
-      const length = Math.hypot(selected.x, selected.y, selected.z) || 1;
-      const ratio = 1 + 105 / length;
+      onZoomLevel?.("neighborhood");
+      setFocusedId(selected.id);
+
+      // "Square up" on the node: keep the camera's current viewing
+      // direction (whatever angle the user was already looking from) and
+      // pull in to a fixed, moderate distance from the node along that same
+      // line — a slight zoom that frames the node face-on, rather than
+      // recomputing an angle from the origin and diving all the way in.
+      const camera = fgRef.current?.camera?.();
+      const current = camera?.position ?? { x: 0, y: 0, z: 1100 };
+      const dx = current.x - selected.x;
+      const dy = current.y - selected.y;
+      const dz = current.z - selected.z;
+      const distance = Math.hypot(dx, dy, dz) || 1;
+      const scale = FOCUS_DISTANCE / distance;
       fgRef.current?.cameraPosition?.(
         {
-          x: selected.x * ratio,
-          y: selected.y * ratio,
-          z: selected.z * ratio + (length < 12 ? 105 : 0),
+          x: selected.x + dx * scale,
+          y: selected.y + dy * scale,
+          z: selected.z + dz * scale,
         },
         { x: selected.x, y: selected.y, z: selected.z },
         850,
@@ -197,6 +232,11 @@ export function NeuralLensGraph({
             const typed = node as LensNode3D;
             if (neighborIds && !neighborIds.has(typed.id)) return "#0a1420";
             if (activeNodeIds.has(typed.id)) return PARTICLE_COLOR;
+            // The lit neighborhood (hover or click-focus) is tinted by its
+            // workspace/hub identity color instead of its usual type color,
+            // so "which neighborhood is lit" and "which workspace it
+            // belongs to" read as the same signal.
+            if (neighborIds && litId) return litId === typed.id ? litColor : hexToRgba(litColor, 0.75);
             return nodeColor(typed.type, !!typed.accent, typed.val >= 6);
           }}
           nodeRelSize={1.45}
@@ -208,7 +248,7 @@ export function NeuralLensGraph({
             const source = endpointId(typed.source);
             const target = endpointId(typed.target);
             return (source && neighborIds.has(source)) || (target && neighborIds.has(target))
-              ? EDGE_HIGHLIGHT
+              ? hexToRgba(litColor, 0.6)
               : EDGE_BASE;
           }}
           linkOpacity={0.23}
@@ -236,7 +276,10 @@ export function NeuralLensGraph({
             typed.baseY = typed.y;
             typed.baseZ = typed.z;
           }}
-          onBackgroundClick={() => onSelect(null)}
+          onBackgroundClick={() => {
+            onSelect(null);
+            setFocusedId(null);
+          }}
         />
       )}
     </div>
