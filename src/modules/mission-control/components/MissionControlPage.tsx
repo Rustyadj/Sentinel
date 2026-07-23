@@ -13,6 +13,7 @@ import { SystemHealth } from "./SystemHealth";
 import { NeuralPreview } from "./NeuralPreview";
 import { QuickActions } from "./QuickActions";
 import { PersistentVoiceOrb } from "./PersistentVoiceOrb";
+import { AdaptiveGovernanceOverview } from "./AdaptiveGovernanceOverview";
 
 interface MissionControlPageProps {
   service?: MissionControlService;
@@ -64,6 +65,7 @@ export function MissionControlPage({ service = missionControlService }: MissionC
           <div className="h-full xl:col-start-1 xl:row-start-4" id="mission-feed"><MissionFeed items={data.feed} sourceState={data.sources.feed} /></div>
           <div className="h-full xl:col-start-2 xl:row-start-3"><NeuralPreview data={data.neural} sourceState={data.sources.neural} /></div>
           <div className="h-full xl:col-start-2 xl:row-start-4"><QuickActions actions={data.quickActions} /></div>
+          <div className="h-full xl:col-span-2"><AdaptiveGovernanceOverview /></div>
         </div>
       </div>
       <PersistentVoiceOrb />
