@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     await requireWorkspacePermission(workspaceId, "workspace.read");
     let chart = await db.orgChart.findFirst({ where: { workspaceId }, orderBy: { createdAt: "asc" } });
     if (!chart) chart = await db.orgChart.create({ data: { workspaceId, name: "Main", nodes: [], edges: [] } });
-    return NextResponse.json(chart);
+    return NextResponse.json({ workspaceId: chart.workspaceId, nodes: chart.nodes, edges: chart.edges, updatedAt: chart.updatedAt });
   } catch (error) { return accessErrorResponse(error); }
 }
 
@@ -29,6 +29,6 @@ export async function PUT(req: Request) {
     const saved = chart
       ? await db.orgChart.update({ where: { id: chart.id }, data: { nodes: body.nodes, edges: body.edges } })
       : await db.orgChart.create({ data: { workspaceId: body.workspaceId, nodes: body.nodes, edges: body.edges } });
-    return NextResponse.json(saved);
+    return NextResponse.json({ workspaceId: saved.workspaceId, nodes: saved.nodes, edges: saved.edges, updatedAt: saved.updatedAt });
   } catch (error) { return accessErrorResponse(error); }
 }

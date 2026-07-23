@@ -16,12 +16,12 @@ async function checkDb(): Promise<{ ok: boolean; latencyMs?: number; error?: str
 }
 
 async function checkRedis(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
-  if (!process.env.REDIS_URL) return { ok: false, error: "REDIS_URL is not configured" };
-  const start = Date.now();
   try {
-    const { redisGet } = await import("@/lib/redis");
-    await redisGet("__ready_check__");
-    return { ok: true, latencyMs: Date.now() - start };
+    const { redisHealth } = await import("@/lib/redis");
+    const result = await redisHealth();
+    return result.ok
+      ? { ok: true, latencyMs: result.latencyMs }
+      : { ok: false, error: result.error ?? "Redis unavailable" };
   } catch (err) {
     logger.error("readiness.redis_failed", { error: err instanceof Error ? err.message : String(err) });
     return { ok: false, error: "Redis unavailable" };

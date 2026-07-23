@@ -45,27 +45,24 @@ export function MissionControlPage({ service = missionControlService }: MissionC
   }
   if (!data) return <MissionControlSkeleton />;
 
-  const empty = data.attention.length === 0 && data.continueItems.length === 0 && data.agents.length === 0 && data.feed.length === 0;
-  if (empty) return <MissionControlEmpty />;
-
   return (
     <div className="mission-control-page min-h-full bg-[--canvas] text-[--canvas-foreground]">
       <div className="mx-auto w-full max-w-[1680px] space-y-4 p-3 sm:p-4 lg:p-5">
-        {data.stale ? (
+        {Object.values(data.sources).some((entry) => entry.state !== "live") ? (
           <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.055] px-3 py-2 text-[10px] text-amber-100/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-            <span><strong className="font-semibold">Partial live data.</strong> Unsupported or unavailable sources are using the typed fallback adapter.</span>
+            <span><strong className="font-semibold">Source status is explicit.</strong> Unavailable and stale sections never substitute demo or fabricated operational values.</span>
             <time className="hidden shrink-0 text-amber-300/65 sm:block" dateTime={data.generatedAt}>Updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
           </div>
         ) : null}
 
         <MissionBrief data={data} />
         <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.88fr)]">
-          <div className="h-full xl:col-start-1 xl:row-start-1 xl:row-span-2"><AttentionQueue items={data.attention} service={service} /></div>
-          <div className="h-full xl:col-start-2 xl:row-start-1"><ContinueWork items={data.continueItems} /></div>
-          <div className="h-full xl:col-start-1 xl:row-start-3"><AgentOperations agents={data.agents} /></div>
-          <div className="h-full xl:col-start-2 xl:row-start-2"><SystemHealth items={data.health} /></div>
-          <div className="h-full xl:col-start-1 xl:row-start-4"><MissionFeed items={data.feed} /></div>
-          <div className="h-full xl:col-start-2 xl:row-start-3"><NeuralPreview data={data.neural} /></div>
+          <div className="h-full xl:col-start-1 xl:row-start-1 xl:row-span-2"><AttentionQueue items={data.attention} service={service} sourceState={data.sources.attention} /></div>
+          <div className="h-full xl:col-start-2 xl:row-start-1"><ContinueWork items={data.continueItems} sourceState={data.sources.continue} /></div>
+          <div className="h-full xl:col-start-1 xl:row-start-3"><AgentOperations agents={data.agents} sourceState={data.sources.agents} /></div>
+          <div className="h-full xl:col-start-2 xl:row-start-2"><SystemHealth items={data.health} sourceState={data.sources.health} /></div>
+          <div className="h-full xl:col-start-1 xl:row-start-4" id="mission-feed"><MissionFeed items={data.feed} sourceState={data.sources.feed} /></div>
+          <div className="h-full xl:col-start-2 xl:row-start-3"><NeuralPreview data={data.neural} sourceState={data.sources.neural} /></div>
           <div className="h-full xl:col-start-2 xl:row-start-4"><QuickActions actions={data.quickActions} /></div>
         </div>
       </div>

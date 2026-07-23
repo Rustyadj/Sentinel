@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, AudioLines, BotMessageSquare, BrainCircuit, Play } from "lucide-react";
 import type { MissionControlData } from "@/lib/mission-control/types";
 import { cn } from "@/lib/utils";
+import { DataStateBadge } from "./MissionPanel";
 
 const toneStyles = {
   critical: "text-red-300",
@@ -24,7 +25,7 @@ export function MissionBrief({ data }: { data: MissionControlData }) {
         <div className="border-b border-white/[0.08] p-5 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex items-center justify-between gap-3">
             <span className="text-[10px] font-semibold tracking-[0.12em] text-violet-300">MISSION BRIEF</span>
-            <span className="text-[10px] text-[#8491a3]">Updated just now</span>
+            <span className="flex items-center gap-2 text-[10px] text-[#8491a3]"><DataStateBadge source={data.sources.summary} />Updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
           <h1 id="mission-brief-title" className="text-[24px] font-semibold tracking-[-0.02em] text-white">
             Good morning, {data.greetingName}

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ContextStrip } from "@/modules/mission-control/components/ContextStrip";
-import { MOCK_MISSION_CONTROL } from "@/lib/mission-control/mock";
 
 type ModuleTab = { id: string; label: string };
 type ModuleConfig = { id: string; label: string; tabs: ModuleTab[]; defaultTab: string };
@@ -132,7 +131,7 @@ const FALLBACK = CONFIGS[0].config;
 
 export function ModuleTabs() {
   const pathname = usePathname();
-  if (pathname === "/") return <ContextStrip levels={MOCK_MISSION_CONTROL.context} />;
+  if (pathname === "/") return <ContextStrip />;
   return <StandardModuleTabs pathname={pathname} />;
 }
 

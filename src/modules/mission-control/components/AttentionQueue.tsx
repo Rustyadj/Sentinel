@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowUpRight, Check, X } from "lucide-react";
 import type {
   AttentionAction,
   AttentionItem,
+  DataSourceState,
   MissionControlService,
 } from "@/lib/mission-control/types";
 import { selectAttentionByPriority } from "@/lib/mission-control/selectors";
 import { cn } from "@/lib/utils";
-import { MissionPanel } from "./MissionPanel";
+import { MissionPanel, UnavailableState } from "./MissionPanel";
 
 const severityStyles = {
   critical: "border-red-400/50 bg-red-500/10 text-red-300",
@@ -21,32 +22,35 @@ const severityStyles = {
 export function AttentionQueue({
   items,
   service,
+  sourceState,
 }: {
   items: AttentionItem[];
   service: MissionControlService;
+  sourceState: DataSourceState;
 }) {
-  const [visible, setVisible] = useState(() =>
-    selectAttentionByPriority(items),
-  );
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(() => new Set());
+  const visible = useMemo(() => selectAttentionByPriority(items.filter((item) => !resolvedIds.has(item.id))), [items, resolvedIds]);
   const [pending, setPending] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
 
   const act = async (item: AttentionItem, action: AttentionAction) => {
     if (action === "open" || action === "review") {
-      setNotice(`${item.title} opened for review.`);
+      window.location.assign(item.href);
       return;
     }
+    setError("");
     setPending(`${item.id}:${action}`);
     try {
-      const result = await service.resolveAttention(item.id, action);
+      const result = await service.resolveAttention(item, action);
       if (result.ok) {
-        setVisible((current) =>
-          current.filter((entry) => entry.id !== item.id),
-        );
+        setResolvedIds((current) => new Set(current).add(item.id));
         setNotice(
           `${item.title} ${action === "approve" ? "approved" : "rejected"}.`,
         );
       }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The decision could not be saved.");
     } finally {
       setPending(null);
     }
@@ -55,6 +59,7 @@ export function AttentionQueue({
   return (
     <MissionPanel
       title="Attention Queue"
+      sourceState={sourceState}
       className="h-full"
       action={
         <span className="rounded bg-violet-500 px-2 py-1 text-[9px] font-semibold text-white">
@@ -66,8 +71,9 @@ export function AttentionQueue({
       <p className="sr-only" aria-live="polite">
         {notice}
       </p>
+      {error ? <p role="alert" className="border-b border-red-400/20 bg-red-500/10 px-4 py-2 text-[10px] text-red-200">{error}</p> : null}
       {visible.length === 0 ? (
-        <div className="flex min-h-44 flex-col items-center justify-center p-8 text-center">
+        sourceState.state === "unavailable" ? <UnavailableState source={sourceState} emptyMessage="No pending decisions." /> : <div className="flex min-h-44 flex-col items-center justify-center p-8 text-center">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/12 text-emerald-300">
             <Check className="h-4 w-4" />
           </span>

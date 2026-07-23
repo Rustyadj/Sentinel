@@ -1,9 +1,17 @@
-export type DataFreshness = "live" | "mixed" | "mock";
+export type DataState = "live" | "stale" | "unavailable" | "demo";
 export type OperationalStatus = "online" | "busy" | "idle" | "offline" | "error";
 export type Severity = "critical" | "high" | "medium" | "low";
 export type AttentionAction = "approve" | "reject" | "open" | "review";
 export type ContinueItemType = "project" | "conversation" | "file" | "workspace";
 export type FeedScope = "all" | "agents" | "projects" | "workspaces" | "system" | "organization";
+export type MissionSection = "summary" | "continue" | "attention" | "agents" | "feed" | "health" | "neural" | "context";
+
+export interface DataSourceState {
+  state: DataState;
+  source: string;
+  observedAt: string | null;
+  reason?: string;
+}
 
 export interface MissionSummaryMetric {
   id: string;
@@ -27,6 +35,9 @@ export interface ContinueItem {
 
 export interface AttentionItem {
   id: string;
+  targetId: string;
+  targetType: "approval" | "learning-candidate" | "task";
+  href: string;
   title: string;
   detail: string;
   category: "approval" | "job" | "decision" | "memory" | "task" | "permission" | "deployment" | "security";
@@ -39,20 +50,16 @@ export interface AttentionItem {
 
 export interface AgentOperation {
   id: string;
-  name: "Hermes Lisa" | "Claude Code" | "Codex" | "OpenClaw";
+  name: string;
   role: string;
   status: OperationalStatus;
   model: string;
-  currentTask: string;
-  context: string;
+  currentTask: string | null;
+  context: string | null;
   progress: number | null;
   voiceState: "listening" | "speaking" | "silent" | "unavailable";
-  health: {
-    cpu: number | null;
-    memory: string;
-    runtime: string;
-  };
-  costToday: number;
+  health: { cpu: number | null; memory: string | null; runtime: string | null };
+  costToday: number | null;
   href: string;
 }
 
@@ -70,17 +77,17 @@ export interface MissionFeedItem {
 export interface HealthItem {
   id: string;
   label: string;
-  status: "healthy" | "degraded" | "down" | "active";
+  status: "healthy" | "degraded" | "down" | "active" | "unavailable";
   value: string;
   detail: string;
   utilization?: number;
 }
 
 export interface NeuralPreviewData {
-  workspace: string;
-  project: string;
-  repository: string;
-  branch: string;
+  workspace: string | null;
+  project: string | null;
+  repository: string | null;
+  branch: string | null;
   activeAgentIds: string[];
   nodes: Array<{ id: string; label: string; kind: "focus" | "agent" | "decision" | "memory" | "task" }>;
   edges: Array<{ from: string; to: string }>;
@@ -105,8 +112,7 @@ export interface MissionControlData {
   greetingName: string;
   operationalSummary: string;
   generatedAt: string;
-  freshness: DataFreshness;
-  stale: boolean;
+  sources: Record<MissionSection, DataSourceState>;
   context: MissionContextLevel[];
   summaryMetrics: MissionSummaryMetric[];
   continueItems: ContinueItem[];
@@ -116,11 +122,9 @@ export interface MissionControlData {
   health: HealthItem[];
   neural: NeuralPreviewData;
   quickActions: QuickAction[];
-  liveSources: string[];
-  mockedSources: string[];
 }
 
 export interface MissionControlService {
   load(signal?: AbortSignal): Promise<MissionControlData>;
-  resolveAttention(id: string, action: AttentionAction): Promise<{ ok: boolean }>;
+  resolveAttention(item: AttentionItem, action: AttentionAction): Promise<{ ok: true }>;
 }

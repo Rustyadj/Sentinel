@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Bell, ChevronDown, Command, Search, Sparkles } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useAppStore } from "@/store/useAppStore";
-import { WORKSPACE_NAV } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import { SentinelLogo } from "@/components/branding/SentinelLogo";
 
 function useClock() {
@@ -24,6 +24,24 @@ export function TopBar() {
   const { data: session } = useSession();
   const now = useClock();
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceState, setWorkspaceState] = useState<"loading" | "live" | "unavailable">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/workspaces", { signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Workspace request returned ${response.status}`);
+        const body = await response.json() as { workspaces?: Array<{ id: string; name: string; color?: string }> };
+        const next = (body.workspaces ?? []).map((workspace) => ({ ...workspace, color: workspace.color ?? "#64748b" }));
+        setWorkspaces(next);
+        setWorkspaceId(next[0]?.id ?? "");
+        setWorkspaceState("live");
+      })
+      .catch(() => { if (!controller.signal.aborted) setWorkspaceState("unavailable"); });
+    return () => controller.abort();
+  }, []);
   const initials = session?.user?.name
     ? session.user.name
         .split(" ")
@@ -38,9 +56,9 @@ export function TopBar() {
       <SentinelLogo className="mr-5" />
       <div className="hidden min-w-[150px] items-center gap-2.5 border-l border-white/[0.055] pl-5 sm:flex">
         <Sparkles className="h-5 w-5 stroke-[1.4] text-[#d4d9e3]" />
-        <span className="text-[13px] font-medium text-[#f0f3f8]">Hermes Lisa</span>
-        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
-        <span className="hidden text-[10px] text-emerald-400 lg:inline">Online</span>
+        <span className="text-[13px] font-medium text-[#f0f3f8]">Sentinel</span>
+        <span className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.5)]" />
+        <span className="hidden text-[10px] text-sky-300 lg:inline">Control plane</span>
       </div>
 
       <button
@@ -66,8 +84,8 @@ export function TopBar() {
             aria-expanded={workspaceOpen}
             className="flex h-9 items-center gap-2 rounded-xl border border-white/[0.055] bg-white/[0.035] px-3 text-[11px] text-[#d5dbe5] hover:border-white/[0.11]"
           >
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            Campaign EMBER
+            <span className={cn("h-2 w-2 rounded-full", workspaceState === "live" ? "bg-emerald-400" : workspaceState === "loading" ? "bg-amber-400" : "bg-slate-400")} />
+            {workspaceState === "loading" ? "Loading workspace" : workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? "No workspace"}
             <ChevronDown className="h-3.5 w-3.5 text-[#6e7a8c]" />
           </button>
           {workspaceOpen ? (
@@ -76,18 +94,19 @@ export function TopBar() {
               aria-label="Workspaces"
               className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0a1420]/98 py-1 shadow-2xl"
             >
-              {WORKSPACE_NAV.map((workspace) => (
-                <li key={workspace.id} role="option" aria-selected={workspace.id === "marketing"}>
+              {workspaces.map((workspace) => (
+                <li key={workspace.id} role="option" aria-selected={workspace.id === workspaceId}>
                   <button
                     type="button"
-                    onClick={() => setWorkspaceOpen(false)}
+                    onClick={() => { setWorkspaceId(workspace.id); setWorkspaceOpen(false); }}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[11px] text-[#c5cedb] hover:bg-white/[0.05]"
                   >
                     <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: workspace.color }} />
-                    {workspace.label}
+                    {workspace.name}
                   </button>
                 </li>
               ))}
+              {workspaces.length === 0 ? <li className="px-3 py-2 text-[10px] text-[#718095]">No accessible workspaces</li> : null}
             </ul>
           ) : null}
         </div>
