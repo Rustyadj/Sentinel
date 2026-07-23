@@ -183,7 +183,7 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
   for (const experience of runningExperiences) {
     if (!runningByAgent.has(experience.agentId)) runningByAgent.set(experience.agentId, experience);
   }
-  const costByAgent = new Map(costAggregates.map((row) => [row.agentId, row._sum.cost ?? 0]));
+  const costByAgent = new Map(costAggregates.map((row) => [row.agentId, row._sum.cost]));
 
   const attention: AttentionItem[] = [
     ...approvals.map((item) => ({

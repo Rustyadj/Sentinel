@@ -92,6 +92,24 @@ describe("buildMissionControlData — tenant scoping under realistic volume", ()
     expect(agentOp?.costToday).toBeCloseTo(experienceCount * costPerExperience, 5);
   });
 
+  it("keeps costToday unavailable when experiences have no recorded cost", async () => {
+    const user = await makeUser();
+    const workspace = await db.workspace.create({
+      data: { slug: uid("ws"), name: "Unknown Cost Workspace", ownerId: user.id },
+    });
+    const agent = await db.agent.create({
+      data: { name: "Unknown Cost Agent", role: "tester", avatar: "🤖", color: "#6366f1", model: "test-model", workspaceId: workspace.id, toolPermissions: [] },
+    });
+    await db.experience.create({
+      data: { agentId: agent.id, workspaceId: workspace.id, objective: "Cost not reported", outcomeStatus: "success", cost: null },
+    });
+
+    const data = await buildMissionControlData({ id: user.id, name: null, email: user.email });
+    const agentOp = data.agents.find((item) => item.id === agent.id);
+
+    expect(agentOp?.costToday).toBeNull();
+  });
+
   it("still finds the currently-running experience for an agent whose 200-cap concurrent-run window is exercised", async () => {
     const user = await makeUser();
     const workspace = await db.workspace.create({
