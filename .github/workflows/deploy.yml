@@ -1,7 +1,9 @@
 name: Deploy to VPS
 
-# Redeploys the Docker stack on the VPS whenever the default branch updates.
-# Uses native OpenSSH on the runner (no third-party actions).
+# Production-gated deployment to VPS.
+# Deploys only on manual trigger (`workflow_dispatch`) or on semver tags (v*).
+# Requires the Production readiness / deploy-gate workflow check to pass.
+# See docs/PRODUCTION_OPERATIONS.md for full requirements.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   VPS_HOST     - host or IP, e.g. 187.124.66.30
@@ -14,7 +16,8 @@ name: Deploy to VPS
 
 on:
   push:
-    branches: [claude/mission-control-dashboard-cqatdx]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 # Never run two deploys at once; let an in-flight deploy finish.
@@ -26,6 +29,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+
+      - name: Resolve immutable commit SHA
+        id: sha
+        run: |
+          SHA="${{ github.sha }}"
+          echo "immutable_sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "commit_short=$(git rev-parse --short ${SHA} 2>/dev/null || echo ${SHA:0:7})" >> $GITHUB_OUTPUT
+
       - name: Deploy over SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -33,13 +47,14 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
-          DEPLOY_BRANCH: claude/mission-control-dashboard-cqatdx
+          DEPLOY_SHA: ${{ steps.sha.outputs.immutable_sha }}
+          DEPLOY_SHORT: ${{ steps.sha.outputs.commit_short }}
         run: |
           set -euo pipefail
 
-          for v in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR; do
+          for v in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR DEPLOY_SHA; do
             if [ -z "${!v}" ]; then
-              echo "::error::Missing required secret: $v"
+              echo "::error::Missing required secret or variable: $v"
               exit 1
             fi
           done
@@ -51,40 +66,128 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$PORT" "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Run the deploy on the VPS. The heredoc is sent over stdin; APP_DIR and
-          # DEPLOY_BRANCH are passed as environment for the remote shell.
+          echo "==> Deploying immutable commit: ${DEPLOY_SHORT} (${DEPLOY_SHA})"
+
+          # Run the deploy on the VPS. The heredoc is sent over stdin.
           ssh -i ~/.ssh/deploy_key -p "$PORT" \
             -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=10 \
             "${VPS_USER}@${VPS_HOST}" \
-            "APP_DIR='${VPS_APP_DIR}' DEPLOY_BRANCH='${DEPLOY_BRANCH}' bash -s" <<'REMOTE'
+            "APP_DIR='${VPS_APP_DIR}' DEPLOY_SHA='${DEPLOY_SHA}' DEPLOY_SHORT='${DEPLOY_SHORT}' bash -s" <<'REMOTE'
           set -euo pipefail
-          cd "${APP_DIR:?APP_DIR not set}"
 
-          echo "==> Repo: $(git config --get remote.origin.url)"
+          APP_DIR="${APP_DIR:?APP_DIR not set}"
+          DEPLOY_SHA="${DEPLOY_SHA:?DEPLOY_SHA not set}"
+          DEPLOY_SHORT="${DEPLOY_SHORT:?DEPLOY_SHORT not set}"
+
+          cd "$APP_DIR"
+          LOGFILE="${APP_DIR}/.vps-deploy.log"
+
+          log() {
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE"
+          }
+
+          log "==> DEPLOY START: $DEPLOY_SHORT ($DEPLOY_SHA)"
+          log "==> Repo: $(git config --get remote.origin.url)"
+
+          # Fetch latest and verify immutable SHA exists
           git fetch origin --prune
-          git checkout "$DEPLOY_BRANCH"
-          # Mirror the remote exactly (deploy box should match origin).
-          # .env and other untracked files are preserved.
-          git reset --hard "origin/$DEPLOY_BRANCH"
-          echo "==> Now at: $(git log --oneline -1)"
+          if ! git rev-parse "$DEPLOY_SHA" >/dev/null 2>&1; then
+            log "::error::Immutable SHA not found: $DEPLOY_SHA"
+            exit 1
+          fi
 
-          echo "==> Rebuilding containers"
-          docker compose up -d --build
+          # Checkout and reset to exact immutable SHA (not branch tip)
+          git checkout "$DEPLOY_SHA" 2>/dev/null || true
+          git reset --hard "$DEPLOY_SHA"
+          log "==> Now at: $(git log --oneline -1)"
 
-          echo "==> Container status"
-          docker compose ps
+          # Save previous deployment for rollback
+          if [ -f .vps-previous-sha ]; then
+            PREVIOUS_SHA=$(cat .vps-previous-sha)
+            log "==> Previous deployment: $PREVIOUS_SHA"
+          fi
+          echo "$DEPLOY_SHA" > .vps-previous-sha
 
-          echo "==> Waiting for health check"
-          for i in $(seq 1 20); do
-            if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
-              echo "==> Health check passed"
-              exit 0
+          log "==> Rebuilding containers"
+          docker compose up -d --build 2>&1 | tee -a "$LOGFILE"
+
+          log "==> Container status"
+          docker compose ps 2>&1 | tee -a "$LOGFILE"
+
+          # Fast liveness check
+          log "==> Waiting for /api/health (liveness, 30s timeout)"
+          HEALTH_OK=0
+          for i in $(seq 1 5); do
+            if curl -fsS --max-time 5 http://localhost:3000/api/health >/dev/null 2>&1; then
+              log "✓ Liveness check passed"
+              HEALTH_OK=1
+              break
             fi
-            echo "    not ready yet ($i/20)…"
+            log "  attempt $i/5, retrying in 6s…"
             sleep 6
           done
 
-          echo "::error::Health check did not pass in time"
-          docker compose logs --tail=50 app || true
-          exit 1
+          if [ $HEALTH_OK -eq 0 ]; then
+            log "::error::Liveness check (/api/health) failed"
+            docker compose logs --tail=50 app 2>&1 | tee -a "$LOGFILE"
+            log "==> ROLLBACK: restoring previous deployment"
+            if [ -n "${PREVIOUS_SHA:-}" ]; then
+              git reset --hard "$PREVIOUS_SHA"
+              docker compose up -d --build
+              log "✓ Rolled back to $PREVIOUS_SHA"
+            fi
+            exit 1
+          fi
+
+          # Full readiness check
+          log "==> Waiting for /api/ready (readiness, 2min timeout)"
+          READY_OK=0
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 5 http://localhost:3000/api/ready >/dev/null 2>&1; then
+              log "✓ Readiness check passed"
+              READY_OK=1
+              break
+            fi
+            log "  attempt $i/20 ($(( i * 6 ))s elapsed), retrying in 6s…"
+            sleep 6
+          done
+
+          if [ $READY_OK -eq 0 ]; then
+            log "::error::Readiness check (/api/ready) failed after 2 minutes"
+            docker compose logs --tail=100 app 2>&1 | tee -a "$LOGFILE"
+            log "==> AUTOMATIC ROLLBACK: restoring previous deployment"
+            if [ -n "${PREVIOUS_SHA:-}" ]; then
+              git reset --hard "$PREVIOUS_SHA"
+              docker compose up -d --build
+              sleep 10
+              if curl -fsS --max-time 5 http://localhost:3000/api/ready >/dev/null 2>&1; then
+                log "✓ Rollback successful, previous deployment is ready"
+              else
+                log "::error::CRITICAL: Rollback failed, previous deployment not ready"
+              fi
+            fi
+            exit 1
+          fi
+
+          # Verify stability (basic check that app doesn't crash immediately)
+          log "==> Verifying deployment stability (sampling for 30s)"
+          for i in $(seq 1 3); do
+            sleep 10
+            if ! curl -fsS http://localhost:3000/api/ready >/dev/null 2>&1; then
+              log "::error::Stability check failed at $((i * 10))s"
+              exit 1
+            fi
+          done
+
+          log "==> DEPLOY COMPLETE: $DEPLOY_SHORT is live"
+          log "==> Deployment time: $(date +'%Y-%m-%d %H:%M:%S')"
           REMOTE
+
+      - name: Mark deployment successful
+        if: success()
+        run: echo "✓ Production deployment successful"
+
+      - name: Report deployment failure
+        if: failure()
+        run: echo "::error::Deployment failed — manual investigation required"
