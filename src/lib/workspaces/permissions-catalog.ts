@@ -28,6 +28,21 @@ export const PERMISSION_CATALOG = [
   { key: "document.read", resource: "document", action: "read", description: "View documents" },
   { key: "document.create", resource: "document", action: "create", description: "Create documents" },
   { key: "document.update", resource: "document", action: "update", description: "Edit documents" },
+  { key: "knowledge.read", resource: "knowledge", action: "read", description: "Read governed knowledge and retrieval traces" },
+  { key: "knowledge.write", resource: "knowledge", action: "write", description: "Submit memory and skill candidates" },
+  { key: "knowledge.approve", resource: "knowledge", action: "approve", description: "Approve and roll back governed knowledge" },
+  { key: "workflow.read", resource: "workflow", action: "read", description: "Read workflow proposals and health" },
+  { key: "workflow.write", resource: "workflow", action: "write", description: "Propose workflow changes" },
+  { key: "workflow.run", resource: "workflow", action: "run", description: "Run approved workflows" },
+  { key: "agent.read", resource: "agent", action: "read", description: "Read agent capabilities and run state" },
+  { key: "agent.delegate", resource: "agent", action: "delegate", description: "Create bounded delegated runs" },
+  { key: "agent.cancel", resource: "agent", action: "cancel", description: "Cancel delegated runs" },
+  { key: "agent.feedback", resource: "agent", action: "feedback", description: "Submit run feedback" },
+  { key: "mcp.manage", resource: "mcp", action: "manage", description: "Provision and revoke MCP clients" },
+  { key: "run.read", resource: "run", action: "read", description: "Read authorized run trajectories" },
+  { key: "note.write", resource: "note", action: "write", description: "Create internal notes" },
+  { key: "message.read", resource: "message", action: "read", description: "Read internal conversation messages" },
+  { key: "message.write", resource: "message", action: "write", description: "Append internal conversation messages" },
 ] as const;
 
 const MEMBER_PERMISSION_KEYS = [
@@ -42,6 +57,15 @@ const MEMBER_PERMISSION_KEYS = [
   "task.update",
   "meeting.read",
   "document.read",
+  "knowledge.read",
+  "knowledge.write",
+  "workflow.read",
+  "workflow.write",
+  "agent.read",
+  "run.read",
+  "note.write",
+  "message.read",
+  "message.write",
 ] as const;
 
 export async function seedWorkspacePermissions(workspaceId: string) {
