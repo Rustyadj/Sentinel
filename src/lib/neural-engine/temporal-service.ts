@@ -55,15 +55,9 @@ export async function supersedeKnowledgeObject(
         workspaceId: current.workspaceId,
         projectId: current.projectId,
         organizationId: current.organizationId,
-        // NOT copying userId: the unique index on (sourceType, sourceId, userId)
-        // only tolerates repeated sourceType/sourceId pairs across supersession
-        // because Postgres treats NULL as distinct in unique constraints. A real
-        // userId here would collide with the original row on this create() and
-        // break supersession for every user-owned object. Fixing that requires a
-        // schema change (e.g. dropping userId from the unique key, or excluding
-        // superseded rows via a partial index) — flagging it rather than
-        // papering over it with a change that trades one bug for a worse one.
-        // See docs/neural-engine/PHASE_A_CONFLICTS.md.
+        userId: current.userId,
+        // Current-row uniqueness is enforced by a partial index, so the full
+        // ownership and provenance chain can be preserved across supersession.
         metadata: toJson(patch.metadata ?? (current.metadata as Record<string, unknown>)),
         version: current.version + 1,
         validFrom: now,

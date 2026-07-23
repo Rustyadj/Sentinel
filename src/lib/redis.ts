@@ -2,7 +2,7 @@ import Redis from "ioredis";
 
 let redis: Redis | null = null;
 
-function getRedis(): Redis | null {
+export function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) return null;
   if (!redis) {
     redis = new Redis(process.env.REDIS_URL, {
@@ -13,6 +13,13 @@ function getRedis(): Redis | null {
     redis.on("error", () => { /* suppress — Redis is optional */ });
   }
   return redis;
+}
+
+export async function requireRedis(): Promise<Redis> {
+  const client = getRedis();
+  if (!client) throw new Error("Working memory unavailable: REDIS_URL is not configured.");
+  if (client.status === "wait") await client.connect();
+  return client;
 }
 
 export async function redisHealth(): Promise<{ configured: boolean; ok: boolean; latencyMs?: number; error?: string }> {

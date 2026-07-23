@@ -46,38 +46,34 @@ export async function createKnowledgeObject(params: {
   metadata?: Record<string, unknown>;
 }): Promise<KnowledgeNode> {
   try {
-    const record = await db.knowledgeObject.upsert({
+    const existing = await db.knowledgeObject.findFirst({
       where: {
-        sourceType_sourceId_userId: {
-          sourceType: params.sourceType,
-          sourceId: params.sourceId,
-          userId: params.userId,
-        },
-      },
-      update: {
-        type: params.type,
-        title: params.title,
-        summary: params.summary ?? null,
-        scope: params.scope ?? "project",
-        projectId: params.projectId ?? null,
-        workspaceId: params.workspaceId ?? null,
-        organizationId: params.organizationId ?? null,
-        metadata: toInputJson(params.metadata ?? {}),
-      },
-      create: {
-        userId: params.userId,
-        type: params.type,
-        title: params.title,
-        summary: params.summary ?? null,
         sourceType: params.sourceType,
         sourceId: params.sourceId,
-        scope: params.scope ?? "project",
-        projectId: params.projectId ?? null,
-        workspaceId: params.workspaceId ?? null,
-        organizationId: params.organizationId ?? null,
-        metadata: toInputJson(params.metadata ?? {}),
+        userId: params.userId,
+        validTo: null,
       },
     });
+    const data = {
+      type: params.type,
+      title: params.title,
+      summary: params.summary ?? null,
+      scope: params.scope ?? "project",
+      projectId: params.projectId ?? null,
+      workspaceId: params.workspaceId ?? null,
+      organizationId: params.organizationId ?? null,
+      metadata: toInputJson(params.metadata ?? {}),
+    };
+    const record = existing
+      ? await db.knowledgeObject.update({ where: { id: existing.id }, data })
+      : await db.knowledgeObject.create({
+          data: {
+            ...data,
+            userId: params.userId,
+            sourceType: params.sourceType,
+            sourceId: params.sourceId,
+          },
+        });
     return toKnowledgeNode(record);
   } catch (err) {
     throw new Error(
