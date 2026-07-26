@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AudioLines, Loader2, Mic, MicOff, X } from "lucide-react";
 import { createVoiceProvider } from "@/lib/voice/providers";
 import type { VoiceProvider, VoiceProviderConfig, VoiceStatus } from "@/lib/voice/types";
-import { sendVoiceTranscript } from "@/lib/chat/voiceBridge";
+import { resolveMissionRoom, sendVoiceTranscript } from "@/lib/chat/voiceBridge";
 import { useKeyStore } from "@/store/useKeyStore";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +70,13 @@ export function PersistentVoiceOrb({ providerFactory = createVoiceProvider, subm
       },
     };
     try {
+      // Only LiveKitVoiceProvider needs roomId (to scope the token to a real
+      // conversation) — resolve it lazily so browser_stt/mock never pay for
+      // an extra round trip they don't use.
+      if (provider.name === "livekit") {
+        const room = await resolveMissionRoom();
+        config.roomId = room.id;
+      }
       await provider.startSession(config);
     } catch (reason) {
       config.onError?.(reason instanceof Error ? reason : new Error("Voice provider failed"));

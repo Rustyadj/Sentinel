@@ -7,6 +7,8 @@ import type { VoiceProvider, VoiceStatus } from "@/lib/voice/types";
 
 interface VoiceControlsProps {
   agentId?: string;
+  /** Required by LiveKitVoiceProvider to scope the voice session's token to a real conversation. */
+  roomId?: string;
   onTranscript: (text: string) => void;
   onStatusChange?: (status: VoiceStatus) => void;
 }
@@ -27,7 +29,7 @@ const STATUS_LABELS: Record<VoiceStatus, string> = {
  * speaking; transcription state shows a spinner. Uses the existing voice
  * provider factory (browser STT / mock).
  */
-export function VoiceControls({ agentId, onTranscript, onStatusChange }: VoiceControlsProps) {
+export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }: VoiceControlsProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +58,7 @@ export function VoiceControls({ agentId, onTranscript, onStatusChange }: VoiceCo
 
     await providerRef.current.startSession({
       agentId,
+      roomId,
       onStatusChange: (s) => {
         setStatus(s);
         onStatusChange?.(s);
@@ -72,7 +75,7 @@ export function VoiceControls({ agentId, onTranscript, onStatusChange }: VoiceCo
         onStatusChange?.("error");
       },
     });
-  }, [isActive, agentId, onStatusChange, onTranscript]);
+  }, [isActive, agentId, roomId, onStatusChange, onTranscript]);
 
   return (
     <div className="flex min-w-0 items-center gap-2" aria-live="polite">

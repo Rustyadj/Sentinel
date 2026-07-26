@@ -123,6 +123,33 @@ function sseError(message: string, status = 400): Response {
   return new Response(response.body, { status, headers: response.headers });
 }
 
+/**
+ * Resolves a LiveKit voice worker's turn from the room alone. The worker is
+ * intentionally stateless — it never receives or decides an agentId,
+ * userId, or workspaceId; it only knows a roomId (parsed back out of the
+ * LiveKit room name it already joined) and forwards raw transcribed text.
+ * Sentinel derives who's speaking and which agent answers from the room
+ * record itself, the same way the browser client's own room already
+ * determines that. This is the ONLY server-to-server entry point into chat
+ * — the worker calls this same route rather than a separate "voice brain,"
+ * so a voice turn gets exactly the same memory, tools, and persistence as a
+ * typed turn. Fails closed: without VOICE_WORKER_SECRET configured, an
+ * exact bearer-token match, and a roomId that resolves to an owned room,
+ * this path is unavailable and the request falls through to normal session
+ * auth (which a bearer-only caller will fail).
+ */
+async function resolveVoiceWorkerTurn(request: NextRequest, roomId: string | undefined) {
+  const workerSecret = process.env.VOICE_WORKER_SECRET;
+  if (!workerSecret || !roomId) return null;
+  if (request.headers.get("authorization") !== `Bearer ${workerSecret}`) return null;
+  const room = await db.chatRoom.findUnique({
+    where: { id: roomId },
+    select: { userId: true, agentIds: true },
+  });
+  if (!room?.userId) return null;
+  return { userId: room.userId, agentId: room.agentIds[0] ?? "hermes-lisa" };
+}
+
 function pickProvider(model: string) {
   if (model.startsWith("claude")) return "anthropic";
   if (model.startsWith("gpt") || model === "o1" || model === "o3") return "openai";
@@ -147,8 +174,8 @@ async function persistMessages(
 export async function POST(request: NextRequest) {
   const requestStartedAtMs = Date.now();
   let body: {
-    messages: Array<{ role: "user" | "assistant"; content: string }>;
-    agentId: string;
+    messages?: Array<{ role: "user" | "assistant"; content: string }>;
+    agentId?: string;
     roomId?: string;
     userContent?: string;
   };
@@ -159,20 +186,35 @@ export async function POST(request: NextRequest) {
     return sseError("Invalid request body");
   }
 
-  const { messages, agentId, roomId, userContent } = body;
-  if (!messages?.length || !agentId) {
-    return sseError("Missing required fields: messages, agentId");
-  }
+  const { roomId, userContent } = body;
+  const voiceTurn = await resolveVoiceWorkerTurn(request, roomId);
 
-  const user = await requireUser().catch(() => null);
-  if (!user) return sseError("Unauthorized", 401);
+  let user: { id: string };
+  let agentId: string;
+  let messages: Array<{ role: "user" | "assistant"; content: string }>;
 
-  if (roomId) {
-    const room = await db.chatRoom.findFirst({
-      where: { id: roomId, userId: user.id },
-      select: { id: true },
-    });
-    if (!room) return sseError("Room not found", 404);
+  if (voiceTurn) {
+    if (!userContent) return sseError("Missing required field: userContent");
+    user = { id: voiceTurn.userId };
+    agentId = voiceTurn.agentId;
+    messages = [{ role: "user", content: userContent }];
+  } else {
+    const sessionUser = await requireUser().catch(() => null);
+    if (!sessionUser) return sseError("Unauthorized", 401);
+    if (!body.messages?.length || !body.agentId) {
+      return sseError("Missing required fields: messages, agentId");
+    }
+    user = sessionUser;
+    agentId = body.agentId;
+    messages = body.messages;
+
+    if (roomId) {
+      const room = await db.chatRoom.findFirst({
+        where: { id: roomId, userId: user.id },
+        select: { id: true },
+      });
+      if (!room) return sseError("Room not found", 404);
+    }
   }
 
   const dbAgent = await db.agent.findUnique({ where: { id: agentId } }).catch(() => null);

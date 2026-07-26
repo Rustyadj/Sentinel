@@ -268,14 +268,17 @@ function MemorySettings() {
   );
 }
 
+type VoiceProviderOption = "browser_stt" | "mock" | "openai_realtime" | "livekit";
+const VOICE_PROVIDER_OPTIONS: VoiceProviderOption[] = ["browser_stt", "mock", "openai_realtime", "livekit"];
+
 function VoiceSettings() {
-  const [provider, setProvider] = useState<"browser_stt" | "mock" | "openai_realtime">(() => {
+  const [provider, setProvider] = useState<VoiceProviderOption>(() => {
     if (typeof window === "undefined") return "browser_stt";
     const stored = window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY);
-    return stored === "mock" || stored === "browser_stt" || stored === "openai_realtime" ? stored : "browser_stt";
+    return (VOICE_PROVIDER_OPTIONS as string[]).includes(stored ?? "") ? (stored as VoiceProviderOption) : "browser_stt";
   });
 
-  const handleChange = (next: "browser_stt" | "mock" | "openai_realtime") => {
+  const handleChange = (next: VoiceProviderOption) => {
     setProvider(next);
     window.localStorage.setItem(VOICE_PROVIDER_STORAGE_KEY, next);
   };
@@ -287,16 +290,17 @@ function VoiceSettings() {
     >
       <FieldRow
         label="Speech provider"
-        description="Browser Speech uses your browser's built-in recognition (no server key needed). Mock is for environments without mic access."
+        description="Browser Speech uses your browser's built-in recognition (no server key needed). Mock is for environments without mic access. LiveKit requires a deployed voice worker — see docs/voice/LIVEKIT_ARCHITECTURE.md."
       >
         <select
           value={provider}
-          onChange={(e) => handleChange(e.target.value as "browser_stt" | "mock" | "openai_realtime")}
+          onChange={(e) => handleChange(e.target.value as VoiceProviderOption)}
           className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"
         >
           <option value="browser_stt">Browser Speech (default)</option>
           <option value="mock">Mock (no mic)</option>
           <option value="openai_realtime">OpenAI Realtime (server setup required)</option>
+          <option value="livekit">LiveKit (WebRTC + Deepgram + Cartesia, worker required)</option>
         </select>
       </FieldRow>
     </SettingsSection>

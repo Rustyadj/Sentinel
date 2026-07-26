@@ -9,7 +9,7 @@ interface ApiRoom {
   agentIds: string[];
 }
 
-async function resolveMissionRoom(): Promise<ApiRoom> {
+export async function resolveMissionRoom(): Promise<ApiRoom> {
   const response = await fetch("/api/rooms", { headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(response.status === 401 ? "Permission denied" : "Chat rooms are unavailable");
   const rooms = await response.json() as ApiRoom[];

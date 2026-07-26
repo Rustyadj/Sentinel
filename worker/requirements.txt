@@ -1,0 +1,6 @@
+livekit-agents~=0.12
+livekit-plugins-silero~=0.7
+livekit-plugins-deepgram~=0.6
+livekit-plugins-cartesia~=0.4
+livekit-plugins-turn-detector~=0.4
+aiohttp~=3.10
