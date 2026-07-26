@@ -46,3 +46,4 @@ prisma/.env
 .idea/
 *.swp
 *.swo
+__pycache__/
