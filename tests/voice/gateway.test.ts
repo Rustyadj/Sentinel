@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { decodeParticipantMetadata, encodeParticipantMetadata, liveKitRoomName } from "@/lib/voice/gateway";
+import {
+  decodeParticipantMetadata,
+  encodeParticipantMetadata,
+  liveKitRoomName,
+  roomIdFromLiveKitRoomName,
+} from "@/lib/voice/gateway";
 
 describe("liveKitRoomName", () => {
   it("derives a deterministic room name from a roomId", () => {
     expect(liveKitRoomName("room-123")).toBe("sentinel-voice-room-123");
+  });
+});
+
+describe("roomIdFromLiveKitRoomName", () => {
+  it("inverts liveKitRoomName", () => {
+    expect(roomIdFromLiveKitRoomName(liveKitRoomName("room-123"))).toBe("room-123");
+  });
+
+  it("returns null for a room name outside Sentinel's namespace", () => {
+    expect(roomIdFromLiveKitRoomName("some-other-room")).toBeNull();
   });
 });
 

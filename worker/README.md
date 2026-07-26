@@ -5,11 +5,22 @@ The LiveKit Agents worker half of SentinelVoiceGateway — see
 for the full architecture. This is a **separately deployed** Python
 service, not part of the Next.js app.
 
-It joins a LiveKit room, runs the voice pipeline (Silero VAD, LiveKit's
-turn-detector, Deepgram Flux STT, Cartesia Sonic 3.5 TTS), and routes every
-transcript through Sentinel's own `/api/chat` for reasoning — never a
-separate LLM plugin — so a voice turn gets exactly the same tools, skills,
-and memory as a typed chat message.
+It joins a LiveKit room and does exactly this: capture mic audio, detect
+turns, speech-to-text, stream text to Sentinel, receive the streamed
+response, text-to-speech, stream audio back. It is **stateless** — it never
+sees or decides an agentId, userId, or workspaceId, and knows nothing about
+workspaces, memories, permissions, MCP, routing, tools, organizations, or
+the knowledge graph. All of that lives in Sentinel itself: the worker only
+knows the LiveKit room it joined, parses the Sentinel `roomId` back out of
+the room name, and sends `{roomId, userContent}` to `/api/chat` — Sentinel
+resolves the acting user and agent from the room record server-side (see
+`resolveVoiceWorkerTurn()` in `src/app/api/chat/route.ts`).
+
+STT/TTS are provider-agnostic by design (`providers.py`): `STT_PROVIDER` /
+`TTS_PROVIDER` env vars pick the implementation at startup (currently
+Deepgram Flux / Cartesia Sonic 3.5 are the only registered options — add a
+branch in `providers.py` to support another vendor without touching
+`agent.py`).
 
 ## Status
 
@@ -39,9 +50,9 @@ pip install pytest
 pytest tests/
 ```
 
-Only `gateway.py` (pure participant-metadata routing) is unit tested here —
-it has no LiveKit/network dependency. `agent.py` and `sentinel_client.py`
-need a running LiveKit room and a reachable Sentinel deployment to exercise
+Only `gateway.py` (pure roomId/room-name parsing) is unit tested here — it
+has no LiveKit/network dependency. `agent.py` and `sentinel_client.py` need
+a running LiveKit room and a reachable Sentinel deployment to exercise
 end-to-end.
 
 ## Docker

@@ -1,7 +1,12 @@
 """Calls Sentinel's own /api/chat endpoint — the same route a typed browser
 message hits. This is the ONLY reasoning path the worker uses: no separate
 "voice brain," so a voice turn gets exactly the same tools, skills, and
-memory as a typed one. Mirrors the SSE parsing in src/lib/chat/voiceBridge.ts.
+memory as a typed one.
+
+The worker sends only {roomId, userContent} — it never supplies an agentId
+or userId. Sentinel resolves both from the room record itself
+(resolveVoiceWorkerTurn() in src/app/api/chat/route.ts), so the worker stays
+stateless and has no say in routing, memory scope, or permissions.
 """
 
 from __future__ import annotations
@@ -19,13 +24,7 @@ class SentinelChatError(RuntimeError):
     pass
 
 
-async def send_turn(
-    *,
-    agent_id: str,
-    room_id: str,
-    user_id: str,
-    text: str,
-) -> str:
+async def send_turn(*, room_id: str, text: str) -> str:
     """Sends one voice turn through Sentinel's /api/chat and returns the
     assistant's full text reply, collected from the SSE stream."""
     base_url = os.environ.get("SENTINEL_API_BASE_URL")
@@ -35,13 +34,7 @@ async def send_turn(
             "SENTINEL_API_BASE_URL and VOICE_WORKER_SECRET must both be set"
         )
 
-    payload = {
-        "messages": [{"role": "user", "content": text}],
-        "agentId": agent_id,
-        "roomId": room_id,
-        "userContent": text,
-        "serviceUserId": user_id,
-    }
+    payload = {"roomId": room_id, "userContent": text}
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {worker_secret}",

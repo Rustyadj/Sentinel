@@ -13,9 +13,11 @@ import { encodeParticipantMetadata, liveKitRoomName } from "@/lib/voice/gateway"
  * if LiveKit isn't configured rather than handing back something that looks
  * like it should work.
  *
- * Participant metadata carries {agentId, roomId, userId} so the LiveKit
- * Agents worker (a separate deployment — see docs/voice/LIVEKIT_ARCHITECTURE.md)
- * can route the turn without either side inventing a second identity model.
+ * Participant metadata carries {agentId, roomId, userId} for observability
+ * (visible in the LiveKit dashboard) only — the worker (a separate
+ * deployment, see docs/voice/LIVEKIT_ARCHITECTURE.md) is stateless and never
+ * reads it. It parses roomId back out of the room name it joined and lets
+ * Sentinel's own /api/chat resolve the acting user and agent server-side.
  */
 export async function POST(req: NextRequest) {
   const url = process.env.LIVEKIT_URL;
