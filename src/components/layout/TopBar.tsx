@@ -42,6 +42,7 @@ export function TopBar() {
       .catch(() => { if (!controller.signal.aborted) setWorkspaceState("unavailable"); });
     return () => controller.abort();
   }, []);
+  const displayName = session?.user?.name ?? session?.user?.email ?? "Account";
   const initials = session?.user?.name
     ? session.user.name
         .split(" ")
@@ -49,7 +50,9 @@ export function TopBar() {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : "RJ";
+    : session?.user?.email
+      ? session.user.email.slice(0, 2).toUpperCase()
+      : "?";
 
   return (
     <header className="relative z-[60] flex h-16 shrink-0 items-center border-b border-[#182338] bg-[#040b14]/98 px-3 shadow-[0_10px_35px_rgba(0,0,0,0.18)] backdrop-blur-xl">
@@ -131,7 +134,7 @@ export function TopBar() {
         <button
           type="button"
           aria-label="Open user menu"
-          title={session?.user?.name ?? "Rusty Johnson"}
+          title={displayName}
           className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.09] bg-[#111c29] text-[9px] font-semibold text-[#dbe5f1] outline-none transition-colors hover:border-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-400/55"
         >
           {initials}
