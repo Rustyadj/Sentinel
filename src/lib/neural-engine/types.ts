@@ -55,6 +55,10 @@ export const AUTO_APPROVABLE_TYPES: ReadonlySet<LearningCandidateType> = new Set
 
 export interface ExperienceInput {
   agentId: string;
+  actingUserId?: string | null;
+  requestId?: string | null;
+  maxRuntimeMs?: number | null;
+  maxCost?: number | null;
   projectId?: string | null;
   workspaceId?: string | null;
   organizationId?: string | null;

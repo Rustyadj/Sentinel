@@ -164,11 +164,32 @@ model Workflow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Adaptive workflow governance. Nullable health fields are populated only
+  // from persisted runs; the UI must render unavailable when they are null.
+  workspaceId        String?
+  organizationId     String?
+  operatorAgentId    String?
+  version            Int       @default(1)
+  approvalStatus     String    @default("draft")
+  lastRunAt          DateTime?
+  lastSuccessfulAt   DateTime?
+  nextRunAt          DateTime?
+  failureCount       Int       @default(0)
+  retryState         String?
+  credentialStatus   String?
+  toolStatus         String?
+  staleOutputAt      DateTime?
+  lastRuntimeMs      Int?
+  lastCost           Float?
+  disabledAt         DateTime?
+  rollbackWorkflowId String?
+
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([projectId])
+  @@index([workspaceId, status])
   @@map("workflows")
 }
 
@@ -514,7 +535,9 @@ model KnowledgeObject {
   supersedes   KnowledgeObject?  @relation("ObjectSupersession", fields: [supersededByObjectId], references: [id])
   supersededBy KnowledgeObject[] @relation("ObjectSupersession")
 
-  @@unique([sourceType, sourceId, userId])
+  // Current-row uniqueness is enforced by a partial expression index in the
+  // migration so historical superseded rows can retain the same provenance.
+  @@index([sourceType, sourceId, userId, validTo])
   @@index([scope])
   @@index([projectId])
   @@index([userId])
@@ -712,11 +735,17 @@ model Experience {
   userFeedback      String?
   evaluatorScore    Float?
   evaluatorSummary  String?
+  requestId         String?
+  actingUserId      String?
+  maxRuntimeMs      Int?
+  maxCost           Float?
+  cancelledAt       DateTime?
   createdAt         DateTime  @default(now())
 
-  outcome            Outcome?
-  evaluations        Evaluation[]
-  learningCandidates LearningCandidate[]
+  outcome              Outcome?
+  evaluations          Evaluation[]
+  learningCandidates   LearningCandidate[]
+  activeMemorySnapshot ActiveMemorySnapshot?
 
   @@index([agentId])
   @@index([projectId])
@@ -924,4 +953,480 @@ model KnowledgeEvent {
   @@index([userId, createdAt])
   @@index([projectId, createdAt])
   @@map("knowledge_events")
+}
+
+// =====================================================================
+// Adaptive Memory and Skill Refinery
+// =====================================================================
+
+/// Universal admission record. This is quarantine/staging, never a second
+/// canonical memory store. Promotion targets KnowledgeObject/Decision/Skill.
+model MemoryCandidate {
+  id                String    @id @default(cuid())
+  organizationId    String?
+  workspaceId       String?
+  projectId         String?
+  userId            String?
+  agentId           String?
+  runId             String?
+  conversationId    String?
+  candidateType     String
+  content           String
+  structuredPayload Json?
+  sourceType        String
+  sourceTrust       Float
+  confidence        Float
+  importance        Float
+  risk              Float
+  provenance        Json
+  expiresAt         DateTime?
+  reviewAt          DateTime?
+  supersedesId      String?
+  contradictsIds    String[]  @default([])
+  proposedBy        String
+  status            String    @default("pending")
+  quarantineReasons String[]  @default([])
+  appliedTargetType String?
+  appliedTargetId   String?
+  reviewedBy        String?
+  reviewNote        String?
+  approvalRequestId String?
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+  rolledBackAt      DateTime?
+
+  @@index([workspaceId, status])
+  @@index([projectId, status])
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@map("adaptive_memory_candidates")
+}
+
+/// Frozen, bounded prompt context used by exactly one run.
+model ActiveMemorySnapshot {
+  id              String   @id @default(cuid())
+  runId           String   @unique
+  userId          String?
+  agentId         String
+  organizationId  String?
+  workspaceId     String?
+  projectId       String?
+  objective       String
+  card            Json
+  renderedText    String
+  estimatedTokens Int
+  maxTokens       Int
+  contentHash     String
+  createdAt       DateTime @default(now())
+
+  run Experience @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("adaptive_active_memory_snapshots")
+}
+
+/// Compact topic/index entries used for progressive disclosure.
+model MemoryIndexEntry {
+  id              String    @id @default(cuid())
+  organizationId  String?
+  workspaceId     String?
+  projectId       String?
+  userId          String?
+  agentId         String?
+  scope           String
+  topic           String
+  summary         String
+  detailObjectIds String[]  @default([])
+  sourceIds       String[]  @default([])
+  tokenEstimate   Int
+  importance      Float     @default(0.5)
+  validFrom       DateTime  @default(now())
+  validTo         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([workspaceId, projectId, topic])
+  @@index([userId, agentId])
+  @@index([validTo])
+  @@map("adaptive_memory_index")
+}
+
+model RetrievalTrace {
+  id                 String    @id @default(cuid())
+  requestId          String
+  runId              String?
+  query              String
+  userId             String?
+  agentId            String?
+  organizationId     String?
+  workspaceId        String?
+  projectId          String?
+  maxTokens          Int
+  selectedTokens     Int       @default(0)
+  status             String    @default("started")
+  scoringVersion     String
+  durationMs         Int?
+  outputInfluenceSet Boolean   @default(false)
+  error              String?
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  items RetrievalTraceItem[]
+
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([runId])
+  @@map("adaptive_retrieval_traces")
+}
+
+model RetrievalTraceItem {
+  id                   String   @id @default(cuid())
+  traceId              String
+  knowledgeObjectId    String?
+  sourceType           String
+  sourceId             String
+  title                String
+  semanticScore        Float
+  keywordScore         Float
+  graphScore           Float
+  scopeScore           Float
+  recencyScore         Float
+  importanceScore      Float
+  confidenceScore      Float
+  sourceTrustScore     Float
+  historicalScore      Float
+  preferenceScore      Float
+  contradictionPenalty Float
+  stalenessPenalty     Float
+  finalScore           Float
+  rank                 Int
+  tokenCost            Int
+  selected             Boolean
+  appearedInPrompt     Boolean  @default(false)
+  influencedOutput     Boolean  @default(false)
+  reason               String
+  createdAt            DateTime @default(now())
+
+  trace RetrievalTrace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+
+  @@index([traceId, rank])
+  @@index([knowledgeObjectId])
+  @@map("adaptive_retrieval_trace_items")
+}
+
+model SourceDocument {
+  id                String    @id @default(cuid())
+  organizationId    String?
+  workspaceId       String?
+  projectId         String?
+  userId            String?
+  importedByAgentId String?
+  sourceSystem      String
+  sourceId          String
+  sourceUri         String?
+  originalAuthor    String?
+  sourceTimestamp   DateTime?
+  retrievedAt       DateTime
+  checksum          String
+  version           Int       @default(1)
+  accessScope       Json
+  sensitivity       String    @default("internal")
+  title             String
+  mimeType          String?
+  canonicalText     String
+  metadata          Json      @default("{}")
+  status            String    @default("validated")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  chunks SourceChunk[]
+
+  @@unique([sourceSystem, sourceId, checksum])
+  @@index([workspaceId, projectId])
+  @@map("adaptive_source_documents")
+}
+
+model SourceChunk {
+  id                String   @id @default(cuid())
+  documentId        String
+  ordinal           Int
+  content           String
+  checksum          String
+  tokenEstimate     Int
+  entityIds         String[] @default([])
+  knowledgeObjectId String?
+  createdAt         DateTime @default(now())
+
+  document SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, ordinal])
+  @@index([checksum])
+  @@map("adaptive_source_chunks")
+}
+
+model SkillCandidate {
+  id                      String    @id @default(cuid())
+  organizationId          String?
+  workspaceId             String?
+  projectId               String?
+  agentId                 String?
+  name                    String
+  description             String
+  purpose                 String
+  triggerConditions       String[]  @default([])
+  prerequisites           String[]  @default([])
+  inputs                  Json      @default("[]")
+  outputs                 Json      @default("[]")
+  steps                   Json
+  toolPermissions         String[]  @default([])
+  approvalRequirements    String[]  @default([])
+  sourceRunIds            String[]  @default([])
+  sourceEvidenceIds       String[]  @default([])
+  expectedSuccessCriteria String[]  @default([])
+  verificationSteps       String[]  @default([])
+  rollbackSteps           String[]  @default([])
+  baselineScore           Float?
+  candidateScore          Float?
+  risk                    Float
+  confidence              Float
+  securityFindings        Json      @default("[]")
+  status                  String    @default("draft")
+  proposedBy              String
+  reviewedBy              String?
+  reviewNote              String?
+  promotedSkillId         String?
+  createdAt               DateTime  @default(now())
+  resolvedAt              DateTime?
+
+  replayResults SkillReplayResult[]
+
+  @@index([workspaceId, status])
+  @@index([projectId, status])
+  @@map("adaptive_skill_candidates")
+}
+
+model SkillVersion {
+  id              String    @id @default(cuid())
+  skillId         String
+  version         Int
+  specification   Json
+  evidenceIds     String[]  @default([])
+  baselineScore   Float?
+  evaluationScore Float?
+  status          String    @default("inactive")
+  activatedAt     DateTime?
+  retiredAt       DateTime?
+  rollbackToId    String?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+
+  @@unique([skillId, version])
+  @@index([skillId, status])
+  @@map("adaptive_skill_versions")
+}
+
+model SkillReplayResult {
+  id           String   @id @default(cuid())
+  candidateId  String
+  fixtureName  String
+  dryRun       Boolean  @default(true)
+  mockedWrites Boolean  @default(true)
+  status       String
+  metrics      Json
+  failures     Json     @default("[]")
+  durationMs   Int?
+  cost         Float?
+  createdAt    DateTime @default(now())
+
+  candidate SkillCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, createdAt])
+  @@map("adaptive_skill_replay_results")
+}
+
+model WorkflowProposal {
+  id                  String    @id @default(cuid())
+  organizationId      String?
+  workspaceId         String?
+  projectId           String?
+  ownerUserId         String
+  operatorAgentId     String?
+  trigger             Json
+  inputs              Json
+  tools               String[]  @default([])
+  requiredCredentials String[]  @default([])
+  readScope           Json
+  writeScope          Json
+  approvalPoints      Json
+  expectedOutput      Json
+  verification        Json
+  costEstimate        Float?
+  runtimeEstimateMs   Int?
+  failureHandling     Json
+  rollback            Json
+  schedule            String?
+  sourceRunIds        String[]  @default([])
+  repetitionCount     Int
+  confidence          Float
+  status              String    @default("proposed")
+  createdAt           DateTime  @default(now())
+  reviewedAt          DateTime?
+
+  @@index([workspaceId, status])
+  @@map("adaptive_workflow_proposals")
+}
+
+model WorkflowRun {
+  id               String    @id @default(cuid())
+  workflowId       String
+  workflowVersion  Int
+  actingUserId     String?
+  operatorAgentId  String?
+  workspaceId      String?
+  projectId        String?
+  status           String    @default("queued")
+  retryState       String?
+  credentialStatus String?
+  toolStatus       String?
+  outputVerifiedAt DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  runtimeMs        Int?
+  cost             Float?
+  error            String?
+  rollbackRunId    String?
+  createdAt        DateTime  @default(now())
+
+  @@index([workflowId, createdAt])
+  @@index([workspaceId, status])
+  @@map("adaptive_workflow_runs")
+}
+
+model DelegatedRun {
+  id                      String    @id @default(cuid())
+  requestId               String    @unique
+  actingUserId            String?
+  mcpClientId             String?
+  organizationId          String?
+  workspaceId             String?
+  projectId               String?
+  agentId                 String
+  objective               String
+  allowedTools            String[]
+  maxRuntimeMs            Int
+  maxCost                 Float
+  writePermissions        String[]
+  approvalPolicy          Json
+  expectedDeliverables    Json
+  successCriteria         String[]
+  status                  String    @default("queued")
+  cancellationRequestedAt DateTime?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  result                  Json?
+  error                   String?
+  createdAt               DateTime  @default(now())
+
+  @@index([workspaceId, status])
+  @@index([agentId, createdAt])
+  @@map("adaptive_delegated_runs")
+}
+
+model McpClient {
+  id                 String    @id @default(cuid())
+  name               String
+  credentialHash     String
+  credentialPrefix   String
+  organizationId     String?
+  workspaceId        String?
+  projectId          String?
+  userId             String?
+  scopes             String[]
+  allowedOrigins     String[]
+  trustLevel         Int       @default(0)
+  rateLimitPerMinute Int       @default(60)
+  maxCostPerRequest  Float?
+  expiresAt          DateTime
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  createdBy          String
+  createdAt          DateTime  @default(now())
+
+  requests McpRequest[]
+
+  @@index([credentialPrefix])
+  @@index([workspaceId, revokedAt])
+  @@map("adaptive_mcp_clients")
+}
+
+model McpRequest {
+  id             String   @id @default(cuid())
+  clientId       String
+  requestId      String
+  idempotencyKey String?
+  method         String
+  toolName       String?
+  workspaceId    String?
+  projectId      String?
+  status         String
+  requestHash    String
+  response       Json?
+  durationMs     Int?
+  cost           Float?
+  error          String?
+  createdAt      DateTime @default(now())
+
+  client McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, requestId])
+  @@unique([clientId, idempotencyKey])
+  @@index([clientId, createdAt])
+  @@map("adaptive_mcp_requests")
+}
+
+/// Metadata-only grant. `secretReference` points at an external encrypted
+/// secret provider; secret values are forbidden from this table.
+model CredentialGrant {
+  id              String    @id @default(cuid())
+  organizationId  String?
+  workspaceId     String?
+  projectId       String?
+  tool            String
+  identityType    String
+  identityId      String
+  secretReference String
+  scopes          String[]
+  status          String    @default("active")
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+
+  @@index([workspaceId, tool, status])
+  @@map("adaptive_credential_grants")
+}
+
+model AdaptiveEvent {
+  id             String   @id @default(cuid())
+  type           String
+  requestId      String?
+  runId          String?
+  userId         String?
+  agentId        String?
+  organizationId String?
+  workspaceId    String?
+  projectId      String?
+  durationMs     Int?
+  tokenUsage     Int?
+  cost           Float?
+  result         String?
+  error          String?
+  approvalId     String?
+  payload        Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([runId])
+  @@map("adaptive_events")
 }

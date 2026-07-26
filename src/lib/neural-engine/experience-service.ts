@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { emitNeuralEvent } from "./event-service";
 import type { ExperienceInput, OutcomeInput } from "./types";
+import { createActiveMemorySnapshot } from "@/lib/adaptive-memory/active-memory";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -23,11 +24,31 @@ export async function startExperience(input: ExperienceInput) {
       taskId: input.taskId ?? null,
       conversationId: input.conversationId ?? null,
       objective: input.objective,
+      actingUserId: input.actingUserId ?? null,
+      requestId: input.requestId ?? null,
+      maxRuntimeMs: input.maxRuntimeMs ?? null,
+      maxCost: input.maxCost ?? null,
       contextSnapshot: toJson(input.contextSnapshot ?? {}),
       toolsUsed: input.toolsUsed ?? [],
       knowledgeUsed: input.knowledgeUsed ?? [],
     },
   });
+
+  if (input.actingUserId) {
+    try {
+      await createActiveMemorySnapshot({
+        runId: experience.id, userId: input.actingUserId, agentId: input.agentId,
+        objective: input.objective, organizationId: input.organizationId ?? undefined,
+        workspaceId: input.workspaceId ?? undefined, projectId: input.projectId ?? undefined,
+      });
+    } catch (error) {
+      await db.experience.update({ where: { id: experience.id }, data: {
+        outcomeStatus: "cancelled", cancelledAt: new Date(),
+        evaluatorSummary: `Run start failed before execution: ${error instanceof Error ? error.message : String(error)}`,
+      }});
+      throw error;
+    }
+  }
 
   await emitNeuralEvent({
     type: "experience.started",
@@ -111,14 +132,14 @@ export async function completeExperience(params: CompleteExperienceParams) {
 export async function getExperience(experienceId: string) {
   return db.experience.findUnique({
     where: { id: experienceId },
-    include: { outcome: true, evaluations: true, learningCandidates: true },
+    include: { outcome: true, evaluations: true, learningCandidates: true, activeMemorySnapshot: true },
   });
 }
 
 /** List experiences for one agent, most recent first — the seed of "agent brain: experiences". */
-export async function listAgentExperiences(agentId: string, limit = 50) {
+export async function listAgentExperiences(agentId: string, limit = 50, actingUserId?: string) {
   return db.experience.findMany({
-    where: { agentId },
+    where: { agentId, ...(actingUserId ? { actingUserId } : {}) },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: { outcome: true },

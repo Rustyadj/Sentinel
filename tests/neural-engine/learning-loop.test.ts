@@ -106,8 +106,8 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
     expect(rejected.status).toBe("rejected");
     expect(rejected.appliedTargetId).toBeNull();
 
-    const shouldNotExist = await db.memory.findFirst({
-      where: { content: "This should never be written" },
+    const shouldNotExist = await db.knowledgeObject.findFirst({
+      where: { summary: "This should never be written", validTo: null },
     });
     expect(shouldNotExist).toBeNull();
 
@@ -126,9 +126,10 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
     expect(approved.status).toBe("approved");
     expect(approved.appliedTargetId).not.toBeNull();
 
-    const written = await db.memory.findUnique({ where: { id: approved.appliedTargetId! } });
-    expect(written?.content).toBe("This should be written on approval");
-    expect(written?.source).toContain("learning-candidate");
+    const written = await db.knowledgeObject.findUnique({ where: { id: approved.appliedTargetId! } });
+    expect(written?.summary).toBe("This should be written on approval");
+    expect(written?.sourceType).toBe("memory_candidate");
+    expect(written?.changeReason).toContain("learning-candidate");
   });
 
   it("cannot review the same candidate twice", async () => {

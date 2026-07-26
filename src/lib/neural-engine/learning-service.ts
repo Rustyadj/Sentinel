@@ -15,6 +15,7 @@ import { emitNeuralEvent } from "./event-service";
 import { adjustKnowledgeWeight } from "./agent-profile-service";
 import { recordContradiction } from "./contradiction-service";
 import type { ProposedLearningCandidateInput } from "./types";
+import { scanUntrustedContent } from "@/lib/adaptive-memory/security";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -191,20 +192,43 @@ export async function applyLearningCandidate(candidateId: string) {
     }
 
     case "memory": {
-      const memory = await db.memory.create({
+      const content = payload.content as string;
+      const findings = scanUntrustedContent(content);
+      const admission = await db.memoryCandidate.create({
         data: {
-          type: (payload.memoryType as string) ?? "pattern",
-          scope: (payload.scope as string) ?? "project",
-          owner: (payload.owner as string) ?? "neural-engine",
-          content: payload.content as string,
-          tags: (payload.tags as string[]) ?? [],
-          confidence: candidate.confidence,
-          importanceScore: (payload.importanceScore as number) ?? 0.5,
-          source: `neural-engine:learning-candidate:${candidate.id}`,
+          workspaceId: (payload.workspaceId as string) ?? null,
           projectId: (payload.projectId as string) ?? null,
+          userId: (payload.userId as string) ?? null,
+          agentId: (payload.agentId as string) ?? null,
+          runId: candidate.experienceId,
+          candidateType: "lesson",
+          content,
+          structuredPayload: toJson({ tags: payload.tags ?? [], memoryType: payload.memoryType ?? "pattern" }),
+          sourceType: "agent_inference",
+          sourceTrust: 0.6,
+          confidence: candidate.confidence,
+          importance: (payload.importanceScore as number) ?? 0.5,
+          risk: candidate.riskLevel === "high" ? 0.9 : candidate.riskLevel === "medium" ? 0.5 : 0.2,
+          provenance: toJson({ sourceIds: [candidate.id], evidenceIds: [candidate.evaluationId, candidate.experienceId].filter(Boolean), capturedAt: new Date().toISOString() }),
+          proposedBy: (payload.agentId as string) ?? "neural-engine",
+          status: findings.length ? "quarantined" : "approved",
+          quarantineReasons: findings.map((finding) => finding.code),
+          reviewedBy: candidate.reviewedBy,
+          resolvedAt: findings.length ? null : new Date(),
         },
       });
-      appliedTargetId = memory.id;
+      if (findings.length) throw new Error(`Memory candidate quarantined: ${findings.map((finding) => finding.code).join(", ")}`);
+      const object = await db.knowledgeObject.create({ data: {
+        type: "Memory", title: content.slice(0, 120), summary: content,
+        sourceType: "memory_candidate", sourceId: admission.id,
+        scope: payload.projectId ? "project" : payload.workspaceId ? "workspace" : payload.userId ? "user" : "agent",
+        workspaceId: (payload.workspaceId as string) ?? null, projectId: (payload.projectId as string) ?? null,
+        userId: (payload.userId as string) ?? null,
+        metadata: toJson({ candidateId: admission.id, provenance: admission.provenance, confidence: candidate.confidence, agentId: payload.agentId ?? null }),
+        changeReason: `learning-candidate:${candidate.id}`, changedBy: candidate.reviewedBy,
+      }});
+      await db.memoryCandidate.update({ where: { id: admission.id }, data: { appliedTargetType: "knowledge_object", appliedTargetId: object.id } });
+      appliedTargetId = object.id;
       break;
     }
 
@@ -383,9 +407,9 @@ export async function rollbackCandidate(candidateId: string, actorId: string) {
     }
     case "memory": {
       if (candidate.appliedTargetId) {
-        await db.memory.update({
+        await db.knowledgeObject.update({
           where: { id: candidate.appliedTargetId },
-          data: { archived: true },
+          data: { validTo: new Date(), changeReason: `rollback:${candidateId}`, changedBy: actorId },
         });
       }
       break;
