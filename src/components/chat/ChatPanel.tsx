@@ -328,6 +328,7 @@ export function ChatPanel({
 
           <VoiceControls
             agentId={lead?.id}
+            roomId={activeRoomId ?? undefined}
             onTranscript={setInput}
             onStatusChange={onVoiceStatusChange}
           />

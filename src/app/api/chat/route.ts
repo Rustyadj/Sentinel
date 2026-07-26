@@ -123,6 +123,28 @@ function sseError(message: string, status = 400): Response {
   return new Response(response.body, { status, headers: response.headers });
 }
 
+/**
+ * Resolves the acting user either from the normal browser session, or — for
+ * the LiveKit voice worker, which has no browser session to present — from
+ * a shared service secret plus an explicit serviceUserId. This is the ONLY
+ * server-to-server entry point into chat: the worker calls this same route
+ * rather than a separate "voice brain," so a voice turn gets exactly the
+ * same memory, tools, and persistence as a typed turn. Fails closed:
+ * without VOICE_WORKER_SECRET configured, or without an exact bearer-token
+ * match, this path is simply unavailable and falls through to the normal
+ * session check.
+ */
+async function resolveUser(request: NextRequest, serviceUserId?: string) {
+  const workerSecret = process.env.VOICE_WORKER_SECRET;
+  if (workerSecret && serviceUserId) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader === `Bearer ${workerSecret}`) {
+      return db.user.findUnique({ where: { id: serviceUserId }, select: { id: true } });
+    }
+  }
+  return requireUser().catch(() => null);
+}
+
 function pickProvider(model: string) {
   if (model.startsWith("claude")) return "anthropic";
   if (model.startsWith("gpt") || model === "o1" || model === "o3") return "openai";
@@ -151,6 +173,8 @@ export async function POST(request: NextRequest) {
     agentId: string;
     roomId?: string;
     userContent?: string;
+    /** LiveKit voice worker only — see resolveUser(). Ignored without a matching VOICE_WORKER_SECRET. */
+    serviceUserId?: string;
   };
 
   try {
@@ -159,12 +183,12 @@ export async function POST(request: NextRequest) {
     return sseError("Invalid request body");
   }
 
-  const { messages, agentId, roomId, userContent } = body;
+  const { messages, agentId, roomId, userContent, serviceUserId } = body;
   if (!messages?.length || !agentId) {
     return sseError("Missing required fields: messages, agentId");
   }
 
-  const user = await requireUser().catch(() => null);
+  const user = await resolveUser(request, serviceUserId);
   if (!user) return sseError("Unauthorized", 401);
 
   if (roomId) {

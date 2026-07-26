@@ -76,6 +76,10 @@ services:
       ALLOW_BROWSER_PROVIDER_KEYS: "false"
       HERMES_CLINT_MODEL: ${HERMES_CLINT_MODEL:-claude-sonnet-4-6}
       OPENCLAW_MODEL: ${OPENCLAW_MODEL:-claude-opus-4-8}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      VOICE_WORKER_SECRET: ${VOICE_WORKER_SECRET:-}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
     volumes:
@@ -99,6 +103,30 @@ services:
       redis:
         condition: service_healthy
     # Traefik routing is managed via /etc/traefik/dynamic/sentinel.yml on the host
+
+  # SentinelVoiceGateway worker — LiveKit Agents (Silero VAD + turn detector +
+  # Deepgram Flux STT + Cartesia Sonic 3.5 TTS), routed through this app's own
+  # /api/chat. Behind a profile since it needs LiveKit/Deepgram/Cartesia
+  # credentials most deployments won't have configured:
+  #   docker compose --profile voice up
+  voice-worker:
+    profiles: ["voice"]
+    build:
+      context: ./worker
+    restart: unless-stopped
+    environment:
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
+      SENTINEL_API_BASE_URL: ${SENTINEL_API_BASE_URL:-http://app:3000/api/chat}
+      VOICE_WORKER_SECRET: ${VOICE_WORKER_SECRET:-}
+    networks:
+      - sentinel_net
+    depends_on:
+      app:
+        condition: service_healthy
 
 networks:
   sentinel_net:

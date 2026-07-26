@@ -1,0 +1,16 @@
+[project]
+name = "sentinel-voice-worker"
+version = "0.1.0"
+description = "LiveKit Agents worker: Silero VAD + turn detection + Deepgram Flux STT + Cartesia Sonic 3.5 TTS, routed through Sentinel's /api/chat."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents~=0.12",
+    "livekit-plugins-silero~=0.7",
+    "livekit-plugins-deepgram~=0.6",
+    "livekit-plugins-cartesia~=0.4",
+    "livekit-plugins-turn-detector~=0.4",
+    "aiohttp~=3.10",
+]
+
+[tool.setuptools]
+packages = ["sentinel_voice_worker"]
