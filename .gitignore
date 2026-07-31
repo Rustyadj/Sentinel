@@ -45,3 +45,4 @@ prisma/.env
 *.swo
 .claude/
 .superpowers/
+docker-compose.override.yml

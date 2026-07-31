@@ -19,6 +19,7 @@ import {
   Cpu,
   Pin,
   PinOff,
+  Clapperboard,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Network,
   BarChart3,
   Settings,
+  Clapperboard,
 };
 
 export function Sidebar() {
