@@ -41,7 +41,7 @@ async function checkAgent(endpoint: string): Promise<{ ok: boolean; latencyMs?: 
 export async function GET() {
   const [db_check, redis_check] = await Promise.all([checkDb(), checkRedis()]);
 
-  const agents = getAllVpsAgents();
+  const agents = await getAllVpsAgents();
   const agentChecks = await Promise.all(
     agents.map(async (a) => ({ id: a.id, ...(await checkAgent(a.endpoint)) }))
   );

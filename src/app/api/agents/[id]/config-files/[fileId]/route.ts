@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ALLOWED_AGENT_IDS } from "@/lib/agents/registry";
+import { isAllowedVpsAgentId } from "@/lib/agents/registry";
 import {
   getControlPlaneUser, canViewAgent, canEditConfig,
   unauthorized, forbidden,
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (!user || !canViewAgent(user.role)) return unauthorized();
 
   const { id, fileId } = await params;
-  if (!ALLOWED_AGENT_IDS.has(id)) {
+  if (!(await isAllowedVpsAgentId(id))) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
@@ -34,7 +34,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (!canEditConfig(user.role)) return forbidden("edit config files");
 
   const { id, fileId } = await params;
-  if (!ALLOWED_AGENT_IDS.has(id)) {
+  if (!(await isAllowedVpsAgentId(id))) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 

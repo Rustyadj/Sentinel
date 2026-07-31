@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ALLOWED_AGENT_IDS, getVpsAgent } from "@/lib/agents/registry";
+import { isAllowedVpsAgentId, getVpsAgent } from "@/lib/agents/registry";
 import { getControlPlaneUser, canViewAgent, unauthorized } from "@/lib/agents/permissions";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -14,11 +14,11 @@ export async function GET(req: Request, { params }: Params) {
   if (!user || !canViewAgent(user.role)) return unauthorized();
 
   const { id } = await params;
-  if (!ALLOWED_AGENT_IDS.has(id)) {
+  if (!(await isAllowedVpsAgentId(id))) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  const agent = getVpsAgent(id);
+  const agent = await getVpsAgent(id);
   if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
   const url = new URL(req.url);

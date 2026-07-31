@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ALLOWED_AGENT_IDS, getVpsAgent } from "@/lib/agents/registry";
+import { isAllowedVpsAgentId, getVpsAgent } from "@/lib/agents/registry";
 import { getControlPlaneUser, canRestartAgent, unauthorized, forbidden } from "@/lib/agents/permissions";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -16,11 +16,11 @@ export async function POST(_req: Request, { params }: Params) {
   if (!canRestartAgent(user.role)) return forbidden("reload agents");
 
   const { id } = await params;
-  if (!ALLOWED_AGENT_IDS.has(id)) {
+  if (!(await isAllowedVpsAgentId(id))) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  const agent = getVpsAgent(id);
+  const agent = await getVpsAgent(id);
   if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
   try {

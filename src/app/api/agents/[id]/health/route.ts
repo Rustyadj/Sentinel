@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (!user || !canViewAgent(user.role)) return unauthorized();
 
   const { id } = await params;
-  const agent = getVpsAgent(id);
+  const agent = await getVpsAgent(id);
 
   if (!agent) {
     return NextResponse.json({ status: "unknown", message: "Agent not found" }, { status: 404 });
