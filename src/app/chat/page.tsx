@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Focus, Maximize2, MessageSquare, Users } from "lucide-react";
-import { KnowledgeGraphPanel } from "@/components/knowledge/KnowledgeGraphPanel";
+import { GraphCanvas } from "@/components/graph/GraphCanvas";
 import { SuggestedKnowledgePanel } from "@/components/knowledge/SuggestedKnowledgePanel";
 import { ChatRoomList } from "@/components/chat/ChatRoomList";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -526,7 +526,8 @@ export default function ChatPage() {
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#020711]">
         {showGraph && activeRoom && (
           <div className={`absolute inset-0 transition-[filter,opacity] duration-500 ${graphMode === "conversation" ? "opacity-40 blur-[1px]" : "opacity-100"}`}>
-            <KnowledgeGraphPanel
+            <GraphCanvas
+              view="context"
               roomId={activeRoomId ?? undefined}
               projectId={activeRoom.projectId}
               isStreaming={!!streamingMsgId}

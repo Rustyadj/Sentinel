@@ -792,20 +792,6 @@ model Idea {
   @@map("creator_studio_ideas")
 }
 
-model Entity {
-  id          String   @id @default(cuid())
-  type        String // Person, Organization, Product, Concept, Location, Event
-  name        String
-  aliases     String[]
-  description String?
-  metadata    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([name, type])
-  @@map("entities")
-}
-
 model KnowledgeEvent {
   id          String   @id @default(cuid())
   type        String // object_created, object_updated, edge_created, candidate_proposed, candidate_accepted, candidate_rejected

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { MessageSquare, GitFork } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { HomeChat } from "@/components/home/HomeChat";
-import { LiveKnowledgeGraph } from "@/components/home/LiveKnowledgeGraph";
+import { GraphCanvas } from "@/components/graph/GraphCanvas";
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
@@ -64,7 +64,8 @@ export default function HomePage() {
               mobilePane === "graph" ? "block w-full" : "hidden"
             )}
           >
-            <LiveKnowledgeGraph
+            <GraphCanvas
+              view="universe"
               isStreaming={isStreaming}
               refreshKey={graphRefreshKey}
             />

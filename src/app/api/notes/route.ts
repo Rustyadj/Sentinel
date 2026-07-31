@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveBacklinks } from "@/lib/knowledge/wikilinks";
 import { applyTemplate } from "@/lib/knowledge/templates";
+import { syncNoteToGraph } from "@/lib/knowledge/notegraph";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -48,6 +49,8 @@ export async function POST(req: Request) {
   });
 
   await resolveBacklinks(note.id, note.content);
+  const finalNote = await db.obsidianNote.findUniqueOrThrow({ where: { id: note.id } });
+  await syncNoteToGraph(finalNote);
 
-  return NextResponse.json(note);
+  return NextResponse.json(finalNote);
 }

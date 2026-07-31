@@ -8,6 +8,16 @@ export function parseWikiLinks(content: string): string[] {
   return [...new Set(titles)];
 }
 
+/** Resolve wiki-link titles to note rows, excluding the source note itself. */
+export async function resolveWikiLinkTargets(noteId: string, titles: string[]) {
+  if (titles.length === 0) return [];
+
+  return db.obsidianNote.findMany({
+    where: { title: { in: titles }, id: { not: noteId } },
+    select: { id: true, backlinks: true },
+  });
+}
+
 // Reconcile backlinks on target notes after `noteId`'s content changed from
 // `previousContent` to `content`. Adds noteId to newly-linked notes' backlinks
 // and removes it from notes that are no longer linked.
@@ -23,10 +33,7 @@ export async function resolveBacklinks(
   const removedTitles = [...prevTitles].filter((t) => !nextTitles.has(t));
 
   if (addedTitles.length > 0) {
-    const targets = await db.obsidianNote.findMany({
-      where: { title: { in: addedTitles }, id: { not: noteId } },
-      select: { id: true, backlinks: true },
-    });
+    const targets = await resolveWikiLinkTargets(noteId, addedTitles);
     for (const target of targets) {
       if (!target.backlinks.includes(noteId)) {
         await db.obsidianNote.update({
@@ -38,10 +45,7 @@ export async function resolveBacklinks(
   }
 
   if (removedTitles.length > 0) {
-    const targets = await db.obsidianNote.findMany({
-      where: { title: { in: removedTitles }, id: { not: noteId } },
-      select: { id: true, backlinks: true },
-    });
+    const targets = await resolveWikiLinkTargets(noteId, removedTitles);
     for (const target of targets) {
       if (target.backlinks.includes(noteId)) {
         await db.obsidianNote.update({

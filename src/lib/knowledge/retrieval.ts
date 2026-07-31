@@ -76,8 +76,8 @@ function allowedScopes(ctx: RetrievalContext): Scope[] {
 }
 
 export async function retrieveContext(ctx: RetrievalContext): Promise<{
-  memories: Array<{ content: string; scope: string; tags: string[] }>;
-  notes: Array<{ title: string; content: string; tags: string[] }>;
+  memories: Array<{ id?: string; content: string; scope: string; tags: string[] }>;
+  notes: Array<{ id: string; title: string; content: string; tags: string[] }>;
   decisions: Array<{ title: string; summary: string; status: string }>;
   totalItems: number;
 }> {
@@ -103,6 +103,7 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     });
 
     const dbMemories = memoriesRaw.map((m) => ({
+      id: m.id,
       content: m.content,
       scope: m.scope,
       tags: m.tags,
@@ -129,6 +130,7 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     });
 
     const notes = notesRaw.map((n) => ({
+      id: n.id,
       title: n.title,
       content: n.content,
       tags: n.tags,

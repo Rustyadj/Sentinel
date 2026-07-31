@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { syncWorkflowToGraph } from "@/lib/knowledge/workflowgraph";
 
 export async function GET() {
   const workflows = await db.workflow.findMany({ orderBy: { updatedAt: "desc" } });
@@ -17,5 +18,6 @@ export async function POST(req: Request) {
       status: "draft",
     },
   });
+  await syncWorkflowToGraph(workflow);
   return NextResponse.json(workflow);
 }

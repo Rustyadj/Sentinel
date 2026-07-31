@@ -2,15 +2,24 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { ensureAgentsSeeded } from "@/lib/agents/seed";
 import { emitEvent } from "@/lib/knowledge/events";
 import { retrieveContext, appendSessionMemory } from "@/lib/knowledge/retrieval";
 import type { NextRequest } from "next/server";
 
+/**
+ * Returns the context block for the system prompt AND the real graph node
+ * ids of whatever was actually retrieved (memory:<id> for DB-backed memories,
+ * note:<id> for notes — both real, persisted KnowledgeObjects). Session-memory
+ * turns (Redis-only, ephemeral) and decisions (not synced to the graph yet —
+ * see docs/GRAPH_OS_ARCHITECTURE_PLAN.md) have no graph node id and are
+ * excluded from retrievalNodeIds, not faked.
+ */
 async function buildContextBlock(
   roomId: string | undefined,
   memoryScope: string
-): Promise<string> {
-  if (!roomId) return "";
+): Promise<{ block: string; retrievalNodeIds: string[] }> {
+  if (!roomId) return { block: "", retrievalNodeIds: [] };
   try {
     const room = await db.chatRoom.findUnique({
       where: { id: roomId },
@@ -28,16 +37,23 @@ async function buildContextBlock(
       maxItems: 10,
     });
 
-    if (totalItems === 0) return "";
+    if (totalItems === 0) return { block: "", retrievalNodeIds: [] };
 
     const lines: string[] = ["\n\n## Relevant context"];
-    for (const m of memories) lines.push(`- (memory, ${m.scope}) ${m.content}`);
-    for (const n of notes) lines.push(`- (note) ${n.title}: ${n.content.slice(0, 200)}`);
+    const retrievalNodeIds: string[] = [];
+    for (const m of memories) {
+      lines.push(`- (memory, ${m.scope}) ${m.content}`);
+      if (m.id) retrievalNodeIds.push(`memory:${m.id}`);
+    }
+    for (const n of notes) {
+      lines.push(`- (note) ${n.title}: ${n.content.slice(0, 200)}`);
+      retrievalNodeIds.push(`note:${n.id}`);
+    }
     for (const d of decisions) lines.push(`- (decision, ${d.status}) ${d.title}: ${d.summary}`);
-    return lines.join("\n");
+    return { block: lines.join("\n"), retrievalNodeIds };
   } catch (err) {
     console.error("[chat] context retrieval failed:", err);
-    return "";
+    return { block: "", retrievalNodeIds: [] };
   }
 }
 
@@ -126,15 +142,18 @@ export async function POST(request: NextRequest) {
     return sseError("Missing required fields: messages, agentId");
   }
 
-  const dbAgent = await db.agent.findUnique({ where: { id: agentId } }).catch(() => null);
+  await ensureAgentsSeeded().catch(() => {});
+  const dbAgent = await db.agent
+    .findUnique({ where: { id: agentId }, include: { configuration: true } })
+    .catch(() => null);
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
-  const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
+  const model = dbAgent?.configuration?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
   const basePrompt =
-    dbAgent?.systemPrompt ||
+    dbAgent?.configuration?.systemPrompt ||
     agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
-  const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
-  const contextBlock = await buildContextBlock(roomId, memoryScope);
+  const memoryScope = dbAgent?.configuration?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
+  const { block: contextBlock, retrievalNodeIds } = await buildContextBlock(roomId, memoryScope);
   const systemPrompt = basePrompt + contextBlock;
 
   const provider = pickProvider(model);
@@ -151,6 +170,9 @@ export async function POST(request: NextRequest) {
     return sseStream(async (ctrl) => {
       let fullContent = "";
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
+      if (retrievalNodeIds.length > 0) {
+        ctrl.enqueue(sse({ type: "knowledge_update", roomId, event: "retrieval", nodes: retrievalNodeIds }));
+      }
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
         const response = await anthropic.messages.create({
@@ -178,8 +200,20 @@ export async function POST(request: NextRequest) {
       } finally {
         if (roomId && userContent && fullContent) {
           await persistMessages(roomId, userContent, agentId, fullContent);
-          // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
-          ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
+          // Real node references for this turn — chat_room and agent are both
+          // real, persisted KnowledgeObjects (see src/lib/agents/graph.ts,
+          // src/app/api/rooms/route.ts). There's no distinct "memory write"
+          // node to reference yet: this turn's messages aren't synced as
+          // graph objects, and session memory is Redis-only/ephemeral — see
+          // docs/GRAPH_OS_ARCHITECTURE_PLAN.md for why that's not faked here.
+          ctrl.enqueue(
+            sse({
+              type: "knowledge_update",
+              roomId,
+              event: "conversation_turn",
+              nodes: [`chat_room:${roomId}`, `agent:${agentId}`],
+            })
+          );
         }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -195,6 +229,9 @@ export async function POST(request: NextRequest) {
     return sseStream(async (ctrl) => {
       let fullContent = "";
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
+      if (retrievalNodeIds.length > 0) {
+        ctrl.enqueue(sse({ type: "knowledge_update", roomId, event: "retrieval", nodes: retrievalNodeIds }));
+      }
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
         const stream = await openai.chat.completions.create({
@@ -222,8 +259,20 @@ export async function POST(request: NextRequest) {
       } finally {
         if (roomId && userContent && fullContent) {
           await persistMessages(roomId, userContent, agentId, fullContent);
-          // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
-          ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
+          // Real node references for this turn — chat_room and agent are both
+          // real, persisted KnowledgeObjects (see src/lib/agents/graph.ts,
+          // src/app/api/rooms/route.ts). There's no distinct "memory write"
+          // node to reference yet: this turn's messages aren't synced as
+          // graph objects, and session memory is Redis-only/ephemeral — see
+          // docs/GRAPH_OS_ARCHITECTURE_PLAN.md for why that's not faked here.
+          ctrl.enqueue(
+            sse({
+              type: "knowledge_update",
+              roomId,
+              event: "conversation_turn",
+              nodes: [`chat_room:${roomId}`, `agent:${agentId}`],
+            })
+          );
         }
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));

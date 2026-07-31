@@ -1,6 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
+import { syncToGraph } from "@/lib/knowledge/sync";
+import type { GraphEdgeSpec } from "@/lib/knowledge/sync";
+
+async function syncRoomToGraph(room: {
+  id: string;
+  name: string;
+  projectId: string | null;
+  agentIds: string[];
+}): Promise<void> {
+  const edges: GraphEdgeSpec[] = room.agentIds.map((agentId) => ({
+    toSourceType: "agent",
+    toSourceId: agentId,
+    type: "related_to",
+  }));
+  await syncToGraph({
+    sourceType: "chat_room",
+    sourceId: room.id,
+    type: "Conversation",
+    title: room.name,
+    scope: room.projectId ? "project" : "global",
+    projectId: room.projectId ?? undefined,
+    metadata: { agentIds: room.agentIds },
+    edges,
+  });
+}
 
 export async function GET() {
   try {
@@ -36,6 +61,7 @@ export async function GET() {
           _count: { select: { messages: true } },
         },
       });
+      await syncRoomToGraph(defaultRoom);
       rooms = [defaultRoom];
     }
 
@@ -75,6 +101,7 @@ export async function POST(request: NextRequest) {
         _count: { select: { messages: true } },
       },
     });
+    await syncRoomToGraph(room);
 
     return NextResponse.json(room, { status: 201 });
   } catch (err) {

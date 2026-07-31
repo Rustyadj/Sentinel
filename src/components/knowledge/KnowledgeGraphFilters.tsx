@@ -1,19 +1,6 @@
 "use client";
 
-const NODE_COLORS: Record<string, string> = {
-  Conversation: "#6366f1",
-  Message: "#8b5cf6",
-  Memory: "#10b981",
-  Note: "#f59e0b",
-  Decision: "#ef4444",
-  Task: "#3b82f6",
-  Agent: "#ec4899",
-  Project: "#6366f1",
-  Workspace: "#0891b2",
-  Artifact: "#84cc16",
-  File: "#64748b",
-  default: "#6b7280",
-};
+import { knowledgeNodeColor } from "@/lib/knowledge/colors";
 
 interface KnowledgeGraphFiltersProps {
   search: string;
@@ -43,7 +30,7 @@ export function KnowledgeGraphFilters({
         <div className="flex flex-wrap gap-1">
           {nodeTypes.map((type) => {
             const isActive = activeTypes.has(type);
-            const color = NODE_COLORS[type] ?? NODE_COLORS.default;
+            const color = knowledgeNodeColor(type);
             return (
               <button
                 key={type}
