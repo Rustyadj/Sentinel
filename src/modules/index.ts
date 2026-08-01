@@ -11,4 +11,5 @@ import "./cybersecurity";
 import "./studio";
 import "./marketing";
 import "./creator-studio";
+import "./learning-core";
 import "./settings";

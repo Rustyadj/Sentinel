@@ -9,22 +9,22 @@ datasource db {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  email              String            @unique
-  name               String?
-  passwordHash       String?
-  createdAt          DateTime          @default(now())
-  projects           Project[]
-  chatRooms          ChatRoom[]
-  ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
-  roleAssignments    RoleAssignment[]
-  delegatedRoleAssignments RoleAssignment[] @relation("RoleAssignmentDelegatedBy")
-  requestedApprovals ApprovalRequest[] @relation("ApprovalRequesterUser")
-  reviewedApprovals  ApprovalRequest[] @relation("ApprovalReviewer")
-  meetingsCreated    Meeting[]         @relation("MeetingCreator")
-  auditLogs          AuditLog[]
-  ownedBrands        Brand[]           @relation("BrandOwner")
-  ownedAgents        Agent[]           @relation("AgentOwner")
+  id                       String            @id @default(cuid())
+  email                    String            @unique
+  name                     String?
+  passwordHash             String?
+  createdAt                DateTime          @default(now())
+  projects                 Project[]
+  chatRooms                ChatRoom[]
+  ownedWorkspaces          Workspace[]       @relation("WorkspaceOwner")
+  roleAssignments          RoleAssignment[]
+  delegatedRoleAssignments RoleAssignment[]  @relation("RoleAssignmentDelegatedBy")
+  requestedApprovals       ApprovalRequest[] @relation("ApprovalRequesterUser")
+  reviewedApprovals        ApprovalRequest[] @relation("ApprovalReviewer")
+  meetingsCreated          Meeting[]         @relation("MeetingCreator")
+  auditLogs                AuditLog[]
+  ownedBrands              Brand[]           @relation("BrandOwner")
+  ownedAgents              Agent[]           @relation("AgentOwner")
 
   @@map("users")
 }
@@ -88,6 +88,13 @@ model Agent {
   roleAssignments    RoleAssignment[]
   requestedApprovals ApprovalRequest[]   @relation("ApprovalRequesterAgent")
   assignedTasks      Task[]              @relation("TaskAgent")
+
+  // Learning Core (see docs/LEARNING_CORE_PLAN.md)
+  curiosityEvents CuriosityEvent[]
+  knowledgeGaps   KnowledgeGap[]
+  reflections     Reflection[]
+  trustScore      AgentTrustScore?
+  trustEvents     TrustEvent[]
 
   @@map("agents")
 }
@@ -378,15 +385,15 @@ model Permission {
 }
 
 model RoleAssignment {
-  id          String   @id @default(cuid())
-  workspaceId String
-  roleId      String
+  id            String    @id @default(cuid())
+  workspaceId   String
+  roleId        String
   userId        String?
   agentId       String?
   teamId        String?
   expiresAt     DateTime?
   delegatedById String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -663,17 +670,17 @@ model Brand {
 // outro, watermark, lower_third, transition, thumbnail_template) are the
 // brand's curated creative kit, not a separate model.
 model Asset {
-  id         String   @id @default(cuid())
-  brandId    String
-  name       String
-  category   String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
-  url        String
-  mimeType   String?
-  sizeBytes  Int?
-  tags       String[]
-  version    Int      @default(1)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  brandId   String
+  name      String
+  category  String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
+  url       String
+  mimeType  String?
+  sizeBytes Int?
+  tags      String[]
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -719,11 +726,11 @@ model ContentItem {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  brand      Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  project    ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  sourceItem ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
-  derivedItems ContentItem[] @relation("ContentItemDerivedFrom")
-  hooks      ContentHook[]
+  brand        Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project      ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceItem   ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
+  derivedItems ContentItem[]   @relation("ContentItemDerivedFrom")
+  hooks        ContentHook[]
 
   @@index([brandId, status])
   @@index([projectId])
@@ -746,28 +753,28 @@ model ContentHook {
 }
 
 model BrandProfile {
-  id               String   @id @default(cuid())
-  brandId          String   @unique
-  logoUrl          String?
-  primaryColor     String   @default("#6366F1")
-  secondaryColor   String   @default("#8B5CF6")
-  typography       Json     @default("{}")
-  mission          String?
-  targetAudience   String?
-  painPoints       String[]
-  toneOfVoice      String?
-  products         String[]
-  services         String[]
-  competitors      String[]
-  frequentPhrases  String[]
-  wordsToAvoid     String[]
-  ctaPreferences   String?
-  thumbnailStyle   String?
-  videoStyle       String?
-  hookStyle        String?
-  seoKeywords      String[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(cuid())
+  brandId         String   @unique
+  logoUrl         String?
+  primaryColor    String   @default("#6366F1")
+  secondaryColor  String   @default("#8B5CF6")
+  typography      Json     @default("{}")
+  mission         String?
+  targetAudience  String?
+  painPoints      String[]
+  toneOfVoice     String?
+  products        String[]
+  services        String[]
+  competitors     String[]
+  frequentPhrases String[]
+  wordsToAvoid    String[]
+  ctaPreferences  String?
+  thumbnailStyle  String?
+  videoStyle      String?
+  hookStyle       String?
+  seoKeywords     String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -802,4 +809,274 @@ model KnowledgeEvent {
   createdAt   DateTime @default(now())
 
   @@map("knowledge_events")
+}
+
+// ============================================================================
+// Learning Core — see docs/LEARNING_CORE_PLAN.md
+//
+// Split into two ownership halves that share this schema but own disjoint
+// services/pages, so both can build in parallel without touching each
+// other's files:
+//   Observation half (Claude): CuriosityEvent, KnowledgeGap, Reflection,
+//     ReplayEntry, Preference, Goal, GoalAlignmentCheck
+//   Improvement half (Codex): Hypothesis, Experiment, Benchmark,
+//     AgentTrustScore, TrustEvent, Skill, EvolutionEvent, FeatureFlag
+// ============================================================================
+
+model CuriosityEvent {
+  id             String   @id @default(cuid())
+  agentId        String
+  score          Float
+  factors        Json // confidence, missingInfo, contradictions, toolFailures, unknownTerms, etc.
+  triggerContext String?
+  question       String?
+  resolved       Boolean  @default(false)
+  resolution     String?
+  createdAt      DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@map("learning_curiosity_events")
+}
+
+model KnowledgeGap {
+  id               String   @id @default(cuid())
+  agentId          String
+  topic            String
+  description      String
+  occurrenceCount  Int      @default(1)
+  confidence       Float    @default(0)
+  priority         String   @default("medium") // low, medium, high
+  status           String   @default("open") // open, learning, resolved
+  estimatedBenefit String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, topic])
+  @@map("learning_knowledge_gaps")
+}
+
+model Reflection {
+  id               String   @id @default(cuid())
+  agentId          String
+  taskRef          String? // loose pointer: conversation id, task id, workflow run id
+  wentWell         String?
+  wentWrong        String?
+  surprises        String?
+  wrongAssumptions String?
+  missingInfo      String?
+  shouldRemember   String?
+  skillIdea        String?
+  shouldAskMore    Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@map("learning_reflections")
+}
+
+model ReplayEntry {
+  id                       String   @id @default(cuid())
+  category                 String // failure, success, expensive, slow, hallucination, tool_failure, memory_mistake, reflection_failure
+  sourceRef                String?
+  summary                  String
+  lessons                  Json     @default("[]")
+  improvementOpportunities Json     @default("[]")
+  runDate                  DateTime @default(now())
+  createdAt                DateTime @default(now())
+
+  @@index([category])
+  @@map("learning_replay_entries")
+}
+
+model Preference {
+  id                    String    @id @default(cuid())
+  userId                String?
+  key                   String
+  value                 Json
+  confidence            Float     @default(0.5)
+  sourceConversationIds String[]  @default([])
+  lastConfirmedAt       DateTime  @default(now())
+  expiresAt             DateTime?
+  conflicts             Json      @default("[]")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([userId, key])
+  @@map("learning_preferences")
+}
+
+model Goal {
+  id                String   @id @default(cuid())
+  taskRef           String?
+  requestedGoal     String
+  underlyingGoal    String?
+  constraints       String[] @default([])
+  successCriteria   String[] @default([])
+  hiddenPreferences Json     @default("{}")
+  businessImpact    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  alignmentChecks GoalAlignmentCheck[]
+
+  @@map("learning_goals")
+}
+
+model GoalAlignmentCheck {
+  id             String   @id @default(cuid())
+  goalId         String?
+  actionRef      String
+  alignmentScore Float
+  suggestion     String?
+  createdAt      DateTime @default(now())
+
+  goal Goal? @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  @@index([goalId])
+  @@map("learning_goal_alignment_checks")
+}
+
+model Hypothesis {
+  id                  String   @id @default(cuid())
+  title               String
+  problem             String
+  rootCause           String?
+  expectedImprovement String
+  risk                String   @default("low") // low, medium, high
+  affectedSystems     String[] @default([])
+  metrics             Json     @default("[]")
+  rollbackPlan        String
+  successCriteria     String
+  status              String   @default("draft") // draft, testing, validated, rejected
+  // Computed once at creation from risk + affectedSystems — see
+  // docs/LEARNING_CORE_PLAN.md "Approval levels". 1 = auto-deploy,
+  // 2 = approval after successful testing, 3 = always requires approval.
+  approvalLevel       Int      @default(2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  experiments Experiment[]
+
+  @@map("learning_hypotheses")
+}
+
+model Experiment {
+  id            String    @id @default(cuid())
+  hypothesisId  String?
+  type          String // prompt, retrieval, memory, planning, reasoning, tool_selection, workflow, graph_ranking, model_routing, skill, cost_optimization, ui_behavior
+  version       String    @default("1.0.0")
+  ownerId       String?
+  status        String    @default("shadow") // shadow, running, completed, promoted, discarded
+  // Inherited from parent Hypothesis at creation; defaults to 2 (requires
+  // approval) when created without one. See docs/LEARNING_CORE_PLAN.md.
+  approvalLevel Int       @default(2)
+  metrics       Json      @default("{}")
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  hypothesis Hypothesis? @relation(fields: [hypothesisId], references: [id], onDelete: SetNull)
+  benchmarks Benchmark[]
+
+  @@index([hypothesisId])
+  @@map("learning_experiments")
+}
+
+model Benchmark {
+  id            String   @id @default(cuid())
+  name          String
+  metric        String
+  value         Float
+  baselineValue Float?
+  experimentId  String?
+  createdAt     DateTime @default(now())
+
+  experiment Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+
+  @@index([experimentId])
+  @@map("learning_benchmarks")
+}
+
+// Trust is runtime-derived, not identity — deliberately kept off Agent
+// itself (same reasoning as Agent's own doc comment: volatile metrics live
+// in dedicated tables, not the identity record).
+model AgentTrustScore {
+  id                   String   @id @default(cuid())
+  agentId              String   @unique
+  score                Float    @default(50)
+  accuracy             Float    @default(0)
+  rollbackCount        Int      @default(0)
+  hallucinations       Int      @default(0)
+  unsafeEvents         Int      @default(0)
+  failedExperiments    Int      @default(0)
+  overrides            Int      @default(0)
+  approvedImprovements Int      @default(0)
+  benchmarkWins        Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("learning_agent_trust_scores")
+}
+
+model TrustEvent {
+  id        String   @id @default(cuid())
+  agentId   String
+  delta     Float
+  reason    String
+  category  String
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@map("learning_trust_events")
+}
+
+model Skill {
+  id            String   @id @default(cuid())
+  name          String
+  description   String
+  dependencies  String[] @default([])
+  tests         Json     @default("[]")
+  benchmarks    Json     @default("[]")
+  ownerId       String?
+  version       String   @default("0.1.0")
+  approvalLevel Int      @default(1) // 1 = auto-deploy, 2 = approval after testing, 3 = always requires approval
+  status        String   @default("proposed") // proposed, testing, approved, installed, deprecated
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("learning_skills")
+}
+
+model EvolutionEvent {
+  id          String   @id @default(cuid())
+  title       String
+  stage       String // created, testing, shadow, approved, production, rollback, superseded
+  relatedType String?
+  relatedId   String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([relatedType, relatedId])
+  @@map("learning_evolution_events")
+}
+
+model FeatureFlag {
+  id                    String   @id @default(cuid())
+  key                   String   @unique
+  enabled               Boolean  @default(false)
+  scope                 String   @default("global") // global, agent, workspace, user, organization
+  scopeId               String?
+  rolloutPercentage     Int      @default(0)
+  autoRollbackThreshold Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("learning_feature_flags")
 }

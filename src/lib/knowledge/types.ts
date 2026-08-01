@@ -17,7 +17,19 @@ export type KnowledgeObjectType =
   | "Module"
   | "Artifact"
   | "Conversation"
-  | "Message";
+  | "Message"
+  // Learning Core (see docs/LEARNING_CORE_PLAN.md)
+  | "CuriosityEvent"
+  | "KnowledgeGap"
+  | "Reflection"
+  | "Preference"
+  | "Goal"
+  | "Hypothesis"
+  | "Experiment"
+  | "Benchmark"
+  | "TrustEvent"
+  | "Skill"
+  | "Lesson";
 
 export type KnowledgeEdgeType =
   | "references"
@@ -28,7 +40,10 @@ export type KnowledgeEdgeType =
   | "depends_on"
   | "remembers"
   | "related_to"
-  | "supersedes";
+  | "supersedes"
+  | "informs" // e.g. KnowledgeGap informs Hypothesis
+  | "validates" // e.g. Experiment validates Hypothesis
+  | "produces"; // e.g. Experiment produces Skill/Benchmark
 
 export type KnowledgeScope =
   | "session"

@@ -19,6 +19,18 @@ export const KNOWLEDGE_NODE_COLORS: Record<KnowledgeObjectType | "default", stri
   Module: "#a3c284",
   Artifact: "#a3c284",
   Organization: "#b0a2d8",
+  // Learning Core (see docs/LEARNING_CORE_PLAN.md)
+  CuriosityEvent: "#e0b872",
+  KnowledgeGap: "#d99a5b",
+  Reflection: "#8fc9e0",
+  Preference: "#a8cf8a",
+  Goal: "#7fd6c2",
+  Hypothesis: "#c98fe0",
+  Experiment: "#b285e8",
+  Benchmark: "#8aa8e0",
+  TrustEvent: "#e0d872",
+  Skill: "#72c9a3",
+  Lesson: "#e0a872",
   default: "#7f8694",
 };
 
