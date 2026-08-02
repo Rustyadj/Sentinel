@@ -3,13 +3,15 @@ import { requireUser } from "@/lib/current-user";
 import { rollbackCandidate } from "@/lib/neural-engine/learning-service";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireUser();
     const { id } = await params;
-    const result = await rollbackCandidate(id, user.id);
+    const body = await req.json().catch(() => null);
+    const reason = typeof body?.reason === "string" ? body.reason : undefined;
+    const result = await rollbackCandidate(id, user.id, reason);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

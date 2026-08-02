@@ -100,15 +100,16 @@ export async function adjustKnowledgeWeight(
   knowledgeObjectId: string,
   outcome: "success" | "failure",
   magnitude = 0.1,
+  client: Pick<Prisma.TransactionClient, "agentKnowledgeWeight"> = db,
 ) {
-  const existing = await db.agentKnowledgeWeight.findUnique({
+  const existing = await client.agentKnowledgeWeight.findUnique({
     where: { agentId_knowledgeObjectId: { agentId, knowledgeObjectId } },
   });
 
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
   if (!existing) {
-    return db.agentKnowledgeWeight.create({
+    return client.agentKnowledgeWeight.create({
       data: {
         agentId,
         knowledgeObjectId,
@@ -121,7 +122,7 @@ export async function adjustKnowledgeWeight(
     });
   }
 
-  return db.agentKnowledgeWeight.update({
+  return client.agentKnowledgeWeight.update({
     where: { agentId_knowledgeObjectId: { agentId, knowledgeObjectId } },
     data: {
       trustWeight: clamp(

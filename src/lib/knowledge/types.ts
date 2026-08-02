@@ -17,7 +17,21 @@ export type KnowledgeObjectType =
   | "Module"
   | "Artifact"
   | "Conversation"
-  | "Message";
+  | "Message"
+  // Learning Core (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md) — additive.
+  // Distinct node types per the spec's "Learning Graph Integration" even
+  // though several share one backing table (LearningCandidate covers
+  // hypothesis/improvement_proposal/experiment) — the graph's "type" is a
+  // display/categorization concept, not required to be 1:1 with a model.
+  | "CuriosityEvent"
+  | "Reflection"
+  | "KnowledgeGap"
+  | "LearningGoal"
+  | "LearningCandidate"
+  | "Benchmark"
+  | "TrustEvent"
+  | "Failure"
+  | "Lesson";
 
 export type KnowledgeEdgeType =
   | "references"
@@ -28,7 +42,22 @@ export type KnowledgeEdgeType =
   | "depends_on"
   | "remembers"
   | "related_to"
-  | "supersedes";
+  | "supersedes"
+  // Learning Core — additive
+  | "triggered_by"
+  | "learned_from"
+  | "supports"
+  | "contradicts"
+  | "tests"
+  | "improves"
+  | "replaced_by"
+  | "rolled_back_to"
+  | "approved_by"
+  | "affects_agent"
+  | "affects_workspace"
+  | "created_skill"
+  | "resolved_gap"
+  | "derived_from_trace";
 
 export type KnowledgeScope =
   | "session"

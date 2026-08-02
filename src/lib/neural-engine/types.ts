@@ -64,6 +64,11 @@ export interface ExperienceInput {
   contextSnapshot?: Record<string, unknown>;
   toolsUsed?: string[];
   knowledgeUsed?: string[];
+  /** Learning Core — Intent Discovery (see src/lib/learning/intent.ts). Provisional, not fact. */
+  underlyingGoal?: string;
+  constraints?: string[];
+  successCriteria?: string[];
+  parentTraceId?: string;
 }
 
 export interface OutcomeInput {
@@ -95,6 +100,13 @@ export interface ProposedLearningCandidateInput {
   riskLevel?: RiskLevel;
   evidenceCount?: number;
   confidence?: number;
+  /** Learning Core additions (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md) — all optional, additive. */
+  knowledgeGapId?: string | null;
+  problem?: string;
+  rootCause?: string;
+  rollbackCriteria?: Record<string, unknown>;
+  testPlan?: Record<string, unknown>;
+  rolloutPlan?: Record<string, unknown>;
 }
 
 /**

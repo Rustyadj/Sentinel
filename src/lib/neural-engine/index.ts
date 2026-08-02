@@ -11,6 +11,7 @@ export * as contradictionService from "./contradiction-service";
 export * as skillService from "./skill-service";
 export * as skillPromotionService from "./skill-promotion-service";
 export * as degradationService from "./degradation-service";
+export * as schedulerService from "./scheduler-service";
 export * as temporalService from "./temporal-service";
 export * as eventService from "./event-service";
 export * as policyService from "./policy-service";

@@ -18,6 +18,9 @@
 import { db } from "@/lib/db";
 import { startExperience, completeExperience } from "./experience-service";
 import { autoEvaluateExperience } from "./evaluator";
+import { emitLearningEvent } from "@/lib/learning/event-service";
+import { recordReflection } from "@/lib/learning/reflection";
+import { analyzeIntent } from "@/lib/learning/intent";
 
 export interface AgentTurnCapture {
   agentId: string;
@@ -51,6 +54,7 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
     }
 
     const succeeded = input.fullContent.trim().length > 0;
+    const intent = analyzeIntent(input.userContent);
 
     const experience = await startExperience({
       agentId: input.agentId,
@@ -59,6 +63,9 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
       objective: input.userContent.slice(0, 500),
       contextSnapshot: { model: input.model, source: "chat" },
       knowledgeUsed: input.knowledgeUsedIds ?? [],
+      underlyingGoal: intent.underlyingGoal ?? undefined,
+      constraints: intent.constraints,
+      successCriteria: intent.successCriteria,
     });
 
     await completeExperience({
@@ -72,6 +79,37 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
     });
 
     await autoEvaluateExperience(experience.id);
+
+    // Fine-grained event stream alongside the coarse Experience row — see
+    // src/lib/learning/event-service.ts. Same self-guarded contract as the
+    // rest of this function: never let instrumentation break chat.
+    void emitLearningEvent({
+      eventType: succeeded ? "task_completed" : "task_failed",
+      sourceType: "chat",
+      sourceId: input.roomId,
+      agentId: input.agentId,
+      traceId: experience.id,
+      chatRoomId: input.roomId,
+      severity: succeeded ? "info" : "warning",
+      payload: { model: input.model, latencyMs, responseChars: input.fullContent.length },
+    }).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
+
+    // Per the spec, reflection runs after failed tasks (among other
+    // triggers not yet wired — user rejection, tool failure, etc. can call
+    // recordReflection the same way once those paths exist). Empty-response
+    // is the only failure mode chat can currently detect on its own.
+    if (!succeeded) {
+      void recordReflection({
+        traceId: experience.id,
+        agentId: input.agentId,
+        projectId: projectId ?? undefined,
+        reflectionType: "automatic",
+        summary: "Chat turn produced an empty response.",
+        whatFailed: "The model call completed but returned no content.",
+        missingInformation: "Why the response was empty — provider error, truncation, or a prompt that didn't resolve to an answer aren't distinguished yet.",
+        shouldAskNextTime: false,
+      }).catch((err) => console.error("[learning] recordReflection failed (non-fatal):", err));
+    }
 
     return experience.id;
   } catch (err) {

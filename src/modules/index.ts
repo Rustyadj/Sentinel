@@ -10,4 +10,5 @@ import "./organization";
 import "./cybersecurity";
 import "./studio";
 import "./marketing";
+import "./learning";
 import "./settings";
