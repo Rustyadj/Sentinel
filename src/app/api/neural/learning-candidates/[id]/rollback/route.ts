@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import {
   learningAccessErrorResponse,
@@ -7,7 +7,7 @@ import {
 import { rollbackCandidate } from "@/lib/neural-engine/learning-service";
 
 export async function POST(
-  req: NextRequest,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
