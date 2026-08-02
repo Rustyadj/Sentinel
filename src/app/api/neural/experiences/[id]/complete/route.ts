@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { completeExperience } from "@/lib/neural-engine/experience-service";
+import { requireExperienceAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
+    await requireExperienceAccess(user.id, id, "workspace.update");
     const body = await req.json();
     if (!body?.outcome?.status) {
       return NextResponse.json(
@@ -25,9 +27,6 @@ export async function POST(
     });
     return NextResponse.json(experience);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }

@@ -168,6 +168,27 @@ export async function requireReflectionAccess(
   await requireLearningAgentAccess(userId, reflection.agentId, permission);
 }
 
+export async function requireExperienceAccess(
+  userId: string,
+  experienceId: string,
+  permission: string,
+): Promise<void> {
+  const experience = await db.experience.findUnique({
+    where: { id: experienceId },
+    select: { workspaceId: true, projectId: true, agentId: true },
+  });
+  if (!experience) throw new LearningAccessError();
+  if (experience.workspaceId) {
+    await requireLearningWorkspaceAccess(userId, experience.workspaceId, permission);
+    return;
+  }
+  if (experience.projectId) {
+    await requireLearningProjectAccess(userId, experience.projectId, permission);
+    return;
+  }
+  await requireLearningAgentAccess(userId, experience.agentId, permission);
+}
+
 export async function requireSkillAccess(
   userId: string,
   skillId: string,

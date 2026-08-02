@@ -6,6 +6,7 @@ import {
   listAgentKnowledgeWeights,
 } from "@/lib/neural-engine/agent-profile-service";
 import { listAgentExperiences } from "@/lib/neural-engine/experience-service";
+import { requireLearningAgentAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 /** Agent brain view: profile + competencies + knowledge weights + recent experiences. */
 export async function GET(
@@ -13,8 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ agentId: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { agentId } = await params;
+    await requireLearningAgentAccess(user.id, agentId, "workspace.read");
     const [profile, competencies, weights, recentExperiences] = await Promise.all([
       getOrCreateAgentProfile(agentId),
       listAgentCompetencies(agentId),
@@ -23,9 +25,6 @@ export async function GET(
     ]);
     return NextResponse.json({ profile, competencies, weights, recentExperiences });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }

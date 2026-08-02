@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { autoEvaluateExperience } from "@/lib/neural-engine/evaluator";
+import { requireExperienceAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 /**
  * Run the deterministic auto-evaluator against a completed experience.
@@ -12,15 +13,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
+    await requireExperienceAccess(user.id, id, "workspace.update");
     const body = await req.json().catch(() => ({}));
     const result = await autoEvaluateExperience(id, body?.evaluatorAgentId ?? null);
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }

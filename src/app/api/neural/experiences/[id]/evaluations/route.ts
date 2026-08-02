@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { createEvaluation, listExperienceEvaluations } from "@/lib/neural-engine/evaluation-service";
+import { requireExperienceAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
+    await requireExperienceAccess(user.id, id, "workspace.update");
     const body = await req.json();
     const evaluation = await createEvaluation({ ...body, experienceId: id });
     return NextResponse.json(evaluation, { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }
 
@@ -25,14 +24,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
+    await requireExperienceAccess(user.id, id, "workspace.read");
     const evaluations = await listExperienceEvaluations(id);
     return NextResponse.json(evaluations);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }

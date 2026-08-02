@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { proposeCandidate, listPendingReview } from "@/lib/neural-engine/learning-service";
 import type { RiskLevel } from "@/lib/neural-engine/types";
+import { getAccessibleLearningScope } from "@/lib/learning/authorization";
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,9 +27,10 @@ export async function POST(req: NextRequest) {
 /** Human review queue — the "pending learning approvals" surface for Mission Control. */
 export async function GET(req: NextRequest) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const riskLevel = req.nextUrl.searchParams.get("riskLevel") as RiskLevel | null;
-    const candidates = await listPendingReview(riskLevel ?? undefined);
+    const scope = await getAccessibleLearningScope(user.id);
+    const candidates = await listPendingReview(riskLevel ?? undefined, scope);
     return NextResponse.json(candidates);
   } catch (err) {
     return NextResponse.json(

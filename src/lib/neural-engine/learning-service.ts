@@ -13,6 +13,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { recordReflection } from "@/lib/learning/reflection";
+import type { AccessibleLearningScope } from "@/lib/learning/authorization";
 import { recordTrustEvent } from "@/lib/learning/trust";
 import {
   assertRiskTransitionAuthorized,
@@ -1090,9 +1091,44 @@ function canonicalJson(value: unknown): unknown {
   return value;
 }
 
-export async function listPendingReview(riskLevel?: "low" | "medium" | "high") {
+export async function listPendingReview(
+  riskLevel?: "low" | "medium" | "high",
+  scope?: AccessibleLearningScope,
+) {
   return db.learningCandidate.findMany({
-    where: { status: "proposed", ...(riskLevel ? { riskLevel } : {}) },
+    where: {
+      status: "proposed",
+      ...(riskLevel ? { riskLevel } : {}),
+      ...(scope
+        ? {
+            OR: [
+              { approvalRequest: { is: { workspaceId: { in: scope.workspaceIds } } } },
+              {
+                experience: {
+                  is: {
+                    OR: [
+                      { workspaceId: { in: scope.workspaceIds } },
+                      { projectId: { in: scope.projectIds } },
+                      { agentId: { in: scope.agentIds } },
+                    ],
+                  },
+                },
+              },
+              {
+                knowledgeGap: {
+                  is: {
+                    OR: [
+                      { workspaceId: { in: scope.workspaceIds } },
+                      { projectId: { in: scope.projectIds } },
+                      { agentId: { in: scope.agentIds } },
+                    ],
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: "asc" },
   });
 }

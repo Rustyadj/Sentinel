@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { scanForPromotableSkills } from "@/lib/neural-engine/skill-promotion-service";
+import { requireLearningAgentAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 /**
  * Scan recent Experience history for (agent, domain) groups that clear the
@@ -10,14 +11,18 @@ import { scanForPromotableSkills } from "@/lib/neural-engine/skill-promotion-ser
  */
 export async function POST(req: NextRequest) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const body = await req.json().catch(() => ({}));
-    const result = await scanForPromotableSkills(body?.agentId);
+    // agentId is optional in scanForPromotableSkills (system-wide scan when
+    // omitted) — require it here so this HTTP route can't be used to scan
+    // every tenant's experience history at once.
+    if (!body?.agentId) {
+      return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+    }
+    await requireLearningAgentAccess(user.id, body.agentId, "workspace.update");
+    const result = await scanForPromotableSkills(body.agentId);
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    return learningAccessErrorResponse(err);
   }
 }
