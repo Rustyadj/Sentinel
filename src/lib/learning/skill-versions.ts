@@ -30,6 +30,10 @@ export interface ActivateSkillVersionOptions {
   candidateId?: string;
 }
 
+export interface RollbackSkillVersionOptions {
+  transaction?: Prisma.TransactionClient;
+}
+
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
 }
@@ -182,6 +186,58 @@ export async function activateSkillVersion(
     await syncSkillConvenienceFields(tx, version.skillId, activated);
     return activated;
   });
+}
+
+/**
+ * Roll back one active immutable version and restore the exact prior version.
+ * A rollback is risk-reducing, but it still preserves both records and updates
+ * the Skill convenience fields transactionally so readers cannot observe a
+ * mismatched parent/version snapshot.
+ */
+export async function rollbackSkillVersion(
+  id: string,
+  options: RollbackSkillVersionOptions = {},
+) {
+  const write = async (tx: Prisma.TransactionClient) => {
+    const requested = await tx.skillVersion.findUniqueOrThrow({ where: { id } });
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill-version:${requested.skillId}`})) IS NULL AS locked`;
+    const version = await tx.skillVersion.findUniqueOrThrow({ where: { id } });
+    if (version.status !== "active") {
+      throw new Error(`Only an active skill version can be rolled back; version is ${version.status}`);
+    }
+
+    const previous = await tx.skillVersion.findFirst({
+      where: {
+        skillId: version.skillId,
+        version: { lt: version.version },
+        status: { not: "rolled_back" },
+      },
+      orderBy: { version: "desc" },
+    });
+    const retiredAt = new Date();
+    const rolledBack = await tx.skillVersion.update({
+      where: { id: version.id },
+      data: { status: "rolled_back", retiredAt },
+    });
+
+    if (!previous) {
+      await tx.skill.update({
+        where: { id: version.skillId },
+        data: { status: "rolled_back" },
+      });
+      return { rolledBack, restored: null };
+    }
+
+    await retireOtherActiveVersions(tx, version.skillId, previous.id);
+    const restored = await tx.skillVersion.update({
+      where: { id: previous.id },
+      data: { status: "active", retiredAt: null },
+    });
+    await syncSkillConvenienceFields(tx, version.skillId, restored);
+    return { rolledBack, restored };
+  };
+
+  return options.transaction ? write(options.transaction) : db.$transaction(write);
 }
 
 async function hasHumanAuthority(

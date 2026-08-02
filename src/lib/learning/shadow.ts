@@ -86,17 +86,29 @@ export async function runShadowSample(input: ShadowSampleInput): Promise<ShadowS
     safetyViolations: candidateApplies ? 0 : 1,
   };
 
-  const run = await db.experimentRun.create({
-    data: {
-      candidateId: input.candidateId,
-      traceId: sourceExperience.id,
-      variant: "shadow",
-      inputSnapshot: toJson(inputSnapshot),
-      outputSnapshot: toJson(outputSnapshot),
-      metrics: toJson(metrics),
-      errors: toJson(sandboxReason ? [sandboxReason] : []),
-      passed,
-    },
+  const run = await db.$transaction(async (tx) => {
+    const sampleIdentity = `${input.candidateId}:${sourceExperience.id}`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`shadow-sample:${sampleIdentity}`})) IS NULL AS locked`;
+    const existing = await tx.experimentRun.findFirst({
+      where: {
+        candidateId: input.candidateId,
+        traceId: sourceExperience.id,
+        variant: "shadow",
+      },
+    });
+    if (existing) return existing;
+    return tx.experimentRun.create({
+      data: {
+        candidateId: input.candidateId,
+        traceId: sourceExperience.id,
+        variant: "shadow",
+        inputSnapshot: toJson(inputSnapshot),
+        outputSnapshot: toJson(outputSnapshot),
+        metrics: toJson(metrics),
+        errors: toJson(sandboxReason ? [sandboxReason] : []),
+        passed,
+      },
+    });
   });
 
   return { run, passed };
@@ -144,7 +156,13 @@ export interface ShadowPromotionEvaluation {
  * passed) per spec.
  */
 export async function evaluateShadowPromotion(candidateId: string): Promise<ShadowPromotionEvaluation> {
-  const runs = await db.experimentRun.findMany({ where: { candidateId, variant: "shadow" } });
+  const storedRuns = await db.experimentRun.findMany({
+    where: { candidateId, variant: "shadow", traceId: { not: null }, passed: { not: null } },
+    orderBy: { createdAt: "asc" },
+  });
+  // Defense in depth for rows written before the advisory-lock dedupe existed,
+  // or inserted outside the service: one recorded fixture is one sample.
+  const runs = [...new Map(storedRuns.map((run) => [run.traceId!, run])).values()];
   const sampleSize = runs.length;
 
   if (sampleSize < MIN_SHADOW_SAMPLE_SIZE) {
