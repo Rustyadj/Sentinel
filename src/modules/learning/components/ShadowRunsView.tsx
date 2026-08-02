@@ -12,9 +12,9 @@ interface LearningCandidate {
 
 interface ShadowRun {
   id: string;
-  passed: boolean;
+  passed: boolean | null;
   createdAt: string;
-  outputSnapshot: { candidateApplies?: boolean; sandboxReason?: string | null; baselineStatus?: string };
+  outputSnapshot: { unsupported?: boolean; executorName?: string | null; reasons?: string[] };
 }
 
 interface PromotionEvaluation {
@@ -36,20 +36,26 @@ export function ShadowRunsView() {
 
   useEffect(() => {
     fetch("/api/learning/candidates?status=proposed&limit=50")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then(setCandidates)
-      .catch(() => {});
+      .catch(() => setError("Could not load candidates."));
   }, []);
 
   const loadShadowState = useCallback((candidateId: string) => {
     if (!candidateId) return;
     fetch(`/api/learning/candidates/${candidateId}/shadow`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((data) => {
         setRuns(data.runs ?? []);
         setPromotion(data.promotion ?? null);
       })
-      .catch(() => {});
+      .catch(() => setError("Could not load shadow runs for this candidate."));
   }, []);
 
   useEffect(() => {
@@ -146,16 +152,23 @@ export function ShadowRunsView() {
           {runs.length === 0 ? (
             <p className="text-xs text-[--muted-foreground]">No shadow runs recorded for this candidate yet.</p>
           ) : (
-            runs.map((run) => (
-              <div key={run.id} className="flex items-center gap-2 text-xs rounded-lg border border-[--sidebar-border] bg-[--card] p-2">
-                <span className={run.passed ? "text-emerald-400" : "text-red-400"}>{run.passed ? "passed" : "failed"}</span>
-                <span className="text-[--muted-foreground]">baseline: {run.outputSnapshot?.baselineStatus ?? "—"}</span>
-                {run.outputSnapshot?.sandboxReason && (
-                  <span className="text-amber-400">{run.outputSnapshot.sandboxReason}</span>
-                )}
-                <span className="ml-auto text-[10px] text-[--muted-foreground]">{new Date(run.createdAt).toLocaleString()}</span>
-              </div>
-            ))
+            runs.map((run) => {
+              const unsupported = run.outputSnapshot?.unsupported;
+              return (
+                <div key={run.id} className="flex items-center gap-2 text-xs rounded-lg border border-[--sidebar-border] bg-[--card] p-2">
+                  <span className={unsupported ? "text-[--muted-foreground]" : run.passed ? "text-emerald-400" : "text-red-400"}>
+                    {unsupported ? "unsupported" : run.passed ? "passed" : "failed"}
+                  </span>
+                  {run.outputSnapshot?.executorName && (
+                    <span className="text-[--muted-foreground]">via {run.outputSnapshot.executorName}</span>
+                  )}
+                  {run.outputSnapshot?.reasons && run.outputSnapshot.reasons.length > 0 && (
+                    <span className="text-amber-400 truncate">{run.outputSnapshot.reasons.join("; ")}</span>
+                  )}
+                  <span className="ml-auto text-[10px] text-[--muted-foreground]">{new Date(run.createdAt).toLocaleString()}</span>
+                </div>
+              );
+            })
           )}
         </div>
       )}

@@ -27,7 +27,11 @@ export function FeatureFlagsView() {
   const [form, setForm] = useState({
     key: "",
     name: "",
-    scopeType: "global",
+    // "global"/"organization" scope always fails to create — this repo has
+    // no system/organization-admin authorization model, so
+    // requireFeatureFlagAccess fails closed for both. "workspace" is the
+    // narrowest scope every authorized user can actually create.
+    scopeType: "workspace",
     scopeId: "",
     rolloutPercentage: 0,
     riskTier: "low",
@@ -121,19 +125,20 @@ export function FeatureFlagsView() {
           onChange={(event) => setForm((current) => ({ ...current, scopeType: event.target.value }))}
           className="rounded-md border border-[--sidebar-border] bg-[--card] px-3 py-2 text-xs text-[--foreground] outline-none"
         >
-          {(["global", "organization", "workspace", "project", "user", "agent"] as const).map((scope) => (
+          {/* "global"/"organization" omitted — this repo has no admin
+              authorization model, so creating a flag at either scope always
+              fails closed. Offering them would just be a guaranteed error. */}
+          {(["workspace", "project", "user", "agent"] as const).map((scope) => (
             <option key={scope} value={scope}>{scope}</option>
           ))}
         </select>
-        {form.scopeType !== "global" ? (
-          <input
-            required
-            value={form.scopeId}
-            onChange={(event) => setForm((current) => ({ ...current, scopeId: event.target.value }))}
-            placeholder={`${form.scopeType} id`}
-            className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
-          />
-        ) : <div />}
+        <input
+          required
+          value={form.scopeId}
+          onChange={(event) => setForm((current) => ({ ...current, scopeId: event.target.value }))}
+          placeholder={`${form.scopeType} id`}
+          className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+        />
         <select
           value={form.riskTier}
           onChange={(event) => setForm((current) => ({ ...current, riskTier: event.target.value }))}

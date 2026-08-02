@@ -36,6 +36,8 @@ export interface CreateFeatureFlagInput {
   config?: Record<string, unknown>;
   riskTier?: string;
   learningCandidateId?: string | null;
+  activatedAt?: Date | null;
+  expiresAt?: Date | null;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -49,6 +51,8 @@ export interface UpdateFeatureFlagInput {
   config?: Record<string, unknown>;
   riskTier?: string;
   learningCandidateId?: string | null;
+  activatedAt?: Date | null;
+  expiresAt?: Date | null;
 }
 
 export interface FeatureFlagContext {
@@ -98,6 +102,8 @@ export async function createFeatureFlag(
         config: (input.config ?? {}) as Prisma.InputJsonValue,
         riskTier,
         learningCandidateId: input.learningCandidateId ?? null,
+        activatedAt: enabled ? input.activatedAt ?? new Date() : input.activatedAt ?? null,
+        expiresAt: input.expiresAt ?? null,
       },
     });
   });
@@ -186,6 +192,12 @@ export async function updateFeatureFlag(
         ...(input.config !== undefined ? { config: input.config as Prisma.InputJsonValue } : {}),
         ...(input.riskTier !== undefined ? { riskTier } : {}),
         ...(input.learningCandidateId !== undefined ? { learningCandidateId } : {}),
+        ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+        ...(input.activatedAt !== undefined
+          ? { activatedAt: input.activatedAt }
+          : input.enabled === true && !current.enabled
+            ? { activatedAt: new Date() } // first transition to enabled, if not explicitly set
+            : {}),
       },
     });
   });
@@ -218,6 +230,7 @@ export function getFeatureFlagBucket(key: string, assignmentId: string): number 
 export async function evaluateFlag(key: string, context: FeatureFlagContext): Promise<boolean> {
   const flag = await db.featureFlag.findUnique({ where: { key: key.trim() } });
   if (!flag || !flag.enabled) return false;
+  if (flag.expiresAt && flag.expiresAt.getTime() <= Date.now()) return false;
   if (!scopeMatches(flag.scopeType as FeatureFlagScopeType, flag.scopeId, context)) return false;
   if (flag.rolloutPercentage <= 0) return false;
   if (flag.rolloutPercentage >= 100) return true;
