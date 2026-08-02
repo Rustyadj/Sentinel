@@ -735,8 +735,16 @@ async function rollbackCandidateInTransaction(
       }
       break;
     }
+    case "skill": {
+      const skillVersionId = stringValue(payload.skillVersionId);
+      if (skillVersionId) {
+        const { rollbackSkillVersion } = await import("@/lib/learning/skill-versions");
+        await rollbackSkillVersion(skillVersionId, { transaction: tx });
+      }
+      break;
+    }
     default:
-      // Skill/procedure/contradiction/prompt/tool-policy rollbacks are
+      // Procedure/contradiction/prompt/tool-policy rollbacks are
       // status-flip only until their inverse mutation is formally defined.
       break;
   }
