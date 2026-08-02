@@ -100,6 +100,13 @@ export interface ProposedLearningCandidateInput {
   riskLevel?: RiskLevel;
   evidenceCount?: number;
   confidence?: number;
+  /** Learning Core additions (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md) — all optional, additive. */
+  knowledgeGapId?: string | null;
+  problem?: string;
+  rootCause?: string;
+  rollbackCriteria?: Record<string, unknown>;
+  testPlan?: Record<string, unknown>;
+  rolloutPlan?: Record<string, unknown>;
 }
 
 /**

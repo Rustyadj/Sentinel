@@ -68,6 +68,12 @@ export async function proposeCandidate(
         confidence,
         status: eligible ? "auto_approved" : "proposed",
         resolvedAt: eligible ? new Date() : null,
+        knowledgeGapId: input.knowledgeGapId ?? null,
+        problem: input.problem ?? null,
+        rootCause: input.rootCause ?? null,
+        rollbackCriteria: input.rollbackCriteria ? toJson(input.rollbackCriteria) : undefined,
+        testPlan: input.testPlan ? toJson(input.testPlan) : undefined,
+        rolloutPlan: input.rolloutPlan ? toJson(input.rolloutPlan) : undefined,
       },
     });
 
