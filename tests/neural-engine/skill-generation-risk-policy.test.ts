@@ -76,7 +76,7 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
       },
     });
     await expect(applyLearningCandidate(candidate.id)).rejects.toThrow(
-      "requires explicit human authorization",
+      /explicit human authorization|human-review audit evidence/,
     );
 
     await db.learningCandidate.update({
@@ -84,7 +84,7 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
       data: { status: "approved", reviewedBy: "not-a-real-user" },
     });
     await expect(applyLearningCandidate(candidate.id)).rejects.toThrow(
-      "requires explicit human authorization",
+      /explicit human authorization|human-review audit evidence/,
     );
     expect((await db.agent.findUniqueOrThrow({ where: { id: agent.id } })).systemPrompt)
       .not.toBe("This must not apply without human review.");
@@ -141,6 +141,8 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
         completionRate: 0.8,
         userAcceptance: 0.8,
         hallucinationRate: 0,
+        cost: 1,
+        latency: 100,
         safetyViolations: 0,
       },
     });
@@ -152,6 +154,8 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
         completionRate: 0.9,
         userAcceptance: 0.9,
         hallucinationRate: 0,
+        cost: 1,
+        latency: 100,
         safetyViolations: 0,
       },
     });

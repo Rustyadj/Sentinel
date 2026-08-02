@@ -90,6 +90,7 @@ export interface RecordBenchmarkResultInput {
 }
 
 export async function recordBenchmarkResult(input: RecordBenchmarkResultInput) {
+  validateBenchmarkMetrics(input.metrics);
   const definition = await db.benchmarkDefinition.findUniqueOrThrow({ where: { id: input.benchmarkId } });
   const weights = (definition.weights as Record<string, number> | null) ?? undefined;
   const overallScore = computeOverallScore(input.metrics, weights && Object.keys(weights).length ? weights : DEFAULT_WEIGHTS);
@@ -115,6 +116,38 @@ export async function recordBenchmarkResult(input: RecordBenchmarkResultInput) {
       rawMetrics: toJson(input.metrics),
     },
   });
+}
+
+const UNIT_INTERVAL_METRICS: ReadonlyArray<keyof BenchmarkMetrics> = [
+  "accuracy",
+  "completionRate",
+  "toolEfficiency",
+  "memoryQuality",
+  "retrievalQuality",
+  "clarificationQuality",
+  "userAcceptance",
+  "hallucinationRate",
+];
+
+function validateBenchmarkMetrics(metrics: BenchmarkMetrics): void {
+  for (const key of UNIT_INTERVAL_METRICS) {
+    const value = metrics[key];
+    if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 1)) {
+      throw new Error(`${key} must be a finite number in the range 0 to 1`);
+    }
+  }
+  for (const key of ["latency", "cost"] as const) {
+    const value = metrics[key];
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      throw new Error(`${key} must be a finite non-negative number`);
+    }
+  }
+  if (
+    metrics.safetyViolations !== undefined &&
+    (!Number.isInteger(metrics.safetyViolations) || metrics.safetyViolations < 0)
+  ) {
+    throw new Error("safetyViolations must be a non-negative integer");
+  }
 }
 
 export async function listBenchmarkResults(params: { benchmarkId?: string; candidateId?: string; limit?: number }) {
@@ -196,6 +229,18 @@ export async function evaluatePromotion(params: {
   const baselineScore = average(baselineResults.map((r) => r.overallScore));
   if (baselineResults.length === 0 || baselineScore === null) {
     return { passed: false, reasons: ["no baseline results to compare against"], baselineScore: null, candidateScore, sampleSize };
+  }
+
+  const requiredGuardrails = [
+    ["accuracy", average(candidateResults.map((r) => r.accuracy)), average(baselineResults.map((r) => r.accuracy))],
+    ["hallucinationRate", average(candidateResults.map((r) => r.hallucinationRate)), average(baselineResults.map((r) => r.hallucinationRate))],
+    ["cost", average(candidateResults.map((r) => r.cost)), average(baselineResults.map((r) => r.cost))],
+    ["latency", average(candidateResults.map((r) => r.latency)), average(baselineResults.map((r) => r.latency))],
+  ] as const;
+  for (const [metric, candidateValue, baselineValue] of requiredGuardrails) {
+    if (candidateValue === null || baselineValue === null) {
+      reasons.push(`incomplete benchmark evidence: ${metric} is required for both baseline and candidate`);
+    }
   }
 
   const improvementPct = baselineScore !== 0 ? ((candidateScore! - baselineScore) / Math.abs(baselineScore)) * 100 : null;

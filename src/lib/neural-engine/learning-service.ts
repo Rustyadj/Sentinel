@@ -198,14 +198,18 @@ export async function reviewCandidate(
     type: candidate.type as LearningCandidateType,
   });
 
-  if (needsWorkspaceApproval && !candidate.approvalRequest && !resolvedContext) {
-    // System scans can produce candidates without an Experience or any other
-    // tenant context. ApprovalRequest.workspaceId is mandatory, so inventing a
-    // workspace here risks crossing tenant boundaries. Preserve the existing
-    // status-only human review path and make that fallback visible to ops.
-    console.warn(
-      `[neural] Learning candidate ${candidateId} has no resolvable workspace; using status-only review without an ApprovalRequest.`,
+  const reviewWorkspaceId = candidate.approvalRequest?.workspaceId ?? resolvedContext?.workspaceId;
+  if (needsWorkspaceApproval && !reviewWorkspaceId) {
+    throw new Error(
+      `Learning candidate ${candidateId} has no resolvable workspace; protected review fails closed.`,
     );
+  }
+  if (
+    needsWorkspaceApproval &&
+    reviewWorkspaceId &&
+    !(await reviewerHasWorkspacePermission(db, reviewerId, reviewWorkspaceId, "approval.review"))
+  ) {
+    throw new Error("Reviewer is not authorized to approve learning candidates in this workspace.");
   }
 
   const reviewed = await db.$transaction(async (tx) => {
@@ -344,6 +348,28 @@ export async function applyLearningCandidate(candidateId: string) {
   const humanReviewer = candidate.reviewedBy
     ? await db.user.findUnique({ where: { id: candidate.reviewedBy }, select: { id: true } })
     : null;
+  if (candidate.status === "approved") {
+    const approvalAudit = candidate.reviewedBy
+      ? await db.auditLog.findFirst({
+          where: {
+            entityType: "LearningCandidate",
+            entityId: candidate.id,
+            action: "learning_candidate.approved",
+            userId: candidate.reviewedBy,
+          },
+          select: { id: true },
+        })
+      : null;
+    const linkedApprovalValid = !candidate.approvalRequest || (
+      candidate.approvalRequest.status === "approved" &&
+      candidate.approvalRequest.reviewerUserId === candidate.reviewedBy
+    );
+    if (!humanReviewer || !approvalAudit || !linkedApprovalValid) {
+      throw new Error(
+        "Approved learning candidate lacks matching human-review audit evidence.",
+      );
+    }
+  }
   assertRiskTransitionAuthorized({
     classification,
     transition: `Apply ${candidate.type} learning candidate`,
@@ -763,6 +789,34 @@ interface ApprovalContextInput {
   type: LearningCandidateType;
 }
 
+async function reviewerHasWorkspacePermission(
+  client: Pick<Prisma.TransactionClient, "workspace" | "roleAssignment">,
+  userId: string,
+  workspaceId: string,
+  permissionKey: string,
+): Promise<boolean> {
+  const workspace = await client.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { ownerId: true },
+  });
+  if (!workspace) return false;
+  if (workspace.ownerId === userId) return true;
+  const assignment = await client.roleAssignment.findFirst({
+    where: {
+      workspaceId,
+      OR: [{ userId }, { team: { memberUserIds: { has: userId } } }],
+      AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
+      role: {
+        permissions: {
+          some: { OR: [{ key: permissionKey }, { key: "*" }] },
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return Boolean(assignment);
+}
+
 async function resolveApprovalContext(
   input: ApprovalContextInput,
   client: Pick<Prisma.TransactionClient, "experience" | "evaluation" | "project" | "agent"> = db,
@@ -811,12 +865,17 @@ async function resolveApprovalContext(
     workspaceId ??= project?.workspaceId ?? null;
   }
 
-  if (!workspaceId && agentId) {
+  if (agentId) {
     const agent = await client.agent.findUnique({
       where: { id: agentId },
       select: { workspaceId: true },
     });
-    workspaceId = agent?.workspaceId ?? null;
+    if (workspaceId && agent?.workspaceId && agent.workspaceId !== workspaceId) {
+      throw new Error(
+        `Learning candidate agent ${agentId} does not belong to workspace ${workspaceId}.`,
+      );
+    }
+    workspaceId ??= agent?.workspaceId ?? null;
   }
 
   return workspaceId ? { workspaceId, projectId: projectId ?? null } : null;

@@ -4,6 +4,10 @@ import {
   createFeatureFlag,
   listFeatureFlags,
 } from "@/lib/learning/feature-flags";
+import {
+  learningAccessErrorResponse,
+  requireFeatureFlagAccess,
+} from "@/lib/learning/authorization";
 
 export async function GET(req: Request) {
   const user = await requireUser().catch(() => null);
@@ -25,14 +29,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "key and name are required" }, { status: 400 });
   }
   try {
+    const scopeType = body.scopeType ?? "global";
+    const scopeId = body.scopeId ?? null;
+    await requireFeatureFlagAccess(user.id, { scopeType, scopeId }, "workspace.update");
     return NextResponse.json(
       await createFeatureFlag(body, { authorizedByUserId: user.id }),
       { status: 201 },
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 400 },
-    );
+    return learningAccessErrorResponse(error);
   }
 }
