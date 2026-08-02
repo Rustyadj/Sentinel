@@ -1,2 +1,2 @@
 import "./manifest";
-export { AgentsPage } from "./components/AgentsPage";
+export { AgentRuntimeConsole as AgentsPage, AgentRuntimeConsole as RuntimeAgentsPage } from "./components/AgentRuntimeConsole";
