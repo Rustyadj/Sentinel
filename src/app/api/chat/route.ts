@@ -9,6 +9,7 @@ import { getVpsAgent } from "@/lib/agents/registry";
 import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bridge";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
 import { retrieve } from "@/lib/neural-engine/retrieval-planner";
+import { emitLearningEvent } from "@/lib/learning/event-service";
 import type { NextRequest } from "next/server";
 
 interface ContextBlockResult {
@@ -240,6 +241,16 @@ export async function POST(request: NextRequest) {
     userContent ?? messages[messages.length - 1]?.content ?? "",
   );
   const systemPrompt = basePrompt + contextBlock;
+
+  void emitLearningEvent({
+    eventType: "retrieval_executed",
+    sourceType: "chat",
+    sourceId: roomId,
+    agentId,
+    userId: user.id,
+    chatRoomId: roomId,
+    payload: { resultCount: knowledgeObjectIds.length, memoryScope },
+  }).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
 
   const provider = pickProvider(model);
 

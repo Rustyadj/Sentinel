@@ -12,8 +12,8 @@ export async function writeAuditLog(input: {
   entityType: string;
   entityId?: string | null;
   details?: Record<string, unknown>;
-}) {
-  return db.auditLog.create({
+}, client: Pick<Prisma.TransactionClient, "auditLog"> = db) {
+  return client.auditLog.create({
     data: {
       workspaceId: input.workspaceId ?? null,
       projectId: input.projectId ?? null,

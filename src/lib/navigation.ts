@@ -24,6 +24,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { id: "organization", label: "Organization", icon: "Building2",     href: "/orgchart" },
   { id: "workflows",    label: "Workflows",    icon: "GitBranch",     href: "/workflows" },
   { id: "marketplace",  label: "Marketplace",  icon: "Package",       href: "/marketplace" },
+  { id: "learning",     label: "Learning Core", icon: "Sparkles",     href: "/learning" },
   { id: "settings",     label: "Settings",     icon: "Settings",      href: "/settings" },
 ];
 

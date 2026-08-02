@@ -136,6 +136,8 @@ model Memory {
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
 
+  preferenceEvidence UserPreferenceEvidence[]
+
   @@index([projectId])
   @@map("memories")
 }
@@ -348,12 +350,13 @@ model ApprovalRequest {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project        Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  requesterUser  User?      @relation("ApprovalRequesterUser", fields: [requesterUserId], references: [id], onDelete: SetNull)
-  requesterAgent Agent?     @relation("ApprovalRequesterAgent", fields: [requesterAgentId], references: [id], onDelete: SetNull)
-  reviewer       User?      @relation("ApprovalReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
-  auditLogs      AuditLog[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  requesterUser      User?               @relation("ApprovalRequesterUser", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  requesterAgent     Agent?              @relation("ApprovalRequesterAgent", fields: [requesterAgentId], references: [id], onDelete: SetNull)
+  reviewer           User?               @relation("ApprovalReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  auditLogs          AuditLog[]
+  learningCandidates LearningCandidate[]
 
   @@index([workspaceId, status])
   @@index([projectId])
@@ -642,6 +645,15 @@ model Skill {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Learning Core additions — versioned implementation/schema/tests live in
+  // SkillVersion; these top-level fields describe the current version only.
+  inputSchema  Json?
+  outputSchema Json?
+  permissions  Json  @default("[]")
+  tests        Json  @default("[]")
+
+  versions SkillVersion[]
+
   @@index([domain])
   @@index([status])
   @@map("neural_skills")
@@ -699,6 +711,11 @@ model Experience {
   taskId            String?
   conversationId    String?
   objective         String
+  // Learning Core — Intent Discovery (additive, nullable; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md)
+  underlyingGoal    String?
+  constraints       Json      @default("[]")
+  successCriteria   Json      @default("[]")
+  parentTraceId     String? // another Experience.id, for nested/sub-task traces
   contextSnapshot   Json      @default("{}")
   actionsTaken      Json      @default("[]")
   toolsUsed         String[]  @default([])
@@ -776,12 +793,35 @@ model LearningCandidate {
   createdAt       DateTime  @default(now())
   resolvedAt      DateTime?
 
+  // Learning Core additions (additive, nullable; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md).
+  // LearningCandidate already covers what a separate spec would call
+  // Hypothesis + ImprovementProposal + Experiment — these fields extend it
+  // rather than forking three new models.
+  knowledgeGapId    String?
+  problem           String? // why this was proposed, distinct from proposedPayload's what
+  rootCause         String?
+  rollbackCriteria  Json?
+  testPlan          Json?
+  rolloutPlan       Json?
+  approvalRequestId String? // set for candidates that need human review via the generic workspace approval flow
+  shadowSampleSize  Int?
+  shadowConfidence  Float?
+
   experience Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
   evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+
+  knowledgeGap     KnowledgeGap?             @relation(fields: [knowledgeGapId], references: [id], onDelete: SetNull)
+  approvalRequest  ApprovalRequest?          @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  experimentRuns   ExperimentRun[]
+  benchmarkResults BenchmarkResult[]
+  trustEvents      TrustEvent[]
+  artifactVersions LearningArtifactVersion[]
 
   @@index([status])
   @@index([riskLevel])
   @@index([type])
+  @@index([knowledgeGapId])
+  @@index([approvalRequestId])
   @@map("neural_learning_candidates")
 }
 
@@ -924,4 +964,377 @@ model KnowledgeEvent {
   @@index([userId, createdAt])
   @@index([projectId, createdAt])
   @@map("knowledge_events")
+}
+
+// ============================================================================
+// Learning Core — see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md
+//
+// Extends the Neural Engine above (Experience/Outcome/Evaluation/
+// LearningCandidate/Skill/AgentCompetency), does not duplicate it. Every
+// model below is genuinely net-new — confirmed absent from `main` by direct
+// inspection before writing this. agentId fields deliberately stay plain
+// String (no FK relation), matching the existing Experience/LearningCandidate
+// convention — Neural Engine never hard-relates to Agent either.
+// ============================================================================
+
+// Fine-grained execution event stream — distinct from Experience (one row
+// per whole task) and from KnowledgeEvent (graph-object mutations only).
+model LearningEvent {
+  id            String   @id @default(cuid())
+  eventType     String
+  sourceType    String?
+  sourceId      String?
+  agentId       String?
+  userId        String?
+  workspaceId   String?
+  projectId     String?
+  chatRoomId    String?
+  messageId     String?
+  workflowId    String?
+  taskId        String?
+  traceId       String? // Experience.id, when this event belongs to one
+  parentTraceId String?
+  severity      String   @default("info") // debug, info, warning, error, critical
+  payload       Json     @default("{}")
+  redactedKeys  String[] @default([]) // keys stripped from payload before persistence — audit transparency, not a security boundary itself
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  @@index([traceId])
+  @@index([agentId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("learning_events")
+}
+
+model CuriosityEvent {
+  id                  String    @id @default(cuid())
+  traceId             String? // Experience.id
+  agentId             String
+  workspaceId         String?
+  projectId           String?
+  triggerType         String
+  question            String?
+  reason              String?
+  confidenceBefore    Float?
+  ambiguityScore      Float?
+  noveltyScore        Float?
+  conflictScore       Float?
+  businessImpactScore Float?
+  urgencyScore        Float?
+  curiosityScore      Float
+  asked               Boolean   @default(false)
+  answered            Boolean   @default(false)
+  answerSummary       String?
+  outcome             String?
+  createdAt           DateTime  @default(now())
+  answeredAt          DateTime?
+
+  @@index([agentId, createdAt])
+  @@index([traceId])
+  @@map("learning_curiosity_events")
+}
+
+model Reflection {
+  id                   String   @id @default(cuid())
+  traceId              String? // Experience.id
+  agentId              String
+  workspaceId          String?
+  projectId            String?
+  reflectionType       String // automatic, failure, success, user_feedback, scheduled_replay, manual
+  summary              String
+  whatWorked           String?
+  whatFailed           String?
+  unexpectedResults    String?
+  incorrectAssumptions String?
+  missingInformation   String?
+  reusableLesson       String?
+  suggestedImprovement String?
+  shouldCreateSkill    Boolean  @default(false)
+  shouldAskNextTime    Boolean  @default(false)
+  confidence           Float?
+  status               String   @default("open") // open, actioned, dismissed
+  createdAt            DateTime @default(now())
+
+  @@index([agentId, createdAt])
+  @@index([traceId])
+  @@map("learning_reflections")
+}
+
+// Evidence toward a canonical `Memory` of type "preference" — the preference
+// itself stays a Memory row (per project convention); this table is the
+// audit trail of why its confidence is what it is.
+model UserPreferenceEvidence {
+  id                 String    @id @default(cuid())
+  memoryId           String
+  userId             String?
+  agentId            String?
+  workspaceId        String?
+  sourceType         String
+  sourceId           String?
+  evidence           String
+  evidenceWeight     Float     @default(1)
+  supportsPreference Boolean   @default(true)
+  observedAt         DateTime  @default(now())
+  expiresAt          DateTime?
+  metadata           Json      @default("{}")
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@index([memoryId])
+  @@map("learning_preference_evidence")
+}
+
+model GoalAlignmentCheck {
+  id                       String   @id @default(cuid())
+  traceId                  String? // Experience.id
+  agentId                  String?
+  alignmentScore           Float
+  conflicts                Json     @default("[]")
+  unsupportedAssumptions   Json     @default("[]")
+  recommendedClarification String?
+  createdAt                DateTime @default(now())
+
+  @@index([traceId])
+  @@map("learning_goal_alignment_checks")
+}
+
+model KnowledgeGap {
+  id                String    @id @default(cuid())
+  agentId           String?
+  workspaceId       String?
+  projectId         String?
+  topic             String
+  description       String
+  source            String?
+  frequency         Int       @default(1)
+  businessImpact    Float?
+  failureImpact     Float?
+  confidence        Float     @default(0)
+  priorityScore     Float     @default(0)
+  status            String    @default("detected") // detected, queued, researching, testing, resolved, dismissed
+  recommendedAction String?
+  relatedTraceIds   String[]  @default([])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  resolvedAt        DateTime?
+
+  learningGoals      LearningGoal[]
+  learningCandidates LearningCandidate[]
+
+  @@index([agentId])
+  @@index([workspaceId])
+  @@index([status])
+  @@map("learning_knowledge_gaps")
+}
+
+model LearningGoal {
+  id              String    @id @default(cuid())
+  knowledgeGapId  String?
+  agentId         String?
+  workspaceId     String?
+  title           String
+  objective       String
+  successCriteria Json      @default("[]")
+  priority        String    @default("medium")
+  status          String    @default("proposed") // proposed, approved, active, completed, dismissed
+  approved        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+
+  knowledgeGap KnowledgeGap? @relation(fields: [knowledgeGapId], references: [id], onDelete: SetNull)
+
+  @@index([knowledgeGapId])
+  @@map("learning_goals")
+}
+
+model ExperimentRun {
+  id             String   @id @default(cuid())
+  candidateId    String
+  traceId        String? // Experience.id
+  variant        String // baseline, candidate, control, shadow
+  inputSnapshot  Json     @default("{}")
+  outputSnapshot Json     @default("{}")
+  metrics        Json     @default("{}")
+  errors         Json     @default("[]")
+  passed         Boolean?
+  createdAt      DateTime @default(now())
+
+  candidate LearningCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@map("learning_experiment_runs")
+}
+
+model BenchmarkDefinition {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  category      String
+  workspaceId   String?
+  inputDataset  Json     @default("[]")
+  scoringMethod String
+  weights       Json     @default("{}")
+  thresholds    Json     @default("{}")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  results BenchmarkResult[]
+
+  @@index([category])
+  @@map("learning_benchmark_definitions")
+}
+
+model BenchmarkResult {
+  id                   String   @id @default(cuid())
+  benchmarkId          String
+  candidateId          String?
+  agentId              String?
+  version              String?
+  accuracy             Float?
+  latency              Float?
+  cost                 Float?
+  completionRate       Float?
+  toolEfficiency       Float?
+  memoryQuality        Float?
+  retrievalQuality     Float?
+  clarificationQuality Float?
+  userAcceptance       Float?
+  hallucinationRate    Float?
+  safetyViolations     Int      @default(0)
+  overallScore         Float?
+  rawMetrics           Json     @default("{}")
+  createdAt            DateTime @default(now())
+
+  benchmark BenchmarkDefinition @relation(fields: [benchmarkId], references: [id], onDelete: Cascade)
+  candidate LearningCandidate?  @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([benchmarkId])
+  @@index([candidateId])
+  @@map("learning_benchmark_results")
+}
+
+// Event-sourced log feeding AgentCompetency — that table is a current-state
+// snapshot (score/evidenceCount/successRate); this is the history of deltas
+// that produced it, which AgentCompetency alone can't reconstruct.
+model TrustEvent {
+  id          String   @id @default(cuid())
+  agentId     String
+  domain      String?
+  eventType   String
+  delta       Float
+  reason      String
+  traceId     String? // Experience.id
+  candidateId String?
+  createdAt   DateTime @default(now())
+
+  candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([agentId, createdAt])
+  @@map("learning_trust_events")
+}
+
+model FeatureFlag {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  name              String
+  description       String?
+  scopeType         String   @default("global") // global, organization, workspace, project, user, agent
+  scopeId           String?
+  enabled           Boolean  @default(false)
+  rolloutPercentage Int      @default(0)
+  variant           String?
+  config            Json     @default("{}")
+  riskTier          String   @default("low")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("learning_feature_flags")
+}
+
+// Versioned implementation history for a Skill — Skill itself carries only
+// the current version's fields (kept for cheap reads); this is full history.
+model SkillVersion {
+  id                 String    @id @default(cuid())
+  skillId            String
+  version            Int
+  implementationType String?
+  implementation     Json?
+  dependencies       String[]  @default([])
+  inputSchema        Json?
+  outputSchema       Json?
+  permissions        Json      @default("[]")
+  tests              Json      @default("[]")
+  benchmarkResultIds String[]  @default([])
+  status             String    @default("draft") // draft, candidate, shadow, active, retired, rolled_back
+  createdAt          DateTime  @default(now())
+  activatedAt        DateTime?
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, version])
+  @@map("learning_skill_versions")
+}
+
+model ExperienceReplayRun {
+  id                       String   @id @default(cuid())
+  category                 String
+  sourceTraceIds           String[] @default([])
+  summary                  String
+  lessons                  Json     @default("[]")
+  improvementOpportunities Json     @default("[]")
+  knowledgeGapIds          String[] @default([])
+  runDate                  DateTime @default(now())
+  createdAt                DateTime @default(now())
+
+  @@index([category])
+  @@map("learning_experience_replay_runs")
+}
+
+// Generalized artifact versioning across prompts/heuristics/routing rules/
+// retrieval configs — broader than SkillVersion (which is skill-specific)
+// and broader than Agent.promptHistory (which only covers one agent's
+// system prompt, capped to the last 10, with no cross-artifact-type history).
+model LearningArtifactVersion {
+  id                String    @id @default(cuid())
+  artifactType      String
+  artifactKey       String
+  version           Int
+  content           Json
+  checksum          String?
+  status            String    @default("draft") // draft, candidate, shadow, active, retired, rolled_back
+  createdByAgentId  String?
+  approvedByUserId  String?
+  candidateId       String?
+  previousVersionId String?
+  createdAt         DateTime  @default(now())
+  activatedAt       DateTime?
+  retiredAt         DateTime?
+
+  candidate       LearningCandidate?        @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  previousVersion LearningArtifactVersion?  @relation("ArtifactVersionHistory", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions    LearningArtifactVersion[] @relation("ArtifactVersionHistory")
+
+  @@unique([artifactType, artifactKey, version])
+  @@map("learning_artifact_versions")
+}
+
+// Tracking rows for externally-triggered jobs (no in-process scheduler
+// exists in this repo — see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Written
+// by whatever hits the scheduler API routes (VPS crontab, a scheduled CI
+// job, or eventually a real queue worker).
+model ScheduledJobRun {
+  id          String    @id @default(cuid())
+  jobKey      String
+  status      String    @default("running") // running, completed, failed
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  result      Json      @default("{}")
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([jobKey, startedAt])
+  @@map("learning_scheduled_job_runs")
 }

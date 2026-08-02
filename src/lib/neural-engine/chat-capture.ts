@@ -18,6 +18,7 @@
 import { db } from "@/lib/db";
 import { startExperience, completeExperience } from "./experience-service";
 import { autoEvaluateExperience } from "./evaluator";
+import { emitLearningEvent } from "@/lib/learning/event-service";
 
 export interface AgentTurnCapture {
   agentId: string;
@@ -72,6 +73,20 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
     });
 
     await autoEvaluateExperience(experience.id);
+
+    // Fine-grained event stream alongside the coarse Experience row — see
+    // src/lib/learning/event-service.ts. Same self-guarded contract as the
+    // rest of this function: never let instrumentation break chat.
+    void emitLearningEvent({
+      eventType: succeeded ? "task_completed" : "task_failed",
+      sourceType: "chat",
+      sourceId: input.roomId,
+      agentId: input.agentId,
+      traceId: experience.id,
+      chatRoomId: input.roomId,
+      severity: succeeded ? "info" : "warning",
+      payload: { model: input.model, latencyMs, responseChars: input.fullContent.length },
+    }).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
 
     return experience.id;
   } catch (err) {

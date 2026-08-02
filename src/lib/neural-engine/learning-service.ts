@@ -14,6 +14,7 @@ import { canAutoApprove, classifyRiskLevel } from "./policy-service";
 import { emitNeuralEvent } from "./event-service";
 import { adjustKnowledgeWeight } from "./agent-profile-service";
 import { recordContradiction } from "./contradiction-service";
+import { writeAuditLog } from "@/lib/workspaces/audit";
 import type { ProposedLearningCandidateInput } from "./types";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
@@ -82,6 +83,7 @@ export async function reviewCandidate(
   candidateId: string,
   decision: "approve" | "reject",
   reviewerId: string,
+  reason?: string,
 ) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
@@ -94,24 +96,63 @@ export async function reviewCandidate(
   }
 
   if (decision === "reject") {
-    const updated = await db.learningCandidate.update({
-      where: { id: candidateId },
-      data: { status: "rejected", reviewedBy: reviewerId, resolvedAt: new Date() },
+    const updated = await db.$transaction(async (tx) => {
+      const rejected = await tx.learningCandidate.update({
+        where: { id: candidateId },
+        data: { status: "rejected", reviewedBy: reviewerId, resolvedAt: new Date() },
+      });
+      await writeAuditLog({
+        projectId: projectIdFromPayload(candidate.proposedPayload),
+        userId: reviewerId,
+        actorType: "user",
+        action: "learning_candidate.rejected",
+        entityType: "LearningCandidate",
+        entityId: candidate.id,
+        details: {
+          decision,
+          reviewerId,
+          reason: reason ?? null,
+          riskLevel: candidate.riskLevel,
+          candidateType: candidate.type,
+          previousStatus: candidate.status,
+          status: rejected.status,
+        },
+      }, tx);
+      return rejected;
     });
     await emitNeuralEvent({
       type: "learning.rejected",
-      payload: { candidateId, reviewerId },
+      payload: { candidateId, reviewerId, reason: reason ?? null },
     });
     return updated;
   }
 
-  await db.learningCandidate.update({
-    where: { id: candidateId },
-    data: { status: "approved", reviewedBy: reviewerId, resolvedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    const approved = await tx.learningCandidate.update({
+      where: { id: candidateId },
+      data: { status: "approved", reviewedBy: reviewerId, resolvedAt: new Date() },
+    });
+    await writeAuditLog({
+      projectId: projectIdFromPayload(candidate.proposedPayload),
+      userId: reviewerId,
+      actorType: "user",
+      action: "learning_candidate.approved",
+      entityType: "LearningCandidate",
+      entityId: candidate.id,
+      details: {
+        decision,
+        reviewerId,
+        reason: reason ?? null,
+        riskLevel: candidate.riskLevel,
+        candidateType: candidate.type,
+        previousStatus: candidate.status,
+        status: approved.status,
+      },
+    }, tx);
   });
   await emitNeuralEvent({
     type: "learning.approved",
-    payload: { candidateId, reviewerId },
+    payload: { candidateId, reviewerId, reason: reason ?? null },
   });
 
   return applyLearningCandidate(candidateId);
@@ -277,12 +318,31 @@ export async function applyLearningCandidate(candidateId: string) {
       throw new Error(`Unhandled learning candidate type: ${candidate.type}`);
   }
 
-  await db.learningCandidate.update({
-    where: { id: candidate.id },
-    data: { appliedTargetId },
+  const applied = await db.$transaction(async (tx) => {
+    const updated = await tx.learningCandidate.update({
+      where: { id: candidate.id },
+      data: { appliedTargetId },
+    });
+    const humanReviewerId = candidate.status === "approved" ? candidate.reviewedBy : null;
+    await writeAuditLog({
+      projectId: projectIdFromPayload(candidate.proposedPayload),
+      userId: humanReviewerId,
+      actorType: humanReviewerId ? "user" : "system",
+      action: "learning_candidate.applied",
+      entityType: "LearningCandidate",
+      entityId: candidate.id,
+      details: {
+        riskLevel: candidate.riskLevel,
+        candidateType: candidate.type,
+        reviewerId: humanReviewerId,
+        approvalMode: candidate.status === "auto_approved" ? "automatic" : "human",
+        appliedTargetId,
+      },
+    }, tx);
+    return updated;
   });
 
-  return db.learningCandidate.findUniqueOrThrow({ where: { id: candidate.id } });
+  return applied;
 }
 
 async function strengthenOrCreateEdge(
@@ -335,7 +395,7 @@ async function strengthenOrCreateEdge(
  * content writes (memory/decision), and marks the original `rolled_back`.
  * History is preserved — nothing is deleted.
  */
-export async function rollbackCandidate(candidateId: string, actorId: string) {
+export async function rollbackCandidate(candidateId: string, actorId: string, reason?: string) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
   });
@@ -410,17 +470,44 @@ export async function rollbackCandidate(candidateId: string, actorId: string) {
       break;
   }
 
-  const rolledBack = await db.learningCandidate.update({
-    where: { id: candidateId },
-    data: { status: "rolled_back" },
+  const systemActor = actorId.startsWith("system:");
+  const rolledBack = await db.$transaction(async (tx) => {
+    const updated = await tx.learningCandidate.update({
+      where: { id: candidateId },
+      data: { status: "rolled_back" },
+    });
+    await writeAuditLog({
+      projectId: projectIdFromPayload(candidate.proposedPayload),
+      userId: systemActor ? null : actorId,
+      actorType: systemActor ? "system" : "user",
+      action: "learning_candidate.rolled_back",
+      entityType: "LearningCandidate",
+      entityId: candidate.id,
+      details: {
+        riskLevel: candidate.riskLevel,
+        candidateType: candidate.type,
+        actorId,
+        reason: reason ?? null,
+        previousStatus: candidate.status,
+        status: updated.status,
+        appliedTargetId: candidate.appliedTargetId,
+      },
+    }, tx);
+    return updated;
   });
 
   await emitNeuralEvent({
     type: "learning.rolled_back",
-    payload: { candidateId, actorId },
+    payload: { candidateId, actorId, reason: reason ?? null },
   });
 
   return rolledBack;
+}
+
+function projectIdFromPayload(payload: Prisma.JsonValue): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const projectId = (payload as Record<string, unknown>).projectId;
+  return typeof projectId === "string" ? projectId : null;
 }
 
 /**

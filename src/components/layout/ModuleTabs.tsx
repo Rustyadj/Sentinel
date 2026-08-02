@@ -125,6 +125,33 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
       ],
     },
   },
+  {
+    match: (pathname) => pathname.startsWith("/learning"),
+    config: {
+      id: "learning",
+      label: "LEARNING CORE",
+      defaultTab: "overview",
+      // Only "overview" is built (Phase A) — the rest render an explicit
+      // not-yet-built state rather than silently doing nothing when clicked.
+      // See docs/LEARNING_CORE_ON_NEURAL_ENGINE.md for the phase plan.
+      tabs: [
+        { id: "overview", label: "Overview" },
+        { id: "curiosity", label: "Curiosity" },
+        { id: "reflections", label: "Reflections" },
+        { id: "knowledge-gaps", label: "Knowledge Gaps" },
+        { id: "hypotheses", label: "Hypotheses" },
+        { id: "experiments", label: "Experiments" },
+        { id: "shadow-runs", label: "Shadow Runs" },
+        { id: "benchmarks", label: "Benchmarks" },
+        { id: "skills", label: "Skills" },
+        { id: "improvement-queue", label: "Improvement Queue" },
+        { id: "trust", label: "Trust" },
+        { id: "feature-flags", label: "Feature Flags" },
+        { id: "evolution", label: "Evolution Timeline" },
+        { id: "learning-settings", label: "Settings" },
+      ],
+    },
+  },
 ];
 
 const FALLBACK = CONFIGS[0].config;

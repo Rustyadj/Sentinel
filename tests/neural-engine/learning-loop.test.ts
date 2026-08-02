@@ -110,6 +110,11 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
       where: { content: "This should never be written" },
     });
     expect(shouldNotExist).toBeNull();
+    const rejectionAudit = await db.auditLog.findFirst({
+      where: { entityType: "LearningCandidate", entityId: rejectMe.id, action: "learning_candidate.rejected" },
+    });
+    expect(rejectionAudit?.userId).toBe(reviewer.id);
+    expect(rejectionAudit?.actorType).toBe("user");
 
     // --- Approve path ---
     const { candidate: approveMe } = await proposeCandidate({
@@ -129,6 +134,13 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
     const written = await db.memory.findUnique({ where: { id: approved.appliedTargetId! } });
     expect(written?.content).toBe("This should be written on approval");
     expect(written?.source).toContain("learning-candidate");
+    const approvalAuditActions = await db.auditLog.findMany({
+      where: { entityType: "LearningCandidate", entityId: approveMe.id },
+      select: { action: true },
+    });
+    expect(approvalAuditActions.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining(["learning_candidate.approved", "learning_candidate.applied"]),
+    );
   });
 
   it("cannot review the same candidate twice", async () => {
@@ -195,6 +207,10 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
     const stillThere = await db.learningCandidate.findUnique({ where: { id: candidate.id } });
     expect(stillThere).not.toBeNull();
     expect(stillThere?.status).toBe("rolled_back");
+    const rollbackAudit = await db.auditLog.findFirst({
+      where: { entityType: "LearningCandidate", entityId: candidate.id, action: "learning_candidate.rolled_back" },
+    });
+    expect(rollbackAudit?.userId).toBe(reviewer.id);
   });
 
   it("cannot roll back a candidate that was never approved/applied", async () => {

@@ -23,6 +23,7 @@ import {
   Plus,
   Settings,
   Shield,
+  Sparkles,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Package,
   Settings,
   Shield,
+  Sparkles,
   Wand2,
   Megaphone,
   Landmark,
