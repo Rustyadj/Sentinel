@@ -34,13 +34,15 @@ export function CuriosityView() {
   const [answeringId, setAnsweringId] = useState<string | null>(null);
 
   function load() {
-    setError(null);
     fetch(`/api/learning/curiosity${unansweredOnly ? "?unanswered=true" : ""}`)
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
-      .then(setEvents)
+      .then((data) => {
+        setError(null);
+        setEvents(data);
+      })
       .catch(() => setError("Could not load curiosity events."))
       .finally(() => setLoaded(true));
   }

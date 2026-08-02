@@ -37,13 +37,15 @@ export function ReflectionsView() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setError(null);
     fetch("/api/learning/reflections")
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
-      .then(setReflections)
+      .then((data) => {
+        setError(null);
+        setReflections(data);
+      })
       .catch(() => setError("Could not load reflections."))
       .finally(() => setLoaded(true));
   }, []);

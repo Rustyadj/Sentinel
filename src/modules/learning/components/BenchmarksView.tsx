@@ -65,13 +65,15 @@ export function BenchmarksView() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setError(null);
     fetch("/api/learning/benchmarks")
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
-      .then(setDefinitions)
+      .then((data) => {
+        setError(null);
+        setDefinitions(data);
+      })
       .catch(() => setError("Could not load benchmark definitions."))
       .finally(() => setLoaded(true));
   }, []);

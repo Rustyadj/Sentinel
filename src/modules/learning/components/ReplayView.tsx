@@ -30,13 +30,15 @@ export function ReplayView() {
   const [running, setRunning] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setError(null);
     fetch("/api/learning/replay")
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
-      .then(setRuns)
+      .then((data) => {
+        setError(null);
+        setRuns(data);
+      })
       .catch(() => setError("Could not load replay runs."))
       .finally(() => setLoaded(true));
   }, []);

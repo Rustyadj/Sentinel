@@ -26,13 +26,15 @@ export function EvolutionView() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setError(null);
     fetch("/api/learning/timeline?limit=150")
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
-      .then(setEvents)
+      .then((data) => {
+        setError(null);
+        setEvents(data);
+      })
       .catch(() => setError("Could not load the evolution timeline."))
       .finally(() => setLoaded(true));
   }, []);

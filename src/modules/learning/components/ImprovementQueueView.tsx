@@ -27,13 +27,13 @@ export function ImprovementQueueView() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setError(null);
     fetch("/api/learning/improvement-queue")
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
       .then((data) => {
+        setError(null);
         setCandidates(data.pendingCandidates ?? []);
         setSkillVersions(data.draftSkillVersions ?? []);
       })
