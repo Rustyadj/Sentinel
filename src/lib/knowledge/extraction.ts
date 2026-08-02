@@ -18,14 +18,16 @@ export async function extractCandidates(params: {
   projectId?: string;
   anthropicKey?: string;
 }): Promise<ExtractionCandidate[]> {
-  if (!params.anthropicKey) {
+  const anthropicKey = params.anthropicKey ?? process.env.ANTHROPIC_API_KEY;
+
+  if (!anthropicKey) {
     return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true"
-      ? getMockCandidates(params.roomId)
+      ? getMockCandidates(params.roomId, params.projectId)
       : [];
   }
 
   try {
-    const client = new Anthropic({ apiKey: params.anthropicKey });
+    const client = new Anthropic({ apiKey: anthropicKey });
 
     const recentMessages = params.messages.slice(-6);
     const conversationText = recentMessages
@@ -56,7 +58,7 @@ Return JSON array only.`,
 
     const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
-      return getMockCandidates(params.roomId);
+      return getMockCandidates(params.roomId, params.projectId);
     }
 
     let parsed: unknown;
@@ -65,10 +67,10 @@ Return JSON array only.`,
       const raw = textBlock.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
       parsed = JSON.parse(raw);
     } catch {
-      return getMockCandidates(params.roomId);
+      return getMockCandidates(params.roomId, params.projectId);
     }
 
-    if (!Array.isArray(parsed)) return getMockCandidates(params.roomId);
+    if (!Array.isArray(parsed)) return getMockCandidates(params.roomId, params.projectId);
 
     const candidates: ExtractionCandidate[] = parsed
       .filter(
@@ -82,6 +84,7 @@ Return JSON array only.`,
         summary: String(item.summary ?? ""),
         confidence: typeof item.confidence === "number" ? item.confidence : 0.5,
         sourceRoomId: params.roomId,
+        projectId: params.projectId,
         sourceMessageIds: [],
         metadata: {},
       }));
@@ -91,12 +94,12 @@ Return JSON array only.`,
     // Graceful fallback — extraction failures should never break chat
     console.error("extractCandidates error:", err);
     return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true"
-      ? getMockCandidates(params.roomId)
+      ? getMockCandidates(params.roomId, params.projectId)
       : [];
   }
 }
 
-function getMockCandidates(roomId?: string): ExtractionCandidate[] {
+function getMockCandidates(roomId?: string, projectId?: string): ExtractionCandidate[] {
   return [
     {
       id: `mock-candidate-1-${Date.now()}`,
@@ -105,6 +108,7 @@ function getMockCandidates(roomId?: string): ExtractionCandidate[] {
       summary: "A memory extracted from this conversation (mock — add Anthropic key for real extraction).",
       confidence: 0.3,
       sourceRoomId: roomId,
+      projectId,
       sourceMessageIds: [],
       metadata: { mock: true },
     },
@@ -115,6 +119,7 @@ function getMockCandidates(roomId?: string): ExtractionCandidate[] {
       summary: "A task candidate identified in the conversation (mock).",
       confidence: 0.25,
       sourceRoomId: roomId,
+      projectId,
       sourceMessageIds: [],
       metadata: { mock: true },
     },
@@ -125,6 +130,7 @@ function getMockCandidates(roomId?: string): ExtractionCandidate[] {
       summary: "A decision candidate from the conversation (mock).",
       confidence: 0.2,
       sourceRoomId: roomId,
+      projectId,
       sourceMessageIds: [],
       metadata: { mock: true },
     },
@@ -158,6 +164,9 @@ export async function acceptCandidate(
   projectId?: string
 ): Promise<KnowledgeNode> {
   try {
+    const effectiveRoomId = candidate.sourceRoomId ?? roomId;
+    const effectiveProjectId = candidate.projectId ?? projectId;
+
     const node = await createKnowledgeObject({
       userId,
       type: candidateTypeToObjectType(candidate.candidateType),
@@ -165,12 +174,13 @@ export async function acceptCandidate(
       summary: candidate.summary,
       sourceType: "extraction",
       sourceId: candidate.id,
-      scope: (roomId ? "project" : "global") as KnowledgeScope,
-      projectId,
+      scope: (effectiveProjectId ? "project" : effectiveRoomId ? "session" : "global") as KnowledgeScope,
+      projectId: effectiveProjectId,
       metadata: {
         confidence: candidate.confidence,
         candidateType: candidate.candidateType,
-        sourceRoomId: candidate.sourceRoomId ?? roomId,
+        sourceRoomId: effectiveRoomId,
+        projectId: effectiveProjectId,
         sourceMessageIds: candidate.sourceMessageIds ?? [],
         ...candidate.metadata,
       },
@@ -184,8 +194,9 @@ export async function acceptCandidate(
         candidateType: candidate.candidateType,
         title: candidate.title,
         knowledgeObjectId: node.id,
+        projectId: effectiveProjectId,
       },
-      roomId: candidate.sourceRoomId ?? roomId,
+      roomId: effectiveRoomId,
     });
 
     return node;

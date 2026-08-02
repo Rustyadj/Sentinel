@@ -33,6 +33,7 @@ yarn-error.log*
 .pnpm-store/
 pnpm-lock.yaml
 pnpm-workspace.yaml
+.build.log
 
 # OS
 .DS_Store
@@ -47,3 +48,5 @@ prisma/.env
 *.swp
 *.swo
 __pycache__/
+.claude/
+.superpowers/

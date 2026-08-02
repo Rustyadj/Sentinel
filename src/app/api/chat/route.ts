@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { appendSessionMemory } from "@/lib/knowledge/retrieval";
 import { requireUser } from "@/lib/current-user";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permissions";
@@ -172,6 +173,12 @@ async function persistMessages(
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);
   }
+  // Non-fatal: roll this turn into ephemeral Redis-backed session memory
+  // (read side lives in retrieveContext / knowledge/retrieval.ts).
+  await appendSessionMemory(roomId, [
+    { role: "user", content: userContent },
+    { role: "agent", content: assistantContent },
+  ]).catch(() => {});
 }
 
 /**

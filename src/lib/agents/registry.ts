@@ -27,6 +27,12 @@ export interface VpsAgent {
 const AGENT_CONFIG_DIR = process.env.AGENT_CONFIG_DIR ?? "/opt/sentinel-os/agents";
 const AGENT_LOG_DIR = process.env.AGENT_LOG_DIR ?? "/opt/sentinel-os/logs";
 
+function envFlag(name: string, fallback = true): boolean {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
 const REGISTRY: VpsAgent[] = [
   {
     id: "hermes-lisa",
@@ -40,7 +46,7 @@ const REGISTRY: VpsAgent[] = [
     logPath: `${AGENT_LOG_DIR}/hermes-lisa.log`,
     memoryScope: "org",
     workspaceId: "default",
-    enabled: true,
+    enabled: envFlag("HERMES_LISA_ENABLED", true),
     legacyPath: "/legacy/hermes",
     dashboardPort: 4860,
   },
@@ -56,7 +62,7 @@ const REGISTRY: VpsAgent[] = [
     logPath: `${AGENT_LOG_DIR}/hermes-clint.log`,
     memoryScope: "project",
     workspaceId: "construction",
-    enabled: true,
+    enabled: envFlag("HERMES_CLINT_ENABLED", false),
     legacyPath: null,
     dashboardPort: 4861,
   },
@@ -67,12 +73,12 @@ const REGISTRY: VpsAgent[] = [
     type: "open-webui-agent",
     description: "Personal AI assistant — Docker on VPS",
     model: process.env.OPENCLAW_MODEL ?? "claude-opus-4-8",
-    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:3001",
+    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:50348",
     configPath: `${AGENT_CONFIG_DIR}/openclaw`,
     logPath: `${AGENT_LOG_DIR}/openclaw.log`,
     memoryScope: "user",
     workspaceId: "personal",
-    enabled: true,
+    enabled: envFlag("OPENCLAW_ENABLED", true),
     legacyPath: "/legacy/openclaw",
     dashboardPort: null,
   },
