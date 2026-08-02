@@ -117,8 +117,14 @@ export class PrismaRuntimeSessionStore implements RuntimeSessionStore {
 
   async logs(sessionId: string, since?: string, limit = 200) {
     const bounded = Math.min(Math.max(limit, 1), 500);
+    const sequenceCursor = since && /^\d+$/.test(since) ? Number.parseInt(since, 10) : undefined;
     const rows = await db.agentRuntimeEvent.findMany({
-      where: { sessionId, ...(since ? { occurredAt: { gt: new Date(since) } } : {}) },
+      where: {
+        sessionId,
+        ...(sequenceCursor !== undefined
+          ? { sequence: { gt: sequenceCursor } }
+          : since ? { occurredAt: { gt: new Date(since) } } : {}),
+      },
       orderBy: { sequence: "asc" },
       take: bounded + 1,
     });

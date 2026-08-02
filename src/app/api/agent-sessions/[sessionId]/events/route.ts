@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
             const { events } = await runtimeSessionStore.logs(sessionId, since, 200);
             for (const event of events) {
               controller.enqueue(encoder.encode(sseEvent(event)));
-              since = event.timestamp;
+              since = String(event.sequence);
             }
             const session = await runtimeSessionStore.get(sessionId);
             if (!session || (TERMINAL.has(session.status) && events.length === 0)) break;

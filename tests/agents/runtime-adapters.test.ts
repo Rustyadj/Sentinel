@@ -64,6 +64,7 @@ class FakeProcess extends EventEmitter {
 
 class FakeRunner implements RuntimeProcessRunner {
   versionFound = true;
+  versionExitCode = 0;
   authenticated = true;
   dockerRunning = true;
   paths: Record<string, string> = { "/allowed": "/allowed", "/allowed/repo": "/allowed/repo" };
@@ -76,7 +77,7 @@ class FakeRunner implements RuntimeProcessRunner {
     }
     if (args.includes("--version")) {
       if (!this.versionFound) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-      return { stdout: "runtime 1.2.3\n", stderr: "", exitCode: 0 };
+      return { stdout: this.versionExitCode === 0 ? "runtime 1.2.3\n" : "", stderr: this.versionExitCode === 0 ? "" : "invalid executable", exitCode: this.versionExitCode };
     }
     return { stdout: this.authenticated ? "authenticated" : "", stderr: this.authenticated ? "" : "login required", exitCode: this.authenticated ? 0 : 1 };
   }
@@ -118,6 +119,9 @@ describe("unified runtime discovery and readiness", () => {
     runner.versionFound = false;
     expect((await adapter.discover()).found).toBe(false);
     expect(await adapter.health(claudeRuntime)).toMatchObject({ installed: false, ready: false, failureCode: "binary_missing" });
+    runner.versionFound = true;
+    runner.versionExitCode = 126;
+    expect(await adapter.discover()).toMatchObject({ found: false, reason: "invalid executable" });
   });
 
   it("reports unsupported Codex resume truthfully", async () => {

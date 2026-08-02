@@ -77,7 +77,10 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     const runtime = await this.resolveRuntime(`runtime-${this.kind}`);
     if (!runtime?.executable) return { found: false, kind: this.kind, instances: [], reason: "configuration_invalid" };
     try {
-      await this.runner.run(runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
+      const result = await this.runner.run(runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
+      if (result.exitCode !== 0) {
+        return { found: false, kind: this.kind, instances: [], reason: result.stderr || "binary_unavailable" };
+      }
       return { found: true, kind: this.kind, instances: [runtime] };
     } catch (error) {
       return { found: false, kind: this.kind, instances: [], reason: error instanceof Error ? error.message : "binary_missing" };

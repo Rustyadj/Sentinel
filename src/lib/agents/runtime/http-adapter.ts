@@ -34,16 +34,20 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
       [`runtime-${this.kind}`, ...(this.kind === "hermes" ? ["runtime-hermes-lisa", "runtime-hermes-clint"] : [])]
         .map((id) => this.resolveRuntime(id)),
     );
-    const instances = candidates.filter((value): value is RuntimeInstance => Boolean(value && value.kind === this.kind));
-    return { found: instances.length > 0, kind: this.kind, instances };
+    const configured = candidates.filter((value): value is RuntimeInstance => Boolean(value && value.kind === this.kind));
+    const probes = await Promise.all(configured.map(async (runtime) => ({ runtime, health: await this.health(runtime) })));
+    const instances = probes.filter(({ health }) => health.installed || health.reachable).map(({ runtime }) => runtime);
+    return { found: instances.length > 0, kind: this.kind, instances, ...(instances.length ? {} : { reason: "runtime_unavailable" }) };
   }
 
   async health(runtime: RuntimeInstance): Promise<RuntimeHealth> {
     const checkedAt = new Date().toISOString();
+    let installed = false;
     let processRunning = false;
     if (runtime.containerName) {
       try {
         const result = await this.runner.run("docker", ["inspect", "--format", "{{.State.Running}}", runtime.containerName], { timeoutMs: 5_000 });
+        installed = result.exitCode === 0;
         processRunning = result.exitCode === 0 && result.stdout.trim() === "true";
       } catch {
         processRunning = false;
@@ -51,7 +55,7 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
     }
     if (!runtime.endpoint) {
       return {
-        installed: Boolean(runtime.containerName), processRunning, reachable: false, authenticated: null,
+        installed, processRunning, reachable: false, authenticated: null,
         ready: false, busy: false, degraded: true, failureCode: "configuration_invalid",
         message: "No HTTP endpoint configured", checkedAt,
       };
@@ -65,14 +69,14 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
           ? { failureCode: "provider_unavailable", message: `Runtime provider returned ${response.status}` }
           : { failureCode: "api_unreachable", message: `Endpoint returned ${response.status}` };
       return {
-        installed: Boolean(runtime.containerName), processRunning, reachable, authenticated: null,
+        installed: installed || reachable, processRunning, reachable, authenticated: null,
         ready: reachable, busy: false, degraded: !reachable,
         ...(!reachable ? failure : {}),
         checkedAt,
       };
     } catch {
       return {
-        installed: Boolean(runtime.containerName), processRunning, reachable: false, authenticated: null,
+        installed, processRunning, reachable: false, authenticated: null,
         ready: false, busy: false, degraded: true, failureCode: "api_unreachable",
         message: processRunning ? "Process is running but its API is unreachable" : "Runtime process is unavailable",
         checkedAt,
