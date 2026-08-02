@@ -181,9 +181,9 @@ Final validation on the merged audit branch:
 - `npm ci`: passed from a clean worktree-local install.
 - `prisma validate` and `prisma generate`: passed.
 - `npm run typecheck`: passed with zero errors.
-- `npm run lint`: passed with zero errors/warnings.
-- `npm test`: 83/83 suites and 191/191 tests passed, with no skipped or failed tests.
-- `npm run build`: Next.js 16.2.9 production build passed.
+- `npm run lint`: exited 0 with zero errors and the repository's 37-warning baseline.
+- `npm test`: 36/36 test files and 191/191 tests passed, with no skipped or failed tests.
+- `npm run build`: Next.js 16.2.9 production build passed; Turbopack reported one existing broad-file-trace warning for the agent config-file route.
 - `npm run test:e2e`: the WSL host invocation could not launch Chromium because `libnspr4.so`, `libnss3.so`, `libnssutil3.so` and `libasound.so.2` are unavailable and sudo is not available. The same repository command was rerun in the version-matched `mcr.microsoft.com/playwright:v1.61.1-noble` image against this audit checkout: 4/4 passed in 17.0 seconds.
 - Learning UI browser smoke: a disposable authenticated user exercised Curiosity, Improvement Queue, Evolution Timeline and Settings at 1440x960 and 390x844. Every route rendered its expected heading, no page errors/client exception appeared, and document width matched viewport width at both sizes. The five disposable users created during auth troubleshooting were deleted.
 - `docker compose config --quiet`: passed.
