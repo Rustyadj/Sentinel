@@ -97,6 +97,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - sentinel_net
+      - openclaw-cash_default
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 15s
@@ -171,6 +172,16 @@ services:
 networks:
   sentinel_net:
     driver: bridge
+  # openclaw-cash's own compose-managed network. Reaching it via
+  # host.docker.internal:50348 times out for container->container traffic
+  # (NAT hairpin through the host gateway to a docker-proxy'd port on the
+  # default bridge is unreliable) even though the port answers instantly
+  # from the host and from hermes-lisa's host-bound process. Joining this
+  # network directly and addressing the container by its compose alias
+  # ("cash") sidesteps that path entirely. External: true because it's
+  # owned and created by the openclaw-cash compose project, not this one.
+  openclaw-cash_default:
+    external: true
 
 volumes:
   postgres_data:

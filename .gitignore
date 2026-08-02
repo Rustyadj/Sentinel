@@ -50,3 +50,8 @@ prisma/.env
 __pycache__/
 .claude/
 .superpowers/
+
+# Runtime data mounted into the hermes-hub container from this checkout
+# (see docker-compose.hermes.yml) — includes live credentials (auth.json)
+# and mutable state (logs, kanban.db). Never source, never tracked.
+hermes-hub/
