@@ -38,6 +38,10 @@ export interface CreateFeatureFlagInput {
   learningCandidateId?: string | null;
   activatedAt?: Date | null;
   expiresAt?: Date | null;
+  rolloutStep?: number;
+  maxRollout?: number;
+  rollbackThresholds?: Record<string, unknown>;
+  monitoringWindow?: number;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -53,6 +57,10 @@ export interface UpdateFeatureFlagInput {
   learningCandidateId?: string | null;
   activatedAt?: Date | null;
   expiresAt?: Date | null;
+  rolloutStep?: number;
+  maxRollout?: number;
+  rollbackThresholds?: Record<string, unknown>;
+  monitoringWindow?: number;
 }
 
 export interface FeatureFlagContext {
@@ -65,17 +73,29 @@ export interface FeatureFlagContext {
 
 export interface FeatureFlagMutationOptions {
   authorizedByUserId?: string;
+  defaultWorkspaceId?: string;
 }
 
 export async function createFeatureFlag(
   input: CreateFeatureFlagInput,
   options: FeatureFlagMutationOptions = {},
 ) {
-  const scopeType = input.scopeType ?? "global";
-  validateScope(scopeType, input.scopeId);
+  const scopeType = input.scopeType ?? (options.defaultWorkspaceId ? "workspace" : "global");
+  const scopeId = input.scopeId ?? options.defaultWorkspaceId ?? null;
+  validateScope(scopeType, scopeId);
   const rolloutPercentage = validateRollout(input.rolloutPercentage ?? 0);
+  const rolloutStep = validatePercentage(input.rolloutStep ?? 10, "rolloutStep");
+  const maxRollout = validatePercentage(input.maxRollout ?? 100, "maxRollout");
+  if (rolloutPercentage > maxRollout) {
+    throw new Error("rolloutPercentage cannot exceed maxRollout");
+  }
+  const monitoringWindow = validatePositiveInteger(input.monitoringWindow ?? 3600, "monitoringWindow");
   const enabled = input.enabled ?? false;
   const riskTier = validateRiskTier(input.riskTier ?? "low");
+  const requestedActivation = normalizeOptionalDate(input.activatedAt, "activatedAt");
+  const activatedAt = enabled ? requestedActivation ?? new Date() : requestedActivation;
+  const expiresAt = normalizeOptionalDate(input.expiresAt, "expiresAt");
+  validateLifecycle(activatedAt, expiresAt);
 
   return db.$transaction(async (tx) => {
     const classification = await classifyFeatureFlagRisk(
@@ -95,15 +115,19 @@ export async function createFeatureFlag(
         name: requiredText(input.name, "name"),
         description: input.description ?? null,
         scopeType,
-        scopeId: scopeType === "global" ? null : input.scopeId!.trim(),
+        scopeId: scopeType === "global" ? null : scopeId!.trim(),
         enabled,
         rolloutPercentage,
         variant: input.variant ?? null,
         config: (input.config ?? {}) as Prisma.InputJsonValue,
         riskTier,
         learningCandidateId: input.learningCandidateId ?? null,
-        activatedAt: enabled ? input.activatedAt ?? new Date() : input.activatedAt ?? null,
-        expiresAt: input.expiresAt ?? null,
+        activatedAt,
+        expiresAt,
+        rolloutStep,
+        maxRollout,
+        rollbackThresholds: (input.rollbackThresholds ?? {}) as Prisma.InputJsonValue,
+        monitoringWindow,
       },
     });
   });
@@ -137,12 +161,33 @@ export async function updateFeatureFlag(
       input.rolloutPercentage !== undefined
         ? validateRollout(input.rolloutPercentage)
         : current.rolloutPercentage;
+    const rolloutStep = input.rolloutStep !== undefined
+      ? validatePercentage(input.rolloutStep, "rolloutStep")
+      : current.rolloutStep;
+    const maxRollout = input.maxRollout !== undefined
+      ? validatePercentage(input.maxRollout, "maxRollout")
+      : current.maxRollout;
+    if (rolloutPercentage > maxRollout) {
+      throw new Error("rolloutPercentage cannot exceed maxRollout");
+    }
+    const monitoringWindow = input.monitoringWindow !== undefined
+      ? validatePositiveInteger(input.monitoringWindow, "monitoringWindow")
+      : current.monitoringWindow;
     const riskTier = validateRiskTier(input.riskTier ?? current.riskTier);
     const learningCandidateId =
       input.learningCandidateId !== undefined
         ? input.learningCandidateId
         : current.learningCandidateId;
     validateScope(scopeType, scopeId);
+    const activatedAt = input.activatedAt !== undefined
+      ? normalizeOptionalDate(input.activatedAt, "activatedAt")
+      : input.enabled === true && !current.enabled
+        ? new Date()
+        : current.activatedAt;
+    const expiresAt = input.expiresAt !== undefined
+      ? normalizeOptionalDate(input.expiresAt, "expiresAt")
+      : current.expiresAt;
+    validateLifecycle(activatedAt, expiresAt);
 
     const [currentClassification, nextClassification] = await Promise.all([
       classifyFeatureFlagRisk(
@@ -192,12 +237,18 @@ export async function updateFeatureFlag(
         ...(input.config !== undefined ? { config: input.config as Prisma.InputJsonValue } : {}),
         ...(input.riskTier !== undefined ? { riskTier } : {}),
         ...(input.learningCandidateId !== undefined ? { learningCandidateId } : {}),
-        ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+        ...(input.expiresAt !== undefined ? { expiresAt } : {}),
         ...(input.activatedAt !== undefined
-          ? { activatedAt: input.activatedAt }
+          ? { activatedAt }
           : input.enabled === true && !current.enabled
-            ? { activatedAt: new Date() } // first transition to enabled, if not explicitly set
+            ? { activatedAt } // first transition to enabled, if not explicitly set
             : {}),
+        ...(input.rolloutStep !== undefined ? { rolloutStep } : {}),
+        ...(input.maxRollout !== undefined ? { maxRollout } : {}),
+        ...(input.rollbackThresholds !== undefined
+          ? { rollbackThresholds: input.rollbackThresholds as Prisma.InputJsonValue }
+          : {}),
+        ...(input.monitoringWindow !== undefined ? { monitoringWindow } : {}),
       },
     });
   });
@@ -229,7 +280,15 @@ export function getFeatureFlagBucket(key: string, assignmentId: string): number 
 
 export async function evaluateFlag(key: string, context: FeatureFlagContext): Promise<boolean> {
   const flag = await db.featureFlag.findUnique({ where: { key: key.trim() } });
-  if (!flag || !flag.enabled) return false;
+  if (!flag) return false;
+  // Record attempted evaluations even when the kill switch, expiry, scope, or
+  // rollout gate returns false; otherwise an operator cannot distinguish a
+  // stale flag from one that is actively evaluating to disabled.
+  await db.featureFlag.updateMany({
+    where: { id: flag.id },
+    data: { lastEvaluatedAt: new Date() },
+  });
+  if (!flag.enabled) return false;
   if (flag.expiresAt && flag.expiresAt.getTime() <= Date.now()) return false;
   if (!scopeMatches(flag.scopeType as FeatureFlagScopeType, flag.scopeId, context)) return false;
   if (flag.rolloutPercentage <= 0) return false;
@@ -281,10 +340,34 @@ function validateScope(scopeType: FeatureFlagScopeType, scopeId?: string | null)
 }
 
 function validateRollout(value: number): number {
+  return validatePercentage(value, "rolloutPercentage");
+}
+
+function validatePercentage(value: number, field: string): number {
   if (!Number.isInteger(value) || value < 0 || value > 100) {
-    throw new Error("rolloutPercentage must be an integer from 0 to 100");
+    throw new Error(`${field} must be an integer from 0 to 100`);
   }
   return value;
+}
+
+function validatePositiveInteger(value: number, field: string): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${field} must be a positive integer`);
+  }
+  return value;
+}
+
+function validateLifecycle(activatedAt: Date | null, expiresAt: Date | null) {
+  if (activatedAt && expiresAt && activatedAt.getTime() >= expiresAt.getTime()) {
+    throw new Error("activatedAt must be earlier than expiresAt");
+  }
+}
+
+function normalizeOptionalDate(value: Date | null | undefined, field: string): Date | null {
+  if (value === null || value === undefined) return null;
+  const normalized = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(normalized.getTime())) throw new Error(`${field} must be a valid date`);
+  return normalized;
 }
 
 function validateRiskTier(value: string): RiskLevel {

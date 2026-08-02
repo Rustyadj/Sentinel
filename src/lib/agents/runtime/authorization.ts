@@ -63,7 +63,10 @@ export async function requireSessionAccess(sessionId: string, permission: Runtim
   const session = await db.agentSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new RuntimeError("Session not found", "session_not_found", 404);
   const { user, runtime } = await requireRuntimeAccess(session.runtimeInstanceId, permission);
-  if (session.userId !== user.id && permission !== RUNTIME_PERMISSIONS.view && permission !== RUNTIME_PERMISSIONS.viewLogs) {
+  // Session transcripts, events and provider resume identifiers are private
+  // to their creator. Workspace-level runtime visibility never implies the
+  // ability to enumerate or attach to another user's session.
+  if (session.userId !== user.id) {
     throw new RuntimeError("Session not found", "session_not_found", 404);
   }
   return { user, runtime, session: toAgentSession(session) };

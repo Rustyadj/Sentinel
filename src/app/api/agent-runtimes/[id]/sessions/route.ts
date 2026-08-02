@@ -38,10 +38,11 @@ export async function POST(request: Request, { params }: Context) {
 export async function GET(request: Request, { params }: Context) {
   try {
     const { id } = await params;
-    const { runtime } = await requireRuntimeAccess(id, RUNTIME_PERMISSIONS.view);
+    const { user, runtime } = await requireRuntimeAccess(id, RUNTIME_PERMISSIONS.view);
     const url = new URL(request.url);
     const sessions = await getRuntimeAdapter(runtime.kind).listSessions({
       runtimeId: runtime.id,
+      userId: user.id,
       status: url.searchParams.get("status") ?? undefined,
       limit: parseLimit(url.searchParams.get("limit")),
     });

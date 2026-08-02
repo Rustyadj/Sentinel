@@ -9,7 +9,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
     const { sessionId } = await params;
     await requireSessionAccess(sessionId, RUNTIME_PERMISSIONS.view);
     const url = new URL(request.url);
-    let since = url.searchParams.get("since") ?? undefined;
+    // EventSource automatically sends Last-Event-ID after a disconnect. It
+    // takes precedence over the legacy `since` query parameter so reconnects
+    // resume strictly after the browser's last fully received event.
+    const lastEventId = request.headers.get("last-event-id")?.trim();
+    let since = lastEventId || url.searchParams.get("since") || undefined;
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {

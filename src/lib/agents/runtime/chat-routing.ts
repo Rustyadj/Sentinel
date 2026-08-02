@@ -18,6 +18,13 @@ export const RUNTIME_AGENT_MAP: Record<string, { runtimeId: string; mode: ChatEx
   codex: { runtimeId: "runtime-codex", mode: "coding_runtime", label: "Codex runtime" },
 };
 
+const RUNTIME_PROVIDERS: Record<string, string> = {
+  hermes: "hermes",
+  openclaw: "openclaw",
+  "claude-code": "anthropic",
+  codex: "openai",
+};
+
 export function isRuntimeChatMode(mode: ChatExecutionMode | undefined) {
   return mode === "persistent_agent_runtime" || mode === "coding_runtime";
 }
@@ -112,7 +119,19 @@ export async function routeRuntimeChat(input: {
           enqueue({ type: "runtime_event", event });
         }
         if (room && fullContent) {
-          await persistChatExchange({ roomId: room.id, userId: input.userId, userContent: input.userContent, agentId: input.agentId, assistantContent: fullContent });
+          await persistChatExchange({
+            roomId: room.id,
+            userId: input.userId,
+            userContent: input.userContent,
+            agentId: input.agentId,
+            assistantContent: fullContent,
+            provenance: {
+              runtimeKind: runtime.kind,
+              provider: RUNTIME_PROVIDERS[runtime.kind],
+              model: runtime.model,
+              agentRuntimeSessionId: session.id,
+            },
+          });
           enqueue({ type: "knowledge_update", roomId: room.id });
         }
       } catch (error) {

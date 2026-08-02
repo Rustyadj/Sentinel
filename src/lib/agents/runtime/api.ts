@@ -24,7 +24,8 @@ export async function readJsonObject(request: Request) {
 }
 
 export function sseEvent(event: RuntimeEvent | { type: "error"; data: Record<string, unknown> }) {
-  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+  const id = "sequence" in event ? `id: ${event.sequence}\n` : "";
+  return `${id}event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
 export const SSE_HEADERS = {

@@ -105,17 +105,23 @@ model ChatRoom {
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  chatRoomId String
-  role       String
-  agentId    String?
-  content    String
-  toolCalls  Json?
-  reasoning  String?
-  createdAt  DateTime @default(now())
+  id                    String   @id @default(cuid())
+  chatRoomId            String
+  role                  String
+  agentId               String?
+  content               String
+  toolCalls             Json?
+  reasoning             String?
+  runtimeKind           String?
+  provider              String?
+  model                 String?
+  agentRuntimeSessionId String?
+  createdAt             DateTime @default(now())
 
-  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  chatRoom           ChatRoom      @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  agentRuntimeSession AgentSession? @relation(fields: [agentRuntimeSessionId], references: [id], onDelete: SetNull)
 
+  @@index([agentRuntimeSessionId])
   @@map("messages")
 }
 
@@ -1267,6 +1273,11 @@ model FeatureFlag {
   // see evaluateFlag() in feature-flags.ts.
   activatedAt       DateTime?
   expiresAt         DateTime?
+  rolloutStep       Int      @default(10)
+  maxRollout        Int      @default(100)
+  rollbackThresholds Json    @default("{}")
+  monitoringWindow  Int      @default(3600) // seconds
+  lastEvaluatedAt   DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -1447,6 +1458,7 @@ model AgentSession {
   parentSession     AgentSession?       @relation("AgentSessionDelegation", fields: [parentSessionId], references: [id], onDelete: SetNull)
   delegatedSessions AgentSession[]      @relation("AgentSessionDelegation")
   events            AgentRuntimeEvent[]
+  messages          Message[]
 
   @@index([runtimeInstanceId, startedAt])
   @@index([userId, startedAt])

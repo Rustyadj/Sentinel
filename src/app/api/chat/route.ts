@@ -166,10 +166,11 @@ async function persistMessages(
   userContent: string,
   agentId: string,
   assistantContent: string,
-  userId: string
+  userId: string,
+  provenance?: { provider?: string; model?: string },
 ) {
   try {
-    await persistChatExchange({ roomId, userId, userContent, agentId, assistantContent });
+    await persistChatExchange({ roomId, userId, userContent, agentId, assistantContent, provenance });
   } catch (err) {
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);
@@ -439,7 +440,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -497,7 +498,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -562,7 +563,7 @@ export async function POST(request: NextRequest) {
       );
     } finally {
       if (roomId && userContent && fullContent) {
-        await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+        await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
         // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
         ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
       }
