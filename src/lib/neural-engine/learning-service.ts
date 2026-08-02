@@ -359,9 +359,19 @@ export async function applyLearningCandidate(candidateId: string) {
     // check: if a concurrent call already applied or rolled back this
     // candidate between the caller's decision to apply and this transaction
     // acquiring the lock, that's caught here rather than double-applying.
+    // `status` alone isn't enough — this codebase has no separate "applied"
+    // status (appliedTargetId is what actually marks it), so a status-only
+    // check would let a second concurrent caller sail through and, for any
+    // create-type mutation (memory, decision, skill, ...), create a second
+    // duplicate canonical row.
     if (candidate.status !== "approved" && candidate.status !== "auto_approved") {
       throw new Error(
         `Learning candidate ${candidateId} has status "${candidate.status}" — refusing to apply.`,
+      );
+    }
+    if (candidate.appliedTargetId !== null) {
+      throw new Error(
+        `Learning candidate ${candidateId} was already applied (target ${candidate.appliedTargetId}) — refusing to apply again.`,
       );
     }
 
