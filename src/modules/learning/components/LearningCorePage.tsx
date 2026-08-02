@@ -13,6 +13,8 @@ import { TrustView } from "./TrustView";
 import { FeatureFlagsView } from "./FeatureFlagsView";
 import { SkillsView } from "./SkillsView";
 import { ReplayView } from "./ReplayView";
+import { ImprovementQueueView } from "./ImprovementQueueView";
+import { EvolutionView } from "./EvolutionView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
@@ -63,5 +65,10 @@ export default function LearningCorePage() {
   // pipeline experiments do), so it's mapped here rather than adding yet
   // another shared ModuleTabs entry for one view.
   if (activeTab === "experiments") return <ReplayView />;
+  if (activeTab === "improvement-queue") return <ImprovementQueueView />;
+  if (activeTab === "evolution") return <EvolutionView />;
+  // "learning-settings" (budgets/thresholds/model allowlist) has no real
+  // backing service anywhere in this branch — left honestly unbuilt rather
+  // than faked. See the final release report's known-limitations section.
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }
