@@ -36,6 +36,7 @@ export function toAgentSession(row: SessionRow): AgentSession {
     ...(row.exitCode !== null ? { exitCode: row.exitCode } : {}),
     ...(row.cancelledAt ? { cancelledAt: row.cancelledAt.toISOString() } : {}),
     metadata: jsonRecord(row.metadata),
+    ...(row.parentSessionId ? { parentSessionId: row.parentSessionId } : {}),
   };
 }
 

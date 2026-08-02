@@ -89,6 +89,7 @@ export interface AgentSession {
   exitCode?: number;
   cancelledAt?: string;
   metadata: Record<string, unknown>;
+  parentSessionId?: string;
 }
 
 export interface SendTaskInput {
@@ -111,6 +112,7 @@ export type RuntimeEventType =
   | "command_completed"
   | "warning"
   | "error"
+  | "delegated"
   | "cancelled"
   | "completed";
 
@@ -190,4 +192,44 @@ export interface RuntimeView extends RuntimeInstance {
   sentinelControl: SentinelControlStatus;
   nativeUiUrl?: string;
   model?: string;
+}
+
+export type RuntimeOperationalState =
+  | "online"
+  | "busy"
+  | "idle"
+  | "thinking"
+  | "streaming"
+  | "error"
+  | "offline";
+
+export interface RuntimeOperationalStatus {
+  runtimeId: string;
+  agentId: string;
+  kind: AgentRuntimeKind;
+  state: RuntimeOperationalState;
+  provider: string;
+  model: string | null;
+  version: string | null;
+  health: RuntimeHealth;
+  currentSession: AgentSession | null;
+  currentTask: string | null;
+  workspace: { id: string; name: string } | null;
+  project: { id: string; name: string } | null;
+  lastActivityAt: string | null;
+  sessionUptimeSeconds: number | null;
+  runtimeUptimeSeconds: number | null;
+  memoryBytes: number | null;
+  queueDepth: number | null;
+  latestEventType: RuntimeEventType | null;
+  unavailableFields: Array<
+    | "runtimeUptime"
+    | "memory"
+    | "queueDepth"
+    | "model"
+    | "sessions"
+    | "currentTask"
+    | "workspace"
+    | "project"
+  >;
 }

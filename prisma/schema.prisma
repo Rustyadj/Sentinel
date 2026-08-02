@@ -1441,15 +1441,19 @@ model AgentSession {
   exitCode          Int?
   cancelledAt       DateTime?
   metadata          Json      @default("{}")
+  parentSessionId   String?
 
-  runtimeInstance AgentRuntime        @relation(fields: [runtimeInstanceId], references: [id], onDelete: Restrict)
-  events          AgentRuntimeEvent[]
+  runtimeInstance   AgentRuntime        @relation(fields: [runtimeInstanceId], references: [id], onDelete: Restrict)
+  parentSession     AgentSession?       @relation("AgentSessionDelegation", fields: [parentSessionId], references: [id], onDelete: SetNull)
+  delegatedSessions AgentSession[]      @relation("AgentSessionDelegation")
+  events            AgentRuntimeEvent[]
 
   @@index([runtimeInstanceId, startedAt])
   @@index([userId, startedAt])
   @@index([workspaceId, startedAt])
   @@index([chatRoomId, lastActivityAt])
   @@index([status, lastActivityAt])
+  @@index([parentSessionId])
   @@map("agent_sessions")
 }
 
