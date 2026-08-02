@@ -27,6 +27,15 @@ describe("release audit — sandbox security boundary", () => {
     expect(result.reason).toMatch(/environment|credential|DATABASE_URL/i);
   });
 
+  it("revalidates the command at execution so callers cannot bypass validate()", async () => {
+    const result = await new MockTestSandbox().execute({
+      command: ["cat", "../.env"],
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.reason).toMatch(/disallowed|command|path/i);
+  });
+
   it("bounds captured output so a candidate cannot exhaust worker memory", async () => {
     const result = await new MockTestSandbox().execute({
       command: ["node", "-e", "process.stdout.write('x'.repeat(200000))"],
@@ -36,5 +45,14 @@ describe("release audit — sandbox security boundary", () => {
     expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(MAX_SANDBOX_OUTPUT_BYTES);
     expect(result.status).toBe("error");
     expect(result.reason).toMatch(/output limit/i);
+  });
+
+  it("does not report a non-zero process exit as a completed sandbox run", async () => {
+    const result = await new MockTestSandbox().execute({
+      command: ["node", "-e", "process.exit(7)"],
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.exitCode).toBe(7);
   });
 });
