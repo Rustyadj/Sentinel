@@ -4,14 +4,12 @@
 // src/workers/learning-worker.ts` (see docker-compose.yml's learning-worker
 // service, and package.json's "worker:learning" script).
 //
-// UNVERIFIED IN THIS SESSION: no Redis instance was reachable here to run
-// this against. The BullMQ Worker/dead-letter/graceful-shutdown wiring
-// below is real, not a stub, but nobody has watched it process a live job.
-
 import { Worker, type Job } from "bullmq";
 import {
   LEARNING_QUEUE_NAME,
+  LEARNING_JOB_ATTEMPTS,
   JOB_NAMES,
+  closeLearningQueues,
   getDeadLetterQueue,
   scheduleRecurringJobs,
   type JobPayload,
@@ -21,8 +19,14 @@ import { detectKnowledgeGaps } from "@/lib/learning/knowledge-gaps";
 import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
 import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay";
 
-const CONCURRENCY = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
-const MAX_ATTEMPTS = 3;
+const requestedConcurrency = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
+const CONCURRENCY = Number.isFinite(requestedConcurrency)
+  ? Math.max(1, Math.min(16, Math.floor(requestedConcurrency)))
+  : 2;
+const requestedTimeout = Number(process.env.LEARNING_JOB_TIMEOUT_MS ?? 15 * 60 * 1_000);
+const JOB_TIMEOUT_MS = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+  ? Math.floor(requestedTimeout)
+  : 15 * 60 * 1_000;
 
 async function processJob(job: Job<JobPayload>) {
   switch (job.name) {
@@ -43,6 +47,23 @@ async function processJob(job: Job<JobPayload>) {
   }
 }
 
+async function processJobWithDeadline(job: Job<JobPayload>) {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      processJob(job),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Job ${job.id ?? job.name} exceeded ${JOB_TIMEOUT_MS}ms deadline`)),
+          JOB_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function startWorker() {
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
@@ -50,7 +71,7 @@ function startWorker() {
     process.exit(1);
   }
 
-  const worker = new Worker<JobPayload>(LEARNING_QUEUE_NAME, processJob, {
+  const worker = new Worker<JobPayload>(LEARNING_QUEUE_NAME, processJobWithDeadline, {
     connection: { url: redisUrl, maxRetriesPerRequest: null },
     concurrency: CONCURRENCY,
     autorun: true,
@@ -62,13 +83,13 @@ function startWorker() {
 
   worker.on("failed", async (job, err) => {
     if (!job) return;
-    console.error(`[learning-worker] failed ${job.name} (${job.id}), attempt ${job.attemptsMade}/${MAX_ATTEMPTS}:`, err.message);
+    console.error(`[learning-worker] failed ${job.name} (${job.id}), attempt ${job.attemptsMade}/${LEARNING_JOB_ATTEMPTS}:`, err.message);
     // Dead-letter: once retries are exhausted, BullMQ's own "failed" set
     // already holds the job (that's the built-in dead-letter list — no
     // separate DLQ construct is needed for inspection), but this also
     // copies it into a dedicated queue so an operator can requeue/inspect
     // without reaching into the main queue's internal failed-job set.
-    if (job.attemptsMade >= MAX_ATTEMPTS) {
+    if (job.attemptsMade >= LEARNING_JOB_ATTEMPTS) {
       const dlq = getDeadLetterQueue();
       if (dlq) {
         await dlq
@@ -100,6 +121,7 @@ async function main() {
     shuttingDown = true;
     console.log(`[learning-worker] received ${signal}, closing gracefully…`);
     await worker.close();
+    await closeLearningQueues();
     process.exit(0);
   }
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

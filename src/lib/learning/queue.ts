@@ -2,11 +2,9 @@
 //
 // This is genuinely new infrastructure for this repo (confirmed absent
 // before writing this — no cron/BullMQ/node-cron/queue library existed
-// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Unverified against
-// a live Redis+worker deployment in this session (same honesty stance as
-// the Docker sandbox adapter) — the code is real, the flags/options are
-// deliberate, but nobody has watched a job actually complete against a
-// running Redis instance here.
+// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Producers persist
+// bounded retry/backoff settings with each job, and callers can close both
+// singleton connections during worker shutdown or test teardown.
 //
 // BullMQ requires its own ioredis connection with maxRetriesPerRequest:
 // null (blocking BRPOPLPUSH-style calls need unlimited retries) — this is
@@ -14,10 +12,19 @@
 // purpose client, which is intentionally lenient (maxRetriesPerRequest: 1,
 // "Redis is optional") in the opposite direction.
 
-import { Queue, type ConnectionOptions } from "bullmq";
+import { Queue, type ConnectionOptions, type JobsOptions } from "bullmq";
 
 export const LEARNING_QUEUE_NAME = "learning-core";
 export const LEARNING_DEAD_LETTER_QUEUE_NAME = "learning-core-dead-letter";
+export const LEARNING_JOB_ATTEMPTS = 3;
+export const LEARNING_JOB_BACKOFF_MS = 1_000;
+
+export const LEARNING_JOB_OPTIONS = {
+  attempts: LEARNING_JOB_ATTEMPTS,
+  backoff: { type: "exponential", delay: LEARNING_JOB_BACKOFF_MS },
+  removeOnComplete: 100,
+  removeOnFail: 500,
+} satisfies JobsOptions;
 
 export const JOB_NAMES = {
   degradationSweep: "degradation-sweep",
@@ -61,6 +68,18 @@ export function getDeadLetterQueue(): Queue | null {
   return deadLetterQueue;
 }
 
+/** Close and clear singleton connections so a later call can reconnect cleanly. */
+export async function closeLearningQueues(): Promise<void> {
+  const openQueue = queue;
+  const openDeadLetterQueue = deadLetterQueue;
+  queue = null;
+  deadLetterQueue = null;
+  await Promise.all([
+    openQueue?.close(),
+    openDeadLetterQueue?.close(),
+  ]);
+}
+
 export interface JobPayload {
   category?: string;
   triggeredBy: "schedule" | "manual";
@@ -93,12 +112,12 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
   await q.upsertJobScheduler(
     JOB_NAMES.degradationSweep,
     { pattern: CRON.nightly },
-    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: { removeOnComplete: 100, removeOnFail: 500 } }
+    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
   );
   await q.upsertJobScheduler(
     JOB_NAMES.knowledgeGapAnalysis,
     { pattern: CRON.weekly },
-    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: { removeOnComplete: 100, removeOnFail: 500 } }
+    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
   );
   for (const category of ["failure", "partial_outcome", "high_cost", "strongest_success", "rejected_answer", "rolled_back"]) {
     await q.upsertJobScheduler(
@@ -107,7 +126,7 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
       {
         name: JOB_NAMES.experienceReplay,
         data: { category, triggeredBy: "schedule" } satisfies JobPayload,
-        opts: { removeOnComplete: 100, removeOnFail: 500 },
+        opts: LEARNING_JOB_OPTIONS,
       }
     );
   }
