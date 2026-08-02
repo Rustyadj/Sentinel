@@ -130,18 +130,25 @@ describe("release audit — approval authorization", () => {
 describe("release audit — evidence integrity", () => {
   it("does not count duplicate shadow fixtures as independent samples", async () => {
     const agent = await makeAgent("Duplicate shadow fixture agent");
+    // A tool_policy_change candidate has a real executor (candidate-executor.ts)
+    // that replays the fixture's real toolsUsed against the candidate's real
+    // proposed permission list — this fixture used "web_search", which the
+    // candidate's proposed permissions revoke, so every sample deterministically
+    // fails. That's what makes this a meaningful dedup test: real evidence, not
+    // an incidental type with no executor.
     const experience = await db.experience.create({
       data: {
         agentId: agent.id,
         objective: "one historical fixture",
         outcomeStatus: "success",
         completedAt: new Date(),
+        toolsUsed: ["web_search"],
       },
     });
     const candidate = await db.learningCandidate.create({
       data: {
-        type: "memory",
-        proposedPayload: { content: "candidate never actually re-evaluated" },
+        type: "tool_policy_change",
+        proposedPayload: { agentId: agent.id, toolPermissions: ["read_file"] },
         riskLevel: "low",
         status: "proposed",
       },
@@ -160,6 +167,40 @@ describe("release audit — evidence integrity", () => {
     });
     expect(storedRuns).toBe(1);
     expect(promotion.sampleSize).toBe(1);
+    expect(promotion.passed).toBe(false);
+  });
+
+  it("excludes unsupported candidate types from promotion evidence entirely", async () => {
+    const agent = await makeAgent("Unsupported type agent");
+    const experience = await db.experience.create({
+      data: {
+        agentId: agent.id,
+        objective: "one historical fixture",
+        outcomeStatus: "success",
+        completedAt: new Date(),
+      },
+    });
+    // "memory" has no registered CandidateExecutor — a pure data change with
+    // nothing to execute or replay. Historical baseline success must never
+    // count as evidence for it.
+    const candidate = await db.learningCandidate.create({
+      data: {
+        type: "memory",
+        proposedPayload: { content: "candidate never actually re-evaluated" },
+        riskLevel: "low",
+        status: "proposed",
+      },
+    });
+
+    const outcome = await runShadowSample({
+      candidateId: candidate.id,
+      sourceExperienceId: experience.id,
+    });
+    expect(outcome.unsupported).toBe(true);
+    expect(outcome.passed).toBeNull();
+
+    const promotion = await evaluateShadowPromotion(candidate.id);
+    expect(promotion.sampleSize).toBe(0);
     expect(promotion.passed).toBe(false);
   });
 

@@ -1,17 +1,10 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { getSandbox } from "./sandbox";
+import { findCandidateExecutor, type ShadowFixture } from "./candidate-executor";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
 }
-
-// Real code-execution risk only exists for candidate types that carry
-// executable logic — pure data changes (memory content, confidence
-// updates, relationships) have nothing for a sandbox to isolate; diffing
-// two JSON blobs isn't a code-execution surface. Only route through the
-// sandbox where it actually matters.
-const CODE_BEARING_TYPES = new Set(["skill", "procedure", "tool_policy_change"]);
 
 export interface ShadowSampleInput {
   candidateId: string;
@@ -21,7 +14,8 @@ export interface ShadowSampleInput {
 
 export interface ShadowSampleOutcome {
   run: Awaited<ReturnType<typeof db.experimentRun.create>>;
-  passed: boolean;
+  passed: boolean | null;
+  unsupported: boolean;
 }
 
 /**
@@ -31,16 +25,12 @@ export interface ShadowSampleOutcome {
  * real model call for every candidate, while still comparing candidate-vs-
  * baseline behavior on real historical input. Never sends a message, never
  * mutates canonical Memory/KnowledgeObject rows, never calls an external
- * tool — for code-bearing candidate types the sandbox enforces that; for
- * pure data-diff candidates there is no mutation to begin with (a
- * comparison against a snapshot isn't a write).
+ * tool — for code-bearing candidate types the sandbox enforces that.
  *
- * The comparison itself is intentionally conservative: it proves the full
- * shadow pipeline (fixture -> sandbox gate -> recorded comparison ->
- * aggregated confidence) works end to end honestly. A real semantic
- * re-scoring of the fixture under the candidate's actual proposed change
- * (e.g. re-running evaluation with a new prompt) is real future work, not
- * something faked here as more than it is.
+ * The candidate's own proposed artifact is what gets evaluated — see
+ * candidate-executor.ts. A candidate type with no registered executor is
+ * `unsupported`: recorded honestly, excluded from promotion evidence by
+ * evaluateShadowPromotion below, never silently treated as passing.
  */
 export async function runShadowSample(input: ShadowSampleInput): Promise<ShadowSampleOutcome> {
   const candidate = await db.learningCandidate.findUniqueOrThrow({ where: { id: input.candidateId } });
@@ -49,41 +39,45 @@ export async function runShadowSample(input: ShadowSampleInput): Promise<ShadowS
     include: { outcome: true },
   });
 
-  const inputSnapshot = {
+  const fixture: ShadowFixture = {
+    experienceId: sourceExperience.id,
     objective: sourceExperience.objective,
     contextSnapshot: sourceExperience.contextSnapshot,
+    actionsTaken: sourceExperience.actionsTaken,
+    toolsUsed: sourceExperience.toolsUsed,
+    outcomeStatus: sourceExperience.outcome?.status ?? sourceExperience.outcomeStatus,
+    evaluatorScore: sourceExperience.evaluatorScore,
   };
-  const baselineStatus = sourceExperience.outcome?.status ?? sourceExperience.outcomeStatus;
+  const inputSnapshot = { objective: fixture.objective, contextSnapshot: fixture.contextSnapshot };
 
-  let candidateApplies = true;
-  let sandboxReason: string | undefined;
+  const executor = findCandidateExecutor(candidate);
+  const unsupported = executor === null;
 
-  if (CODE_BEARING_TYPES.has(candidate.type)) {
-    const sandbox = getSandbox();
-    const validation = await sandbox.validate({ command: ["true"] });
-    if (!validation.valid) {
-      candidateApplies = false;
-      sandboxReason = validation.reasons.join("; ");
-    } else if (!sandbox.isProductionSafe && process.env.NODE_ENV !== "test") {
-      // MockTestSandbox reports isProductionSafe=false — outside tests this
-      // means no real backend is configured. Fail closed rather than treat
-      // a code-bearing candidate as validated by something that isn't a
-      // real boundary.
-      candidateApplies = false;
-      sandboxReason = "no production-safe sandbox backend configured for a code-bearing candidate type";
-    }
+  let passed: boolean | null = null;
+  let score: number | null = null;
+  let reasons: string[] = [];
+  let safetyViolation = false;
+
+  if (executor) {
+    const prepared = await executor.prepare(candidate);
+    const result = await executor.execute({ prepared, fixture });
+    await executor.cleanup(prepared).catch(() => {});
+    passed = result.executed ? result.passed : null;
+    score = result.score;
+    reasons = result.reasons;
+    safetyViolation = result.safetyViolation;
+  } else {
+    reasons = [`no candidate executor supports type "${candidate.type}" — cannot generate real shadow evidence`];
   }
 
-  const passed = candidateApplies && baselineStatus === "success";
-
   const outputSnapshot = {
-    candidateApplies,
-    sandboxReason: sandboxReason ?? null,
-    baselineStatus,
+    unsupported,
+    executorName: executor?.name ?? null,
+    reasons,
   };
   const metrics = {
-    accuracy: sourceExperience.evaluatorScore ?? undefined,
-    safetyViolations: candidateApplies ? 0 : 1,
+    accuracy: score ?? undefined,
+    safetyViolations: safetyViolation ? 1 : 0,
   };
 
   const run = await db.$transaction(async (tx) => {
@@ -105,13 +99,18 @@ export async function runShadowSample(input: ShadowSampleInput): Promise<ShadowS
         inputSnapshot: toJson(inputSnapshot),
         outputSnapshot: toJson(outputSnapshot),
         metrics: toJson(metrics),
-        errors: toJson(sandboxReason ? [sandboxReason] : []),
+        errors: toJson(reasons),
+        // Stored faithfully as null for "unsupported type" / "no evidence in
+        // this fixture" — never coerced to false, which would misrepresent
+        // absence-of-evidence as an explicit failure. evaluateShadowPromotion
+        // below excludes null (and outputSnapshot.unsupported) runs from the
+        // sample count entirely, per the executor contract.
         passed,
       },
     });
   });
 
-  return { run, passed };
+  return { run, passed, unsupported };
 }
 
 export async function listShadowRuns(candidateId: string) {
@@ -157,18 +156,35 @@ export interface ShadowPromotionEvaluation {
  */
 export async function evaluateShadowPromotion(candidateId: string): Promise<ShadowPromotionEvaluation> {
   const storedRuns = await db.experimentRun.findMany({
-    where: { candidateId, variant: "shadow", traceId: { not: null }, passed: { not: null } },
+    where: { candidateId, variant: "shadow", traceId: { not: null } },
     orderBy: { createdAt: "asc" },
   });
   // Defense in depth for rows written before the advisory-lock dedupe existed,
   // or inserted outside the service: one recorded fixture is one sample.
-  const runs = [...new Map(storedRuns.map((run) => [run.traceId!, run])).values()];
+  const deduped = [...new Map(storedRuns.map((run) => [run.traceId!, run])).values()];
+
+  // Unsupported-type runs and "no evidence" runs (executor ran but the
+  // fixture gave it nothing to check — e.g. a tool-policy candidate against
+  // a fixture that used no tools) carry zero promotion evidence and must
+  // never count toward sample size or confidence, per the executor
+  // contract in candidate-executor.ts.
+  const runs = deduped.filter((run) => {
+    const snapshot = run.outputSnapshot as { unsupported?: boolean } | null;
+    if (snapshot?.unsupported) return false;
+    return run.passed !== null;
+  });
+  const unsupportedCount = deduped.length - runs.length;
   const sampleSize = runs.length;
 
   if (sampleSize < MIN_SHADOW_SAMPLE_SIZE) {
     return {
       passed: false,
-      reasons: [`insufficient shadow sample size (${sampleSize}/${MIN_SHADOW_SAMPLE_SIZE}) — status remains pending`],
+      reasons: [
+        `insufficient shadow sample size (${sampleSize}/${MIN_SHADOW_SAMPLE_SIZE}) — status remains pending`,
+        ...(unsupportedCount > 0
+          ? [`${unsupportedCount} recorded run(s) excluded: unsupported candidate type or no evidence in fixture`]
+          : []),
+      ],
       sampleSize,
       passRate: null,
       confidenceLowerBound: null,
