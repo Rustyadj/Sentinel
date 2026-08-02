@@ -116,13 +116,17 @@ services:
   # experience replay). Runs from the `builder` stage (needs devDependencies
   # for tsx + full source, same pattern as `migrate`) rather than a separate
   # compiled image — simplest correct thing until this needs its own
-  # deployment lifecycle. UNVERIFIED against a live deployment in this
-  # session; the wiring is real, but nobody has watched a job run here.
+  # deployment lifecycle. Verified live: connection, job execution, retry +
+  # dead-letter, scheduler dedup across restarts. `command` invokes the tsx
+  # binary directly rather than `npm run worker:learning` — verified that
+  # `npm run` does not forward SIGTERM to the underlying process, which
+  # would make `docker compose stop`/`down` hard-kill in-flight jobs instead
+  # of shutting the worker down gracefully.
   learning-worker:
     build:
       context: .
       target: builder
-    command: npm run worker:learning
+    command: node_modules/.bin/tsx src/workers/learning-worker.ts
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos

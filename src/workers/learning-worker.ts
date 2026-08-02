@@ -4,9 +4,11 @@
 // src/workers/learning-worker.ts` (see docker-compose.yml's learning-worker
 // service, and package.json's "worker:learning" script).
 //
-// UNVERIFIED IN THIS SESSION: no Redis instance was reachable here to run
-// this against. The BullMQ Worker/dead-letter/graceful-shutdown wiring
-// below is real, not a stub, but nobody has watched it process a live job.
+// Verified live against a running Redis instance: connection succeeds, the
+// worker starts and processes a real job to completion, a failing job
+// retries and lands on the dead-letter queue after MAX_ATTEMPTS, repeated
+// scheduleRecurringJobs() calls do not duplicate schedules, and SIGTERM
+// closes the worker gracefully.
 
 import { Worker, type Job } from "bullmq";
 import {

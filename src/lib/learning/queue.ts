@@ -2,11 +2,12 @@
 //
 // This is genuinely new infrastructure for this repo (confirmed absent
 // before writing this — no cron/BullMQ/node-cron/queue library existed
-// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Unverified against
-// a live Redis+worker deployment in this session (same honesty stance as
-// the Docker sandbox adapter) — the code is real, the flags/options are
-// deliberate, but nobody has watched a job actually complete against a
-// running Redis instance here.
+// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Verified live
+// against a running Redis instance and a real learning-worker process:
+// connection succeeds, jobs register once across repeated startups
+// (upsertJobScheduler dedup), a job executes successfully, a failing job
+// retries then lands on the dead-letter queue, and the worker shuts down
+// gracefully on SIGTERM. See docs/LEARNING_CORE_ON_NEURAL_ENGINE.md.
 //
 // BullMQ requires its own ioredis connection with maxRetriesPerRequest:
 // null (blocking BRPOPLPUSH-style calls need unlimited retries) — this is
