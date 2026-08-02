@@ -2,9 +2,9 @@
 //
 // "Do not call an ordinary in-process function a secure sandbox" (spec).
 // This file defines the real interface and three adapters:
-//   - DockerSandbox: the production isolation boundary. Real, but UNVERIFIED
-//     against a live Docker daemon in this session — no Docker socket was
-//     available to test against here. Stated honestly, not hidden.
+//   - DockerSandbox: the production isolation boundary. Smoke-tested against
+//     a live Docker daemon with Alpine for benign execution, secret-path
+//     rejection and read-only-root enforcement; this is not an escape audit.
 //   - MockTestSandbox: explicitly test-only, documented as not a security
 //     boundary, used so the calling code (candidate validation/promotion
 //     gating) can be exercised without a Docker daemon in unit tests.
@@ -143,6 +143,18 @@ export class MockTestSandbox implements LearningSandbox {
   async execute(input: SandboxExecutionInput): Promise<SandboxExecutionResult> {
     const runId = input.runId ?? randomUUID();
     const started = Date.now();
+    const validation = validateCommand(input.command);
+    if (!validation.valid) {
+      return {
+        runId,
+        status: "error",
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        durationMs: 0,
+        reason: validation.reasons.join("; "),
+      };
+    }
     const unsafeEnvKey = sensitiveEnvironmentKey(input.env);
     if (unsafeEnvKey) {
       return {
@@ -184,14 +196,25 @@ export class MockTestSandbox implements LearningSandbox {
         }
       });
       child.on("close", (exitCode: number | null, signal: NodeJS.Signals | null) => {
+        const status = outputLimitExceeded
+          ? "error"
+          : signal === "SIGTERM"
+            ? "timeout"
+            : exitCode === 0
+              ? "completed"
+              : "error";
         resolve({
           runId,
-          status: outputLimitExceeded ? "error" : signal === "SIGTERM" ? "timeout" : "completed",
+          status,
           exitCode,
           stdout,
           stderr,
           durationMs: Date.now() - started,
-          ...(outputLimitExceeded ? { reason: "Sandbox output limit exceeded." } : {}),
+          ...(outputLimitExceeded
+            ? { reason: "Sandbox output limit exceeded." }
+            : status === "error"
+              ? { reason: `Sandbox command exited with code ${exitCode}.` }
+              : {}),
         });
       });
       child.on("error", (err: Error) => {
@@ -216,10 +239,10 @@ export class MockTestSandbox implements LearningSandbox {
 /**
  * Production adapter — real container isolation via `docker run`.
  *
- * UNVERIFIED IN THIS SESSION: no Docker daemon was reachable here to test
- * against. The flags below are real and intentional (see comments), but
- * this has not been exercised against a live container. Treat as
- * implemented-not-verified until it's run against a real Docker socket.
+ * Smoke-tested against a live Docker daemon with `alpine:latest`: benign
+ * execution completed, secret-path input failed before spawn, and a root
+ * filesystem write failed under `--read-only`. This verifies the adapter's
+ * wiring and flags, not the security of arbitrary images or the Docker host.
  */
 export class DockerSandbox implements LearningSandbox {
   readonly name = "docker";
@@ -238,6 +261,18 @@ export class DockerSandbox implements LearningSandbox {
     const memoryMb = input.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
     const cpus = input.cpuLimit ?? DEFAULT_CPU_LIMIT;
     const started = Date.now();
+    const validation = validateCommand(input.command);
+    if (!validation.valid) {
+      return {
+        runId,
+        status: "error",
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        durationMs: 0,
+        reason: validation.reasons.join("; "),
+      };
+    }
     const unsafeEnvKey = sensitiveEnvironmentKey(input.env);
     if (unsafeEnvKey) {
       return {
@@ -295,14 +330,25 @@ export class DockerSandbox implements LearningSandbox {
         }
       });
       child.on("close", (exitCode: number | null, signal: NodeJS.Signals | null) => {
+        const status = outputLimitExceeded
+          ? "error"
+          : signal === "SIGTERM"
+            ? "timeout"
+            : exitCode === 0
+              ? "completed"
+              : "error";
         resolve({
           runId,
-          status: outputLimitExceeded ? "error" : signal === "SIGTERM" ? "timeout" : "completed",
+          status,
           exitCode,
           stdout,
           stderr,
           durationMs: Date.now() - started,
-          ...(outputLimitExceeded ? { reason: "Sandbox output limit exceeded." } : {}),
+          ...(outputLimitExceeded
+            ? { reason: "Sandbox output limit exceeded." }
+            : status === "error"
+              ? { reason: `Sandbox command exited with code ${exitCode}.` }
+              : {}),
         });
       });
       child.on("error", (err: Error) => {
