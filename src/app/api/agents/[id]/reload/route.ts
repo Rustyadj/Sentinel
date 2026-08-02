@@ -1,52 +1,40 @@
 import { NextResponse } from "next/server";
 import { ALLOWED_AGENT_IDS, getVpsAgent } from "@/lib/agents/registry";
-import { getControlPlaneUser, canRestartAgent, unauthorized, forbidden } from "@/lib/agents/permissions";
 import { reloadContainer, restartContainer } from "@/lib/agents/processControl";
+import { RUNTIME_PERMISSIONS, requireRuntimeAccess } from "@/lib/agents/runtime/authorization";
+import { runtimeErrorResponse } from "@/lib/agents/runtime/api";
+import { writeAuditLog } from "@/lib/workspaces/audit";
 
 type Params = { params: Promise<{ id: string }> };
 
 // Reload sends SIGHUP to the container process to reload config without full restart.
 // Falls back to restart if SIGHUP isn't supported.
 export async function POST(_req: Request, { params }: Params) {
-  const { id } = await params;
-  const user = await getControlPlaneUser(id);
-  if (!user) return unauthorized();
-  if (!canRestartAgent(user.role)) return forbidden("reload agents");
-  if (!ALLOWED_AGENT_IDS.has(id)) {
-    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-  }
-
-  const agent = getVpsAgent(id);
-  if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-
   try {
-    // Try SIGHUP first (graceful reload)
-    await reloadContainer(id);
+    const { id } = await params;
+    if (!ALLOWED_AGENT_IDS.has(id)) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+    const { user, runtime } = await requireRuntimeAccess(id, RUNTIME_PERMISSIONS.restart);
+    const agent = getVpsAgent(id);
+    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    let method = "sighup";
+    try {
+      await reloadContainer(id);
+    } catch {
+      await restartContainer(id);
+      method = "restart";
+    }
+    await writeAuditLog({ workspaceId: runtime.workspaceId, userId: user.id, action: "agent_runtime.reloaded", entityType: "AgentRuntime", entityId: runtime.id, details: { source: "legacy_route", method } });
     return NextResponse.json({
       ok: true,
-      method: "sighup",
-      message: `${agent.name} reloaded via SIGHUP`,
+      method,
+      message: method === "sighup" ? `${agent.name} reloaded via SIGHUP` : `${agent.name} reloaded via restart (SIGHUP not supported)`,
       agentId: id,
       reloadedAt: new Date().toISOString(),
       reloadedBy: user.email,
     });
-  } catch {
-    // Fall back to restart
-    try {
-      await restartContainer(id);
-      return NextResponse.json({
-        ok: true,
-        method: "restart",
-        message: `${agent.name} reloaded via restart (SIGHUP not supported)`,
-        agentId: id,
-        reloadedAt: new Date().toISOString(),
-        reloadedBy: user.email,
-      });
-    } catch (err2) {
-      return NextResponse.json(
-        { ok: false, error: (err2 as Error).message },
-        { status: 500 }
-      );
-    }
+  } catch (error) {
+    return runtimeErrorResponse(error);
   }
 }
