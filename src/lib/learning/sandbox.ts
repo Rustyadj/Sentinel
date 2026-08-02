@@ -67,11 +67,39 @@ function restrictedEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MEMORY_LIMIT_MB = 256;
 const DEFAULT_CPU_LIMIT = 0.5;
+export const MAX_SANDBOX_OUTPUT_BYTES = 64 * 1024;
 
 // Nothing that looks like a credential, a network tool, or a shell escape is
 // allowed through — this is a coarse allowlist-adjacent filter, not a
 // substitute for the container boundary itself (both layers matter).
 const DISALLOWED_COMMAND_PATTERN = /(curl|wget|nc\b|ssh|scp|rm\s+-rf\s+\/|sudo|chmod\s+777|;|\|\||&&|`|\$\()/i;
+const SENSITIVE_PATH_PATTERN =
+  /(?:^|[\s/\\])\.\.(?:[\/\\]|$)|(?:^|[\s/\\])\.env(?:[.\s/\\]|$)|(?:^|[\s/\\])secrets?(?:[\s/\\]|$)/i;
+const SENSITIVE_ENV_KEY_PATTERN =
+  /(?:^|_)(?:SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY|DATABASE_URL)(?:_|$)/i;
+
+function validateCommand(command: string[]): ValidationResult {
+  const joined = command.join(" ");
+  if (DISALLOWED_COMMAND_PATTERN.test(joined) || SENSITIVE_PATH_PATTERN.test(joined)) {
+    return { valid: false, reasons: [`Command matches a disallowed command or path pattern: "${joined}"`] };
+  }
+  if (command.length === 0) return { valid: false, reasons: ["Empty command"] };
+  return { valid: true, reasons: [] };
+}
+
+function sensitiveEnvironmentKey(env?: Record<string, string>): string | undefined {
+  return Object.keys(env ?? {}).find((key) => SENSITIVE_ENV_KEY_PATTERN.test(key));
+}
+
+function appendBounded(current: string, chunk: Buffer): { output: string; exceeded: boolean } {
+  const currentBytes = Buffer.byteLength(current);
+  const remaining = Math.max(0, MAX_SANDBOX_OUTPUT_BYTES - currentBytes);
+  const addition = chunk.subarray(0, remaining).toString();
+  return {
+    output: current + addition,
+    exceeded: chunk.length > remaining,
+  };
+}
 
 export class UnavailableSandbox implements LearningSandbox {
   readonly name = "unavailable";
@@ -109,19 +137,24 @@ export class MockTestSandbox implements LearningSandbox {
   readonly isProductionSafe = false;
 
   async validate(input: { command: string[] }): Promise<ValidationResult> {
-    const joined = input.command.join(" ");
-    if (DISALLOWED_COMMAND_PATTERN.test(joined)) {
-      return { valid: false, reasons: [`Command matches the disallowed pattern: "${joined}"`] };
-    }
-    if (input.command.length === 0) {
-      return { valid: false, reasons: ["Empty command"] };
-    }
-    return { valid: true, reasons: [] };
+    return validateCommand(input.command);
   }
 
   async execute(input: SandboxExecutionInput): Promise<SandboxExecutionResult> {
     const runId = input.runId ?? randomUUID();
     const started = Date.now();
+    const unsafeEnvKey = sensitiveEnvironmentKey(input.env);
+    if (unsafeEnvKey) {
+      return {
+        runId,
+        status: "error",
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        durationMs: 0,
+        reason: `Credential-shaped environment variable ${unsafeEnvKey} is not allowed in the sandbox.`,
+      };
+    }
     const [cmd, ...args] = input.command;
 
     return new Promise((resolve) => {
@@ -133,16 +166,32 @@ export class MockTestSandbox implements LearningSandbox {
       });
       let stdout = "";
       let stderr = "";
-      child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+      let outputLimitExceeded = false;
+      child.stdout?.on("data", (chunk: Buffer) => {
+        const collected = appendBounded(stdout, chunk);
+        stdout = collected.output;
+        if (collected.exceeded) {
+          outputLimitExceeded = true;
+          child.kill("SIGKILL");
+        }
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        const collected = appendBounded(stderr, chunk);
+        stderr = collected.output;
+        if (collected.exceeded) {
+          outputLimitExceeded = true;
+          child.kill("SIGKILL");
+        }
+      });
       child.on("close", (exitCode: number | null, signal: NodeJS.Signals | null) => {
         resolve({
           runId,
-          status: signal === "SIGTERM" ? "timeout" : "completed",
+          status: outputLimitExceeded ? "error" : signal === "SIGTERM" ? "timeout" : "completed",
           exitCode,
           stdout,
           stderr,
           durationMs: Date.now() - started,
+          ...(outputLimitExceeded ? { reason: "Sandbox output limit exceeded." } : {}),
         });
       });
       child.on("error", (err: Error) => {
@@ -179,14 +228,7 @@ export class DockerSandbox implements LearningSandbox {
   constructor(private readonly image: string) {}
 
   async validate(input: { command: string[] }): Promise<ValidationResult> {
-    const joined = input.command.join(" ");
-    if (DISALLOWED_COMMAND_PATTERN.test(joined)) {
-      return { valid: false, reasons: [`Command matches the disallowed pattern: "${joined}"`] };
-    }
-    if (input.command.length === 0) {
-      return { valid: false, reasons: ["Empty command"] };
-    }
-    return { valid: true, reasons: [] };
+    return validateCommand(input.command);
   }
 
   async execute(input: SandboxExecutionInput): Promise<SandboxExecutionResult> {
@@ -196,6 +238,18 @@ export class DockerSandbox implements LearningSandbox {
     const memoryMb = input.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
     const cpus = input.cpuLimit ?? DEFAULT_CPU_LIMIT;
     const started = Date.now();
+    const unsafeEnvKey = sensitiveEnvironmentKey(input.env);
+    if (unsafeEnvKey) {
+      return {
+        runId,
+        status: "error",
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        durationMs: 0,
+        reason: `Credential-shaped environment variable ${unsafeEnvKey} is not allowed in the sandbox.`,
+      };
+    }
 
     const dockerArgs = [
       "run",
@@ -208,6 +262,7 @@ export class DockerSandbox implements LearningSandbox {
       "--cpus", String(cpus),
       "--pids-limit", "64",
       "--security-opt", "no-new-privileges",
+      "--cap-drop", "ALL",
       "--user", "1000:1000", // never root
     ];
     for (const [key, value] of Object.entries(input.env ?? {})) {
@@ -222,16 +277,32 @@ export class DockerSandbox implements LearningSandbox {
       });
       let stdout = "";
       let stderr = "";
-      child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+      let outputLimitExceeded = false;
+      child.stdout?.on("data", (chunk: Buffer) => {
+        const collected = appendBounded(stdout, chunk);
+        stdout = collected.output;
+        if (collected.exceeded) {
+          outputLimitExceeded = true;
+          child.kill("SIGKILL");
+        }
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        const collected = appendBounded(stderr, chunk);
+        stderr = collected.output;
+        if (collected.exceeded) {
+          outputLimitExceeded = true;
+          child.kill("SIGKILL");
+        }
+      });
       child.on("close", (exitCode: number | null, signal: NodeJS.Signals | null) => {
         resolve({
           runId,
-          status: signal === "SIGTERM" ? "timeout" : "completed",
+          status: outputLimitExceeded ? "error" : signal === "SIGTERM" ? "timeout" : "completed",
           exitCode,
           stdout,
           stderr,
           durationMs: Date.now() - started,
+          ...(outputLimitExceeded ? { reason: "Sandbox output limit exceeded." } : {}),
         });
       });
       child.on("error", (err: Error) => {
