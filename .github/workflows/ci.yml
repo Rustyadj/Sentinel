@@ -53,12 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build immutable application image
-        run: |
-          docker build \
-            --build-arg SENTINEL_COMMIT="$GITHUB_SHA" \
-            --build-arg SENTINEL_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --target runner -t sentinel-os:ci .
+      - run: docker build --target runner -t sentinel-os:ci .
 
   smoke:
     runs-on: ubuntu-latest
@@ -189,7 +184,6 @@ jobs:
 
           git checkout --detach "$SENTINEL_RELEASE_SHA"
           export SENTINEL_RELEASE_SHA
-          export SENTINEL_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           docker compose config --quiet
           docker compose build --pull app migrate
           docker compose run --rm migrate
