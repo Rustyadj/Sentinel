@@ -21,6 +21,9 @@ services:
     build:
       context: .
       target: builder
+      args:
+        SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA:-unknown}
+        SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
     command: npx prisma@6 migrate deploy
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
@@ -56,6 +59,9 @@ services:
     build:
       context: .
       target: runner
+      args:
+        SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA:-unknown}
+        SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -71,11 +77,19 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       SENTINEL_DEFAULT_UI: ${SENTINEL_DEFAULT_UI:-true}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
+      SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA:-unknown}
+      SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
       SENTINEL_TELEMETRY_URL: ${SENTINEL_TELEMETRY_URL:-}
       SENTINEL_TELEMETRY_TOKEN: ${SENTINEL_TELEMETRY_TOKEN:-}
       HERMES_ENDPOINT: ${HERMES_ENDPOINT:-http://host.docker.internal:4860}
       HERMES_CLINT_ENDPOINT: ${HERMES_CLINT_ENDPOINT:-http://host.docker.internal:4861}
       OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:3001}
+      HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
+      HERMES_CLINT_CONTAINER: ${HERMES_CLINT_CONTAINER:-hermes-clint}
+      OPENCLAW_CONTAINER: ${OPENCLAW_CONTAINER:-openclaw}
+      HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
+      HERMES_CLINT_NATIVE_URL: ${HERMES_CLINT_NATIVE_URL:-}
+      OPENCLAW_NATIVE_URL: ${OPENCLAW_NATIVE_URL:-/legacy/openclaw}
       HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-claude-sonnet-4-6}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -89,9 +103,17 @@ services:
       VOICE_WORKER_SECRET: ${VOICE_WORKER_SECRET:-}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
+      AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
+      CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-claude}
+      CLAUDE_CODE_PROJECT_ROOT: /opt/sentinel-os/projects
+      CLAUDE_CODE_WORKSPACE_ID: ${CLAUDE_CODE_WORKSPACE_ID:-}
+      CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-codex}
+      CODEX_PROJECT_ROOT: /opt/sentinel-os/projects
+      CODEX_WORKSPACE_ID: ${CODEX_WORKSPACE_ID:-}
     volumes:
       - agent_configs:/opt/sentinel-os/agents
       - agent_logs:/opt/sentinel-os/logs
+      - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
