@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { OverviewView } from "./OverviewView";
 import { CuriosityView } from "./CuriosityView";
 import { ReflectionsView } from "./ReflectionsView";
+import { PreferencesView } from "./PreferencesView";
+import { KnowledgeGapsView } from "./KnowledgeGapsView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
   curiosity: "Curiosity",
   reflections: "Reflections",
+  preferences: "Preferences",
   "knowledge-gaps": "Knowledge Gaps",
   hypotheses: "Hypotheses",
   experiments: "Experiments",
@@ -39,5 +42,7 @@ export default function LearningCorePage() {
   if (activeTab === "overview") return <OverviewView />;
   if (activeTab === "curiosity") return <CuriosityView />;
   if (activeTab === "reflections") return <ReflectionsView />;
+  if (activeTab === "preferences") return <PreferencesView />;
+  if (activeTab === "knowledge-gaps") return <KnowledgeGapsView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }

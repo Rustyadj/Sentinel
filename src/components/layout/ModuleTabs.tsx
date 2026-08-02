@@ -131,13 +131,14 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
       id: "learning",
       label: "LEARNING CORE",
       defaultTab: "overview",
-      // Only "overview" is built (Phase A) — the rest render an explicit
-      // not-yet-built state rather than silently doing nothing when clicked.
+      // Tabs without a Phase implementation render an explicit not-yet-built
+      // state rather than silently doing nothing when clicked.
       // See docs/LEARNING_CORE_ON_NEURAL_ENGINE.md for the phase plan.
       tabs: [
         { id: "overview", label: "Overview" },
         { id: "curiosity", label: "Curiosity" },
         { id: "reflections", label: "Reflections" },
+        { id: "preferences", label: "Preferences" },
         { id: "knowledge-gaps", label: "Knowledge Gaps" },
         { id: "hypotheses", label: "Hypotheses" },
         { id: "experiments", label: "Experiments" },
