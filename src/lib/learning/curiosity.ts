@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { emitLearningEvent } from "./event-service";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 // Weighted scoring model — adapted from the original spec's formula to the
 // fields actually on CuriosityEvent (schema has ambiguity/novelty/conflict/
@@ -209,12 +210,21 @@ export async function analyzeCuriosityContext(input: CuriosityContextInput): Pro
   return { factors, triggerType, reason };
 }
 
-export async function listCuriosityEvents(params?: { agentId?: string; askedOnly?: boolean; unansweredOnly?: boolean; limit?: number }) {
+export async function listCuriosityEvents(params?: {
+  agentId?: string;
+  askedOnly?: boolean;
+  unansweredOnly?: boolean;
+  limit?: number;
+  scope?: AccessibleLearningScope;
+}) {
   return db.curiosityEvent.findMany({
     where: {
       ...(params?.agentId ? { agentId: params.agentId } : {}),
       ...(params?.askedOnly ? { asked: true } : {}),
       ...(params?.unansweredOnly ? { asked: true, answered: false } : {}),
+      ...(params?.scope
+        ? buildLearningScopeWhere(params.scope, { workspaceId: true, projectId: true, agentId: true })
+        : {}),
     },
     orderBy: { createdAt: "desc" },
     take: params?.limit ?? 50,

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { userHasWorkspacePermission } from "@/lib/workspaces/authorization";
+import { getAccessibleWorkspaceIds } from "@/lib/agents/permissions";
 
 export class LearningAccessError extends Error {
   readonly status = 404;
@@ -167,6 +168,161 @@ export async function requireReflectionAccess(
   await requireLearningAgentAccess(userId, reflection.agentId, permission);
 }
 
+export async function requireLearningGoalAccess(
+  userId: string,
+  learningGoalId: string,
+  permission: string,
+): Promise<void> {
+  const goal = await db.learningGoal.findUnique({
+    where: { id: learningGoalId },
+    select: { workspaceId: true, agentId: true },
+  });
+  if (!goal) throw new LearningAccessError();
+  if (goal.workspaceId) {
+    await requireLearningWorkspaceAccess(userId, goal.workspaceId, permission);
+    return;
+  }
+  if (goal.agentId) {
+    await requireLearningAgentAccess(userId, goal.agentId, permission);
+    return;
+  }
+  throw new LearningAccessError();
+}
+
+export async function requireCuriosityEventAccess(
+  userId: string,
+  curiosityEventId: string,
+  permission: string,
+): Promise<void> {
+  const event = await db.curiosityEvent.findUnique({
+    where: { id: curiosityEventId },
+    select: { workspaceId: true, projectId: true, agentId: true },
+  });
+  if (!event) throw new LearningAccessError();
+  if (event.workspaceId) {
+    await requireLearningWorkspaceAccess(userId, event.workspaceId, permission);
+    return;
+  }
+  if (event.projectId) {
+    await requireLearningProjectAccess(userId, event.projectId, permission);
+    return;
+  }
+  await requireLearningAgentAccess(userId, event.agentId, permission);
+}
+
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+// --- Scope-based read filtering, for LIST routes ---
+//
+// The functions above answer "can this user touch this ONE resource" (used
+// by GET-by-id and mutation routes). LIST routes need a different shape: one
+// upfront query for everything the user can see, then a where-clause filter
+// applied to the list query itself — never fetch-then-filter-in-memory,
+// since that still runs the unscoped query against every tenant's rows.
+
+export interface AccessibleLearningScope {
+  userId: string;
+  workspaceIds: string[];
+  projectIds: string[];
+  agentIds: string[];
+}
+
+/**
+ * Computes everything a user can see in one pass: accessible workspaces,
+ * projects owned by them or in an accessible workspace, and agents that
+ * belong to an accessible workspace. Every Learning Core LIST route should
+ * scope through this rather than duplicating the accessible-workspace /
+ * accessible-project / accessible-agent queries inline.
+ */
+export async function getAccessibleLearningScope(userId: string): Promise<AccessibleLearningScope> {
+  const workspaceIds = await getAccessibleWorkspaceIds(userId);
+  const [projects, agents] = await Promise.all([
+    db.project.findMany({
+      where: { OR: [{ userId }, { workspaceId: { in: workspaceIds } }] },
+      select: { id: true },
+    }),
+    db.agent.findMany({ where: { workspaceId: { in: workspaceIds } }, select: { id: true } }),
+  ]);
+  return {
+    userId,
+    workspaceIds,
+    projectIds: projects.map((p) => p.id),
+    agentIds: agents.map((a) => a.id),
+  };
+}
+
+/**
+ * Builds an OR-clause fragment scoping a query to the accessible scope,
+ * for models with one or more of userId/workspaceId/projectId/agentId as a
+ * DIRECT column (not through a relation — use the resource-specific
+ * require*Access functions above for relation-based ownership, e.g.
+ * LearningCandidate → experience → workspaceId).
+ *
+ * `fields` declares which of the model's own columns to filter on — pass
+ * only fields that actually exist on the target model. If none of the
+ * declared fields have any accessible values (e.g. a brand-new user with no
+ * workspaces), this fails closed to a where-clause that matches nothing,
+ * never to an unscoped/global read.
+ */
+export function buildLearningScopeWhere(
+  scope: AccessibleLearningScope,
+  fields: { userId?: boolean; workspaceId?: boolean; projectId?: boolean; agentId?: boolean },
+): Record<string, unknown> {
+  const clauses: Record<string, unknown>[] = [];
+  if (fields.userId) clauses.push({ userId: scope.userId });
+  if (fields.workspaceId && scope.workspaceIds.length > 0) clauses.push({ workspaceId: { in: scope.workspaceIds } });
+  if (fields.projectId && scope.projectIds.length > 0) clauses.push({ projectId: { in: scope.projectIds } });
+  if (fields.agentId && scope.agentIds.length > 0) clauses.push({ agentId: { in: scope.agentIds } });
+  if (clauses.length === 0) return { id: "__no_accessible_learning_scope__" };
+  return { OR: clauses };
+}
+
+// --- Generic single-resource dispatchers ---
+//
+// Thin wrappers over the resource-specific functions above, for callers that
+// want one call site rather than picking the right require*Access function
+// by hand. Prefer the specific function directly when the resource type is
+// already known at the call site; use these when routing a resource type
+// that varies (e.g. a shared helper called from multiple route handlers).
+
+export type LearningResourceRef =
+  | { type: "workspace"; id: string }
+  | { type: "project"; id: string }
+  | { type: "agent"; id: string }
+  | { type: "candidate"; id: string }
+  | { type: "benchmark"; id: string }
+  | { type: "reflection"; id: string }
+  | { type: "featureFlag"; scopeType: string; scopeId: string | null };
+
+async function dispatchLearningAccess(
+  userId: string,
+  resource: LearningResourceRef,
+  permission: string,
+): Promise<void> {
+  switch (resource.type) {
+    case "workspace":
+      return requireLearningWorkspaceAccess(userId, resource.id, permission);
+    case "project":
+      return requireLearningProjectAccess(userId, resource.id, permission);
+    case "agent":
+      return requireLearningAgentAccess(userId, resource.id, permission);
+    case "candidate":
+      return requireLearningCandidateAccess(userId, resource.id, permission);
+    case "benchmark":
+      return requireBenchmarkAccess(userId, resource.id, permission);
+    case "reflection":
+      return requireReflectionAccess(userId, resource.id, permission);
+    case "featureFlag":
+      return requireFeatureFlagAccess(userId, resource, permission);
+  }
+}
+
+export function assertCanReadLearningResource(userId: string, resource: LearningResourceRef): Promise<void> {
+  return dispatchLearningAccess(userId, resource, "workspace.read");
+}
+
+export function assertCanMutateLearningResource(userId: string, resource: LearningResourceRef): Promise<void> {
+  return dispatchLearningAccess(userId, resource, "workspace.update");
 }

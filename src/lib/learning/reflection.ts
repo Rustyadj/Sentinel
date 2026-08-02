@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { emitLearningEvent } from "./event-service";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 export interface RecordReflectionInput {
   traceId?: string;
@@ -73,11 +74,19 @@ export async function updateReflectionStatus(id: string, status: "open" | "actio
   return db.reflection.update({ where: { id }, data: { status } });
 }
 
-export async function listReflections(params?: { agentId?: string; status?: string; limit?: number }) {
+export async function listReflections(params?: {
+  agentId?: string;
+  status?: string;
+  limit?: number;
+  scope?: AccessibleLearningScope;
+}) {
   return db.reflection.findMany({
     where: {
       ...(params?.agentId ? { agentId: params.agentId } : {}),
       ...(params?.status ? { status: params.status } : {}),
+      ...(params?.scope
+        ? buildLearningScopeWhere(params.scope, { workspaceId: true, projectId: true, agentId: true })
+        : {}),
     },
     orderBy: { createdAt: "desc" },
     take: params?.limit ?? 50,

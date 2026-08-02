@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 const DEFAULT_LOOKBACK_DAYS = 30;
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
@@ -26,6 +27,7 @@ export interface ListKnowledgeGapsParams {
   projectId?: string;
   status?: string;
   limit?: number;
+  scope?: AccessibleLearningScope;
 }
 
 interface GapOccurrence {
@@ -145,6 +147,9 @@ export function listKnowledgeGaps(params: ListKnowledgeGapsParams = {}) {
       ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
       ...(params.projectId ? { projectId: params.projectId } : {}),
       ...(params.status ? { status: params.status } : {}),
+      ...(params.scope
+        ? buildLearningScopeWhere(params.scope, { workspaceId: true, projectId: true, agentId: true })
+        : {}),
     },
     orderBy: [{ priorityScore: "desc" }, { updatedAt: "desc" }],
     take: Math.min(Math.max(params.limit ?? 100, 1), 250),

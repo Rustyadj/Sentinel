@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 // Only material gaps get a goal — creating a goal for every low-priority
 // gap would flood the queue and defeat the point of prioritizing at all.
@@ -7,12 +8,21 @@ const MATERIAL_GAP_THRESHOLD = 0.5;
 export interface GenerateLearningGoalsParams {
   minPriority?: number;
   limit?: number;
+  scope?: AccessibleLearningScope;
 }
 
 export async function generateLearningGoalsFromGaps(params: GenerateLearningGoalsParams = {}) {
   const minPriority = params.minPriority ?? MATERIAL_GAP_THRESHOLD;
   const gaps = await db.knowledgeGap.findMany({
-    where: { priorityScore: { gte: minPriority }, status: { notIn: ["resolved", "dismissed"] } },
+    where: {
+      priorityScore: { gte: minPriority },
+      status: { notIn: ["resolved", "dismissed"] },
+      // Without a scope (internal/worker callers), this legitimately runs
+      // system-wide. HTTP callers must always pass one — an unscoped read
+      // here would return other tenants' gap titles/objectives directly in
+      // the response, not just create globally-visible rows.
+      ...(params.scope ? buildLearningScopeWhere(params.scope, { workspaceId: true, agentId: true }) : {}),
+    },
     orderBy: { priorityScore: "desc" },
     take: params.limit ?? 20,
   });
@@ -48,11 +58,17 @@ export async function generateLearningGoalsFromGaps(params: GenerateLearningGoal
   return created;
 }
 
-export async function listLearningGoals(params?: { agentId?: string; status?: string; limit?: number }) {
+export async function listLearningGoals(params?: {
+  agentId?: string;
+  status?: string;
+  limit?: number;
+  scope?: AccessibleLearningScope;
+}) {
   return db.learningGoal.findMany({
     where: {
       ...(params?.agentId ? { agentId: params.agentId } : {}),
       ...(params?.status ? { status: params.status } : {}),
+      ...(params?.scope ? buildLearningScopeWhere(params.scope, { workspaceId: true, agentId: true }) : {}),
     },
     include: { knowledgeGap: true },
     orderBy: { createdAt: "desc" },
