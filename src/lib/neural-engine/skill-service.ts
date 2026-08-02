@@ -70,6 +70,10 @@ export interface SkillPayload {
   successMetrics?: Record<string, unknown>;
   evidenceLinks?: string[];
   owner?: string;
+  /** Ownership for tenant scoping — see Skill.workspaceId. Not backfilled
+   *  for pre-existing skills; callers that resolve a workspace (e.g. from
+   *  the originating candidate's Experience) should pass it explicitly. */
+  workspaceId?: string;
   evidence: PromotionEvidence;
 }
 
@@ -100,6 +104,7 @@ export async function promoteFromPayload(
     successMetrics: toJson(p.successMetrics ?? {}),
     evidenceLinks: p.evidenceLinks ?? [],
     owner: p.owner ?? null,
+    workspaceId: p.workspaceId ?? null,
     status: "active",
   };
 

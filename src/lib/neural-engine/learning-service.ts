@@ -483,7 +483,9 @@ export async function applyLearningCandidate(candidateId: string) {
         break;
       }
       const { promoteFromPayload } = await import("./skill-service");
-      const promoted = await promoteFromPayload("skill", payload);
+      const resolvedWorkspaceId =
+        candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId ?? undefined;
+      const promoted = await promoteFromPayload("skill", { ...payload, workspaceId: resolvedWorkspaceId });
       appliedTargetId = promoted?.id ?? null;
       break;
     }

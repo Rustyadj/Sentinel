@@ -652,10 +652,18 @@ model Skill {
   permissions  Json  @default("[]")
   tests        Json  @default("[]")
 
+  // Ownership for tenant scoping (production/final-agent-control-plane).
+  // Additive, nullable — no reliable way to backfill which workspace
+  // pre-existing skills belong to. A null workspaceId means the row is
+  // invisible to every tenant-scoped list/read; it never falls back to
+  // global visibility. See docs/reviews/PR21_POST_MERGE_RECONCILIATION.md.
+  workspaceId String?
+
   versions SkillVersion[]
 
   @@index([domain])
   @@index([status])
+  @@index([workspaceId])
   @@map("neural_skills")
 }
 

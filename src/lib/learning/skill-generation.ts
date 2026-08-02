@@ -241,6 +241,7 @@ export async function proposeSkillFromPattern(input: ProposeSkillFromPatternInpu
         domain: input.domain.trim(),
         status: "proposed",
         owner: input.agentId,
+        workspaceId: input.workspaceId,
         evidenceLinks: [
           sentinel,
           ...evidence.map((reflection) => `reflection:${reflection.id}`),
