@@ -19,6 +19,17 @@ export const KNOWLEDGE_NODE_COLORS: Record<KnowledgeObjectType | "default", stri
   Module: "#a3c284",
   Artifact: "#a3c284",
   Organization: "#b0a2d8",
+  // Learning Core (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md) — additive,
+  // kept in the same muted indigo-forward family as the rest of the palette.
+  CuriosityEvent: "#c9a86a",
+  Reflection: "#8fa8d6",
+  KnowledgeGap: "#c98a8a",
+  LearningGoal: "#7fb0a0",
+  LearningCandidate: "#a094e0",
+  Benchmark: "#7ea3b8",
+  TrustEvent: "#94c47a",
+  Failure: "#cf7d7d",
+  Lesson: "#c7ae6c",
   default: "#7f8694",
 };
 

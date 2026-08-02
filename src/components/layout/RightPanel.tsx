@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Brain, CheckSquare, FileText, X } from "lucide-react";
+import { Activity, Brain, CheckSquare, FileText, Share2, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { MissionControlData } from "@/lib/mission-control/types";
 import { missionControlService } from "@/lib/mission-control/service";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { GraphTab } from "./RightPanelGraphTab";
 
 const TABS = [
   { id: "activity" as const, label: "Activity", Icon: Activity },
+  { id: "graph" as const, label: "Graph", Icon: Share2 },
   { id: "memory" as const, label: "Memory", Icon: Brain },
   { id: "files" as const, label: "Files", Icon: FileText },
   { id: "tasks" as const, label: "Tasks", Icon: CheckSquare },
@@ -43,6 +45,7 @@ export function RightPanel() {
 
       <ScrollArea className="flex-1">
         {rightPanelTab === "activity" ? <ActivityTab data={data} error={error} /> : null}
+        {rightPanelTab === "graph" ? <GraphTab /> : null}
         {rightPanelTab === "memory" ? <UnconnectedTab title="Memory" detail="Open Knowledge for database-backed memories. This context rail has no live memory adapter." href="/memory" /> : null}
         {rightPanelTab === "files" ? <UnconnectedTab title="Files" detail="No live file provider is connected to this context rail." /> : null}
         {rightPanelTab === "tasks" ? <UnconnectedTab title="Tasks" detail="Open Workflows for database-backed tasks. This context rail does not substitute sample tasks." href="/workflows" /> : null}

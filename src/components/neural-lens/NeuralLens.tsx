@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGraphStore } from "@/store/useGraphStore";
 import { NeuralLensGraph } from "./NeuralLensGraph";
 import { NeuralLensPanel } from "./NeuralLensPanel";
 import { NeuralLensToolbar } from "./NeuralLensToolbar";
@@ -45,9 +46,18 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
   const [lens, setLens] = useState<LensId>("Knowledge");
-  const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<LensNode | null>(null);
+  // Search, type filters, and the selected node are shared via useGraphStore
+  // rather than kept as local state — RightPanel's compact Graph tab (and any
+  // future consumer) reads and writes the same selection/filter state the
+  // canvas does, instead of each surface tracking its own copy.
+  const activeTypes = useGraphStore((state) => state.activeTypes);
+  const toggleGraphType = useGraphStore((state) => state.toggleType);
+  const setGraphTypes = useGraphStore((state) => state.setTypes);
+  const search = useGraphStore((state) => state.search);
+  const setSearch = useGraphStore((state) => state.setSearch);
+  const selected = useGraphStore((state) => state.selectedNode);
+  const setSelectedNode = useGraphStore((state) => state.setSelectedNode);
+  const setAvailableTypes = useGraphStore((state) => state.setAvailableTypes);
   const [zoomLevel, setZoomLevel] = useState<SemanticZoomLevel>("galaxy");
   const [toolbarAction, setToolbarAction] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -190,14 +200,38 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     return [...set].sort();
   }, [baseGraph.nodes]);
 
-  const handleToggleType = useCallback((type: string) => {
-    setActiveTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  }, []);
+  // Share the available type chips with any other UI filtering the same
+  // graph (RightPanel's Graph tab) — recomputed whenever the underlying
+  // graph's own type set changes (demo/scoped swap, live data arriving).
+  useEffect(() => {
+    setAvailableTypes(typeChips);
+  }, [typeChips, setAvailableTypes]);
+
+  const handleToggleType = useCallback(
+    (type: string) => {
+      toggleGraphType(type);
+    },
+    [toggleGraphType]
+  );
+
+  const handleSelect = useCallback(
+    (node: LensNode | null) => {
+      setSelectedNode(
+        node
+          ? {
+              id: node.id,
+              label: node.label,
+              type: node.type,
+              val: node.val,
+              hubId: node.hubId,
+              accent: node.accent,
+              active: node.active,
+            }
+          : null
+      );
+    },
+    [setSelectedNode]
+  );
 
   const handleToolbarAction = useCallback((id: string) => {
     setToolbarAction((prev) => (prev === id ? null : id));
@@ -209,7 +243,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
       <NeuralLensGraph
         graph={filteredGraph}
         activeNodeIds={activeNodeIds}
-        onSelect={setSelected}
+        onSelect={handleSelect}
         onZoomLevel={setZoomLevel}
       />
 
@@ -219,11 +253,9 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
           setLens(next);
           // Selecting a lens applies its type preset as the active filter;
           // re-selecting the same lens clears back to the full graph.
-          setActiveTypes((prev) => {
-            const preset = new Set(LENS_TYPES[next]);
-            const same = prev.size === preset.size && [...preset].every((t) => prev.has(t));
-            return same ? new Set() : preset;
-          });
+          const preset = new Set(LENS_TYPES[next]);
+          const same = activeTypes.size === preset.size && [...preset].every((t) => activeTypes.has(t));
+          setGraphTypes(same ? [] : [...preset]);
         }}
         workingSetName={demoMode ? "Mission Control" : "Live Graph"}
         nodeCount={filteredGraph.meta.nodeCount}
@@ -239,7 +271,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
 
       <NeuralLensToolbar active={toolbarAction} onAction={handleToolbarAction} />
       <NeuralLensMinimap graph={baseGraph} />
-      <NeuralLensInspector node={selected} onClose={() => setSelected(null)} />
+      <NeuralLensInspector node={selected} onClose={() => setSelectedNode(null)} />
       <TimelineScrubber
         open={timelineOpen}
         range={timeRange}

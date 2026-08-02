@@ -1,11 +1,12 @@
 "use client";
 
-import { X, Hash, Clock, ShieldCheck } from "lucide-react";
+import { X } from "lucide-react";
 import { ACCENT_COLORS, NEUTRAL_NODE } from "./palette";
-import type { LensNode } from "./types";
+import { NodeFacetList, Stat, nodeTier } from "./NodeFacets";
+import type { GraphNodeSummary } from "@/store/useGraphStore";
 
 interface NeuralLensInspectorProps {
-  node: LensNode | null;
+  node: GraphNodeSummary | null;
   onClose: () => void;
 }
 
@@ -13,6 +14,10 @@ interface NeuralLensInspectorProps {
  * Node inspector — opens automatically at detail level / on click. Shows the
  * provenance-style facets the Neural Engine tracks. For DEMO nodes these are
  * illustrative; SCOPED nodes would be enriched from /api/knowledge/objects.
+ *
+ * Presentational building blocks (Facet/Stat) live in ./NodeFacets so
+ * RightPanel's compact Graph tab can render the same node detail without
+ * duplicating this markup.
  */
 export function NeuralLensInspector({ node, onClose }: NeuralLensInspectorProps) {
   if (!node) return null;
@@ -31,54 +36,15 @@ export function NeuralLensInspector({ node, onClose }: NeuralLensInspectorProps)
         </button>
       </div>
 
-      <div className="mt-3 space-y-2 text-[11px]">
-        <Facet icon={ShieldCheck} label="Provenance" value={node.accent ? "Curated" : "Derived"} />
-        <Facet icon={Clock} label="Cluster" value={node.hubId} />
-        <Facet icon={Hash} label="Node id" value={node.id} mono />
-        {node.active && (
-          <div className="flex items-center gap-1.5 text-emerald-300/80">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            Active in the last event
-          </div>
-        )}
+      <div className="mt-3">
+        <NodeFacetList node={node} />
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-1.5 border-t border-white/8 pt-3">
         <Stat label="Degree" value={String(Math.round(node.val * 3))} />
         <Stat label="Weight" value={node.val.toFixed(1)} />
-        <Stat label="Tier" value={node.val >= 6 ? "Hub" : node.val >= 2.4 ? "Child" : "Leaf"} />
+        <Stat label="Tier" value={nodeTier(node.val)} />
       </div>
-    </div>
-  );
-}
-
-function Facet({
-  icon: Icon,
-  label,
-  value,
-  mono,
-}: {
-  icon: typeof Clock;
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Icon className="h-3 w-3 shrink-0 text-white/35" />
-      <span className="text-white/40">{label}</span>
-      <span className={`ml-auto max-w-[55%] truncate text-white/70 ${mono ? "font-mono text-[10px]" : ""}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-white/5 px-2 py-1.5 text-center">
-      <div className="text-[9px] uppercase tracking-wide text-white/35">{label}</div>
-      <div className="text-xs font-medium text-white/85">{value}</div>
     </div>
   );
 }

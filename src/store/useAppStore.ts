@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { CoreModuleId, Project } from "@/types";
 
-type RightPanelTab = "memory" | "files" | "tasks" | "activity";
+type RightPanelTab = "memory" | "files" | "tasks" | "activity" | "graph";
 
 interface AppState {
   currentModule: CoreModuleId;

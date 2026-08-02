@@ -4,18 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import {
   AtSign,
   Check,
-  ChevronDown,
   Globe,
   Loader2,
   MessageSquare,
-  PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
-  Plus,
   Send,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/useAppStore";
+import { ChatHeader } from "./ChatHeader";
 import { MessageThread } from "./MessageThread";
 import { VoiceControls } from "@/components/voice/VoiceControls";
 import type { ChatSession } from "@/lib/chat/useChatSession";
@@ -64,11 +62,18 @@ export function ChatPanel({
     dismissCandidates,
   } = session;
 
-  const [roomsOpen, setRoomsOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lead = roomAgents[0];
   const live = isThinking || isStreaming || lead?.status === "busy";
+  const setRightPanelOpen = useAppStore((state) => state.setRightPanelOpen);
+
+  // Collapse the chat panel and dock the right panel away — the closest
+  // thing to a dedicated fullscreen graph canvas without a separate route.
+  const handleExpandGraph = () => {
+    setRightPanelOpen(false);
+    if (!collapsed) onToggleCollapsed();
+  };
 
   useEffect(() => {
     const isSeededMission =
@@ -108,102 +113,18 @@ export function ChatPanel({
       aria-label="Chat"
       className="pointer-events-auto absolute bottom-4 left-3 top-0 z-30 flex w-[calc(100%-24px)] max-w-[330px] flex-col overflow-hidden rounded-xl border border-[#1a2a3c] bg-[#07111d]/88 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl xl:max-w-[376px]"
     >
-      {/* Header: active agent + status + room switcher */}
-      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-[#182638] px-3.5">
-        <div className="relative shrink-0">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-300/20 bg-cover bg-top text-[13px] text-transparent"
-            style={{ backgroundImage: "url('/media/hermes-lisa.png')" }}
-            aria-hidden
-          >
-            {lead?.avatar ?? "🌸"}
-          </div>
-          <span
-            aria-hidden
-            className={cn(
-              "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#07111d]",
-              live ? "animate-pulse-dot bg-amber-400" : "bg-emerald-400"
-            )}
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium leading-tight text-[#e8eaed]">
-            {lead?.name ?? "Hermes Lisa"}
-          </div>
-          <div className="text-[10px] leading-tight text-[#697084]">
-            {offline ? (
-              <span className="text-red-400">Offline — reconnect to send</span>
-            ) : live ? (
-              <span className="text-amber-400">Responding…</span>
-            ) : (
-              "Online"
-            )}
-          </div>
-        </div>
-
-        {/* Room switcher */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setRoomsOpen((v) => !v)}
-            aria-haspopup="listbox"
-            aria-expanded={roomsOpen}
-            aria-label="Switch room"
-            className="flex max-w-[120px] items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[10.5px] text-[#9aa1b4] outline-none transition-colors hover:border-white/[0.14] focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-          >
-            <span className="truncate">{activeRoom?.name ?? "No room"}</span>
-            <ChevronDown className="h-3 w-3 shrink-0 text-[#4a5065]" />
-          </button>
-          {roomsOpen && (
-            <ul
-              role="listbox"
-              aria-label="Rooms"
-              className="absolute right-0 top-full z-50 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#10141d]/95 py-1 shadow-2xl backdrop-blur-xl"
-            >
-              {rooms.map((room) => (
-                <li key={room.id} role="option" aria-selected={room.id === activeRoomId}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveRoom(room.id);
-                      setRoomsOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11.5px] transition-colors hover:bg-white/[0.05]",
-                      room.id === activeRoomId ? "text-indigo-300" : "text-[#c8cdd8]"
-                    )}
-                  >
-                    <MessageSquare className="h-3 w-3 shrink-0 opacity-60" />
-                    <span className="truncate">{room.name}</span>
-                  </button>
-                </li>
-              ))}
-              <li className="mt-1 border-t border-white/[0.06] pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoomsOpen(false);
-                    void handleCreateRoom();
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11.5px] text-[#697084] transition-colors hover:bg-white/[0.05] hover:text-[#c8cdd8]"
-                >
-                  <Plus className="h-3 w-3" />
-                  New room
-                </button>
-              </li>
-            </ul>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label="Collapse chat panel"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#697084] outline-none transition-colors hover:bg-white/[0.06] hover:text-[#c8cdd8] focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-        >
-          <PanelLeftClose className="h-3.5 w-3.5" />
-        </button>
-      </header>
+      <ChatHeader
+        activeRoom={activeRoom}
+        activeRoomId={activeRoomId}
+        rooms={rooms}
+        lead={lead}
+        live={live}
+        offline={offline}
+        setActiveRoom={setActiveRoom}
+        handleCreateRoom={handleCreateRoom}
+        onToggleCollapsed={onToggleCollapsed}
+        onExpandGraph={handleExpandGraph}
+      />
 
       {/* Thread */}
       {activeRoom ? (
