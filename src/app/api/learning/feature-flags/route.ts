@@ -25,7 +25,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "key and name are required" }, { status: 400 });
   }
   try {
-    return NextResponse.json(await createFeatureFlag(body), { status: 201 });
+    return NextResponse.json(
+      await createFeatureFlag(body, { authorizedByUserId: user.id }),
+      { status: 201 },
+    );
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

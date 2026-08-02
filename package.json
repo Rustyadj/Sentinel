@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "prisma:validate": "prisma validate && prisma migrate status",
     "check": "tsc --noEmit && eslint",
-    "telemetry:serve": "node scripts/vps-telemetry.mjs"
+    "telemetry:serve": "node scripts/vps-telemetry.mjs",
+    "worker:learning": "tsx src/workers/learning-worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
@@ -33,6 +34,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@xyflow/react": "^12.11.1",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.0.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -68,6 +70,7 @@
     "eslint-config-next": "16.2.9",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

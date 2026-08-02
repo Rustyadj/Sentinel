@@ -1,5 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import {
+  assertRiskTransitionAuthorized,
+  classifySkillPermissionRisk,
+} from "@/lib/neural-engine/policy-service";
 
 export type SkillApprovalLevel = 1 | 2 | 3;
 
@@ -13,6 +17,17 @@ export interface CreateSkillVersionInput {
   tests?: unknown;
   benchmarkResultIds?: string[];
   approvalLevel?: SkillApprovalLevel;
+}
+
+export interface CreateSkillVersionOptions {
+  authorizedByUserId?: string;
+  deferActivation?: boolean;
+  transaction?: Prisma.TransactionClient;
+}
+
+export interface ActivateSkillVersionOptions {
+  authorizedByUserId?: string;
+  candidateId?: string;
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue {
@@ -32,10 +47,14 @@ function normalizeApprovalLevel(value: number | undefined): SkillApprovalLevel {
  * explicit activation step. Approval level is an input policy decision, not
  * version state, so it is deliberately not persisted as a second authority.
  */
-export async function createSkillVersion(skillId: string, input: CreateSkillVersionInput) {
+export async function createSkillVersion(
+  skillId: string,
+  input: CreateSkillVersionInput,
+  options: CreateSkillVersionOptions = {},
+) {
   const approvalLevel = normalizeApprovalLevel(input.approvalLevel);
 
-  return db.$transaction(async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill-version:${skillId}`})) IS NULL AS locked`;
     const skill = await tx.skill.findUniqueOrThrow({ where: { id: skillId } });
     const [latest, currentActive] = await Promise.all([
@@ -46,10 +65,25 @@ export async function createSkillVersion(skillId: string, input: CreateSkillVers
       tx.skillVersion.findFirst({ where: { skillId, status: "active" } }),
     ]);
     const version = latest ? latest.version + 1 : Math.max(1, skill.version);
-    const activateImmediately = !latest || approvalLevel === 1;
+    const activateImmediately = !options.deferActivation && (!latest || approvalLevel === 1);
     const implementation = input.implementation ?? currentActive?.implementation;
     const inputSchema = input.inputSchema ?? currentActive?.inputSchema ?? skill.inputSchema;
     const outputSchema = input.outputSchema ?? currentActive?.outputSchema ?? skill.outputSchema;
+    const permissions = input.permissions ?? currentActive?.permissions ?? skill.permissions ?? [];
+    const permissionRisk = classifySkillPermissionRisk(permissions);
+
+    if (activateImmediately) {
+      if (skill.status === "proposed") {
+        throw new Error(
+          "A proposed skill cannot activate through version creation; its reviewed candidate must activate it.",
+        );
+      }
+      assertRiskTransitionAuthorized({
+        classification: permissionRisk,
+        transition: "Skill-version activation during creation",
+        humanAuthorized: await hasHumanAuthority(tx, options.authorizedByUserId),
+      });
+    }
 
     const created = await tx.skillVersion.create({
       data: {
@@ -63,7 +97,7 @@ export async function createSkillVersion(skillId: string, input: CreateSkillVers
         dependencies: input.dependencies ?? currentActive?.dependencies ?? [],
         ...(inputSchema != null ? { inputSchema: toJson(inputSchema) } : {}),
         ...(outputSchema != null ? { outputSchema: toJson(outputSchema) } : {}),
-        permissions: toJson(input.permissions ?? currentActive?.permissions ?? skill.permissions ?? []),
+        permissions: toJson(permissionRisk.permissions),
         tests: toJson(input.tests ?? currentActive?.tests ?? skill.tests ?? []),
         benchmarkResultIds: input.benchmarkResultIds ?? [],
         status: activateImmediately ? "active" : "draft",
@@ -76,11 +110,16 @@ export async function createSkillVersion(skillId: string, input: CreateSkillVers
     await retireOtherActiveVersions(tx, skillId, created.id);
     await syncSkillConvenienceFields(tx, skillId, created);
     return created;
-  });
+  };
+
+  return options.transaction ? write(options.transaction) : db.$transaction(write);
 }
 
 /** Activate one immutable version and retire the previously-active version. */
-export async function activateSkillVersion(id: string) {
+export async function activateSkillVersion(
+  id: string,
+  options: ActivateSkillVersionOptions = {},
+) {
   return db.$transaction(async (tx) => {
     const requested = await tx.skillVersion.findUniqueOrThrow({ where: { id } });
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill-version:${requested.skillId}`})) IS NULL AS locked`;
@@ -88,6 +127,51 @@ export async function activateSkillVersion(id: string) {
     if (version.status === "rolled_back" || version.status === "retired") {
       throw new Error(`A ${version.status} skill version cannot be activated`);
     }
+
+    const permissionRisk = classifySkillPermissionRisk(version.permissions);
+    const humanAuthorized = await hasHumanAuthority(tx, options.authorizedByUserId);
+    const generatedCandidate = await tx.learningCandidate.findFirst({
+      where: {
+        type: "skill",
+        proposedPayload: { path: ["skillVersionId"], equals: version.id },
+      },
+      select: { id: true },
+    });
+    if (generatedCandidate && options.candidateId !== generatedCandidate.id) {
+      throw new Error(
+        "Generated skill versions can only activate through their approved learning candidate.",
+      );
+    }
+    if (options.candidateId) {
+      const candidate = await tx.learningCandidate.findUniqueOrThrow({
+        where: { id: options.candidateId },
+        select: {
+          type: true,
+          status: true,
+          riskLevel: true,
+          reviewedBy: true,
+          proposedPayload: true,
+        },
+      });
+      const payload = candidate.proposedPayload as Record<string, unknown>;
+      if (
+        candidate.type !== "skill" ||
+        candidate.status !== "approved" ||
+        candidate.reviewedBy !== options.authorizedByUserId ||
+        payload.skillId !== version.skillId ||
+        payload.skillVersionId !== version.id
+      ) {
+        throw new Error("Skill activation does not match an approved, human-reviewed candidate.");
+      }
+      if (candidate.riskLevel !== permissionRisk.riskLevel) {
+        throw new Error("Skill permission risk changed after candidate review; re-review is required.");
+      }
+    }
+    assertRiskTransitionAuthorized({
+      classification: permissionRisk,
+      transition: "Skill-version activation",
+      humanAuthorized,
+    });
 
     const activatedAt = version.activatedAt ?? new Date();
     await retireOtherActiveVersions(tx, version.skillId, version.id);
@@ -98,6 +182,17 @@ export async function activateSkillVersion(id: string) {
     await syncSkillConvenienceFields(tx, version.skillId, activated);
     return activated;
   });
+}
+
+async function hasHumanAuthority(
+  tx: Prisma.TransactionClient,
+  authorizedByUserId?: string,
+): Promise<boolean> {
+  if (!authorizedByUserId) return false;
+  return Boolean(await tx.user.findUnique({
+    where: { id: authorizedByUserId },
+    select: { id: true },
+  }));
 }
 
 export async function listSkillVersions(skillId: string) {

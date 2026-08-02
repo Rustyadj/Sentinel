@@ -79,6 +79,68 @@ database (`hermesos_learning_core` alongside the existing `hermesos`) to
 avoid a destructive reset of the other branch's local data. Whoever merges
 first should reconcile the other branch onto whichever `Agent` shape wins.
 
+## Risk policy audit
+
+Audit scope: every repository service transition that changes canonical state
+because of a `LearningCandidate`, `SkillVersion`, or `FeatureFlag`. The source
+of truth remains `src/lib/neural-engine/policy-service.ts`; callers do not
+maintain private allowlists or trust-based exceptions.
+
+### Verified and enforced
+
+- `proposeCandidate` classifies every candidate and uses the same
+  classification for stored risk, auto-approval eligibility, and generic
+  `ApprovalRequest` creation.
+- `reviewCandidate` reclassifies at review time, rejects generated-skill
+  approval until sandbox, benchmark, and shadow gates have passed, and
+  verifies the reviewer is a real `User` row. The proposing agent id is never
+  accepted as review authority.
+- `applyLearningCandidate` now reclassifies both human-approved and
+  auto-approved candidates immediately before mutation. Tier 2/3 transitions
+  require a real human reviewer; protected `ALWAYS_HIGH_RISK_TYPES` therefore
+  cannot be smuggled through by directly changing candidate status.
+- `createSkillVersion` and `activateSkillVersion` analyze their final explicit
+  permission set at the transition. Executable skills are always Tier 2 or
+  Tier 3, wildcard/undeclared grants are rejected, and activation requires a
+  real human `User`. Generated versions additionally have to match the exact
+  approved candidate, skill, version, reviewer, and permission-derived risk.
+- Feature-flag creation and every active deployment change (enable, rollout
+  increase, scope/candidate/variant/config/risk change) reclassify through the
+  central policy. Linked flags cannot deploy a candidate until it is approved
+  and applied. Kill-switch, rollout reduction, deletion, and automatic rollback
+  are explicitly risk-reducing transitions.
+- `rollbackCandidate` reclassifies before reversal and enters the same central
+  transition gate as a risk-reducing action. Automatic rollback disables the
+  rollout first, then uses that checked rollback path.
+- Trust is not an input to `assertRiskTransitionAuthorized`. It can qualify
+  low-risk automation elsewhere, but there is no score value that can satisfy
+  Tier 3, protected-surface, credential, permission, or destructive-operation
+  authorization. `evaluateTrustAutomationEligibility` independently retains
+  the same Tier 3 / `ALWAYS_HIGH_RISK_TYPES` hard stop.
+
+### Gaps found and fixed in this audit
+
+1. `applyLearningCandidate` previously reclassified only the
+   `auto_approved` branch. Human-approved mutations now reclassify too and
+   prove the reviewer still resolves to a human user.
+2. Skill-version activation previously trusted an ephemeral approval level
+   and did not call the canonical classifier. Activation now derives Tier 2/3
+   from explicit permissions and requires human authority at each activation.
+3. Feature-flag rollout changes previously validated percentages but did not
+   consult candidate or operational risk. All deployment-expanding changes now
+   pass the canonical gate; risk-reducing kill switches remain fail-open for
+   safety.
+4. A generated-skill candidate could previously be reviewed before execution
+   evidence existed. Review now fails closed until its persisted pipeline stage
+   is `awaiting_approval`, and application rechecks that stage before versioned
+   activation.
+
+The remaining boundary is service-layer enforcement, not a PostgreSQL trigger:
+direct ad-hoc Prisma writes could bypass any TypeScript service. Repository
+callers were exhaustively searched for these mutations and routed through the
+checked services; adding database roles/RLS for internal service separation is
+infrastructure work outside this phase.
+
 ## Phases
 
 Schema for all phases below is already migrated (one migration,

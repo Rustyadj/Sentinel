@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, GitBranch, Plus } from "lucide-react";
+import { CheckCircle2, GitBranch, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 
 interface SkillSummary {
   id: string;
@@ -23,6 +23,28 @@ interface SkillVersion {
   createdAt: string;
   activatedAt: string | null;
   retiredAt: string | null;
+}
+
+interface SkillOpportunity {
+  opportunityKey: string;
+  topic: string;
+  occurrenceCount: number;
+  existingSkillId: string | null;
+}
+
+interface SkillGenerationProposal {
+  candidateId: string;
+  candidateStatus: string;
+  riskLevel: string;
+  pipelineStage: string;
+  pipelineReasons: unknown[];
+  skill: { id: string; name: string; domain: string; status: string } | null;
+  approvalRequest: { id: string; status: string } | null;
+}
+
+interface SkillGenerationData {
+  opportunities: SkillOpportunity[];
+  proposals: SkillGenerationProposal[];
 }
 
 const EMPTY_FORM = {
@@ -156,6 +178,8 @@ export function SkillsView() {
         activate immediately; Level 2 and 3 changes remain drafts until explicitly promoted.
       </p>
 
+      <SkillGenerationPanel />
+
       {error ? <p className="mb-3 text-xs text-red-400">{error}</p> : null}
 
       {!loaded ? (
@@ -269,5 +293,119 @@ export function SkillsView() {
         </>
       )}
     </div>
+  );
+}
+
+function SkillGenerationPanel() {
+  const [data, setData] = useState<SkillGenerationData>({
+    opportunities: [],
+    proposals: [],
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Promise-chain form (not async/await) passed directly as the effect —
+  // matching CuriosityView.tsx's proven pattern elsewhere in this module.
+  // `loading`/`error` already start at their "in progress" defaults for the
+  // mount case; the retry button sets them explicitly before calling load()
+  // since a click handler isn't an effect and can set state synchronously.
+  const load = useCallback(() => {
+    fetch("/api/learning/skill-generation")
+      .then((response) => response.json().then((result) => ({ response, result })))
+      .then(({ response, result }) => {
+        if (!response.ok) throw new Error(result.error ?? "Could not load skill generation pipeline");
+        setData(result);
+      })
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(load, [load]);
+
+  function retry() {
+    setLoading(true);
+    setError(null);
+    load();
+  }
+
+  return (
+    <section className="mb-6 rounded-lg border border-[--sidebar-border] bg-[--card] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-[--foreground]">
+            <ShieldCheck className="h-4 w-4 text-[--primary]" /> Safe generation pipeline
+          </h2>
+          <p className="mt-1 max-w-2xl text-xs text-[--muted-foreground]">
+            Repeated reflection patterns become explicit Tier 2/3 proposals, then pass schema,
+            permission, sandbox, test, benchmark, shadow, and human-approval gates.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={retry}
+          disabled={loading}
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-[--sidebar-border] px-2.5 py-1.5 text-xs text-[--muted-foreground] hover:text-[--foreground] disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          Scan
+        </button>
+      </div>
+
+      {error ? <p className="mt-3 text-xs text-red-400">{error}</p> : null}
+      {!loading && data.opportunities.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[--muted-foreground]">
+            Detected opportunities
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {data.opportunities.map((opportunity) => (
+              <span
+                key={opportunity.opportunityKey}
+                className="rounded-md border border-[--sidebar-border] px-2 py-1 text-[10px] text-[--muted-foreground]"
+              >
+                {opportunity.topic} · {opportunity.occurrenceCount}×
+                {opportunity.existingSkillId ? " · proposed" : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-2">
+        {data.proposals.length === 0 && !loading ? (
+          <p className="rounded-md border border-dashed border-[--sidebar-border] p-3 text-center text-xs text-[--muted-foreground]">
+            No generated skill proposals yet.
+          </p>
+        ) : data.proposals.map((proposal) => (
+          <article
+            key={proposal.candidateId}
+            className="rounded-md border border-[--sidebar-border] bg-black/10 p-3"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-[--foreground]">
+                {proposal.skill?.name ?? "Generated skill"}
+              </span>
+              <span className="rounded-full bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-300">
+                {proposal.pipelineStage.replaceAll("_", " ")}
+              </span>
+              <span className="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-[--muted-foreground]">
+                {proposal.riskLevel} risk
+              </span>
+              <span className="ml-auto text-[10px] text-[--muted-foreground]">
+                candidate {proposal.candidateStatus}
+                {proposal.approvalRequest ? ` · approval ${proposal.approvalRequest.status}` : ""}
+              </span>
+            </div>
+            {proposal.pipelineReasons.length > 0 ? (
+              <p className="mt-1 text-[10px] text-amber-400">
+                {proposal.pipelineReasons.map(String).join(" · ")}
+              </p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }

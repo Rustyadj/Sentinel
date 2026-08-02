@@ -10,7 +10,7 @@ import {
   monitorAndAutoRollback,
   proposeCandidate,
 } from "@/lib/neural-engine/learning-service";
-import { makeAgent, makeKnowledgeObject, uid } from "./db-setup";
+import { makeAgent, makeKnowledgeObject, makeUser, uid } from "./db-setup";
 
 afterAll(async () => {
   await db.$disconnect();
@@ -98,6 +98,7 @@ describe("Learning Core — automatic rollback wiring", () => {
 
 describe("Learning Core — skill version history", () => {
   it("drafts governed changes and retires the prior active version on activation", async () => {
+    const reviewer = await makeUser();
     const skill = await db.skill.create({
       data: {
         name: uid("versioned-skill"),
@@ -113,7 +114,7 @@ describe("Learning Core — skill version history", () => {
       inputSchema: { type: "object" },
       permissions: ["read"],
       approvalLevel: 3,
-    });
+    }, { authorizedByUserId: reviewer.id });
     expect(first.version).toBe(1);
     expect(first.status).toBe("active");
 
@@ -128,7 +129,10 @@ describe("Learning Core — skill version history", () => {
     expect(governed.status).toBe("draft");
     expect((await db.skill.findUniqueOrThrow({ where: { id: skill.id } })).version).toBe(1);
 
-    await activateSkillVersion(governed.id);
+    await expect(activateSkillVersion(governed.id)).rejects.toThrow(
+      "requires explicit human authorization",
+    );
+    await activateSkillVersion(governed.id, { authorizedByUserId: reviewer.id });
     const [retiredFirst, activeSecond, parent] = await Promise.all([
       db.skillVersion.findUniqueOrThrow({ where: { id: first.id } }),
       db.skillVersion.findUniqueOrThrow({ where: { id: governed.id } }),
@@ -146,7 +150,7 @@ describe("Learning Core — skill version history", () => {
       implementationType: "json",
       implementation: { step: "low-risk-change" },
       approvalLevel: 1,
-    });
+    }, { authorizedByUserId: reviewer.id });
     expect(lowRisk.status).toBe("active");
     expect((await db.skillVersion.findUniqueOrThrow({ where: { id: governed.id } })).status)
       .toBe("retired");

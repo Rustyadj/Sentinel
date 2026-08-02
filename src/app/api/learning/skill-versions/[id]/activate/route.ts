@@ -11,7 +11,9 @@ export async function POST(
 
   try {
     const { id } = await params;
-    return NextResponse.json(await activateSkillVersion(id));
+    return NextResponse.json(
+      await activateSkillVersion(id, { authorizedByUserId: user.id }),
+    );
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

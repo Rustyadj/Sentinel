@@ -12,7 +12,7 @@ import {
   getFeatureFlagBucket,
   updateFeatureFlag,
 } from "@/lib/learning/feature-flags";
-import { uid } from "./db-setup";
+import { makeUser, uid } from "./db-setup";
 
 afterAll(async () => {
   await db.$disconnect();
@@ -101,5 +101,29 @@ describe("Learning Core — deterministic feature flags (integration)", () => {
     expect(await evaluateFlag(key, context)).toBe(true);
     await updateFeatureFlag(flag.id, { enabled: false });
     expect(await evaluateFlag(key, context)).toBe(false);
+  });
+
+  it("requires human authority for medium/high rollout expansion but never for a kill switch", async () => {
+    const reviewer = await makeUser();
+    const flag = await createFeatureFlag({
+      key: uid("governed-flag"),
+      name: "Governed rollout",
+      enabled: false,
+      rolloutPercentage: 100,
+      riskTier: "high",
+    });
+
+    await expect(updateFeatureFlag(flag.id, { enabled: true })).rejects.toThrow(
+      "requires explicit human authorization",
+    );
+    const enabled = await updateFeatureFlag(
+      flag.id,
+      { enabled: true },
+      { authorizedByUserId: reviewer.id },
+    );
+    expect(enabled.enabled).toBe(true);
+
+    const disabled = await updateFeatureFlag(flag.id, { enabled: false });
+    expect(disabled.enabled).toBe(false);
   });
 });

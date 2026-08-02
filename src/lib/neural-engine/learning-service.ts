@@ -14,7 +14,11 @@ import { db } from "@/lib/db";
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { recordReflection } from "@/lib/learning/reflection";
 import { recordTrustEvent } from "@/lib/learning/trust";
-import { canAutoApprove, classifyRiskLevel } from "./policy-service";
+import {
+  assertRiskTransitionAuthorized,
+  canAutoApprove,
+  classifyRiskLevel,
+} from "./policy-service";
 import { emitNeuralEvent } from "./event-service";
 import { adjustKnowledgeWeight } from "./agent-profile-service";
 import { recordContradiction } from "./contradiction-service";
@@ -22,6 +26,7 @@ import { writeAuditLog } from "@/lib/workspaces/audit";
 import type {
   LearningCandidateType,
   ProposedLearningCandidateInput,
+  RiskLevel,
 } from "./types";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
@@ -33,6 +38,11 @@ export interface ProposeResult {
   autoApplied: boolean;
 }
 
+export interface ProposeCandidateOptions {
+  transaction?: Prisma.TransactionClient;
+  emitEvent?: boolean;
+}
+
 /**
  * Propose a learning candidate. If it's on the low-risk allowlist AND meets
  * evidence/confidence thresholds, it is applied immediately and marked
@@ -40,6 +50,7 @@ export interface ProposeResult {
  */
 export async function proposeCandidate(
   input: ProposedLearningCandidateInput,
+  options: ProposeCandidateOptions = {},
 ): Promise<ProposeResult> {
   const classification = classifyRiskLevel(input.type, input.riskLevel);
   const evidenceCount = input.evidenceCount ?? 1;
@@ -55,15 +66,18 @@ export async function proposeCandidate(
   const needsWorkspaceApproval =
     !classification.autoApproveEligible &&
     (classification.riskLevel === "medium" || classification.riskLevel === "high");
+  if (options.transaction && eligible) {
+    throw new Error("Transactional proposal creation is only supported for review-gated candidates.");
+  }
   const approvalContext = needsWorkspaceApproval
-    ? await resolveApprovalContext(input)
+    ? await resolveApprovalContext(input, options.transaction ?? db)
     : null;
   const proposedPayload = toJson(input.proposedPayload);
   const proposalIdentity = createHash("sha256")
     .update(`${input.type}:${stableJson(input.proposedPayload)}`)
     .digest("hex");
 
-  const candidate = await db.$transaction(async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`learning-proposal:${proposalIdentity}`})) IS NULL AS locked`;
     const identicalRollback = await tx.learningCandidate.findFirst({
       where: {
@@ -117,18 +131,23 @@ export async function proposeCandidate(
     }
 
     return created;
-  });
+  };
+  const candidate = options.transaction
+    ? await write(options.transaction)
+    : await db.$transaction(write);
 
-  await emitNeuralEvent({
-    type: "learning.proposed",
-    payload: {
-      candidateId: candidate.id,
-      type: candidate.type,
-      riskLevel: candidate.riskLevel,
-      autoApplied: eligible,
-      approvalRequestId: candidate.approvalRequestId,
-    },
-  });
+  if (options.emitEvent !== false) {
+    await emitNeuralEvent({
+      type: "learning.proposed",
+      payload: {
+        candidateId: candidate.id,
+        type: candidate.type,
+        riskLevel: candidate.riskLevel,
+        autoApplied: eligible,
+        approvalRequestId: candidate.approvalRequestId,
+      },
+    });
+  }
 
   if (eligible) {
     await applyLearningCandidate(candidate.id);
@@ -156,6 +175,15 @@ export async function reviewCandidate(
     );
   }
 
+  const candidatePayload = candidate.proposedPayload as Record<string, unknown>;
+  if (
+    decision === "approve" &&
+    candidatePayload.generationPipeline === "safe_skill_generation" &&
+    candidatePayload.pipelineStage !== "awaiting_approval"
+  ) {
+    throw new Error("Generated skill cannot be approved before sandbox, benchmark, and shadow gates pass.");
+  }
+
   const classification = classifyRiskLevel(
     candidate.type as LearningCandidateType,
     candidate.riskLevel as "low" | "medium" | "high",
@@ -181,6 +209,20 @@ export async function reviewCandidate(
   }
 
   const reviewed = await db.$transaction(async (tx) => {
+    const humanReviewer = await tx.user.findUnique({
+      where: { id: reviewerId },
+      select: { id: true },
+    });
+    if (!humanReviewer) {
+      throw new Error("Learning-candidate review requires an authenticated human reviewer.");
+    }
+    assertRiskTransitionAuthorized({
+      classification,
+      transition: `Learning-candidate ${decision}`,
+      humanAuthorized: true,
+      riskReducing: decision === "reject",
+    });
+
     let approval = candidate.approvalRequest;
     if (needsWorkspaceApproval && !approval && resolvedContext) {
       approval = await createCandidateApproval(
@@ -295,19 +337,18 @@ export async function applyLearningCandidate(candidateId: string) {
     );
   }
 
-  // Defense in depth: protected types can never reach this point already
-  // approved via auto-approval (policy-service enforces this at propose
-  // time), but re-assert here in case a future caller bypasses proposeCandidate.
-  if (candidate.status === "auto_approved") {
-    const classification = classifyRiskLevel(
-      candidate.type as Parameters<typeof classifyRiskLevel>[0],
-    );
-    if (!classification.autoApproveEligible) {
-      throw new Error(
-        `Refusing to auto-apply protected candidate type "${candidate.type}".`,
-      );
-    }
-  }
+  const classification = classifyRiskLevel(
+    candidate.type as LearningCandidateType,
+    candidate.riskLevel as RiskLevel,
+  );
+  const humanReviewer = candidate.reviewedBy
+    ? await db.user.findUnique({ where: { id: candidate.reviewedBy }, select: { id: true } })
+    : null;
+  assertRiskTransitionAuthorized({
+    classification,
+    transition: `Apply ${candidate.type} learning candidate`,
+    humanAuthorized: candidate.status === "approved" && Boolean(humanReviewer),
+  });
 
   const payload = candidate.proposedPayload as Record<string, unknown>;
   let appliedTargetId: string | null = null;
@@ -395,14 +436,39 @@ export async function applyLearningCandidate(candidateId: string) {
       break;
     }
 
-    case "skill":
+    case "skill": {
+      const skillVersionId = stringValue(payload.skillVersionId);
+      const proposedSkillId = stringValue(payload.skillId);
+      if (skillVersionId || proposedSkillId) {
+        if (
+          !skillVersionId ||
+          !proposedSkillId ||
+          payload.generationPipeline !== "safe_skill_generation" ||
+          payload.pipelineStage !== "awaiting_approval"
+        ) {
+          throw new Error("Generated skill has not completed its governed promotion pipeline.");
+        }
+        const { activateSkillVersion } = await import("@/lib/learning/skill-versions");
+        await activateSkillVersion(skillVersionId, {
+          authorizedByUserId: candidate.reviewedBy ?? undefined,
+          candidateId: candidate.id,
+        });
+        appliedTargetId = proposedSkillId;
+        break;
+      }
+      const { promoteFromPayload } = await import("./skill-service");
+      const promoted = await promoteFromPayload("skill", payload);
+      appliedTargetId = promoted?.id ?? null;
+      break;
+    }
+
     case "procedure": {
       // Delegates to skill-service, which enforces promotion thresholds
       // independently — a LearningCandidate approval is necessary but not
       // sufficient; skill-service still checks evidence/success-rate.
       const { promoteFromPayload } = await import("./skill-service");
       const promoted = await promoteFromPayload(
-        candidate.type as "skill" | "procedure",
+        "procedure",
         payload,
       );
       appliedTargetId = promoted?.id ?? null;
@@ -572,6 +638,17 @@ async function rollbackCandidateInTransaction(
     );
   }
 
+  const rollbackClassification = classifyRiskLevel(
+    candidate.type as LearningCandidateType,
+    candidate.riskLevel as RiskLevel,
+  );
+  assertRiskTransitionAuthorized({
+    classification: rollbackClassification,
+    transition: `Roll back ${candidate.type} learning candidate`,
+    humanAuthorized: false,
+    riskReducing: true,
+  });
+
   const payload = candidate.proposedPayload as Record<string, unknown>;
 
   switch (candidate.type) {
@@ -688,6 +765,7 @@ interface ApprovalContextInput {
 
 async function resolveApprovalContext(
   input: ApprovalContextInput,
+  client: Pick<Prisma.TransactionClient, "experience" | "evaluation" | "project" | "agent"> = db,
 ): Promise<ApprovalContext | null> {
   const payload = input.proposedPayload;
   let workspaceId = stringValue(payload.workspaceId);
@@ -700,12 +778,12 @@ async function resolveApprovalContext(
     agentId: string;
   } | null = null;
   if (input.experienceId) {
-    experience = await db.experience.findUnique({
+    experience = await client.experience.findUnique({
       where: { id: input.experienceId },
       select: { workspaceId: true, projectId: true, agentId: true },
     });
   } else if (input.evaluationId) {
-    const evaluation = await db.evaluation.findUnique({
+    const evaluation = await client.evaluation.findUnique({
       where: { id: input.evaluationId },
       select: {
         experience: {
@@ -721,7 +799,7 @@ async function resolveApprovalContext(
   agentId ??= experience?.agentId ?? null;
 
   if (projectId) {
-    const project = await db.project.findUnique({
+    const project = await client.project.findUnique({
       where: { id: projectId },
       select: { workspaceId: true },
     });
@@ -734,7 +812,7 @@ async function resolveApprovalContext(
   }
 
   if (!workspaceId && agentId) {
-    const agent = await db.agent.findUnique({
+    const agent = await client.agent.findUnique({
       where: { id: agentId },
       select: { workspaceId: true },
     });

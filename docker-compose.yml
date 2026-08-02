@@ -34,7 +34,14 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # noeviction, not allkeys-lru: this Redis now backs the Learning Core
+    # BullMQ queue (src/lib/learning/queue.ts), and LRU eviction can
+    # silently drop queued/delayed job data under memory pressure — BullMQ
+    # itself warns about this at connection time. Confirmed by actually
+    # connecting a real Queue/Worker against this policy in this session
+    # (see the PR — this isn't a guess). Nothing else using this instance
+    # (src/lib/redis.ts's health-check client) depends on eviction behavior.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     networks:
@@ -103,6 +110,34 @@ services:
       redis:
         condition: service_healthy
     # Traefik routing is managed via /etc/traefik/dynamic/sentinel.yml on the host
+
+  # Learning Core worker — BullMQ consumer for the recurring jobs registered
+  # in src/lib/learning/queue.ts (degradation sweep, knowledge-gap analysis,
+  # experience replay). Runs from the `builder` stage (needs devDependencies
+  # for tsx + full source, same pattern as `migrate`) rather than a separate
+  # compiled image — simplest correct thing until this needs its own
+  # deployment lifecycle. UNVERIFIED against a live deployment in this
+  # session; the wiring is real, but nobody has watched a job run here.
+  learning-worker:
+    build:
+      context: .
+      target: builder
+    command: npm run worker:learning
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      REDIS_URL: redis://redis:6379
+      LEARNING_WORKER_CONCURRENCY: ${LEARNING_WORKER_CONCURRENCY:-2}
+      NEURAL_SWEEP_SECRET: ${NEURAL_SWEEP_SECRET:-}
+    networks:
+      - sentinel_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   # SentinelVoiceGateway worker — LiveKit Agents (Silero VAD + turn detector +
   # Deepgram Flux STT + Cartesia Sonic 3.5 TTS), routed through this app's own

@@ -12,7 +12,9 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
   try {
-    return NextResponse.json(await updateFeatureFlag(id, body));
+    return NextResponse.json(
+      await updateFeatureFlag(id, body, { authorizedByUserId: user.id }),
+    );
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

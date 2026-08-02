@@ -35,7 +35,10 @@ export async function POST(req: Request) {
 
   try {
     const { skillId, ...input } = body;
-    return NextResponse.json(await createSkillVersion(skillId, input), { status: 201 });
+    return NextResponse.json(
+      await createSkillVersion(skillId, input, { authorizedByUserId: user.id }),
+      { status: 201 },
+    );
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },

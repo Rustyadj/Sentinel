@@ -12,6 +12,7 @@ import { ShadowRunsView } from "./ShadowRunsView";
 import { TrustView } from "./TrustView";
 import { FeatureFlagsView } from "./FeatureFlagsView";
 import { SkillsView } from "./SkillsView";
+import { ReplayView } from "./ReplayView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
@@ -56,5 +57,11 @@ export default function LearningCorePage() {
   if (activeTab === "trust") return <TrustView />;
   if (activeTab === "feature-flags") return <FeatureFlagsView />;
   if (activeTab === "skills") return <SkillsView />;
+  // Experience Replay's natural tab slot per the original spec doesn't have
+  // its own entry in ModuleTabs — "Experiments" was still unbuilt and is
+  // the closest semantic fit (replay batches feed the same candidate
+  // pipeline experiments do), so it's mapped here rather than adding yet
+  // another shared ModuleTabs entry for one view.
+  if (activeTab === "experiments") return <ReplayView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }
