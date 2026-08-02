@@ -101,6 +101,26 @@ describe("Learning Core — deterministic feature flags (integration)", () => {
     expect(await evaluateFlag(key, context)).toBe(true);
     await updateFeatureFlag(flag.id, { enabled: false });
     expect(await evaluateFlag(key, context)).toBe(false);
+    expect(
+      (await db.featureFlag.findUniqueOrThrow({ where: { id: flag.id } })).lastEvaluatedAt,
+    ).not.toBeNull();
+  });
+
+  it("validates rollout lifecycle bounds before persisting", async () => {
+    await expect(createFeatureFlag({
+      key: uid("invalid-max-rollout"),
+      name: "Invalid maximum",
+      rolloutPercentage: 75,
+      maxRollout: 50,
+    })).rejects.toThrow(/maxRollout/);
+
+    await expect(createFeatureFlag({
+      key: uid("invalid-lifecycle"),
+      name: "Invalid lifecycle",
+      enabled: true,
+      activatedAt: new Date("2026-08-03T00:00:00Z"),
+      expiresAt: new Date("2026-08-02T00:00:00Z"),
+    })).rejects.toThrow(/activatedAt/);
   });
 
   it("requires human authority for medium/high rollout expansion but never for a kill switch", async () => {

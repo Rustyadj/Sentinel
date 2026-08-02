@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { accessErrorResponse, requireProjectPermission, requireWorkspacePermission, WorkspaceAccessError } from "@/lib/workspaces/authorization";
 import { assertOneOf, TASK_PRIORITIES, TASK_STATUSES, type TaskPriority, type TaskStatus } from "@/lib/workspaces/status";
+import { syncTaskToGraph } from "@/lib/knowledge/entity-sync";
 
 async function authorizeScope(workspaceId: string | undefined, projectId: string | undefined, permission: string) {
   if (projectId) {
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
       },
     });
     await writeAuditLog({ workspaceId: task.workspaceId, projectId: task.projectId, userId: user.id, action: "task.created", entityType: "task", entityId: task.id, details: { title: task.title, status: task.status } });
+    await syncTaskToGraph(task, user.id).catch((err) => console.error("[tasks] graph sync failed (non-fatal):", err));
     return NextResponse.json(task, { status: 201 });
   } catch (error) {
     return accessErrorResponse(error);

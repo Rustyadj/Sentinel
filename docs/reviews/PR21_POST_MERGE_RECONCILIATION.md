@@ -1,5 +1,17 @@
 # PR #21 Post-Merge Reconciliation
 
+> This document also serves as the "Workstream 1 — Reconcile PR #21" deliverable for the
+> "Sentinel OS — Make It Ready as My Default VPS UI" spec, which asked for a new
+> `docs/reviews/PR21_DEFAULT_UI_RECONCILIATION.md`. A second file was deliberately not created —
+> this doc already inspects every PR #21 commit against current `main` with the exact fields that
+> spec requested (SHA, defect, main-status, patch-apply/conflict, decision, resulting commit,
+> validation), it's the authoritative single audit narrative referenced by that spec's own
+> "do not duplicate systems" rule, and splitting the same analysis across two files would create
+> the two competing narratives this doc explicitly says it was written to avoid. Classification
+> labels below map 1:1 to that spec's vocabulary: `PORT UNCHANGED` = `PORT`, `PORT WITH
+> RECONCILIATION` = `PORT WITH RECONCILIATION`, `ALREADY PRESENT` / `OBSOLETE` / `REJECT` are
+> unchanged.
+
 PR #21 (`codex/learning-core-release-audit` → `learning-core/neural-engine-extension`) was an
 independent audit performed **before** PR #20 merged into `main`. Its base branch no longer
 exists as an open target — PR #20 merged as `8ab38e8` on current `main`. This document inspects

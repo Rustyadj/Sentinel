@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GitCommitVertical } from "lucide-react";
 
 interface LearningEventRow {
@@ -23,14 +23,23 @@ const SEVERITY_COLOR: Record<string, string> = {
 export function EvolutionView() {
   const [events, setEvents] = useState<LearningEventRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch("/api/learning/timeline?limit=150")
-      .then((r) => r.json())
-      .then(setEvents)
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then((data) => {
+        setError(null);
+        setEvents(data);
+      })
+      .catch(() => setError("Could not load the evolution timeline."))
       .finally(() => setLoaded(true));
   }, []);
+
+  useEffect(load, [load]);
 
   return (
     <div className="p-6 max-w-4xl">
@@ -43,9 +52,14 @@ export function EvolutionView() {
         direct read over that stream, not a second event log.
       </p>
 
+      {error && (
+        <p className="mb-3 text-xs text-red-400">
+          {error} <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </p>
+      )}
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
-      ) : events.length === 0 ? (
+      ) : events.length === 0 && !error ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           No events recorded yet.
         </div>

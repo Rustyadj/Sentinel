@@ -26,13 +26,20 @@ interface ReplayRun {
 export function ReplayView() {
   const [runs, setRuns] = useState<ReplayRun[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/learning/replay")
-      .then((r) => r.json())
-      .then(setRuns)
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then((data) => {
+        setError(null);
+        setRuns(data);
+      })
+      .catch(() => setError("Could not load replay runs."))
       .finally(() => setLoaded(true));
   }, []);
 
@@ -43,12 +50,18 @@ export function ReplayView() {
   async function runReplay(category: string) {
     setRunning(category);
     try {
-      await fetch("/api/learning/replay", {
+      const response = await fetch("/api/learning/replay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category }),
       });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? `Replay run failed (${response.status})`);
+      }
       load();
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : "Replay run failed.");
     } finally {
       setRunning(null);
     }
@@ -80,9 +93,14 @@ export function ReplayView() {
         ))}
       </div>
 
+      {error && (
+        <p className="mb-3 text-xs text-red-400">
+          {error} <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </p>
+      )}
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
-      ) : runs.length === 0 ? (
+      ) : runs.length === 0 && !error ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           No replay runs yet — pick a category above.
         </div>

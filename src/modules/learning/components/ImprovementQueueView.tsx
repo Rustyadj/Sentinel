@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ListChecks } from "lucide-react";
 
 interface PendingCandidate {
@@ -24,17 +24,24 @@ export function ImprovementQueueView() {
   const [candidates, setCandidates] = useState<PendingCandidate[]>([]);
   const [skillVersions, setSkillVersions] = useState<DraftSkillVersion[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch("/api/learning/improvement-queue")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((data) => {
+        setError(null);
         setCandidates(data.pendingCandidates ?? []);
         setSkillVersions(data.draftSkillVersions ?? []);
       })
-      .catch(() => {})
+      .catch(() => setError("Could not load the improvement queue."))
       .finally(() => setLoaded(true));
   }, []);
+
+  useEffect(load, [load]);
 
   const totalPending = candidates.length + skillVersions.length;
 
@@ -48,9 +55,14 @@ export function ImprovementQueueView() {
         cross-cutting read over existing pending states, not a separate queue.
       </p>
 
+      {error && (
+        <p className="mb-3 text-xs text-red-400">
+          {error} <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </p>
+      )}
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
-      ) : totalPending === 0 ? (
+      ) : totalPending === 0 && !error ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           Nothing pending review right now.
         </div>

@@ -13,6 +13,9 @@ RUN npm ci
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+ARG SENTINEL_COMMIT=unknown
+ARG SENTINEL_BUILT_AT=unknown
+
 RUN apk add --no-cache libc6-compat openssl
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,6 +26,8 @@ COPY . .
 RUN npx prisma@6 generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SENTINEL_COMMIT=$SENTINEL_COMMIT
+ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
 
 # Placeholder values satisfy next-auth and Prisma at build time.
 # These are NOT used at runtime — supply real values via .env or docker-compose.
@@ -35,10 +40,15 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+ARG SENTINEL_COMMIT=unknown
+ARG SENTINEL_BUILT_AT=unknown
+
 RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SENTINEL_COMMIT=$SENTINEL_COMMIT
+ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
 
 # Non-root user for security
 RUN addgroup --system --gid 1001 nodejs \

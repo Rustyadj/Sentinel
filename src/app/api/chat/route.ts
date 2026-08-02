@@ -14,6 +14,8 @@ import { startExperience, completeExperience } from "@/lib/neural-engine/experie
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { analyzeCuriosityContext, recordCuriosityEvent, answerCuriosityEvent } from "@/lib/learning/curiosity";
 import type { NextRequest } from "next/server";
+import { isRuntimeChatMode, routeRuntimeChat, type ChatExecutionMode } from "@/lib/agents/runtime/chat-routing";
+import { RuntimeError } from "@/lib/agents/runtime/errors";
 
 interface ContextBlockResult {
   block: string;
@@ -165,10 +167,11 @@ async function persistMessages(
   userContent: string,
   agentId: string,
   assistantContent: string,
-  userId: string
+  userId: string,
+  provenance?: { provider?: string; model?: string },
 ) {
   try {
-    await persistChatExchange({ roomId, userId, userContent, agentId, assistantContent });
+    await persistChatExchange({ roomId, userId, userContent, agentId, assistantContent, provenance });
   } catch (err) {
     // Non-fatal: log but don't break the streaming response
     console.error("[chat] persist failed:", err);
@@ -290,6 +293,7 @@ export async function POST(request: NextRequest) {
     agentId?: string;
     roomId?: string;
     userContent?: string;
+    executionMode?: ChatExecutionMode;
   };
 
   try {
@@ -336,6 +340,18 @@ export async function POST(request: NextRequest) {
     if (!(await getControlPlaneUser(agentId))) return sseError("Agent not found", 404);
   } else if (!(process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_ADAPTERS === "true")) {
     return sseError("Agent not found", 404);
+  }
+
+  if (!voiceTurn && isRuntimeChatMode(body.executionMode)) {
+    if (!userContent) return sseError("Missing required field: userContent");
+    try {
+      return await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: body.executionMode! });
+    } catch (error) {
+      return sseError(error instanceof Error ? error.message : "Runtime routing failed", error instanceof RuntimeError ? error.status : 503);
+    }
+  }
+  if (body.executionMode === "workflow_runtime") {
+    return sseError("Workflow runtime is not configured; choose a runtime or direct model explicitly", 503);
   }
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
   const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
@@ -431,7 +447,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -489,7 +505,7 @@ export async function POST(request: NextRequest) {
         );
       } finally {
         if (roomId && userContent && fullContent) {
-          await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+          await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
           // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
           ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
         }
@@ -554,7 +570,7 @@ export async function POST(request: NextRequest) {
       );
     } finally {
       if (roomId && userContent && fullContent) {
-        await persistMessages(roomId, userContent, agentId, fullContent, user.id);
+        await persistMessages(roomId, userContent, agentId, fullContent, user.id, { provider, model });
         // Emit knowledge_update event into the SSE stream so the graph panel refreshes immediately
         ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
       }

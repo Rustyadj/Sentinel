@@ -105,17 +105,23 @@ model ChatRoom {
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  chatRoomId String
-  role       String
-  agentId    String?
-  content    String
-  toolCalls  Json?
-  reasoning  String?
-  createdAt  DateTime @default(now())
+  id                    String   @id @default(cuid())
+  chatRoomId            String
+  role                  String
+  agentId               String?
+  content               String
+  toolCalls             Json?
+  reasoning             String?
+  runtimeKind           String?
+  provider              String?
+  model                 String?
+  agentRuntimeSessionId String?
+  createdAt             DateTime @default(now())
 
-  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  chatRoom           ChatRoom      @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  agentRuntimeSession AgentSession? @relation(fields: [agentRuntimeSessionId], references: [id], onDelete: SetNull)
 
+  @@index([agentRuntimeSessionId])
   @@map("messages")
 }
 
@@ -1261,6 +1267,17 @@ model FeatureFlag {
   // remains the tenant/user/agent targeting key; this nullable relation lets
   // automatic rollback find and disable every flag deploying a candidate.
   learningCandidateId String?
+  // Activation/expiry — additive (PR #21 audit finding: the rollout spec
+  // called for these but the schema had nowhere to put them). A flag past
+  // its expiresAt evaluates to disabled regardless of `enabled`/rollout —
+  // see evaluateFlag() in feature-flags.ts.
+  activatedAt       DateTime?
+  expiresAt         DateTime?
+  rolloutStep       Int      @default(10)
+  maxRollout        Int      @default(100)
+  rollbackThresholds Json    @default("{}")
+  monitoringWindow  Int      @default(3600) // seconds
+  lastEvaluatedAt   DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -1354,4 +1371,115 @@ model ScheduledJobRun {
 
   @@index([jobKey, startedAt])
   @@map("learning_scheduled_job_runs")
+}
+
+// Real persisted Learning Core settings — the "learning-settings" tab was
+// previously left as NotYetBuiltView because no backing service existed
+// anywhere in this branch (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md's
+// known-gaps section). One row per scope; effective settings for a given
+// agent are resolved agent -> workspace -> organization -> hardcoded
+// defaults (see getEffectiveLearningSettings in src/lib/learning/settings.ts).
+model LearningSettings {
+  id                    String   @id @default(cuid())
+  scopeType             String // organization, workspace, agent
+  scopeId               String
+  curiosityThreshold    Float?
+  minShadowSampleSize   Int?
+  benchmarkThresholds   Json? // e.g. { accuracy: 0.8, maxCostUsd: 1.0, maxLatencyMs: 5000 }
+  trustThresholds       Json? // e.g. { autoApproveMinScore: 0.8 }
+  rolloutSteps          Int[]    @default([])
+  dailyLearningBudgetUsd Float?
+  perAgentBudgetUsd     Float?
+  replayLimits          Json? // e.g. { maxPerCategory: 50, lookbackDays: 30 }
+  modelAllowlist        String[] @default([])
+  maxSandboxConcurrency Int?
+  autoDeployEnabled     Boolean  @default(false)
+  updatedByUserId       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([scopeType, scopeId])
+  @@map("learning_settings")
+}
+
+// --- Agent Runtime Control Plane (production/final-agent-control-plane) ---
+// Logical Agent identity stays in Agent. These rows describe how an agent is
+// executed and deliberately avoid relations back into existing models so this
+// additive section can land without rewriting concurrent ownership work.
+model AgentRuntime {
+  id                   String   @id @default(cuid())
+  agentId              String
+  kind                 String
+  transport            String
+  endpoint             String?
+  containerName        String?
+  serviceName          String?
+  executable           String?
+  defaultArgs          String[] @default([])
+  workingDirectoryRoot String?
+  configPath           String?
+  logPath              String?
+  enabled              Boolean  @default(true)
+  capabilities         Json     @default("{}")
+  healthConfig         Json     @default("{}")
+  workspaceId          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  sessions AgentSession[]
+
+  @@index([agentId])
+  @@index([kind, enabled])
+  @@index([workspaceId])
+  @@map("agent_runtimes")
+}
+
+model AgentSession {
+  id                String    @id @default(cuid())
+  runtime           String
+  runtimeInstanceId String
+  externalSessionId String?
+  agentId           String
+  userId            String
+  workspaceId       String?
+  projectId         String?
+  chatRoomId        String?
+  workingDirectory  String?
+  status            String    @default("created")
+  startedAt         DateTime  @default(now())
+  lastActivityAt    DateTime  @default(now())
+  completedAt       DateTime?
+  exitCode          Int?
+  cancelledAt       DateTime?
+  metadata          Json      @default("{}")
+  parentSessionId   String?
+
+  runtimeInstance   AgentRuntime        @relation(fields: [runtimeInstanceId], references: [id], onDelete: Restrict)
+  parentSession     AgentSession?       @relation("AgentSessionDelegation", fields: [parentSessionId], references: [id], onDelete: SetNull)
+  delegatedSessions AgentSession[]      @relation("AgentSessionDelegation")
+  events            AgentRuntimeEvent[]
+  messages          Message[]
+
+  @@index([runtimeInstanceId, startedAt])
+  @@index([userId, startedAt])
+  @@index([workspaceId, startedAt])
+  @@index([chatRoomId, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@index([parentSessionId])
+  @@map("agent_sessions")
+}
+
+model AgentRuntimeEvent {
+  id         String   @id @default(cuid())
+  sessionId  String
+  sequence   Int
+  type       String
+  payload    Json     @default("{}")
+  occurredAt DateTime @default(now())
+
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, occurredAt])
+  @@map("agent_runtime_events")
 }
