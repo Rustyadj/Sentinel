@@ -7,6 +7,9 @@ import { ReflectionsView } from "./ReflectionsView";
 import { PreferencesView } from "./PreferencesView";
 import { KnowledgeGapsView } from "./KnowledgeGapsView";
 import { HypothesesView } from "./HypothesesView";
+import { BenchmarksView } from "./BenchmarksView";
+import { TrustView } from "./TrustView";
+import { FeatureFlagsView } from "./FeatureFlagsView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
@@ -46,5 +49,8 @@ export default function LearningCorePage() {
   if (activeTab === "preferences") return <PreferencesView />;
   if (activeTab === "knowledge-gaps") return <KnowledgeGapsView />;
   if (activeTab === "hypotheses") return <HypothesesView />;
+  if (activeTab === "benchmarks") return <BenchmarksView />;
+  if (activeTab === "trust") return <TrustView />;
+  if (activeTab === "feature-flags") return <FeatureFlagsView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }
