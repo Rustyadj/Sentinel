@@ -36,6 +36,7 @@ export const JOB_NAMES = {
   degradationSweep: "degradation-sweep",
   knowledgeGapAnalysis: "knowledge-gap-analysis",
   experienceReplay: "experience-replay",
+  coOccurrenceDiscovery: "co-occurrence-discovery",
 } as const;
 
 export type LearningJobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -125,6 +126,11 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
     { pattern: CRON.weekly },
     { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
   );
+  await q.upsertJobScheduler(
+    JOB_NAMES.coOccurrenceDiscovery,
+    { pattern: CRON.weekly },
+    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
+  );
   for (const category of ["failure", "partial_outcome", "high_cost", "strongest_success", "rejected_answer", "rolled_back"]) {
     await q.upsertJobScheduler(
       `${JOB_NAMES.experienceReplay}:${category}`,
@@ -138,7 +144,12 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
   }
 
   return {
-    scheduled: [JOB_NAMES.degradationSweep, JOB_NAMES.knowledgeGapAnalysis, `${JOB_NAMES.experienceReplay} (x6 categories)`],
+    scheduled: [
+      JOB_NAMES.degradationSweep,
+      JOB_NAMES.knowledgeGapAnalysis,
+      JOB_NAMES.coOccurrenceDiscovery,
+      `${JOB_NAMES.experienceReplay} (x6 categories)`,
+    ],
     skipped: "trace-aggregation, preference-confidence-recalc, monthly-maintenance — no real handler exists yet",
   };
 }
