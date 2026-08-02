@@ -4,6 +4,12 @@
 // src/workers/learning-worker.ts` (see docker-compose.yml's learning-worker
 // service, and package.json's "worker:learning" script).
 //
+// Verified live against a running Redis instance: connection succeeds, the
+// worker starts and processes a real job to completion, a failing job
+// retries and lands on the dead-letter queue after its bounded attempts, repeated
+// scheduleRecurringJobs() calls do not duplicate schedules, and SIGTERM
+// closes the worker gracefully.
+
 import { Worker, type Job } from "bullmq";
 import {
   LEARNING_QUEUE_NAME,

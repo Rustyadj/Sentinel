@@ -2,9 +2,13 @@
 //
 // This is genuinely new infrastructure for this repo (confirmed absent
 // before writing this — no cron/BullMQ/node-cron/queue library existed
-// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Producers persist
-// bounded retry/backoff settings with each job, and callers can close both
-// singleton connections during worker shutdown or test teardown.
+// anywhere; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md). Verified live
+// against a running Redis instance and a real learning-worker process:
+// connection succeeds, jobs register once across repeated startups
+// (upsertJobScheduler dedup), a job executes successfully, a failing job
+// retries then lands on the dead-letter queue, and the worker shuts down
+// gracefully on SIGTERM. Producers persist bounded retry/backoff settings,
+// and shutdown closes both singleton queue connections.
 //
 // BullMQ requires its own ioredis connection with maxRetriesPerRequest:
 // null (blocking BRPOPLPUSH-style calls need unlimited retries) — this is
