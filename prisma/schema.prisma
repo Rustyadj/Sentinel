@@ -1355,3 +1355,80 @@ model ScheduledJobRun {
   @@index([jobKey, startedAt])
   @@map("learning_scheduled_job_runs")
 }
+
+// --- Agent Runtime Control Plane (production/final-agent-control-plane) ---
+// Logical Agent identity stays in Agent. These rows describe how an agent is
+// executed and deliberately avoid relations back into existing models so this
+// additive section can land without rewriting concurrent ownership work.
+model AgentRuntime {
+  id                   String   @id @default(cuid())
+  agentId              String
+  kind                 String
+  transport            String
+  endpoint             String?
+  containerName        String?
+  serviceName          String?
+  executable           String?
+  defaultArgs          String[] @default([])
+  workingDirectoryRoot String?
+  configPath           String?
+  logPath              String?
+  enabled              Boolean  @default(true)
+  capabilities         Json     @default("{}")
+  healthConfig         Json     @default("{}")
+  workspaceId          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  sessions AgentSession[]
+
+  @@index([agentId])
+  @@index([kind, enabled])
+  @@index([workspaceId])
+  @@map("agent_runtimes")
+}
+
+model AgentSession {
+  id                String    @id @default(cuid())
+  runtime           String
+  runtimeInstanceId String
+  externalSessionId String?
+  agentId           String
+  userId            String
+  workspaceId       String?
+  projectId         String?
+  chatRoomId        String?
+  workingDirectory  String?
+  status            String    @default("created")
+  startedAt         DateTime  @default(now())
+  lastActivityAt    DateTime  @default(now())
+  completedAt       DateTime?
+  exitCode          Int?
+  cancelledAt       DateTime?
+  metadata          Json      @default("{}")
+
+  runtimeInstance AgentRuntime        @relation(fields: [runtimeInstanceId], references: [id], onDelete: Restrict)
+  events          AgentRuntimeEvent[]
+
+  @@index([runtimeInstanceId, startedAt])
+  @@index([userId, startedAt])
+  @@index([workspaceId, startedAt])
+  @@index([chatRoomId, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@map("agent_sessions")
+}
+
+model AgentRuntimeEvent {
+  id         String   @id @default(cuid())
+  sessionId  String
+  sequence   Int
+  type       String
+  payload    Json     @default("{}")
+  occurredAt DateTime @default(now())
+
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, occurredAt])
+  @@map("agent_runtime_events")
+}
