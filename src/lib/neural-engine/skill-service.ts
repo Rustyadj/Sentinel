@@ -85,6 +85,7 @@ export interface SkillPayload {
 export async function promoteFromPayload(
   kind: "skill" | "procedure",
   payload: Record<string, unknown>,
+  client: Pick<Prisma.TransactionClient, "skill" | "procedure"> = db,
 ) {
   const p = payload as unknown as SkillPayload;
   const check = checkPromotionEligibility(p.evidence);
@@ -109,12 +110,17 @@ export async function promoteFromPayload(
   };
 
   const created =
-    kind === "skill" ? await db.skill.create({ data }) : await db.procedure.create({ data });
+    kind === "skill" ? await client.skill.create({ data }) : await client.procedure.create({ data });
 
-  await emitNeuralEvent({
-    type: "skill.promoted",
-    payload: { id: created.id, kind, name: p.name, domain: p.domain },
-  });
+  // Notification only — not canonical state. Skipped when a caller-owned
+  // transaction is passed in; that caller emits it after commit (see
+  // recordContradiction's client === db pattern for the same reasoning).
+  if (client === db) {
+    await emitNeuralEvent({
+      type: "skill.promoted",
+      payload: { id: created.id, kind, name: p.name, domain: p.domain },
+    });
+  }
 
   return created;
 }

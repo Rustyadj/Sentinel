@@ -330,211 +330,281 @@ export async function reviewCandidate(
  * Dispatches by `type`. Every branch is a real, additive/versioned write —
  * nothing here silently overwrites without provenance.
  */
+/**
+ * A canonical mutation plus its candidate-status/audit persistence used to
+ * happen in two separate transactions — a failure between them could leave
+ * production changed while Sentinel still reported the candidate as
+ * unapplied, with no audit trail. Every branch below now runs inside one
+ * transaction: the advisory lock, the re-verified candidate status, the
+ * canonical write, the candidate update, and the audit log are all one
+ * atomic unit. Only non-canonical notification events (emitNeuralEvent /
+ * emitLearningEvent) fire after commit — see the per-service `client === db`
+ * pattern in skill-service.ts / contradiction-service.ts for why.
+ */
 export async function applyLearningCandidate(candidateId: string) {
-  const candidate = await db.learningCandidate.findUniqueOrThrow({
-    where: { id: candidateId },
-    include: { experience: true, approvalRequest: true },
-  });
-
-  if (candidate.status !== "approved" && candidate.status !== "auto_approved") {
-    throw new Error(
-      `Learning candidate ${candidateId} has status "${candidate.status}" — refusing to apply.`,
-    );
-  }
-
-  const classification = classifyRiskLevel(
-    candidate.type as LearningCandidateType,
-    candidate.riskLevel as RiskLevel,
-  );
-  const humanReviewer = candidate.reviewedBy
-    ? await db.user.findUnique({ where: { id: candidate.reviewedBy }, select: { id: true } })
-    : null;
-  if (candidate.status === "approved") {
-    const approvalAudit = candidate.reviewedBy
-      ? await db.auditLog.findFirst({
-          where: {
-            entityType: "LearningCandidate",
-            entityId: candidate.id,
-            action: "learning_candidate.approved",
-            userId: candidate.reviewedBy,
-          },
-          select: { id: true },
-        })
-      : null;
-    const linkedApprovalValid = !candidate.approvalRequest || (
-      candidate.approvalRequest.status === "approved" &&
-      candidate.approvalRequest.reviewerUserId === candidate.reviewedBy
-    );
-    if (!humanReviewer || !approvalAudit || !linkedApprovalValid) {
-      throw new Error(
-        "Approved learning candidate lacks matching human-review audit evidence.",
-      );
-    }
-  }
-  assertRiskTransitionAuthorized({
-    classification,
-    transition: `Apply ${candidate.type} learning candidate`,
-    humanAuthorized: candidate.status === "approved" && Boolean(humanReviewer),
-  });
-
-  const payload = candidate.proposedPayload as Record<string, unknown>;
-  let appliedTargetId: string | null = null;
-
-  switch (candidate.type) {
-    case "confidence_update": {
-      const { agentId, knowledgeObjectId, outcome, magnitude } = payload as {
-        agentId: string;
-        knowledgeObjectId: string;
-        outcome: "success" | "failure";
-        magnitude?: number;
-      };
-      const weight = await adjustKnowledgeWeight(
-        agentId,
-        knowledgeObjectId,
-        outcome,
-        magnitude,
-      );
-      appliedTargetId = weight.id;
-      await emitNeuralEvent({
-        type: outcome === "success" ? "edge.strengthened" : "edge.weakened",
-        payload: { agentId, knowledgeObjectId, candidateId },
-      });
-      break;
-    }
-
-    case "relationship": {
-      const { fromObjectId, toObjectId, edgeType, weightDelta } = payload as {
-        fromObjectId: string;
-        toObjectId: string;
-        edgeType: string;
-        weightDelta?: number;
-      };
-      const edge = await strengthenOrCreateEdge(
-        fromObjectId,
-        toObjectId,
-        edgeType,
-        weightDelta ?? 0.1,
-        candidate.id,
-      );
-      appliedTargetId = edge.id;
-      break;
-    }
-
-    case "memory": {
-      const memory = await db.memory.create({
-        data: {
-          type: (payload.memoryType as string) ?? "pattern",
-          scope: (payload.scope as string) ?? "project",
-          owner: (payload.owner as string) ?? "neural-engine",
-          content: payload.content as string,
-          tags: (payload.tags as string[]) ?? [],
-          confidence: candidate.confidence,
-          importanceScore: (payload.importanceScore as number) ?? 0.5,
-          source: `neural-engine:learning-candidate:${candidate.id}`,
-          projectId: (payload.projectId as string) ?? null,
-        },
-      });
-      appliedTargetId = memory.id;
-      break;
-    }
-
-    case "decision": {
-      const decision = await db.decision.create({
-        data: {
-          title: payload.title as string,
-          summary: payload.summary as string,
-          status: "approved",
-          rationale: (payload.rationale as string) ?? null,
-          createdBy: (payload.createdBy as string) ?? "neural-engine",
-          approvedBy: (payload.reviewedBy as string) ?? null,
-          projectId: (payload.projectId as string) ?? null,
-          changeReason: `learning-candidate:${candidate.id}`,
-        },
-      });
-      appliedTargetId = decision.id;
-      break;
-    }
-
-    case "contradiction": {
-      const contradiction = await recordContradiction(
-        payload as unknown as Parameters<typeof recordContradiction>[0],
-      );
-      appliedTargetId = contradiction.id;
-      break;
-    }
-
-    case "skill": {
-      const skillVersionId = stringValue(payload.skillVersionId);
-      const proposedSkillId = stringValue(payload.skillId);
-      if (skillVersionId || proposedSkillId) {
-        if (
-          !skillVersionId ||
-          !proposedSkillId ||
-          payload.generationPipeline !== "safe_skill_generation" ||
-          payload.pipelineStage !== "awaiting_approval"
-        ) {
-          throw new Error("Generated skill has not completed its governed promotion pipeline.");
-        }
-        const { activateSkillVersion } = await import("@/lib/learning/skill-versions");
-        await activateSkillVersion(skillVersionId, {
-          authorizedByUserId: candidate.reviewedBy ?? undefined,
-          candidateId: candidate.id,
-        });
-        appliedTargetId = proposedSkillId;
-        break;
-      }
-      const { promoteFromPayload } = await import("./skill-service");
-      const resolvedWorkspaceId =
-        candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId ?? undefined;
-      const promoted = await promoteFromPayload("skill", { ...payload, workspaceId: resolvedWorkspaceId });
-      appliedTargetId = promoted?.id ?? null;
-      break;
-    }
-
-    case "procedure": {
-      // Delegates to skill-service, which enforces promotion thresholds
-      // independently — a LearningCandidate approval is necessary but not
-      // sufficient; skill-service still checks evidence/success-rate.
-      const { promoteFromPayload } = await import("./skill-service");
-      const promoted = await promoteFromPayload(
-        "procedure",
-        payload,
-      );
-      appliedTargetId = promoted?.id ?? null;
-      break;
-    }
-
-    case "prompt_change":
-    case "tool_policy_change": {
-      // Protected surface. Only reachable via explicit human `approve` —
-      // proposeCandidate() never marks these auto_approved, and the guard
-      // above re-asserts it.
-      if (candidate.status !== "approved") {
-        throw new Error(
-          `"${candidate.type}" requires an explicit human approval, not auto-approval.`,
-        );
-      }
-      const agentId = payload.agentId as string;
-      const updated = await db.agent.update({
-        where: { id: agentId },
-        data: {
-          ...(candidate.type === "prompt_change"
-            ? { systemPrompt: payload.systemPrompt as string }
-            : {}),
-          ...(candidate.type === "tool_policy_change"
-            ? { toolPermissions: payload.toolPermissions as string[] }
-            : {}),
-        },
-      });
-      appliedTargetId = updated.id;
-      break;
-    }
-
-    default:
-      throw new Error(`Unhandled learning candidate type: ${candidate.type}`);
-  }
+  type PostCommitEvent = () => Promise<void>;
+  const postCommitEvents: PostCommitEvent[] = [];
 
   const applied = await db.$transaction(async (tx) => {
+    // Locks on the candidate id itself — concurrent apply/rollback/re-apply
+    // attempts serialize here rather than racing on the canonical mutation.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`learning-apply:${candidateId}`})) IS NULL AS locked`;
+
+    const candidate = await tx.learningCandidate.findUniqueOrThrow({
+      where: { id: candidateId },
+      include: { experience: true, approvalRequest: true },
+    });
+
+    // Re-verified under the lock — this is the "expected current version"
+    // check: if a concurrent call already applied or rolled back this
+    // candidate between the caller's decision to apply and this transaction
+    // acquiring the lock, that's caught here rather than double-applying.
+    if (candidate.status !== "approved" && candidate.status !== "auto_approved") {
+      throw new Error(
+        `Learning candidate ${candidateId} has status "${candidate.status}" — refusing to apply.`,
+      );
+    }
+
+    const classification = classifyRiskLevel(
+      candidate.type as LearningCandidateType,
+      candidate.riskLevel as RiskLevel,
+    );
+    const humanReviewer = candidate.reviewedBy
+      ? await tx.user.findUnique({ where: { id: candidate.reviewedBy }, select: { id: true } })
+      : null;
+    if (candidate.status === "approved") {
+      const approvalAudit = candidate.reviewedBy
+        ? await tx.auditLog.findFirst({
+            where: {
+              entityType: "LearningCandidate",
+              entityId: candidate.id,
+              action: "learning_candidate.approved",
+              userId: candidate.reviewedBy,
+            },
+            select: { id: true },
+          })
+        : null;
+      const linkedApprovalValid = !candidate.approvalRequest || (
+        candidate.approvalRequest.status === "approved" &&
+        candidate.approvalRequest.reviewerUserId === candidate.reviewedBy
+      );
+      if (!humanReviewer || !approvalAudit || !linkedApprovalValid) {
+        throw new Error(
+          "Approved learning candidate lacks matching human-review audit evidence.",
+        );
+      }
+    }
+    assertRiskTransitionAuthorized({
+      classification,
+      transition: `Apply ${candidate.type} learning candidate`,
+      humanAuthorized: candidate.status === "approved" && Boolean(humanReviewer),
+    });
+
+    const payload = candidate.proposedPayload as Record<string, unknown>;
+    let appliedTargetId: string | null = null;
+
+    switch (candidate.type) {
+      case "confidence_update": {
+        const { agentId, knowledgeObjectId, outcome, magnitude } = payload as {
+          agentId: string;
+          knowledgeObjectId: string;
+          outcome: "success" | "failure";
+          magnitude?: number;
+        };
+        const weight = await adjustKnowledgeWeight(agentId, knowledgeObjectId, outcome, magnitude, tx);
+        appliedTargetId = weight.id;
+        postCommitEvents.push(() =>
+          emitNeuralEvent({
+            type: outcome === "success" ? "edge.strengthened" : "edge.weakened",
+            payload: { agentId, knowledgeObjectId, candidateId },
+          }),
+        );
+        break;
+      }
+
+      case "relationship": {
+        const { fromObjectId, toObjectId, edgeType, weightDelta } = payload as {
+          fromObjectId: string;
+          toObjectId: string;
+          edgeType: string;
+          weightDelta?: number;
+        };
+        const edge = await strengthenOrCreateEdge(
+          fromObjectId,
+          toObjectId,
+          edgeType,
+          weightDelta ?? 0.1,
+          candidate.id,
+          tx,
+          false,
+        );
+        appliedTargetId = edge.id;
+        postCommitEvents.push(() =>
+          emitNeuralEvent({
+            type: (weightDelta ?? 0.1) >= 0 ? "edge.strengthened" : "edge.weakened",
+            payload: { edgeId: edge.id, candidateId },
+          }),
+        );
+        break;
+      }
+
+      case "memory": {
+        const memory = await tx.memory.create({
+          data: {
+            type: (payload.memoryType as string) ?? "pattern",
+            scope: (payload.scope as string) ?? "project",
+            owner: (payload.owner as string) ?? "neural-engine",
+            content: payload.content as string,
+            tags: (payload.tags as string[]) ?? [],
+            confidence: candidate.confidence,
+            importanceScore: (payload.importanceScore as number) ?? 0.5,
+            source: `neural-engine:learning-candidate:${candidate.id}`,
+            projectId: (payload.projectId as string) ?? null,
+          },
+        });
+        appliedTargetId = memory.id;
+        break;
+      }
+
+      case "decision": {
+        const decision = await tx.decision.create({
+          data: {
+            title: payload.title as string,
+            summary: payload.summary as string,
+            status: "approved",
+            rationale: (payload.rationale as string) ?? null,
+            createdBy: (payload.createdBy as string) ?? "neural-engine",
+            approvedBy: (payload.reviewedBy as string) ?? null,
+            projectId: (payload.projectId as string) ?? null,
+            changeReason: `learning-candidate:${candidate.id}`,
+          },
+        });
+        appliedTargetId = decision.id;
+        break;
+      }
+
+      case "contradiction": {
+        const contradiction = await recordContradiction(
+          payload as unknown as Parameters<typeof recordContradiction>[0],
+          tx,
+        );
+        appliedTargetId = contradiction.id;
+        postCommitEvents.push(() =>
+          emitNeuralEvent({
+            type: "contradiction.detected",
+            payload: { contradictionId: contradiction.id, subject: contradiction.subject },
+          }),
+        );
+        break;
+      }
+
+      case "skill": {
+        const skillVersionId = stringValue(payload.skillVersionId);
+        const proposedSkillId = stringValue(payload.skillId);
+        if (skillVersionId || proposedSkillId) {
+          if (
+            !skillVersionId ||
+            !proposedSkillId ||
+            payload.generationPipeline !== "safe_skill_generation" ||
+            payload.pipelineStage !== "awaiting_approval"
+          ) {
+            throw new Error("Generated skill has not completed its governed promotion pipeline.");
+          }
+          const { activateSkillVersion } = await import("@/lib/learning/skill-versions");
+          await activateSkillVersion(skillVersionId, {
+            authorizedByUserId: candidate.reviewedBy ?? undefined,
+            candidateId: candidate.id,
+            transaction: tx,
+          });
+          appliedTargetId = proposedSkillId;
+          break;
+        }
+        const { promoteFromPayload } = await import("./skill-service");
+        const resolvedWorkspaceId =
+          candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId ?? undefined;
+        const promoted = await promoteFromPayload("skill", { ...payload, workspaceId: resolvedWorkspaceId }, tx);
+        appliedTargetId = promoted?.id ?? null;
+        postCommitEvents.push(() =>
+          emitNeuralEvent({
+            type: "skill.promoted",
+            payload: { id: appliedTargetId, kind: "skill", name: payload.name, domain: payload.domain },
+          }),
+        );
+        break;
+      }
+
+      case "procedure": {
+        // Delegates to skill-service, which enforces promotion thresholds
+        // independently — a LearningCandidate approval is necessary but not
+        // sufficient; skill-service still checks evidence/success-rate.
+        const { promoteFromPayload } = await import("./skill-service");
+        const promoted = await promoteFromPayload("procedure", payload, tx);
+        appliedTargetId = promoted?.id ?? null;
+        postCommitEvents.push(() =>
+          emitNeuralEvent({
+            type: "skill.promoted",
+            payload: { id: appliedTargetId, kind: "procedure", name: payload.name, domain: payload.domain },
+          }),
+        );
+        break;
+      }
+
+      case "prompt_change":
+      case "tool_policy_change": {
+        // Protected surface. Only reachable via explicit human `approve` —
+        // proposeCandidate() never marks these auto_approved, and the guard
+        // above re-asserts it.
+        if (candidate.status !== "approved") {
+          throw new Error(
+            `"${candidate.type}" requires an explicit human approval, not auto-approval.`,
+          );
+        }
+        const agentId = payload.agentId as string;
+        const current = await tx.agent.findUniqueOrThrow({
+          where: { id: agentId },
+          select: { systemPrompt: true, toolPermissions: true },
+        });
+        // Exact-rollback capture: the prior value, byte-for-byte, before the
+        // overwrite — this is what makes rollback for these two types a real
+        // inverse instead of the status-flip-only fallback every other
+        // unhandled type gets. See rollbackCandidateInTransaction below.
+        const artifactType = candidate.type === "prompt_change" ? "agent_system_prompt" : "agent_tool_permissions";
+        const priorValue = candidate.type === "prompt_change" ? current.systemPrompt : current.toolPermissions;
+        const priorContent = { value: priorValue ?? null };
+        const priorChecksum = createHash("sha256").update(JSON.stringify(priorContent)).digest("hex");
+        const latestVersion = await tx.learningArtifactVersion.findFirst({
+          where: { artifactType, artifactKey: agentId },
+          orderBy: { version: "desc" },
+          select: { id: true, version: true },
+        });
+        await tx.learningArtifactVersion.create({
+          data: {
+            artifactType,
+            artifactKey: agentId,
+            version: (latestVersion?.version ?? 0) + 1,
+            content: priorContent,
+            checksum: priorChecksum,
+            status: "retired",
+            candidateId: candidate.id,
+            previousVersionId: latestVersion?.id ?? null,
+            retiredAt: new Date(),
+          },
+        });
+        const updated = await tx.agent.update({
+          where: { id: agentId },
+          data: {
+            ...(candidate.type === "prompt_change" ? { systemPrompt: payload.systemPrompt as string } : {}),
+            ...(candidate.type === "tool_policy_change" ? { toolPermissions: payload.toolPermissions as string[] } : {}),
+          },
+        });
+        appliedTargetId = updated.id;
+        break;
+      }
+
+      default:
+        throw new Error(`Unhandled learning candidate type: ${candidate.type}`);
+    }
+
     const updated = await tx.learningCandidate.update({
       where: { id: candidate.id },
       data: { appliedTargetId },
@@ -562,6 +632,13 @@ export async function applyLearningCandidate(candidateId: string) {
     }, tx);
     return updated;
   });
+
+  for (const fire of postCommitEvents) {
+    await fire().catch(() => {
+      // Notification-only — a failure here must never look like the apply
+      // itself failed; the canonical mutation already committed.
+    });
+  }
 
   return applied;
 }
@@ -746,9 +823,49 @@ async function rollbackCandidateInTransaction(
       }
       break;
     }
+    case "prompt_change":
+    case "tool_policy_change": {
+      // Exact inverse: restore the byte-for-byte prior value captured in
+      // applyLearningCandidate's LearningArtifactVersion row, not just a
+      // status flip. If that capture is somehow missing (e.g. a row applied
+      // before this capture existed), fail rather than guess.
+      const agentId = payload.agentId as string;
+      const artifactType = candidate.type === "prompt_change" ? "agent_system_prompt" : "agent_tool_permissions";
+      const priorVersion = await tx.learningArtifactVersion.findFirst({
+        where: { artifactType, artifactKey: agentId, candidateId: candidate.id },
+        orderBy: { version: "desc" },
+      });
+      if (!priorVersion) {
+        throw new Error(
+          `Cannot exactly roll back ${candidate.type} for agent ${agentId} — no captured prior value found; manual rollback required.`,
+        );
+      }
+      const priorContent = priorVersion.content as { value: unknown };
+      const restoredChecksum = createHash("sha256").update(JSON.stringify(priorContent)).digest("hex");
+      if (restoredChecksum !== priorVersion.checksum) {
+        throw new Error(
+          `Captured prior value for ${candidate.type} on agent ${agentId} failed checksum verification — refusing to restore a corrupted snapshot.`,
+        );
+      }
+      await tx.agent.update({
+        where: { id: agentId },
+        data: {
+          ...(candidate.type === "prompt_change" ? { systemPrompt: priorContent.value as string | null } : {}),
+          ...(candidate.type === "tool_policy_change" ? { toolPermissions: (priorContent.value as string[]) ?? [] } : {}),
+        },
+      });
+      await tx.learningArtifactVersion.update({
+        where: { id: priorVersion.id },
+        data: { status: "active", activatedAt: new Date(), retiredAt: null },
+      });
+      break;
+    }
     default:
-      // Procedure/contradiction/prompt/tool-policy rollbacks are
-      // status-flip only until their inverse mutation is formally defined.
+      // Procedure/contradiction rollbacks are status-flip only — no exact
+      // inverse is defined for them yet. This is a real limitation, not a
+      // silent gap: policy-service's classification for these types should
+      // treat them as manual_rollback_only rather than advertising automatic
+      // rollback (see docs/reviews/PR21_POST_MERGE_RECONCILIATION.md).
       break;
   }
 

@@ -29,6 +29,7 @@ export interface CreateSkillVersionOptions {
 export interface ActivateSkillVersionOptions {
   authorizedByUserId?: string;
   candidateId?: string;
+  transaction?: Prisma.TransactionClient;
 }
 
 export interface RollbackSkillVersionOptions {
@@ -125,7 +126,7 @@ export async function activateSkillVersion(
   id: string,
   options: ActivateSkillVersionOptions = {},
 ) {
-  return db.$transaction(async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
     const requested = await tx.skillVersion.findUniqueOrThrow({ where: { id } });
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill-version:${requested.skillId}`})) IS NULL AS locked`;
     const version = await tx.skillVersion.findUniqueOrThrow({ where: { id } });
@@ -186,7 +187,8 @@ export async function activateSkillVersion(
     });
     await syncSkillConvenienceFields(tx, version.skillId, activated);
     return activated;
-  });
+  };
+  return options.transaction ? write(options.transaction) : db.$transaction(write);
 }
 
 /**

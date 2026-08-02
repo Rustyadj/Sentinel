@@ -4,6 +4,7 @@
 // Claims (each with its own confidence/source), which can each carry
 // Evidence. Resolution marks a winner but keeps every claim on record.
 
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { emitNeuralEvent } from "./event-service";
 
@@ -19,9 +20,22 @@ export interface RecordContradictionParams {
   claims: ClaimInput[];
 }
 
-/** Open a new contradiction with its initial competing claims. */
-export async function recordContradiction(params: RecordContradictionParams) {
-  const contradiction = await db.contradiction.create({
+/**
+ * Open a new contradiction with its initial competing claims.
+ *
+ * Accepts an optional transaction client so callers that need this write
+ * to be atomic with other canonical mutations (e.g. applyLearningCandidate)
+ * can pass their own `tx`. The notification event is deliberately NOT
+ * emitted here when a `client` is passed in — event emission is not a
+ * canonical write, and firing it before the caller's transaction commits
+ * would announce a change that could still roll back. Callers using their
+ * own transaction must emit it themselves after commit.
+ */
+export async function recordContradiction(
+  params: RecordContradictionParams,
+  client: Pick<Prisma.TransactionClient, "contradiction"> = db,
+) {
+  const contradiction = await client.contradiction.create({
     data: {
       subject: params.subject,
       claims: {
@@ -36,10 +50,12 @@ export async function recordContradiction(params: RecordContradictionParams) {
     include: { claims: true },
   });
 
-  await emitNeuralEvent({
-    type: "contradiction.detected",
-    payload: { contradictionId: contradiction.id, subject: contradiction.subject },
-  });
+  if (client === db) {
+    await emitNeuralEvent({
+      type: "contradiction.detected",
+      payload: { contradictionId: contradiction.id, subject: contradiction.subject },
+    });
+  }
 
   return contradiction;
 }
