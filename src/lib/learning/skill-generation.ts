@@ -333,6 +333,8 @@ export async function runSkillGenerationPipeline(input: RunSkillGenerationPipeli
   }
   const implementationCommand = commandFrom(payload.implementationCommand, "implementationCommand");
   const testCommand = commandFrom(payload.testCommand, "testCommand");
+  const sourceExperienceIds = [...new Set(input.sourceExperienceIds.map((id) => id.trim()))]
+    .filter(Boolean);
   const sandbox = getSandbox();
   if (!sandbox.isProductionSafe && process.env.NODE_ENV !== "test") {
     return failPipeline(candidate.id, skillVersionId, "sandbox_failed", [
@@ -348,6 +350,28 @@ export async function runSkillGenerationPipeline(input: RunSkillGenerationPipeli
   ];
   if (!implementationValidation.valid || !testValidation.valid) {
     return failPipeline(candidate.id, skillVersionId, "sandbox_failed", validationReasons);
+  }
+
+  const fixtureAgentId = requiredString(payload.agentId, "agentId");
+  const fixtureWorkspaceId = nullableString(payload.workspaceId);
+  const fixtureProjectId = nullableString(payload.projectId);
+  const [definition, fixtures] = await Promise.all([
+    db.benchmarkDefinition.findUniqueOrThrow({ where: { id: input.benchmarkId } }),
+    db.experience.findMany({ where: { id: { in: sourceExperienceIds } } }),
+  ]);
+  if (definition.workspaceId && definition.workspaceId !== fixtureWorkspaceId) {
+    throw new Error("Benchmark definition is outside the generated skill's workspace.");
+  }
+  if (
+    fixtures.length !== sourceExperienceIds.length ||
+    fixtures.some((fixture) =>
+      fixture.agentId !== fixtureAgentId ||
+      fixture.workspaceId !== fixtureWorkspaceId ||
+      (fixtureProjectId !== null && fixture.projectId !== fixtureProjectId) ||
+      fixture.outcomeStatus === "in_progress"
+    )
+  ) {
+    throw new Error("Shadow fixtures must be completed experiences in the same agent scope.");
   }
 
   const implementationRun = await sandbox.execute({ command: implementationCommand });
@@ -394,29 +418,6 @@ export async function runSkillGenerationPipeline(input: RunSkillGenerationPipeli
     return failPipeline(candidate.id, skillVersionId, "benchmark_failed", benchmark.reasons);
   }
 
-  const sourceExperienceIds = [...new Set(input.sourceExperienceIds.map((id) => id.trim()))]
-    .filter(Boolean);
-  const fixtureAgentId = requiredString(payload.agentId, "agentId");
-  const fixtureWorkspaceId = nullableString(payload.workspaceId);
-  const fixtureProjectId = nullableString(payload.projectId);
-  const [definition, fixtures] = await Promise.all([
-    db.benchmarkDefinition.findUniqueOrThrow({ where: { id: input.benchmarkId } }),
-    db.experience.findMany({ where: { id: { in: sourceExperienceIds } } }),
-  ]);
-  if (definition.workspaceId && definition.workspaceId !== fixtureWorkspaceId) {
-    throw new Error("Benchmark definition is outside the generated skill's workspace.");
-  }
-  if (
-    fixtures.length !== sourceExperienceIds.length ||
-    fixtures.some((fixture) =>
-      fixture.agentId !== fixtureAgentId ||
-      fixture.workspaceId !== fixtureWorkspaceId ||
-      (fixtureProjectId !== null && fixture.projectId !== fixtureProjectId) ||
-      fixture.outcomeStatus === "in_progress"
-    )
-  ) {
-    throw new Error("Shadow fixtures must be completed experiences in the same agent scope.");
-  }
   const existingShadowTraceIds = new Set(
     (await listShadowRuns(candidate.id)).flatMap((run) => run.traceId ? [run.traceId] : []),
   );

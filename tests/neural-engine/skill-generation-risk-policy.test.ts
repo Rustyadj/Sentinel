@@ -114,6 +114,10 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
       implementationCommand: [process.execPath, "-e", "process.exit(0)"],
       testCommand: [process.execPath, "-e", "process.exit(0)"],
     };
+    await expect(proposeSkillFromPattern({
+      ...proposalInput,
+      reflectionIds: [...opportunity.reflectionIds, "fabricated-reflection-id"],
+    })).rejects.toThrow("does not prove the scoped repeated pattern");
     const proposed = await proposeSkillFromPattern(proposalInput);
     const duplicate = await proposeSkillFromPattern(proposalInput);
     expect(proposed.created).toBe(true);
@@ -161,6 +165,20 @@ describe("Learning Core — consolidated executable-skill risk policy", () => {
         },
       }),
     ));
+
+    const foreignReviewer = await makeUser();
+    const foreignWorkspace = await makeWorkspace(foreignReviewer.id);
+    const foreignBenchmark = await createBenchmarkDefinition({
+      name: uid("foreign-skill-benchmark"),
+      category: "skill-generation",
+      workspaceId: foreignWorkspace.id,
+      scoringMethod: "weighted",
+    });
+    await expect(runSkillGenerationPipeline({
+      candidateId: proposed.candidate.id,
+      benchmarkId: foreignBenchmark.id,
+      sourceExperienceIds: experiences.map((experience) => experience.id),
+    })).rejects.toThrow("outside the generated skill's workspace");
 
     const pipeline = await runSkillGenerationPipeline({
       candidateId: proposed.candidate.id,
