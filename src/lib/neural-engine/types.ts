@@ -64,6 +64,11 @@ export interface ExperienceInput {
   contextSnapshot?: Record<string, unknown>;
   toolsUsed?: string[];
   knowledgeUsed?: string[];
+  /** Learning Core — Intent Discovery (see src/lib/learning/intent.ts). Provisional, not fact. */
+  underlyingGoal?: string;
+  constraints?: string[];
+  successCriteria?: string[];
+  parentTraceId?: string;
 }
 
 export interface OutcomeInput {

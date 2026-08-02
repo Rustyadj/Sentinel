@@ -20,6 +20,7 @@ import { startExperience, completeExperience } from "./experience-service";
 import { autoEvaluateExperience } from "./evaluator";
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { recordReflection } from "@/lib/learning/reflection";
+import { analyzeIntent } from "@/lib/learning/intent";
 
 export interface AgentTurnCapture {
   agentId: string;
@@ -53,6 +54,7 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
     }
 
     const succeeded = input.fullContent.trim().length > 0;
+    const intent = analyzeIntent(input.userContent);
 
     const experience = await startExperience({
       agentId: input.agentId,
@@ -61,6 +63,9 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
       objective: input.userContent.slice(0, 500),
       contextSnapshot: { model: input.model, source: "chat" },
       knowledgeUsed: input.knowledgeUsedIds ?? [],
+      underlyingGoal: intent.underlyingGoal ?? undefined,
+      constraints: intent.constraints,
+      successCriteria: intent.successCriteria,
     });
 
     await completeExperience({

@@ -9,7 +9,9 @@ import { getVpsAgent } from "@/lib/agents/registry";
 import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bridge";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
 import { retrieve } from "@/lib/neural-engine/retrieval-planner";
+import { startExperience, completeExperience } from "@/lib/neural-engine/experience-service";
 import { emitLearningEvent } from "@/lib/learning/event-service";
+import { analyzeCuriosityContext, recordCuriosityEvent, answerCuriosityEvent } from "@/lib/learning/curiosity";
 import type { NextRequest } from "next/server";
 
 interface ContextBlockResult {
@@ -172,6 +174,108 @@ async function persistMessages(
   }
 }
 
+/**
+ * If the previous turn in this room paused on a clarifying question, treat
+ * this incoming message as the answer: resolve the CuriosityEvent and
+ * complete the Experience that was left "in_progress" as the pause marker
+ * (see checkCuriosityGate). Returns true if a pause was resolved — the
+ * caller then proceeds with the normal model call using this same turn's
+ * full `messages` history, which already contains the original ambiguous
+ * request, the clarifying question, and this answer, so the task resumes
+ * without asking the user to repeat themselves. Voice turns don't carry
+ * multi-turn `messages` history today (see resolveVoiceWorkerTurn), so this
+ * resumption mechanism is currently typed-chat only — a known gap, not a
+ * silent one.
+ */
+async function resolvePendingClarification(
+  roomId: string,
+  agentId: string,
+  userAnswer: string
+): Promise<boolean> {
+  try {
+    const pendingExperience = await db.experience.findFirst({
+      where: { agentId, conversationId: roomId, outcomeStatus: "in_progress" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!pendingExperience) return false;
+
+    const pendingCuriosity = await db.curiosityEvent.findFirst({
+      where: { traceId: pendingExperience.id, asked: true, answered: false },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!pendingCuriosity) return false;
+
+    await answerCuriosityEvent(pendingCuriosity.id, userAnswer.slice(0, 500), "resumed");
+    await completeExperience({
+      experienceId: pendingExperience.id,
+      outcome: { status: "success", metrics: { resolvedByAnswer: true }, errors: [] },
+    });
+    return true;
+  } catch (err) {
+    console.error("[learning] resolvePendingClarification failed (non-fatal):", err);
+    return false;
+  }
+}
+
+// Templated per-trigger question, not a generic "can you provide more
+// information?" — grounded in the actual signal that fired. Heuristic, not
+// LLM-generated; see src/lib/learning/curiosity.ts for why.
+function buildClarificationQuestion(triggerType: string): string {
+  switch (triggerType) {
+    case "conflicting_memory":
+      return "This seems to conflict with something already on record — should this take priority over that, or should the earlier note stand?";
+    case "repeated_user_correction":
+      return "I've had to adjust this kind of request before — should I change my default approach going forward, or just handle this one differently?";
+    case "ambiguous_goal":
+      return "I want to get this right — can you say a bit more about what you're trying to accomplish here?";
+    case "hidden_business_goal":
+      return "This looks like it could have a bigger impact than usual — should I treat it as high-priority, or is it lower-stakes than it sounds?";
+    default:
+      return "Before I proceed — is there anything specific about the outcome you want me to prioritize?";
+  }
+}
+
+/**
+ * Pre-execution curiosity check. Returns the CuriosityEvent (with a
+ * question) if the agent should ask instead of guessing, or null if
+ * execution should proceed normally. Creates an Experience left
+ * intentionally "in_progress" as the pause marker resolvePendingClarification
+ * looks for on the next turn — not a new status string, just the natural
+ * meaning of a chat turn's Experience that never got completeExperience
+ * called.
+ */
+async function checkCuriosityGate(params: {
+  roomId: string;
+  agentId: string;
+  userContent: string;
+  knowledgeObjectIds: string[];
+}) {
+  const { factors, triggerType, reason } = await analyzeCuriosityContext({
+    agentId: params.agentId,
+    userContent: params.userContent,
+    knowledgeObjectIds: params.knowledgeObjectIds,
+  });
+
+  const { event, shouldAsk } = await recordCuriosityEvent({
+    agentId: params.agentId,
+    triggerType,
+    reason,
+    question: buildClarificationQuestion(triggerType),
+    factors,
+  });
+  if (!shouldAsk || !event.question) return null;
+
+  const pausedExperience = await startExperience({
+    agentId: params.agentId,
+    conversationId: params.roomId,
+    objective: params.userContent.slice(0, 500),
+    contextSnapshot: { source: "chat", pausedForClarification: true },
+  });
+  await db.curiosityEvent.update({ where: { id: event.id }, data: { traceId: pausedExperience.id } });
+
+  return event;
+}
+
 export async function POST(request: NextRequest) {
   const requestStartedAtMs = Date.now();
   let body: {
@@ -251,6 +355,33 @@ export async function POST(request: NextRequest) {
     chatRoomId: roomId,
     payload: { resultCount: knowledgeObjectIds.length, memoryScope },
   }).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
+
+  if (roomId && userContent) {
+    const resolvedPending = await resolvePendingClarification(roomId, agentId, userContent).catch(() => false);
+    if (!resolvedPending) {
+      const clarification = await checkCuriosityGate({
+        roomId,
+        agentId,
+        userContent,
+        knowledgeObjectIds,
+      }).catch((err) => {
+        console.error("[learning] checkCuriosityGate failed (non-fatal):", err);
+        return null;
+      });
+      if (clarification?.question) {
+        const question = clarification.question;
+        return sseStream(async (ctrl) => {
+          ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
+          ctrl.enqueue(sse({ type: "text", text: question }));
+          await persistMessages(roomId, userContent, agentId, question, user.id);
+          ctrl.enqueue(sse({ type: "knowledge_update", roomId }));
+          ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
+          ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
+          ctrl.close();
+        });
+      }
+    }
+  }
 
   const provider = pickProvider(model);
 

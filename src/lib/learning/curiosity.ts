@@ -132,6 +132,83 @@ export async function answerCuriosityEvent(id: string, answerSummary: string, ou
   return event;
 }
 
+export interface CuriosityContextInput {
+  agentId: string;
+  userContent: string;
+  knowledgeObjectIds: string[];
+}
+
+export interface CuriosityContextResult {
+  factors: CuriosityFactors;
+  triggerType: string;
+  reason: string;
+}
+
+const IMPACT_KEYWORDS = /\b(production|delete|deleting|permanently|irreversible|everyone|all users|customer[s]?|database|payment|billing|credentials?|security)\b/i;
+const URGENCY_KEYWORDS = /\b(urgent|asap|immediately|right now|critical|emergency)\b/i;
+const VAGUE_REFERENT = /\b(it|that|this|again|same|the usual|like before|like last time)\b/i;
+
+// Real, data-driven pre-execution signal — not an LLM call (see intent.ts
+// for why) and not fabricated: every factor here comes from an actual DB
+// query or a documented heuristic over the live message text, not a
+// hardcoded placeholder. Genuinely approximate; documented as such.
+export async function analyzeCuriosityContext(input: CuriosityContextInput): Promise<CuriosityContextResult> {
+  const wordCount = input.userContent.trim().split(/\s+/).filter(Boolean).length;
+  const hasVagueReferent = VAGUE_REFERENT.test(input.userContent);
+  const gotNoRetrieval = input.knowledgeObjectIds.length === 0;
+
+  const ambiguityScore = Math.min(
+    (wordCount < 6 ? 0.5 : wordCount < 12 ? 0.2 : 0) + (hasVagueReferent && gotNoRetrieval ? 0.3 : 0),
+    1
+  );
+
+  const openConflict = input.knowledgeObjectIds.length
+    ? await db.claim.findFirst({
+        where: { sourceId: { in: input.knowledgeObjectIds }, contradiction: { status: "open" } },
+      })
+    : null;
+  const conflictScore = openConflict ? 0.8 : 0;
+
+  const experienceCount = await db.experience.count({ where: { agentId: input.agentId } });
+  const noveltyScore = experienceCount < 3 ? 0.7 : experienceCount < 10 ? 0.4 : 0.1;
+
+  const businessImpactScore = IMPACT_KEYWORDS.test(input.userContent) ? 0.7 : 0.1;
+  const urgencyScore = URGENCY_KEYWORDS.test(input.userContent) ? 0.6 : 0.1;
+
+  const recentCorrection = await db.reflection.findFirst({
+    where: { agentId: input.agentId, shouldAskNextTime: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const confidenceBefore = recentCorrection ? 0.4 : 0.75;
+
+  const factors: CuriosityFactors = {
+    confidenceBefore,
+    ambiguityScore,
+    conflictScore,
+    noveltyScore,
+    businessImpactScore,
+    urgencyScore,
+  };
+
+  let triggerType = "incomplete_context";
+  let reason = `word count ${wordCount}, ${input.knowledgeObjectIds.length} retrieved objects`;
+  if (conflictScore > 0) {
+    triggerType = "conflicting_memory";
+    reason = "retrieved context includes an unresolved contradiction";
+  } else if (recentCorrection) {
+    triggerType = "repeated_user_correction";
+    reason = "a recent reflection flagged that this agent should ask more before acting";
+  } else if (ambiguityScore >= 0.5) {
+    triggerType = "ambiguous_goal";
+    reason = "short message with a vague referent and no grounding retrieval";
+  } else if (businessImpactScore >= 0.7 || urgencyScore >= 0.6) {
+    triggerType = "hidden_business_goal";
+    reason = "message touches a high-impact or urgent keyword";
+  }
+
+  return { factors, triggerType, reason };
+}
+
 export async function listCuriosityEvents(params?: { agentId?: string; askedOnly?: boolean; unansweredOnly?: boolean; limit?: number }) {
   return db.curiosityEvent.findMany({
     where: {

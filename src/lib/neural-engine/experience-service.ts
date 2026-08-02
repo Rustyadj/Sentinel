@@ -26,6 +26,10 @@ export async function startExperience(input: ExperienceInput) {
       contextSnapshot: toJson(input.contextSnapshot ?? {}),
       toolsUsed: input.toolsUsed ?? [],
       knowledgeUsed: input.knowledgeUsed ?? [],
+      underlyingGoal: input.underlyingGoal ?? null,
+      constraints: toJson(input.constraints ?? []),
+      successCriteria: toJson(input.successCriteria ?? []),
+      parentTraceId: input.parentTraceId ?? null,
     },
   });
 
