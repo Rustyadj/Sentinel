@@ -5,6 +5,10 @@ import {
   runDegradationSweep,
 } from "@/lib/neural-engine/degradation-service";
 import { proposeCandidate } from "@/lib/neural-engine/learning-service";
+import {
+  DEGRADATION_SWEEP_JOB_KEY,
+  runRecordedDegradationSweep,
+} from "@/lib/neural-engine/scheduler-service";
 import { makeAgent, makeKnowledgeObject } from "./db-setup";
 
 afterAll(async () => {
@@ -135,5 +139,19 @@ describe("degradation-service — real confidence for monitorAndAutoRollback", (
 
     const reloaded = await db.learningCandidate.findUniqueOrThrow({ where: { id: candidate.id } });
     expect(reloaded.status).toBe("rolled_back");
+  });
+
+  it("records externally-triggered sweep execution and its result", async () => {
+    const run = await runRecordedDegradationSweep();
+    const stored = await db.scheduledJobRun.findUniqueOrThrow({
+      where: { id: run.jobRunId },
+    });
+
+    expect(DEGRADATION_SWEEP_JOB_KEY).toBe("degradation-sweep");
+    expect(stored.jobKey).toBe("degradation-sweep");
+    expect(stored.status).toBe("completed");
+    expect(stored.completedAt).not.toBeNull();
+    expect(stored.error).toBeNull();
+    expect(stored.result).toEqual(run.result);
   });
 });

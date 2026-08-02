@@ -31,6 +31,12 @@ export async function makeProject(userId: string, name = "Test Project") {
   return db.project.create({ data: { name, userId } });
 }
 
+export async function makeWorkspace(ownerId: string, name = "Test Workspace") {
+  return db.workspace.create({
+    data: { name, slug: uid("workspace"), ownerId },
+  });
+}
+
 export async function makeKnowledgeObject(overrides: Partial<{
   type: string;
   title: string;

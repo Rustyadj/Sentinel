@@ -131,7 +131,8 @@ export interface DegradationSweepResult {
 /**
  * Sweep every applied confidence_update candidate and roll back the ones
  * that degraded. Intended to be invoked periodically by something external
- * to this process (see file header) via POST /api/neural/degradation/sweep.
+ * to this process (see file header) via
+ * POST /api/learning/scheduler/run-degradation-sweep.
  */
 export async function runDegradationSweep(): Promise<DegradationSweepResult> {
   const candidates = await db.learningCandidate.findMany({

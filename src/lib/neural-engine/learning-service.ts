@@ -15,7 +15,10 @@ import { emitNeuralEvent } from "./event-service";
 import { adjustKnowledgeWeight } from "./agent-profile-service";
 import { recordContradiction } from "./contradiction-service";
 import { writeAuditLog } from "@/lib/workspaces/audit";
-import type { ProposedLearningCandidateInput } from "./types";
+import type {
+  LearningCandidateType,
+  ProposedLearningCandidateInput,
+} from "./types";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -45,19 +48,43 @@ export async function proposeCandidate(
     input.riskLevel,
   );
 
-  const candidate = await db.learningCandidate.create({
-    data: {
-      experienceId: input.experienceId ?? null,
-      evaluationId: input.evaluationId ?? null,
-      type: input.type,
-      proposedPayload: toJson(input.proposedPayload),
-      targetType: input.targetType ?? null,
-      riskLevel: classification.riskLevel,
-      evidenceCount,
-      confidence,
-      status: eligible ? "auto_approved" : "proposed",
-      resolvedAt: eligible ? new Date() : null,
-    },
+  const needsWorkspaceApproval =
+    !classification.autoApproveEligible &&
+    (classification.riskLevel === "medium" || classification.riskLevel === "high");
+  const approvalContext = needsWorkspaceApproval
+    ? await resolveApprovalContext(input)
+    : null;
+
+  const candidate = await db.$transaction(async (tx) => {
+    let created = await tx.learningCandidate.create({
+      data: {
+        experienceId: input.experienceId ?? null,
+        evaluationId: input.evaluationId ?? null,
+        type: input.type,
+        proposedPayload: toJson(input.proposedPayload),
+        targetType: input.targetType ?? null,
+        riskLevel: classification.riskLevel,
+        evidenceCount,
+        confidence,
+        status: eligible ? "auto_approved" : "proposed",
+        resolvedAt: eligible ? new Date() : null,
+      },
+    });
+
+    if (needsWorkspaceApproval && approvalContext) {
+      const approval = await createCandidateApproval(
+        tx,
+        created,
+        approvalContext,
+        classification.reason,
+      );
+      created = await tx.learningCandidate.update({
+        where: { id: created.id },
+        data: { approvalRequestId: approval.id },
+      });
+    }
+
+    return created;
   });
 
   await emitNeuralEvent({
@@ -67,6 +94,7 @@ export async function proposeCandidate(
       type: candidate.type,
       riskLevel: candidate.riskLevel,
       autoApplied: eligible,
+      approvalRequestId: candidate.approvalRequestId,
     },
   });
 
@@ -87,6 +115,7 @@ export async function reviewCandidate(
 ) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
+    include: { experience: true, approvalRequest: true },
   });
 
   if (candidate.status !== "proposed") {
@@ -95,48 +124,97 @@ export async function reviewCandidate(
     );
   }
 
-  if (decision === "reject") {
-    const updated = await db.$transaction(async (tx) => {
-      const rejected = await tx.learningCandidate.update({
-        where: { id: candidateId },
-        data: { status: "rejected", reviewedBy: reviewerId, resolvedAt: new Date() },
-      });
-      await writeAuditLog({
-        projectId: projectIdFromPayload(candidate.proposedPayload),
-        userId: reviewerId,
-        actorType: "user",
-        action: "learning_candidate.rejected",
-        entityType: "LearningCandidate",
-        entityId: candidate.id,
-        details: {
-          decision,
-          reviewerId,
-          reason: reason ?? null,
-          riskLevel: candidate.riskLevel,
-          candidateType: candidate.type,
-          previousStatus: candidate.status,
-          status: rejected.status,
-        },
-      }, tx);
-      return rejected;
-    });
-    await emitNeuralEvent({
-      type: "learning.rejected",
-      payload: { candidateId, reviewerId, reason: reason ?? null },
-    });
-    return updated;
+  const classification = classifyRiskLevel(
+    candidate.type as LearningCandidateType,
+    candidate.riskLevel as "low" | "medium" | "high",
+  );
+  const needsWorkspaceApproval =
+    !classification.autoApproveEligible &&
+    (classification.riskLevel === "medium" || classification.riskLevel === "high");
+  const resolvedContext = await resolveApprovalContext({
+    experienceId: candidate.experienceId,
+    evaluationId: candidate.evaluationId,
+    proposedPayload: candidate.proposedPayload as Record<string, unknown>,
+    type: candidate.type as LearningCandidateType,
+  });
+
+  if (needsWorkspaceApproval && !candidate.approvalRequest && !resolvedContext) {
+    // System scans can produce candidates without an Experience or any other
+    // tenant context. ApprovalRequest.workspaceId is mandatory, so inventing a
+    // workspace here risks crossing tenant boundaries. Preserve the existing
+    // status-only human review path and make that fallback visible to ops.
+    console.warn(
+      `[neural] Learning candidate ${candidateId} has no resolvable workspace; using status-only review without an ApprovalRequest.`,
+    );
   }
 
-  await db.$transaction(async (tx) => {
-    const approved = await tx.learningCandidate.update({
+  const reviewed = await db.$transaction(async (tx) => {
+    let approval = candidate.approvalRequest;
+    if (needsWorkspaceApproval && !approval && resolvedContext) {
+      approval = await createCandidateApproval(
+        tx,
+        candidate,
+        resolvedContext,
+        classification.reason,
+      );
+      await tx.learningCandidate.update({
+        where: { id: candidate.id },
+        data: { approvalRequestId: approval.id },
+      });
+    }
+
+    if (approval) {
+      if (approval.status === "pending") {
+        approval = await tx.approvalRequest.update({
+          where: { id: approval.id },
+          data: {
+            status: decision === "approve" ? "approved" : "rejected",
+            reviewerUserId: reviewerId,
+            decisionNote: reason ?? null,
+            decidedAt: new Date(),
+          },
+        });
+        await writeAuditLog({
+          workspaceId: approval.workspaceId,
+          projectId: approval.projectId,
+          approvalRequestId: approval.id,
+          userId: reviewerId,
+          actorType: "user",
+          action: `approval.${approval.status}`,
+          entityType: "approvalRequest",
+          entityId: approval.id,
+          details: {
+            previousStatus: "pending",
+            status: approval.status,
+            decisionNote: reason ?? null,
+            learningCandidateId: candidate.id,
+          },
+        }, tx);
+      } else if (approval.status !== (decision === "approve" ? "approved" : "rejected")) {
+        throw new Error(
+          `Approval request ${approval.id} is already "${approval.status}" and conflicts with decision "${decision}".`,
+        );
+      }
+    }
+
+    const nextStatus = decision === "approve" ? "approved" : "rejected";
+    const updated = await tx.learningCandidate.update({
       where: { id: candidateId },
-      data: { status: "approved", reviewedBy: reviewerId, resolvedAt: new Date() },
+      data: {
+        status: nextStatus,
+        reviewedBy: reviewerId,
+        resolvedAt: new Date(),
+        ...(approval ? { approvalRequestId: approval.id } : {}),
+      },
     });
+    const auditScope = approval ?? resolvedContext;
     await writeAuditLog({
-      projectId: projectIdFromPayload(candidate.proposedPayload),
+      workspaceId: auditScope?.workspaceId,
+      projectId: auditScope?.projectId ?? projectIdFromPayload(candidate.proposedPayload),
+      approvalRequestId: approval?.id,
       userId: reviewerId,
       actorType: "user",
-      action: "learning_candidate.approved",
+      action: `learning_candidate.${nextStatus}`,
       entityType: "LearningCandidate",
       entityId: candidate.id,
       details: {
@@ -146,10 +224,20 @@ export async function reviewCandidate(
         riskLevel: candidate.riskLevel,
         candidateType: candidate.type,
         previousStatus: candidate.status,
-        status: approved.status,
+        status: updated.status,
+        approvalRequestId: approval?.id ?? null,
       },
     }, tx);
+    return updated;
   });
+
+  if (decision === "reject") {
+    await emitNeuralEvent({
+      type: "learning.rejected",
+      payload: { candidateId, reviewerId, reason: reason ?? null },
+    });
+    return reviewed;
+  }
   await emitNeuralEvent({
     type: "learning.approved",
     payload: { candidateId, reviewerId, reason: reason ?? null },
@@ -166,6 +254,7 @@ export async function reviewCandidate(
 export async function applyLearningCandidate(candidateId: string) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
+    include: { experience: true, approvalRequest: true },
   });
 
   if (candidate.status !== "approved" && candidate.status !== "auto_approved") {
@@ -325,7 +414,12 @@ export async function applyLearningCandidate(candidateId: string) {
     });
     const humanReviewerId = candidate.status === "approved" ? candidate.reviewedBy : null;
     await writeAuditLog({
-      projectId: projectIdFromPayload(candidate.proposedPayload),
+      workspaceId: candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId,
+      projectId:
+        candidate.approvalRequest?.projectId ??
+        candidate.experience?.projectId ??
+        projectIdFromPayload(candidate.proposedPayload),
+      approvalRequestId: candidate.approvalRequestId,
       userId: humanReviewerId,
       actorType: humanReviewerId ? "user" : "system",
       action: "learning_candidate.applied",
@@ -398,6 +492,7 @@ async function strengthenOrCreateEdge(
 export async function rollbackCandidate(candidateId: string, actorId: string, reason?: string) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
+    include: { experience: true, approvalRequest: true },
   });
 
   if (candidate.status !== "approved" && candidate.status !== "auto_approved") {
@@ -477,7 +572,12 @@ export async function rollbackCandidate(candidateId: string, actorId: string, re
       data: { status: "rolled_back" },
     });
     await writeAuditLog({
-      projectId: projectIdFromPayload(candidate.proposedPayload),
+      workspaceId: candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId,
+      projectId:
+        candidate.approvalRequest?.projectId ??
+        candidate.experience?.projectId ??
+        projectIdFromPayload(candidate.proposedPayload),
+      approvalRequestId: candidate.approvalRequestId,
       userId: systemActor ? null : actorId,
       actorType: systemActor ? "system" : "user",
       action: "learning_candidate.rolled_back",
@@ -510,6 +610,130 @@ function projectIdFromPayload(payload: Prisma.JsonValue): string | null {
   return typeof projectId === "string" ? projectId : null;
 }
 
+interface ApprovalContext {
+  workspaceId: string;
+  projectId: string | null;
+}
+
+interface ApprovalContextInput {
+  experienceId?: string | null;
+  evaluationId?: string | null;
+  proposedPayload: Record<string, unknown>;
+  type: LearningCandidateType;
+}
+
+async function resolveApprovalContext(
+  input: ApprovalContextInput,
+): Promise<ApprovalContext | null> {
+  const payload = input.proposedPayload;
+  let workspaceId = stringValue(payload.workspaceId);
+  let projectId = stringValue(payload.projectId);
+  let agentId = stringValue(payload.agentId) ?? stringValue(payload.owner);
+
+  let experience: {
+    workspaceId: string | null;
+    projectId: string | null;
+    agentId: string;
+  } | null = null;
+  if (input.experienceId) {
+    experience = await db.experience.findUnique({
+      where: { id: input.experienceId },
+      select: { workspaceId: true, projectId: true, agentId: true },
+    });
+  } else if (input.evaluationId) {
+    const evaluation = await db.evaluation.findUnique({
+      where: { id: input.evaluationId },
+      select: {
+        experience: {
+          select: { workspaceId: true, projectId: true, agentId: true },
+        },
+      },
+    });
+    experience = evaluation?.experience ?? null;
+  }
+
+  workspaceId ??= experience?.workspaceId ?? null;
+  projectId ??= experience?.projectId ?? null;
+  agentId ??= experience?.agentId ?? null;
+
+  if (projectId) {
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      select: { workspaceId: true },
+    });
+    if (workspaceId && project?.workspaceId && project.workspaceId !== workspaceId) {
+      throw new Error(
+        `Learning candidate project ${projectId} does not belong to workspace ${workspaceId}.`,
+      );
+    }
+    workspaceId ??= project?.workspaceId ?? null;
+  }
+
+  if (!workspaceId && agentId) {
+    const agent = await db.agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true },
+    });
+    workspaceId = agent?.workspaceId ?? null;
+  }
+
+  return workspaceId ? { workspaceId, projectId: projectId ?? null } : null;
+}
+
+async function createCandidateApproval(
+  tx: Prisma.TransactionClient,
+  candidate: {
+    id: string;
+    type: string;
+    riskLevel: string;
+    targetType: string | null;
+    evidenceCount: number;
+    confidence: number;
+    proposedPayload: Prisma.JsonValue;
+  },
+  context: ApprovalContext,
+  policyReason: string,
+) {
+  const approval = await tx.approvalRequest.create({
+    data: {
+      workspaceId: context.workspaceId,
+      projectId: context.projectId,
+      title: `Review learning candidate: ${candidate.type}`,
+      description: policyReason,
+      type: "learning_candidate_review",
+      payload: {
+        learningCandidateId: candidate.id,
+        candidateType: candidate.type,
+        riskLevel: candidate.riskLevel,
+        targetType: candidate.targetType,
+        evidenceCount: candidate.evidenceCount,
+        confidence: candidate.confidence,
+        proposedPayload: candidate.proposedPayload,
+      } as Prisma.InputJsonValue,
+    },
+  });
+  await writeAuditLog({
+    workspaceId: context.workspaceId,
+    projectId: context.projectId,
+    approvalRequestId: approval.id,
+    actorType: "system",
+    action: "approval.requested",
+    entityType: "approvalRequest",
+    entityId: approval.id,
+    details: {
+      status: "pending",
+      type: approval.type,
+      learningCandidateId: candidate.id,
+      riskLevel: candidate.riskLevel,
+    },
+  }, tx);
+  return approval;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 /**
  * Future-outcome monitoring: if confidence in an applied candidate's
  * correctness has since dropped below `threshold`, automatically roll it
@@ -522,7 +746,11 @@ export async function monitorAndAutoRollback(
   threshold = 0.3,
 ) {
   if (currentConfidence >= threshold) return null;
-  return rollbackCandidate(candidateId, "system:confidence-monitor");
+  return rollbackCandidate(
+    candidateId,
+    "system:confidence-monitor",
+    `Derived confidence ${currentConfidence.toFixed(3)} fell below rollback threshold ${threshold.toFixed(3)}.`,
+  );
 }
 
 export async function listPendingReview(riskLevel?: "low" | "medium" | "high") {

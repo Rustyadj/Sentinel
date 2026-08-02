@@ -21,7 +21,8 @@ export async function POST(
         { status: 400 },
       );
     }
-    const result = await reviewCandidate(id, body.decision, user.id);
+    const reason = typeof body.reason === "string" ? body.reason : undefined;
+    const result = await reviewCandidate(id, body.decision, user.id, reason);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { OverviewView } from "./OverviewView";
+import { CuriosityView } from "./CuriosityView";
+import { ReflectionsView } from "./ReflectionsView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
@@ -35,5 +37,7 @@ export default function LearningCorePage() {
   }, []);
 
   if (activeTab === "overview") return <OverviewView />;
+  if (activeTab === "curiosity") return <CuriosityView />;
+  if (activeTab === "reflections") return <ReflectionsView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }

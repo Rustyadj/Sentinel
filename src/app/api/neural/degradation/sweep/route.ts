@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runDegradationSweep } from "@/lib/neural-engine/degradation-service";
+import { runRecordedDegradationSweep } from "@/lib/neural-engine/scheduler-service";
 
 /**
  * Sweep applied confidence_update LearningCandidates and roll back the ones
@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runDegradationSweep();
-    return NextResponse.json(result);
+    const { jobRunId, result } = await runRecordedDegradationSweep();
+    return NextResponse.json({ jobRunId, ...result });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
