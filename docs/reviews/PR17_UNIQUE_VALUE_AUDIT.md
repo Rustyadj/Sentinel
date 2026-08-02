@@ -1,7 +1,9 @@
 # PR #17 Unique-Value Audit
 
-Reviewed branch: `origin/claude/adaptive-memory-skill-refinery`  
-Reviewed head: `eeb91c11`  
+Reviewed branch: `origin/claude/adaptive-memory-skill-refinery`
+
+Reviewed head: `eeb91c11`
+
 Comparison bases: `origin/main` at `8197cd4a` and PR #20 at `c5d9509a`
 
 This is a source audit only. Nothing from PR #17 was cherry-picked, its migration was not modified, and this document is not a merge recommendation. PR #17 introduces a second `MemoryCandidate`/`SkillCandidate` governance stack that overlaps the Neural Engine's canonical `LearningCandidate` and `Skill` path. The reusable ideas should therefore be ported selectively after PR #20, not merged wholesale.

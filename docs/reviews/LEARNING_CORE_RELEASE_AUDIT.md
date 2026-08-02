@@ -24,7 +24,7 @@ flowchart TD
 - Initial reviewed head before Claude's final two commits: `5d5eeea65ef5f4be50b8bb967dd06dfa81aa8398`
 - `origin/main`: `8197cd4a8b08088e02644d03e7ceba6baca24345`
 - Merge base: `8197cd4a8b08088e02644d03e7ceba6baca24345`
-- PR delta: 95 files, 10,170 insertions, 116 deletions at `5d5eeea`; two later commits added 231 net lines across UI/worker files.
+- Final reviewed PR delta: 99 files, 10,400 insertions, 116 deletions across 11 commits.
 - Migrations reviewed:
   - `20260802002232_learning_core_on_neural_engine`
   - `20260802024239_rollback_skill_version_links`
@@ -174,7 +174,19 @@ Commands executed during the audit include:
 - live DockerSandbox benign, secret-path and read-only-filesystem probes;
 - `scripts/audit/verify-learning-core-migrations.sh` against both audit databases.
 
-Final full TypeScript, lint, Vitest, production build, E2E, Compose, diff-check and voice-worker results are recorded in the draft PR handoff after the final validation run.
+Final validation on the merged audit branch:
+
+- `npm ci`: passed from a clean worktree-local install.
+- `prisma validate` and `prisma generate`: passed.
+- `npm run typecheck`: passed with zero errors.
+- `npm run lint`: passed with zero errors/warnings.
+- `npm test`: 83/83 suites and 190/190 tests passed, with no skipped or failed tests.
+- `npm run build`: Next.js 16.2.9 production build passed.
+- `npm run test:e2e`: the WSL host invocation could not launch Chromium because `libnspr4.so`, `libnss3.so`, `libnssutil3.so` and `libasound.so.2` are unavailable and sudo is not available. The same repository command was rerun in the version-matched `mcr.microsoft.com/playwright:v1.61.1-noble` image against this audit checkout: 4/4 passed in 17.0 seconds.
+- Learning UI browser smoke: a disposable authenticated user exercised Curiosity, Improvement Queue, Evolution Timeline and Settings at 1440x960 and 390x844. Every route rendered its expected heading, no page errors/client exception appeared, and document width matched viewport width at both sizes. The five disposable users created during auth troubleshooting were deleted.
+- `docker compose config --quiet`: passed.
+- Python voice gateway: 2/2 tests passed in an isolated Python 3.12 container.
+- `git diff --check`: passed.
 
 ## Unresolved release blockers
 
