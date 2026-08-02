@@ -4,6 +4,7 @@ import {
   assertRiskTransitionAuthorized,
   classifySkillPermissionRisk,
 } from "@/lib/neural-engine/policy-service";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 export type SkillApprovalLevel = 1 | 2 | 3;
 
@@ -259,8 +260,9 @@ export async function listSkillVersions(skillId: string) {
   });
 }
 
-export async function listSkillsForVersioning() {
+export async function listSkillsForVersioning(scope?: AccessibleLearningScope) {
   return db.skill.findMany({
+    where: scope ? buildLearningScopeWhere(scope, { workspaceId: true }) : {},
     select: {
       id: true,
       name: true,

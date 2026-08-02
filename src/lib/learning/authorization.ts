@@ -168,6 +168,33 @@ export async function requireReflectionAccess(
   await requireLearningAgentAccess(userId, reflection.agentId, permission);
 }
 
+export async function requireSkillAccess(
+  userId: string,
+  skillId: string,
+  permission: string,
+): Promise<void> {
+  const skill = await db.skill.findUnique({ where: { id: skillId }, select: { workspaceId: true } });
+  if (!skill) throw new LearningAccessError();
+  // A skill with no resolvable workspace (pre-existing legacy row — see
+  // Skill.workspaceId's schema comment) is invisible to every tenant user
+  // rather than falling back to a global read.
+  if (!skill.workspaceId) throw new LearningAccessError();
+  await requireLearningWorkspaceAccess(userId, skill.workspaceId, permission);
+}
+
+export async function requireSkillVersionAccess(
+  userId: string,
+  skillVersionId: string,
+  permission: string,
+): Promise<void> {
+  const version = await db.skillVersion.findUnique({
+    where: { id: skillVersionId },
+    select: { skillId: true },
+  });
+  if (!version) throw new LearningAccessError();
+  await requireSkillAccess(userId, version.skillId, permission);
+}
+
 export async function requireLearningGoalAccess(
   userId: string,
   learningGoalId: string,

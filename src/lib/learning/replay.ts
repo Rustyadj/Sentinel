@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 import { recordReflection } from "./reflection";
 import { runShadowSample } from "./shadow";
 import { recordBenchmarkResult } from "./benchmarks";
@@ -167,9 +168,30 @@ function isImplementedCategory(category: ReplayCategory): boolean {
   return !["tool_failure", "workflow_failure", "retrieval_failure", "user_correction", "memory_conflict"].includes(category);
 }
 
-export async function listReplayRuns(params?: { category?: ReplayCategory; limit?: number }) {
+export async function listReplayRuns(params?: {
+  category?: ReplayCategory;
+  limit?: number;
+  scope?: AccessibleLearningScope;
+}) {
+  // ExperienceReplayRun has no direct ownership column (per PR #21's audit —
+  // it aggregates across many Experience rows via sourceTraceIds, so a
+  // single workspace/project/agent field wouldn't be accurate anyway). Scope
+  // by requiring at least one referenced Experience to be in the caller's
+  // accessible set, rather than showing every run globally.
+  let accessibleExperienceIds: string[] | null = null;
+  if (params?.scope) {
+    const accessible = await db.experience.findMany({
+      where: buildLearningScopeWhere(params.scope, { workspaceId: true, projectId: true, agentId: true }),
+      select: { id: true },
+      take: 5000,
+    });
+    accessibleExperienceIds = accessible.map((e) => e.id);
+  }
   return db.experienceReplayRun.findMany({
-    where: params?.category ? { category: params.category } : {},
+    where: {
+      ...(params?.category ? { category: params.category } : {}),
+      ...(accessibleExperienceIds ? { sourceTraceIds: { hasSome: accessibleExperienceIds } } : {}),
+    },
     orderBy: { runDate: "desc" },
     take: params?.limit ?? 50,
   });

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -31,11 +32,16 @@ export async function createBenchmarkDefinition(input: CreateBenchmarkDefinition
   });
 }
 
-export async function listBenchmarkDefinitions(params?: { category?: string; enabled?: boolean }) {
+export async function listBenchmarkDefinitions(params?: {
+  category?: string;
+  enabled?: boolean;
+  scope?: AccessibleLearningScope;
+}) {
   return db.benchmarkDefinition.findMany({
     where: {
       ...(params?.category ? { category: params.category } : {}),
       ...(params?.enabled !== undefined ? { enabled: params.enabled } : {}),
+      ...(params?.scope ? buildLearningScopeWhere(params.scope, { workspaceId: true }) : {}),
     },
     orderBy: { createdAt: "desc" },
   });

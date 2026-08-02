@@ -4,6 +4,7 @@ import {
   createSkillVersion,
   listSkillVersions,
 } from "@/lib/learning/skill-versions";
+import { requireSkillAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 export async function GET(req: Request) {
   const user = await requireUser().catch(() => null);
@@ -12,6 +13,11 @@ export async function GET(req: Request) {
   const skillId = new URL(req.url).searchParams.get("skillId")?.trim();
   if (!skillId) {
     return NextResponse.json({ error: "skillId is required" }, { status: 400 });
+  }
+  try {
+    await requireSkillAccess(user.id, skillId, "workspace.read");
+  } catch (err) {
+    return learningAccessErrorResponse(err);
   }
 
   try {
@@ -31,6 +37,11 @@ export async function POST(req: Request) {
   const body = await req.json();
   if (!body?.skillId) {
     return NextResponse.json({ error: "skillId is required" }, { status: 400 });
+  }
+  try {
+    await requireSkillAccess(user.id, body.skillId, "workspace.update");
+  } catch (err) {
+    return learningAccessErrorResponse(err);
   }
 
   try {

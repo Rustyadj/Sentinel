@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { activateSkillVersion } from "@/lib/learning/skill-versions";
+import { requireSkillVersionAccess, learningAccessErrorResponse } from "@/lib/learning/authorization";
 
 export async function POST(
   _req: Request,
@@ -9,8 +10,14 @@ export async function POST(
   const user = await requireUser().catch(() => null);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
   try {
-    const { id } = await params;
+    await requireSkillVersionAccess(user.id, id, "workspace.update");
+  } catch (err) {
+    return learningAccessErrorResponse(err);
+  }
+
+  try {
     return NextResponse.json(
       await activateSkillVersion(id, { authorizedByUserId: user.id }),
     );

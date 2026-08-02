@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { type AccessibleLearningScope, buildLearningScopeWhere } from "./authorization";
 import { evaluatePromotion } from "./benchmarks";
 import { getSandbox } from "./sandbox";
 import {
@@ -26,6 +27,7 @@ export interface DetectSkillOpportunityParams {
   projectId?: string;
   since?: Date;
   limit?: number;
+  scope?: AccessibleLearningScope;
 }
 
 export interface SkillOpportunity {
@@ -98,6 +100,9 @@ export async function detectSkillOpportunity(
       ...(params.agentId ? { agentId: params.agentId } : {}),
       ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
       ...(params.projectId ? { projectId: params.projectId } : {}),
+      ...(params.scope
+        ? buildLearningScopeWhere(params.scope, { workspaceId: true, projectId: true, agentId: true })
+        : {}),
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(params.limit ?? 500, 1), MAX_SCAN_ROWS),
@@ -453,7 +458,7 @@ export async function runSkillGenerationPipeline(input: RunSkillGenerationPipeli
   };
 }
 
-export async function listSkillGenerationProposals(limit = 100) {
+export async function listSkillGenerationProposals(limit = 100, scope?: AccessibleLearningScope) {
   const candidates = await db.learningCandidate.findMany({
     where: { type: "skill" },
     include: { approvalRequest: true },
@@ -468,9 +473,23 @@ export async function listSkillGenerationProposals(limit = 100) {
     const id = (candidate.proposedPayload as Record<string, unknown>).skillId;
     return typeof id === "string" ? [id] : [];
   });
-  const skills = await db.skill.findMany({ where: { id: { in: skillIds } } });
+  // A generated-skill proposal is only visible once its target Skill row
+  // resolves to an accessible workspace — the candidate itself carries no
+  // direct workspace column for this type.
+  const skills = await db.skill.findMany({
+    where: {
+      id: { in: skillIds },
+      ...(scope ? buildLearningScopeWhere(scope, { workspaceId: true }) : {}),
+    },
+  });
   const skillsById = new Map(skills.map((skill) => [skill.id, skill]));
-  return generated.map((candidate) => {
+  return generated
+    .filter((candidate) => {
+      const payload = candidate.proposedPayload as Record<string, unknown>;
+      const skillId = typeof payload.skillId === "string" ? payload.skillId : "";
+      return skillsById.has(skillId);
+    })
+    .map((candidate) => {
     const payload = candidate.proposedPayload as Record<string, unknown>;
     const skillId = typeof payload.skillId === "string" ? payload.skillId : "";
     return {

@@ -4,6 +4,7 @@ import { createBenchmarkDefinition, listBenchmarkDefinitions } from "@/lib/learn
 import {
   learningAccessErrorResponse,
   requireLearningWorkspaceAccess,
+  getAccessibleLearningScope,
 } from "@/lib/learning/authorization";
 
 export async function GET(req: Request) {
@@ -11,8 +12,10 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
+  const scope = await getAccessibleLearningScope(user.id);
   const definitions = await listBenchmarkDefinitions({
     category: searchParams.get("category") ?? undefined,
+    scope,
   });
   return NextResponse.json(definitions);
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { db } from "@/lib/db";
+import { getAccessibleLearningScope, buildLearningScopeWhere } from "@/lib/learning/authorization";
 
 // Every phase's real activity already emits a LearningEvent (curiosity,
 // reflection, candidate proposal/review/apply/rollback, benchmark runs,
@@ -12,8 +13,10 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? 100), 500);
+  const scope = await getAccessibleLearningScope(user.id);
 
   const events = await db.learningEvent.findMany({
+    where: buildLearningScopeWhere(scope, { userId: true, workspaceId: true }),
     orderBy: { createdAt: "desc" },
     take: limit,
   });
