@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { startExperience, completeExperience } from "@/lib/neural-engine/experience-service";
 import {
@@ -215,29 +215,23 @@ describe("Neural Engine — controlled learning loop (integration)", () => {
     expect(reloaded.approvalRequest?.decisionNote).toBe("Not needed");
   });
 
-  it("falls back to status-only review when no workspace can be resolved", async () => {
+  it("fails closed when protected review has no resolvable workspace", async () => {
     const reviewer = await makeUser();
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      const { candidate } = await proposeCandidate({
-        type: "memory",
-        proposedPayload: {
-          content: "unscoped candidate",
-          scope: "global",
-          owner: "system-without-a-workspace",
-        },
-      });
-      expect(candidate.approvalRequestId).toBeNull();
+    const { candidate } = await proposeCandidate({
+      type: "memory",
+      proposedPayload: {
+        content: "unscoped candidate",
+        scope: "global",
+        owner: "system-without-a-workspace",
+      },
+    });
+    expect(candidate.approvalRequestId).toBeNull();
 
-      const rejected = await reviewCandidate(candidate.id, "reject", reviewer.id);
-      expect(rejected.status).toBe("rejected");
-      expect(rejected.approvalRequestId).toBeNull();
-      expect(warning).toHaveBeenCalledWith(
-        expect.stringContaining("using status-only review without an ApprovalRequest"),
-      );
-    } finally {
-      warning.mockRestore();
-    }
+    await expect(reviewCandidate(candidate.id, "reject", reviewer.id))
+      .rejects.toThrow("no resolvable workspace");
+    expect(
+      (await db.learningCandidate.findUniqueOrThrow({ where: { id: candidate.id } })).status,
+    ).toBe("proposed");
   });
 
   it("rollback reverses an applied relationship candidate and preserves history (no deletion)", async () => {
