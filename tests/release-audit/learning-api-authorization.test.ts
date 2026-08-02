@@ -7,6 +7,7 @@ import { GET as getTrustProfile } from "@/app/api/learning/trust/route";
 import { POST as postBenchmarkResult } from "@/app/api/learning/benchmarks/[id]/results/route";
 import { POST as postShadowSample } from "@/app/api/learning/candidates/[id]/shadow/route";
 import { POST as postCandidateRollback } from "@/app/api/neural/learning-candidates/[id]/rollback/route";
+import { GET as getLearningOverview } from "@/app/api/learning/overview/route";
 import {
   makeUser,
   makeWorkspace,
@@ -14,8 +15,12 @@ import {
 } from "../neural-engine/db-setup";
 
 const auth = vi.hoisted(() => ({ requireUser: vi.fn() }));
+const workspaceAccess = vi.hoisted(() => ({ getAccessibleWorkspaceIds: vi.fn() }));
 
 vi.mock("@/lib/current-user", () => ({ requireUser: auth.requireUser }));
+vi.mock("@/lib/agents/permissions", () => ({
+  getAccessibleWorkspaceIds: workspaceAccess.getAccessibleWorkspaceIds,
+}));
 
 afterAll(async () => {
   await db.$disconnect();
@@ -23,6 +28,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   auth.requireUser.mockReset();
+  workspaceAccess.getAccessibleWorkspaceIds.mockReset();
 });
 
 async function makeTenantFixture() {
@@ -44,6 +50,28 @@ async function makeTenantFixture() {
 }
 
 describe("release audit — /api/learning tenant authorization", () => {
+  it("does not expose another workspace's Learning Events in overview", async () => {
+    const { outsider, workspace, agent } = await makeTenantFixture();
+    await db.learningEvent.create({
+      data: {
+        eventType: "release_audit.private_event",
+        agentId: agent.id,
+        workspaceId: workspace.id,
+        payload: { privateMarker: "must-not-cross-tenant-boundary" },
+      },
+    });
+    auth.requireUser.mockResolvedValue(outsider);
+    workspaceAccess.getAccessibleWorkspaceIds.mockResolvedValue([]);
+
+    const response = await getLearningOverview();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.learningEvents.total).toBe(0);
+    expect(JSON.stringify(body)).not.toContain("must-not-cross-tenant-boundary");
+    expect(JSON.stringify(body)).not.toContain("release_audit.private_event");
+  });
+
   it("does not let an outsider mutate another workspace's feature flag", async () => {
     const { outsider, workspace } = await makeTenantFixture();
     const flag = await createFeatureFlag({
