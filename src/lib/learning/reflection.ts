@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { emitLearningEvent } from "./event-service";
 
@@ -24,8 +25,15 @@ export interface RecordReflectionInput {
 // production behavior itself (see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md).
 // `missingInformation` is meant to seed a KnowledgeGap eventually (Phase C,
 // not built yet) — left as a plain field for now rather than reaching ahead.
-export async function recordReflection(input: RecordReflectionInput) {
-  const reflection = await db.reflection.create({
+export async function recordReflection(
+  input: RecordReflectionInput,
+  options: {
+    client?: Pick<Prisma.TransactionClient, "reflection" | "learningEvent">;
+    emitEvent?: boolean;
+  } = {},
+) {
+  const client = options.client ?? db;
+  const reflection = await client.reflection.create({
     data: {
       traceId: input.traceId ?? null,
       agentId: input.agentId,
@@ -46,15 +54,17 @@ export async function recordReflection(input: RecordReflectionInput) {
     },
   });
 
-  void emitLearningEvent({
-    eventType: "reflection_recorded",
-    sourceType: "reflection",
-    sourceId: reflection.id,
-    agentId: input.agentId,
-    traceId: input.traceId,
-    workspaceId: input.workspaceId,
-    payload: { reflectionType: input.reflectionType, shouldCreateSkill: reflection.shouldCreateSkill },
-  }).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
+  if (options.emitEvent !== false) {
+    void emitLearningEvent({
+      eventType: "reflection_recorded",
+      sourceType: "reflection",
+      sourceId: reflection.id,
+      agentId: input.agentId,
+      traceId: input.traceId,
+      workspaceId: input.workspaceId,
+      payload: { reflectionType: input.reflectionType, shouldCreateSkill: reflection.shouldCreateSkill },
+    }, client).catch((err) => console.error("[learning] emitLearningEvent failed (non-fatal):", err));
+  }
 
   return reflection;
 }

@@ -815,6 +815,7 @@ model LearningCandidate {
   experimentRuns   ExperimentRun[]
   benchmarkResults BenchmarkResult[]
   trustEvents      TrustEvent[]
+  featureFlags     FeatureFlag[]
   artifactVersions LearningArtifactVersion[]
 
   @@index([status])
@@ -1248,9 +1249,16 @@ model FeatureFlag {
   variant           String?
   config            Json     @default("{}")
   riskTier          String   @default("low")
+  // Rollout scope and learning provenance are separate concerns. `scopeId`
+  // remains the tenant/user/agent targeting key; this nullable relation lets
+  // automatic rollback find and disable every flag deploying a candidate.
+  learningCandidateId String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  learningCandidate LearningCandidate? @relation(fields: [learningCandidateId], references: [id], onDelete: SetNull)
+
+  @@index([learningCandidateId])
   @@map("learning_feature_flags")
 }
 
@@ -1271,6 +1279,7 @@ model SkillVersion {
   status             String    @default("draft") // draft, candidate, shadow, active, retired, rolled_back
   createdAt          DateTime  @default(now())
   activatedAt        DateTime?
+  retiredAt          DateTime?
 
   skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
 

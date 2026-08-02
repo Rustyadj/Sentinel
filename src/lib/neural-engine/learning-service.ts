@@ -8,8 +8,12 @@
 // than re-implementing risk logic, so there's exactly one place the
 // never-auto-approve list can drift.
 
-import { db } from "@/lib/db";
+import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { emitLearningEvent } from "@/lib/learning/event-service";
+import { recordReflection } from "@/lib/learning/reflection";
+import { recordTrustEvent } from "@/lib/learning/trust";
 import { canAutoApprove, classifyRiskLevel } from "./policy-service";
 import { emitNeuralEvent } from "./event-service";
 import { adjustKnowledgeWeight } from "./agent-profile-service";
@@ -54,14 +58,36 @@ export async function proposeCandidate(
   const approvalContext = needsWorkspaceApproval
     ? await resolveApprovalContext(input)
     : null;
+  const proposedPayload = toJson(input.proposedPayload);
+  const proposalIdentity = createHash("sha256")
+    .update(`${input.type}:${stableJson(input.proposedPayload)}`)
+    .digest("hex");
 
   const candidate = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`learning-proposal:${proposalIdentity}`})) IS NULL AS locked`;
+    const identicalRollback = await tx.learningCandidate.findFirst({
+      where: {
+        type: input.type,
+        status: "rolled_back",
+        proposedPayload: { equals: proposedPayload },
+      },
+      select: { id: true },
+    });
+    // This is a permanent exact-payload block rather than a time-based
+    // cooldown: elapsed time alone is not evidence that a regressing payload
+    // became safe. The target/type or payload must materially change.
+    if (identicalRollback) {
+      throw new Error(
+        `Learning candidate payload matches rolled-back candidate ${identicalRollback.id}; materially change the proposal before re-promotion.`,
+      );
+    }
+
     let created = await tx.learningCandidate.create({
       data: {
         experienceId: input.experienceId ?? null,
         evaluationId: input.evaluationId ?? null,
         type: input.type,
-        proposedPayload: toJson(input.proposedPayload),
+        proposedPayload,
         targetType: input.targetType ?? null,
         riskLevel: classification.riskLevel,
         evidenceCount,
@@ -451,13 +477,15 @@ async function strengthenOrCreateEdge(
   type: string,
   weightDelta: number,
   candidateId: string,
+  client: Pick<Prisma.TransactionClient, "knowledgeEdge"> = db,
+  emitEvent = true,
 ) {
-  const existing = await db.knowledgeEdge.findUnique({
+  const existing = await client.knowledgeEdge.findUnique({
     where: { fromObjectId_toObjectId_type: { fromObjectId, toObjectId, type } },
   });
 
   if (!existing) {
-    const edge = await db.knowledgeEdge.create({
+    const edge = await client.knowledgeEdge.create({
       data: {
         fromObjectId,
         toObjectId,
@@ -466,15 +494,17 @@ async function strengthenOrCreateEdge(
         changeReason: `learning-candidate:${candidateId}`,
       },
     });
-    await emitNeuralEvent({
-      type: "edge.strengthened",
-      payload: { edgeId: edge.id, candidateId },
-    });
+    if (emitEvent) {
+      await emitNeuralEvent({
+        type: "edge.strengthened",
+        payload: { edgeId: edge.id, candidateId },
+      });
+    }
     return edge;
   }
 
   const newWeight = Math.max(0, Math.min(1, existing.weight + weightDelta));
-  const edge = await db.knowledgeEdge.update({
+  const edge = await client.knowledgeEdge.update({
     where: { id: existing.id },
     data: {
       weight: newWeight,
@@ -482,10 +512,12 @@ async function strengthenOrCreateEdge(
       changeReason: `learning-candidate:${candidateId}`,
     },
   });
-  await emitNeuralEvent({
-    type: weightDelta >= 0 ? "edge.strengthened" : "edge.weakened",
-    payload: { edgeId: edge.id, candidateId, newWeight },
-  });
+  if (emitEvent) {
+    await emitNeuralEvent({
+      type: weightDelta >= 0 ? "edge.strengthened" : "edge.weakened",
+      payload: { edgeId: edge.id, candidateId, newWeight },
+    });
+  }
   return edge;
 }
 
@@ -495,8 +527,41 @@ async function strengthenOrCreateEdge(
  * content writes (memory/decision), and marks the original `rolled_back`.
  * History is preserved — nothing is deleted.
  */
-export async function rollbackCandidate(candidateId: string, actorId: string, reason?: string) {
-  const candidate = await db.learningCandidate.findUniqueOrThrow({
+interface RollbackCandidateOptions {
+  transaction?: Prisma.TransactionClient;
+  emitEvent?: boolean;
+}
+
+export async function rollbackCandidate(
+  candidateId: string,
+  actorId: string,
+  reason?: string,
+  options: RollbackCandidateOptions = {},
+) {
+  const write = (tx: Prisma.TransactionClient) =>
+    rollbackCandidateInTransaction(tx, candidateId, actorId, reason);
+  const rolledBack = options.transaction
+    ? await write(options.transaction)
+    : await db.$transaction(write);
+
+  if (options.emitEvent !== false) {
+    await emitNeuralEvent({
+      type: "learning.rolled_back",
+      payload: { candidateId, actorId, reason: reason ?? null },
+    });
+  }
+
+  return rolledBack;
+}
+
+async function rollbackCandidateInTransaction(
+  tx: Prisma.TransactionClient,
+  candidateId: string,
+  actorId: string,
+  reason?: string,
+) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`learning-rollback:${candidateId}`})) IS NULL AS locked`;
+  const candidate = await tx.learningCandidate.findUniqueOrThrow({
     where: { id: candidateId },
     include: { experience: true, approvalRequest: true },
   });
@@ -523,6 +588,7 @@ export async function rollbackCandidate(candidateId: string, actorId: string, re
         knowledgeObjectId,
         outcome === "success" ? "failure" : "success",
         magnitude,
+        tx,
       );
       break;
     }
@@ -539,12 +605,14 @@ export async function rollbackCandidate(candidateId: string, actorId: string, re
         edgeType,
         -(weightDelta ?? 0.1),
         candidateId,
+        tx,
+        false,
       );
       break;
     }
     case "memory": {
       if (candidate.appliedTargetId) {
-        await db.memory.update({
+        await tx.memory.update({
           where: { id: candidate.appliedTargetId },
           data: { archived: true },
         });
@@ -553,7 +621,7 @@ export async function rollbackCandidate(candidateId: string, actorId: string, re
     }
     case "decision": {
       if (candidate.appliedTargetId) {
-        await db.decision.update({
+        await tx.decision.update({
           where: { id: candidate.appliedTargetId },
           data: {
             status: "superseded",
@@ -566,48 +634,38 @@ export async function rollbackCandidate(candidateId: string, actorId: string, re
     }
     default:
       // Skill/procedure/contradiction/prompt/tool-policy rollbacks are
-      // status-flip only for Phase A (mark deprecated/superseded via their
-      // own tables) — full inverse-mutation support is Phase B/E scope.
+      // status-flip only until their inverse mutation is formally defined.
       break;
   }
 
   const systemActor = actorId.startsWith("system:");
-  const rolledBack = await db.$transaction(async (tx) => {
-    const updated = await tx.learningCandidate.update({
-      where: { id: candidateId },
-      data: { status: "rolled_back" },
-    });
-    await writeAuditLog({
-      workspaceId: candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId,
-      projectId:
-        candidate.approvalRequest?.projectId ??
-        candidate.experience?.projectId ??
-        projectIdFromPayload(candidate.proposedPayload),
-      approvalRequestId: candidate.approvalRequestId,
-      userId: systemActor ? null : actorId,
-      actorType: systemActor ? "system" : "user",
-      action: "learning_candidate.rolled_back",
-      entityType: "LearningCandidate",
-      entityId: candidate.id,
-      details: {
-        riskLevel: candidate.riskLevel,
-        candidateType: candidate.type,
-        actorId,
-        reason: reason ?? null,
-        previousStatus: candidate.status,
-        status: updated.status,
-        appliedTargetId: candidate.appliedTargetId,
-      },
-    }, tx);
-    return updated;
+  const updated = await tx.learningCandidate.update({
+    where: { id: candidateId },
+    data: { status: "rolled_back" },
   });
-
-  await emitNeuralEvent({
-    type: "learning.rolled_back",
-    payload: { candidateId, actorId, reason: reason ?? null },
-  });
-
-  return rolledBack;
+  await writeAuditLog({
+    workspaceId: candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId,
+    projectId:
+      candidate.approvalRequest?.projectId ??
+      candidate.experience?.projectId ??
+      projectIdFromPayload(candidate.proposedPayload),
+    approvalRequestId: candidate.approvalRequestId,
+    userId: systemActor ? null : actorId,
+    actorType: systemActor ? "system" : "user",
+    action: "learning_candidate.rolled_back",
+    entityType: "LearningCandidate",
+    entityId: candidate.id,
+    details: {
+      riskLevel: candidate.riskLevel,
+      candidateType: candidate.type,
+      actorId,
+      reason: reason ?? null,
+      previousStatus: candidate.status,
+      status: updated.status,
+      appliedTargetId: candidate.appliedTargetId,
+    },
+  }, tx);
+  return updated;
 }
 
 function projectIdFromPayload(payload: Prisma.JsonValue): string | null {
@@ -742,9 +800,9 @@ function stringValue(value: unknown): string | null {
 
 /**
  * Future-outcome monitoring: if confidence in an applied candidate's
- * correctness has since dropped below `threshold`, automatically roll it
- * back. Intended to be called by a periodic job (Phase B) — real function,
- * not a stub, but Phase A has no scheduler wired up to call it yet.
+ * correctness has since dropped below `threshold`, atomically disable its
+ * rollout flags, reverse the candidate, penalize domain trust, and preserve
+ * the operational evidence in audit, learning-event, and reflection logs.
  */
 export async function monitorAndAutoRollback(
   candidateId: string,
@@ -752,11 +810,137 @@ export async function monitorAndAutoRollback(
   threshold = 0.3,
 ) {
   if (currentConfidence >= threshold) return null;
-  return rollbackCandidate(
-    candidateId,
-    "system:confidence-monitor",
-    `Derived confidence ${currentConfidence.toFixed(3)} fell below rollback threshold ${threshold.toFixed(3)}.`,
-  );
+  const actorId = "system:confidence-monitor";
+  const reason =
+    `Derived confidence ${currentConfidence.toFixed(3)} fell below ` +
+    `rollback threshold ${threshold.toFixed(3)}.`;
+
+  const result = await db.$transaction(async (tx) => {
+    const candidate = await tx.learningCandidate.findUniqueOrThrow({
+      where: { id: candidateId },
+      include: { experience: true, approvalRequest: true },
+    });
+    const payload = candidate.proposedPayload as Record<string, unknown>;
+    const agentId = stringValue(payload.agentId);
+    if (!agentId) {
+      throw new Error(
+        `Cannot automatically roll back candidate ${candidateId} without an agentId in proposedPayload.`,
+      );
+    }
+    const domain =
+      stringValue(payload.trustDomain) ??
+      stringValue(payload.domain) ??
+      "knowledge_retrieval";
+
+    const activeFlags = await tx.featureFlag.findMany({
+      where: { learningCandidateId: candidateId, enabled: true },
+      select: { id: true, key: true },
+    });
+    if (activeFlags.length > 0) {
+      await tx.featureFlag.updateMany({
+        where: { id: { in: activeFlags.map((flag) => flag.id) } },
+        data: { enabled: false },
+      });
+    }
+
+    const rolledBack = await rollbackCandidate(candidateId, actorId, reason, {
+      transaction: tx,
+      emitEvent: false,
+    });
+    const trust = await recordTrustEvent({
+      agentId,
+      domain,
+      eventType: "candidate_failed_or_rolled_back",
+      reason,
+      traceId: candidate.experienceId,
+      candidateId,
+    }, tx);
+
+    const workspaceId =
+      candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId ?? undefined;
+    const projectId =
+      candidate.approvalRequest?.projectId ??
+      candidate.experience?.projectId ??
+      projectIdFromPayload(candidate.proposedPayload) ??
+      undefined;
+    await writeAuditLog({
+      workspaceId,
+      projectId,
+      approvalRequestId: candidate.approvalRequestId,
+      actorType: "system",
+      action: "learning_candidate.automatic_rollback",
+      entityType: "LearningCandidate",
+      entityId: candidateId,
+      details: {
+        reason,
+        currentConfidence,
+        threshold,
+        disabledFeatureFlags: activeFlags,
+        trustEventId: trust.event.id,
+      },
+    }, tx);
+    await emitLearningEvent({
+      eventType: "rollback_triggered",
+      sourceType: "learning_candidate",
+      sourceId: candidateId,
+      agentId,
+      workspaceId,
+      projectId,
+      traceId: candidate.experienceId ?? undefined,
+      severity: "warning",
+      payload: {
+        reason,
+        currentConfidence,
+        threshold,
+        disabledFeatureFlagKeys: activeFlags.map((flag) => flag.key),
+        trustEventId: trust.event.id,
+      },
+    }, tx);
+    const reflection = await recordReflection({
+      traceId: candidate.experienceId ?? undefined,
+      agentId,
+      workspaceId,
+      projectId,
+      reflectionType: "automatic",
+      summary: `Automatic rollback of ${candidate.type} candidate ${candidateId}`,
+      whatFailed: reason,
+      unexpectedResults: "Production evidence regressed below the configured confidence threshold.",
+      reusableLesson: "A rolled-back payload must be materially changed before it can be proposed again.",
+      suggestedImprovement: "Revise the proposed payload and validate it against fresh evidence before promotion.",
+      confidence: currentConfidence,
+    }, { client: tx, emitEvent: false });
+
+    return { rolledBack, reflectionId: reflection.id };
+  });
+
+  await emitNeuralEvent({
+    type: "learning.rolled_back",
+    payload: {
+      candidateId,
+      actorId,
+      reason,
+      automatic: true,
+      reflectionId: result.reflectionId,
+    },
+  });
+  return result.rolledBack;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalJson(value));
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalJson(entry)]),
+    );
+  }
+  return value;
 }
 
 export async function listPendingReview(riskLevel?: "low" | "medium" | "high") {

@@ -30,6 +30,7 @@ export interface CreateFeatureFlagInput {
   variant?: string | null;
   config?: Record<string, unknown>;
   riskTier?: string;
+  learningCandidateId?: string | null;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -42,6 +43,7 @@ export interface UpdateFeatureFlagInput {
   variant?: string | null;
   config?: Record<string, unknown>;
   riskTier?: string;
+  learningCandidateId?: string | null;
 }
 
 export interface FeatureFlagContext {
@@ -67,6 +69,7 @@ export function createFeatureFlag(input: CreateFeatureFlagInput) {
       variant: input.variant ?? null,
       config: (input.config ?? {}) as Prisma.InputJsonValue,
       riskTier: input.riskTier?.trim() || "low",
+      learningCandidateId: input.learningCandidateId ?? null,
     },
   });
 }
@@ -107,6 +110,9 @@ export async function updateFeatureFlag(id: string, input: UpdateFeatureFlagInpu
       ...(input.config !== undefined ? { config: input.config as Prisma.InputJsonValue } : {}),
       ...(input.riskTier !== undefined
         ? { riskTier: requiredText(input.riskTier, "riskTier") }
+        : {}),
+      ...(input.learningCandidateId !== undefined
+        ? { learningCandidateId: input.learningCandidateId }
         : {}),
     },
   });

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ALWAYS_HIGH_RISK_TYPES, type LearningCandidateType } from "@/lib/neural-engine/types";
 
@@ -36,7 +37,10 @@ export const TRUST_AUTOMATION_MIN_SCORE = 0.8;
  * No write can spill into another domain because the unique upsert key is
  * always the normalized `[agentId, domain]` pair.
  */
-export async function recordTrustEvent(input: RecordTrustEventInput) {
+export async function recordTrustEvent(
+  input: RecordTrustEventInput,
+  transaction?: Prisma.TransactionClient,
+) {
   const agentId = input.agentId.trim();
   const domain = normalizeTrustDomain(input.domain);
   const reason = input.reason.trim();
@@ -49,8 +53,8 @@ export async function recordTrustEvent(input: RecordTrustEventInput) {
     throw new Error(`Unsupported trust event type: ${input.eventType}`);
   }
 
-  const lockKey = `agent-trust:${agentId}:${domain}`;
-  return db.$transaction(async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
+    const lockKey = `agent-trust:${agentId}:${domain}`;
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})) IS NULL AS locked`;
     const current = await tx.agentCompetency.findUnique({
       where: { agentId_domain: { agentId, domain } },
@@ -88,7 +92,9 @@ export async function recordTrustEvent(input: RecordTrustEventInput) {
       },
     });
     return { event, competency };
-  });
+  };
+
+  return transaction ? write(transaction) : db.$transaction(write);
 }
 
 export async function getAgentTrustProfile(agentId: string, historyLimit = 100) {

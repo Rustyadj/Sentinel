@@ -24,10 +24,13 @@ export interface EmitLearningEventInput {
 // Fire-and-forget by convention at call sites (never let instrumentation
 // break the request it's observing) — this function itself still awaits
 // the write and lets errors propagate, so callers control that trade-off.
-export async function emitLearningEvent(input: EmitLearningEventInput) {
+export async function emitLearningEvent(
+  input: EmitLearningEventInput,
+  client: Pick<Prisma.TransactionClient, "learningEvent"> = db,
+) {
   const { payload, redactedKeys } = redactPayload(input.payload ?? {});
 
-  return db.learningEvent.create({
+  return client.learningEvent.create({
     data: {
       eventType: input.eventType,
       sourceType: input.sourceType ?? null,
