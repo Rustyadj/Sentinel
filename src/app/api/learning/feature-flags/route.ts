@@ -8,6 +8,7 @@ import {
   learningAccessErrorResponse,
   requireFeatureFlagAccess,
 } from "@/lib/learning/authorization";
+import { getAccessibleWorkspaceIds } from "@/lib/agents/permissions";
 
 export async function GET(req: Request) {
   const user = await requireUser().catch(() => null);
@@ -29,11 +30,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "key and name are required" }, { status: 400 });
   }
   try {
-    const scopeType = body.scopeType ?? "global";
-    const scopeId = body.scopeId ?? null;
+    // There is no global-admin role in this app. When callers omit scope,
+    // resolve the explicit request header/body workspace or their first
+    // accessible workspace and default there, never to an ungoverned global.
+    const accessibleWorkspaceIds = await getAccessibleWorkspaceIds(user.id);
+    const requestedWorkspaceId =
+      req.headers.get("x-workspace-id")?.trim() ||
+      (typeof body.workspaceId === "string" ? body.workspaceId.trim() : "");
+    const defaultWorkspaceId = requestedWorkspaceId || accessibleWorkspaceIds[0];
+    const scopeType = body.scopeType ?? "workspace";
+    const scopeId = body.scopeId ?? defaultWorkspaceId ?? null;
     await requireFeatureFlagAccess(user.id, { scopeType, scopeId }, "workspace.update");
     return NextResponse.json(
-      await createFeatureFlag(body, { authorizedByUserId: user.id }),
+      await createFeatureFlag(
+        { ...body, scopeType, scopeId },
+        { authorizedByUserId: user.id, defaultWorkspaceId },
+      ),
       { status: 201 },
     );
   } catch (error) {

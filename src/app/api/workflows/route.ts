@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import { getReadableProjectIds } from "@/lib/knowledge/access";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
+import { syncWorkflowToGraph } from "@/lib/knowledge/entity-sync";
 
 export async function GET() {
   const user = await requireUser().catch(() => null);
@@ -19,11 +20,13 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   if (body.projectId) await requireProjectPermission(body.projectId, "project.update");
-  return NextResponse.json(await db.workflow.create({
+  const workflow = await db.workflow.create({
     data: {
       userId: user.id, projectId: body.projectId ?? null,
       name: body.name ?? "New Workflow", description: body.description ?? "",
       nodes: body.nodes ?? [], edges: body.edges ?? [], status: "draft",
     },
-  }), { status: 201 });
+  });
+  await syncWorkflowToGraph(workflow).catch((err) => console.error("[workflows] graph sync failed (non-fatal):", err));
+  return NextResponse.json(workflow, { status: 201 });
 }

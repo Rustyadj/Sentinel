@@ -103,7 +103,7 @@ function LogsPanel({ agentId }: { agentId: string }) {
 
 // ─── Config Editor ────────────────────────────────────────────────────────────
 
-function ConfigEditor({ agentId }: { agentId: string }) {
+export function ConfigEditor({ agentId }: { agentId: string }) {
   const [files, setFiles] = useState<ConfigFile[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [content, setContent] = useState("");

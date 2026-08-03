@@ -52,13 +52,25 @@ interface ChatMessage {
   createdAt?: string;
   isStreaming?: boolean;
   error?: boolean;
+  sourceLabel?: string;
 }
+
+type ExecutionMode = "model_chat" | "persistent_agent_runtime" | "coding_runtime" | "workflow_runtime";
+
+const AGENT_RUNTIME_MODE: Record<string, { mode: ExecutionMode; label: string }> = {
+  "hermes-lisa": { mode: "persistent_agent_runtime", label: "Hermes runtime" },
+  "hermes-clint": { mode: "persistent_agent_runtime", label: "Hermes runtime" },
+  openclaw: { mode: "persistent_agent_runtime", label: "OpenClaw runtime" },
+  "claude-code": { mode: "coding_runtime", label: "Claude Code runtime" },
+  codex: { mode: "coding_runtime", label: "Codex runtime" },
+};
 
 // ─── SSE helper ──────────────────────────────────────────────────────────────
 
 async function readSSEStream(
   response: Response,
-  onToken: (text: string) => void
+  onToken: (text: string) => void,
+  onSource?: (label: string) => void,
 ): Promise<{ error?: string }> {
   if (!response.body) return { error: "No response body" };
   const reader = response.body.getReader();
@@ -76,8 +88,11 @@ async function readSSEStream(
         const raw = line.slice(6).trim();
         if (raw === "[DONE]" || raw === "") continue;
         try {
-          const parsed = JSON.parse(raw) as { type: string; text?: string; error?: string };
+          const parsed = JSON.parse(raw) as { type: string; text?: string; error?: string; label?: string };
           if (parsed.type === "text" && parsed.text) onToken(parsed.text);
+          if (parsed.type === "source" && typeof parsed.label === "string") {
+            onSource?.(parsed.label);
+          }
           if (parsed.type === "error") return { error: parsed.error };
         } catch {
           /* ignore malformed */
@@ -185,7 +200,8 @@ function LeftPanel({
   function toggleProject(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -364,6 +380,11 @@ function MessageBubble({
               {agent.name}
             </span>
             <span className="text-[10px] text-[--muted-foreground]">{agent.role}</span>
+            {msg.sourceLabel ? (
+              <span className="rounded border border-[--border] bg-[--muted] px-1.5 py-0.5 text-[9px] text-[--muted-foreground]">
+                {msg.sourceLabel}
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -531,6 +552,9 @@ export function ChatPage() {
   const [selectedAgentId, setSelectedAgentId] = useState(
     AGENT_TEMPLATES[0]?.id ?? "hermes-lisa"
   );
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>(
+    AGENT_RUNTIME_MODE[AGENT_TEMPLATES[0]?.id ?? "hermes-lisa"]?.mode ?? "model_chat"
+  );
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -683,6 +707,7 @@ export function ChatPage() {
       agentId: selectedAgentId,
       content: "",
       isStreaming: true,
+      sourceLabel: executionMode === "model_chat" ? "Direct model API" : AGENT_RUNTIME_MODE[selectedAgentId]?.label,
     };
 
     setMessages((prev) => [...prev, userMsg, agentMsg]);
@@ -711,6 +736,7 @@ export function ChatPage() {
           agentId: selectedAgentId,
           roomId: activeRoom?.id,
           userContent: content,
+          executionMode,
         }),
       });
 
@@ -722,6 +748,8 @@ export function ChatPage() {
             m.id === agentMsgId ? { ...m, content: fullContent } : m
           )
         );
+      }, (sourceLabel) => {
+        setMessages((prev) => prev.map((message) => message.id === agentMsgId ? { ...message, sourceLabel } : message));
       });
 
       setMessages((prev) =>
@@ -762,6 +790,7 @@ export function ChatPage() {
     anthropicKey,
     openaiKey,
     openrouterKey,
+    executionMode,
   ]);
 
   return (
@@ -805,8 +834,20 @@ export function ChatPage() {
             )}
           </div>
 
-          {/* Agent selector */}
-          <div className="relative">
+          {/* Agent and execution-source selectors. Runtime errors never fall back silently. */}
+          <div className="flex items-center gap-2">
+            <select
+              aria-label="Execution source"
+              value={executionMode}
+              onChange={(event) => setExecutionMode(event.target.value as ExecutionMode)}
+              className="rounded-lg border border-[--border] bg-[--muted] px-2 py-1.5 text-[10px] text-[--foreground] outline-none focus:border-indigo-500/50"
+            >
+              {AGENT_RUNTIME_MODE[selectedAgentId] ? (
+                <option value={AGENT_RUNTIME_MODE[selectedAgentId].mode}>{AGENT_RUNTIME_MODE[selectedAgentId].label}</option>
+              ) : null}
+              <option value="model_chat">Direct model API</option>
+            </select>
+            <div className="relative">
             <button
               onClick={() => setAgentDropdownOpen((o) => !o)}
               className="flex items-center gap-2 bg-[--muted] hover:bg-[--accent] border border-[--border] rounded-lg px-2.5 py-1.5 text-xs transition-colors"
@@ -833,6 +874,7 @@ export function ChatPage() {
                     key={a.id}
                     onClick={() => {
                       setSelectedAgentId(a.id);
+                      setExecutionMode(AGENT_RUNTIME_MODE[a.id]?.mode ?? "model_chat");
                       setAgentDropdownOpen(false);
                     }}
                     className={cn(
@@ -863,6 +905,7 @@ export function ChatPage() {
                 ))}
               </div>
             )}
+            </div>
           </div>
         </div>
 

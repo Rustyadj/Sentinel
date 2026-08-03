@@ -25,7 +25,49 @@ describe("chat persistence", () => {
     expect(mocks.createMany).toHaveBeenCalledWith({
       data: [
         { chatRoomId: "room-a", role: "user", content: "hello" },
-        { chatRoomId: "room-a", role: "agent", agentId: "agent-a", content: "hi" },
+        {
+          chatRoomId: "room-a",
+          role: "agent",
+          agentId: "agent-a",
+          content: "hi",
+          runtimeKind: undefined,
+          provider: undefined,
+          model: undefined,
+          agentRuntimeSessionId: undefined,
+        },
+      ],
+    });
+  });
+
+  it("persists assistant runtime provenance without putting it on the user message", async () => {
+    mocks.findRoom.mockResolvedValue({ id: "room-a", projectId: "project-a" });
+    mocks.createMany.mockResolvedValue({ count: 2 });
+    mocks.emitEvent.mockResolvedValue(undefined);
+
+    await persistChatExchange({
+      roomId: "room-a",
+      userId: "user-a",
+      userContent: "run it",
+      agentId: "codex",
+      assistantContent: "done",
+      provenance: {
+        runtimeKind: "codex",
+        provider: "openai",
+        model: "gpt-5.6-codex",
+        agentRuntimeSessionId: "session-a",
+      },
+    });
+
+    expect(mocks.createMany).toHaveBeenCalledWith({
+      data: [
+        { chatRoomId: "room-a", role: "user", content: "run it" },
+        expect.objectContaining({
+          role: "agent",
+          runtimeKind: "codex",
+          provider: "openai",
+          model: "gpt-5.6-codex",
+          agentRuntimeSessionId: "session-a",
+        }),
       ],
     });
   });

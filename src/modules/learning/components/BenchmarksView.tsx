@@ -61,13 +61,20 @@ function ResultsPanel({ benchmarkId }: { benchmarkId: string }) {
 export function BenchmarksView() {
   const [definitions, setDefinitions] = useState<BenchmarkDefinition[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/learning/benchmarks")
-      .then((r) => r.json())
-      .then(setDefinitions)
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then((data) => {
+        setError(null);
+        setDefinitions(data);
+      })
+      .catch(() => setError("Could not load benchmark definitions."))
       .finally(() => setLoaded(true));
   }, []);
 
@@ -88,6 +95,11 @@ export function BenchmarksView() {
 
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
+      ) : error ? (
+        <div className="text-xs text-red-400 border border-red-500/20 rounded-lg p-6 text-center">
+          {error}{" "}
+          <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </div>
       ) : definitions.length === 0 ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           No benchmark definitions yet.
