@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Brain, HelpCircle, Lightbulb } from "lucide-react";
 
 interface Reflection {
@@ -34,14 +34,23 @@ function Field({ label, value }: { label: string; value: string | null }) {
 export function ReflectionsView() {
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch("/api/learning/reflections")
-      .then((r) => r.json())
-      .then(setReflections)
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then((data) => {
+        setError(null);
+        setReflections(data);
+      })
+      .catch(() => setError("Could not load reflections."))
       .finally(() => setLoaded(true));
   }, []);
+
+  useEffect(load, [load]);
 
   return (
     <div className="p-6 max-w-4xl">
@@ -54,9 +63,14 @@ export function ReflectionsView() {
         same service once those paths exist.
       </p>
 
+      {error && (
+        <p className="mb-3 text-xs text-red-400">
+          {error} <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </p>
+      )}
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
-      ) : reflections.length === 0 ? (
+      ) : reflections.length === 0 && !error ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           No reflections recorded yet.
         </div>

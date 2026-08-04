@@ -29,14 +29,21 @@ function ScoreBar({ score }: { score: number }) {
 export function CuriosityView() {
   const [events, setEvents] = useState<CuriosityEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [unansweredOnly, setUnansweredOnly] = useState(true);
   const [answeringId, setAnsweringId] = useState<string | null>(null);
 
   function load() {
     fetch(`/api/learning/curiosity${unansweredOnly ? "?unanswered=true" : ""}`)
-      .then((r) => r.json())
-      .then(setEvents)
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then((data) => {
+        setError(null);
+        setEvents(data);
+      })
+      .catch(() => setError("Could not load curiosity events."))
       .finally(() => setLoaded(true));
   }
 
@@ -46,11 +53,16 @@ export function CuriosityView() {
     const answerSummary = window.prompt("What was the answer / resolution?");
     if (!answerSummary) return;
     setAnsweringId(id);
-    await fetch(`/api/learning/curiosity/${id}/answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answerSummary }),
-    }).catch(() => {});
+    try {
+      const response = await fetch(`/api/learning/curiosity/${id}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answerSummary }),
+      });
+      if (!response.ok) throw new Error(String(response.status));
+    } catch {
+      setError("Could not save the answer — please try again.");
+    }
     setAnsweringId(null);
     load();
   }
@@ -72,9 +84,14 @@ export function CuriosityView() {
         recorded here, including the ones below threshold that didn&apos;t trigger a question.
       </p>
 
+      {error && (
+        <p className="mb-3 text-xs text-red-400">
+          {error} <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
+        </p>
+      )}
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>
-      ) : events.length === 0 ? (
+      ) : events.length === 0 && !error ? (
         <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
           No {unansweredOnly ? "unanswered " : ""}curiosity events yet.
         </div>

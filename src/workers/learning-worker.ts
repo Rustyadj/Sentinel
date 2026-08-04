@@ -20,10 +20,14 @@ import {
   scheduleRecurringJobs,
   type JobPayload,
 } from "@/lib/learning/queue";
-import { runRecordedDegradationSweep } from "@/lib/neural-engine/scheduler-service";
+import {
+  runRecordedDegradationSweep,
+  runRecordedScheduledJob,
+} from "@/lib/neural-engine/scheduler-service";
 import { detectKnowledgeGaps } from "@/lib/learning/knowledge-gaps";
 import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
 import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay";
+import { runCoOccurrenceSelfImprovement } from "@/lib/learning/self-improvement";
 
 const requestedConcurrency = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
 const CONCURRENCY = Number.isFinite(requestedConcurrency)
@@ -39,15 +43,19 @@ async function processJob(job: Job<JobPayload>) {
     case JOB_NAMES.degradationSweep:
       return runRecordedDegradationSweep();
     case JOB_NAMES.knowledgeGapAnalysis: {
-      const gaps = await detectKnowledgeGaps();
-      const goals = await generateLearningGoalsFromGaps();
-      return { gapsProcessed: gaps.length, goalsCreated: goals.length };
+      return runRecordedScheduledJob(job.name, async () => {
+        const gaps = await detectKnowledgeGaps();
+        const goals = await generateLearningGoalsFromGaps();
+        return { gapsProcessed: gaps.length, goalsCreated: goals.length };
+      });
     }
     case JOB_NAMES.experienceReplay: {
       const category = job.data.category as ReplayCategory | undefined;
       if (!category) throw new Error("experience-replay job missing required 'category' field");
-      return runExperienceReplay(category);
+      return runRecordedScheduledJob(`${job.name}:${category}`, () => runExperienceReplay(category));
     }
+    case JOB_NAMES.coOccurrenceDiscovery:
+      return runRecordedScheduledJob(job.name, runCoOccurrenceSelfImprovement);
     default:
       throw new Error(`No handler registered for job "${job.name}" — refusing to silently no-op it.`);
   }

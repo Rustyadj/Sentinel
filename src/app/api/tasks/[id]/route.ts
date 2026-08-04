@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { accessErrorResponse, requireProjectPermission, requireWorkspacePermission } from "@/lib/workspaces/authorization";
 import { assertOneOf, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/workspaces/status";
+import { removeEntityFromGraph, syncTaskToGraph } from "@/lib/knowledge/entity-sync";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -32,6 +33,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
       },
     });
     await writeAuditLog({ workspaceId: task.workspaceId, projectId: task.projectId, userId: user.id, action: "task.updated", entityType: "task", entityId: id, details: { previousStatus: current.status, status: task.status } });
+    await syncTaskToGraph(task, user.id).catch((err) => console.error("[tasks] graph sync failed (non-fatal):", err));
     return NextResponse.json(task);
   } catch (error) {
     return accessErrorResponse(error);
@@ -50,6 +52,7 @@ export async function DELETE(_req: NextRequest, { params }: Context) {
     if (!user) return NextResponse.json({ error: "Task has no access scope" }, { status: 400 });
     await writeAuditLog({ workspaceId: task.workspaceId, projectId: task.projectId, userId: user.id, action: "task.deleted", entityType: "task", entityId: id });
     await db.task.delete({ where: { id } });
+    await removeEntityFromGraph("task", id).catch((err) => console.error("[tasks] graph sync failed (non-fatal):", err));
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return accessErrorResponse(error);

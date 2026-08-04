@@ -330,6 +330,8 @@ const DEMO_EDGES: KnowledgeEdge[] = [
 ];
 
 const DEMO_GRAPH: GraphData = { nodes: [...MICRO_NODES, ...DEMO_NODES], edges: DEMO_EDGES };
+const EMPTY_GRAPH: GraphData = { nodes: [], edges: [] };
+const DEMO_ENABLED = process.env.NEXT_PUBLIC_GRAPH_DEMO === "true";
 
 function endpointId(endpoint: unknown): string | null {
   if (typeof endpoint === "string") return endpoint;
@@ -402,11 +404,12 @@ export function KnowledgeGraph({
   refreshKey,
   onDataChange,
 }: KnowledgeGraphProps) {
-  const [graphData, setGraphData] = useState<GraphData>(DEMO_GRAPH);
-  const [source, setSource] = useState<GraphSource>("demo");
+  const [graphData, setGraphData] = useState<GraphData>(DEMO_ENABLED ? DEMO_GRAPH : EMPTY_GRAPH);
+  const [source, setSource] = useState<GraphSource>(DEMO_ENABLED ? "demo" : "offline");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const fetchControllerRef = useRef<AbortController | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(undefined);
   const wasStreamingRef = useRef(false);
@@ -425,14 +428,17 @@ export function KnowledgeGraph({
 
   // ------------------------------------------------------------------ fetch
   const fetchGraph = useCallback(async () => {
+    fetchControllerRef.current?.abort();
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
     try {
       const params = new URLSearchParams();
       if (roomId) params.set("roomId", roomId);
       if (projectId) params.set("projectId", projectId);
-      const res = await fetch(`/api/graph?${params.toString()}`);
+      const res = await fetch(`/api/graph?${params.toString()}`, { signal: controller.signal });
       if (res.ok) {
         const data = (await res.json()) as GraphData;
-        if (data.nodes.length > 0) {
+        if (data.nodes.length > 0 || !DEMO_ENABLED) {
           setGraphData(data);
           setSource("live");
         } else {
@@ -440,12 +446,15 @@ export function KnowledgeGraph({
           setSource("demo");
         }
       } else {
-        setGraphData(DEMO_GRAPH);
-        setSource("demo");
+        setGraphData(DEMO_ENABLED ? DEMO_GRAPH : EMPTY_GRAPH);
+        setSource(DEMO_ENABLED ? "demo" : "offline");
       }
     } catch {
-      setGraphData(DEMO_GRAPH);
-      setSource("offline");
+      if (controller.signal.aborted) return;
+      setGraphData(DEMO_ENABLED ? DEMO_GRAPH : EMPTY_GRAPH);
+      setSource(DEMO_ENABLED ? "demo" : "offline");
+    } finally {
+      if (fetchControllerRef.current === controller) fetchControllerRef.current = null;
     }
   }, [roomId, projectId]);
 
@@ -470,10 +479,30 @@ export function KnowledgeGraph({
     if (refreshKey !== undefined && refreshKey > 0) void fetchGraph();
   }, [refreshKey, fetchGraph]);
 
-  // Gentle polling keeps the graph live
+  // Gentle polling keeps the graph live without doing WebGL-adjacent work in
+  // a background tab. Each refresh is scheduled only after the prior one
+  // settles, and fetchGraph aborts an older request when an explicit refresh
+  // (stream completion / SSE) supersedes it.
   useEffect(() => {
-    const id = setInterval(() => void fetchGraph(), 8000);
-    return () => clearInterval(id);
+    let stopped = false;
+    let timeout: number | undefined;
+    const schedule = () => {
+      timeout = window.setTimeout(async () => {
+        if (!stopped && document.visibilityState !== "hidden") await fetchGraph();
+        if (!stopped) schedule();
+      }, 8_000);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void fetchGraph();
+    };
+    schedule();
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      stopped = true;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      fetchControllerRef.current?.abort();
+    };
   }, [fetchGraph]);
 
   useEffect(() => {
@@ -1036,12 +1065,18 @@ export function KnowledgeGraph({
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-8">
           <div className="max-w-xs rounded-xl border border-white/[0.08] bg-[#0b0f17]/90 px-5 py-4 text-center shadow-2xl backdrop-blur-xl">
             <div className="text-xs font-medium text-[#e8eaed]">
-              {source === "offline" ? "Knowledge graph offline" : "Nothing matches"}
+              {source === "offline"
+                ? "Knowledge graph offline"
+                : graphData.nodes.length === 0
+                  ? "No knowledge yet"
+                  : "Nothing matches"}
             </div>
             <div className="mt-1.5 text-[10px] leading-4 text-[#697084]">
               {source === "offline"
-                ? "The graph service is unreachable. Showing cached demo topology."
-                : "Adjust search, filters, or the time window to reveal nodes."}
+                ? "The graph service is unreachable. No demo topology has been substituted."
+                : graphData.nodes.length === 0
+                  ? "This scope has no graph objects yet. New knowledge will appear after it is persisted."
+                  : "Adjust search, filters, or the time window to reveal nodes."}
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@ import { SkillsView } from "./SkillsView";
 import { ReplayView } from "./ReplayView";
 import { ImprovementQueueView } from "./ImprovementQueueView";
 import { EvolutionView } from "./EvolutionView";
+import { LearningSettingsView } from "./LearningSettingsView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
 const TAB_LABELS: Record<string, string> = {
@@ -24,7 +25,7 @@ const TAB_LABELS: Record<string, string> = {
   preferences: "Preferences",
   "knowledge-gaps": "Knowledge Gaps",
   hypotheses: "Hypotheses",
-  experiments: "Experiments",
+  experiments: "Experience Replay",
   "shadow-runs": "Shadow Runs",
   benchmarks: "Benchmarks",
   skills: "Skills",
@@ -59,16 +60,13 @@ export default function LearningCorePage() {
   if (activeTab === "trust") return <TrustView />;
   if (activeTab === "feature-flags") return <FeatureFlagsView />;
   if (activeTab === "skills") return <SkillsView />;
-  // Experience Replay's natural tab slot per the original spec doesn't have
-  // its own entry in ModuleTabs — "Experiments" was still unbuilt and is
-  // the closest semantic fit (replay batches feed the same candidate
-  // pipeline experiments do), so it's mapped here rather than adding yet
-  // another shared ModuleTabs entry for one view.
+  // The tab id is still "experiments" (matches ModuleTabs.tsx's stable id),
+  // but its label was renamed to "Experience Replay" — it was previously
+  // mislabeled "Experiments", which read as a distinct unbuilt feature
+  // rather than what this tab actually shows.
   if (activeTab === "experiments") return <ReplayView />;
   if (activeTab === "improvement-queue") return <ImprovementQueueView />;
   if (activeTab === "evolution") return <EvolutionView />;
-  // "learning-settings" (budgets/thresholds/model allowlist) has no real
-  // backing service anywhere in this branch — left honestly unbuilt rather
-  // than faked. See the final release report's known-limitations section.
+  if (activeTab === "learning-settings") return <LearningSettingsView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }

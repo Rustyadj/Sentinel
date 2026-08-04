@@ -5,7 +5,7 @@
  */
 
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
-export type AgentKind = "hermes" | "openclaw" | "custom";
+export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
 
 export interface VpsAgent {
   id: string;
@@ -15,6 +15,7 @@ export interface VpsAgent {
   description: string;
   model: string;
   endpoint: string;
+  containerName: string | null;
   configPath: string;
   logPath: string;
   memoryScope: string;
@@ -42,6 +43,7 @@ const REGISTRY: VpsAgent[] = [
     description: "Primary AI assistant — Claude Code OAuth, web terminal",
     model: process.env.HERMES_LISA_MODEL ?? "claude-sonnet-4-6",
     endpoint: process.env.HERMES_ENDPOINT ?? "http://127.0.0.1:4860",
+    containerName: process.env.HERMES_LISA_CONTAINER ?? "hermes-lisa",
     configPath: `${AGENT_CONFIG_DIR}/hermes-lisa`,
     logPath: `${AGENT_LOG_DIR}/hermes-lisa.log`,
     memoryScope: "org",
@@ -58,6 +60,7 @@ const REGISTRY: VpsAgent[] = [
     description: "ICF construction estimating specialist",
     model: process.env.HERMES_CLINT_MODEL ?? "claude-sonnet-4-6",
     endpoint: process.env.HERMES_CLINT_ENDPOINT ?? "http://127.0.0.1:4861",
+    containerName: process.env.HERMES_CLINT_CONTAINER ?? "hermes-clint",
     configPath: `${AGENT_CONFIG_DIR}/hermes-clint`,
     logPath: `${AGENT_LOG_DIR}/hermes-clint.log`,
     memoryScope: "project",
@@ -73,13 +76,48 @@ const REGISTRY: VpsAgent[] = [
     type: "open-webui-agent",
     description: "Personal AI assistant — Docker on VPS",
     model: process.env.OPENCLAW_MODEL ?? "claude-opus-4-8",
-    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:50348",
+    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:3001",
+    containerName: process.env.OPENCLAW_CONTAINER ?? "openclaw",
     configPath: `${AGENT_CONFIG_DIR}/openclaw`,
     logPath: `${AGENT_LOG_DIR}/openclaw.log`,
     memoryScope: "user",
     workspaceId: "personal",
     enabled: envFlag("OPENCLAW_ENABLED", true),
     legacyPath: "/legacy/openclaw",
+    dashboardPort: null,
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    kind: "claude-code",
+    type: "coding-runtime",
+    description: "Repository-aware Claude Code runtime — production installation pending VPS verification",
+    model: process.env.CLAUDE_CODE_MODEL ?? "provider-managed",
+    endpoint: "",
+    containerName: null,
+    configPath: `${AGENT_CONFIG_DIR}/claude-code`,
+    logPath: `${AGENT_LOG_DIR}/claude-code.log`,
+    memoryScope: "project",
+    workspaceId: "default",
+    enabled: true,
+    legacyPath: null,
+    dashboardPort: null,
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    kind: "codex",
+    type: "coding-runtime",
+    description: "Sandboxed Codex CLI runtime — production installation pending VPS verification",
+    model: process.env.CODEX_MODEL ?? "provider-managed",
+    endpoint: "",
+    containerName: null,
+    configPath: `${AGENT_CONFIG_DIR}/codex`,
+    logPath: `${AGENT_LOG_DIR}/codex.log`,
+    memoryScope: "project",
+    workspaceId: "default",
+    enabled: true,
+    legacyPath: null,
     dashboardPort: null,
   },
 ];

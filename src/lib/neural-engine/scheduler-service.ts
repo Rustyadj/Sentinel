@@ -12,24 +12,23 @@ export interface RecordedDegradationSweep {
   result: DegradationSweepResult;
 }
 
-/**
- * Durable execution boundary for the externally-triggered degradation job.
- * Scheduling remains outside this process; every invocation is recorded so a
- * future queue worker can reuse the same service without changing semantics.
- */
-export async function runRecordedDegradationSweep(): Promise<RecordedDegradationSweep> {
+/** Record any implemented scheduled job through one durable lifecycle. */
+export async function runRecordedScheduledJob<T>(
+  jobKey: string,
+  run: () => Promise<T>,
+): Promise<{ jobRunId: string; result: T }> {
   const jobRun = await db.scheduledJobRun.create({
-    data: { jobKey: DEGRADATION_SWEEP_JOB_KEY, status: "running" },
+    data: { jobKey, status: "running" },
   });
 
   try {
-    const result = await runDegradationSweep();
+    const result = await run();
     await db.scheduledJobRun.update({
       where: { id: jobRun.id },
       data: {
         status: "completed",
         completedAt: new Date(),
-        result: result as unknown as Prisma.InputJsonValue,
+        result: (result ?? null) as unknown as Prisma.InputJsonValue,
         error: null,
       },
     });
@@ -38,12 +37,17 @@ export async function runRecordedDegradationSweep(): Promise<RecordedDegradation
     const message = error instanceof Error ? error.message : String(error);
     await db.scheduledJobRun.update({
       where: { id: jobRun.id },
-      data: {
-        status: "failed",
-        completedAt: new Date(),
-        error: message,
-      },
+      data: { status: "failed", completedAt: new Date(), error: message },
     });
     throw error;
   }
+}
+
+/**
+ * Durable execution boundary for the externally-triggered degradation job.
+ * Scheduling remains outside this process; every invocation is recorded so a
+ * future queue worker can reuse the same service without changing semantics.
+ */
+export async function runRecordedDegradationSweep(): Promise<RecordedDegradationSweep> {
+  return runRecordedScheduledJob(DEGRADATION_SWEEP_JOB_KEY, runDegradationSweep);
 }

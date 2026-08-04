@@ -7,6 +7,12 @@ export async function persistChatExchange(params: {
   userContent: string;
   agentId: string;
   assistantContent: string;
+  provenance?: {
+    runtimeKind?: string;
+    provider?: string;
+    model?: string;
+    agentRuntimeSessionId?: string;
+  };
 }) {
   const room = await db.chatRoom.findFirst({
     where: { id: params.roomId, userId: params.userId },
@@ -17,7 +23,16 @@ export async function persistChatExchange(params: {
   await db.message.createMany({
     data: [
       { chatRoomId: room.id, role: "user", content: params.userContent },
-      { chatRoomId: room.id, role: "agent", agentId: params.agentId, content: params.assistantContent },
+      {
+        chatRoomId: room.id,
+        role: "agent",
+        agentId: params.agentId,
+        content: params.assistantContent,
+        runtimeKind: params.provenance?.runtimeKind,
+        provider: params.provenance?.provider,
+        model: params.provenance?.model,
+        agentRuntimeSessionId: params.provenance?.agentRuntimeSessionId,
+      },
     ],
   });
   await emitEvent({

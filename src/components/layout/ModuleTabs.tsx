@@ -141,7 +141,7 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
         { id: "preferences", label: "Preferences" },
         { id: "knowledge-gaps", label: "Knowledge Gaps" },
         { id: "hypotheses", label: "Hypotheses" },
-        { id: "experiments", label: "Experiments" },
+        { id: "experiments", label: "Experience Replay" },
         { id: "shadow-runs", label: "Shadow Runs" },
         { id: "benchmarks", label: "Benchmarks" },
         { id: "skills", label: "Skills" },
