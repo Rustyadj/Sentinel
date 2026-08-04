@@ -59,7 +59,6 @@ type ExecutionMode = "model_chat" | "persistent_agent_runtime" | "coding_runtime
 
 const AGENT_RUNTIME_MODE: Record<string, { mode: ExecutionMode; label: string }> = {
   "hermes-lisa": { mode: "persistent_agent_runtime", label: "Hermes runtime" },
-  "hermes-clint": { mode: "persistent_agent_runtime", label: "Hermes runtime" },
   openclaw: { mode: "persistent_agent_runtime", label: "OpenClaw runtime" },
   "claude-code": { mode: "coding_runtime", label: "Claude Code runtime" },
   codex: { mode: "coding_runtime", label: "Codex runtime" },

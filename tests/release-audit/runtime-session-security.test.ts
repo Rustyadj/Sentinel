@@ -182,7 +182,7 @@ describe("release audit — runtime and session API tenant boundaries", () => {
     const owner = await makeUser();
     const operator = await makeUser();
     const workspace = await makeWorkspace(owner.id, "Runtime restart tenant");
-    await assignRuntime("runtime-hermes-clint", workspace.id);
+    await assignRuntime("runtime-hermes-lisa", workspace.id);
     const viewPermission = await db.permission.create({
       data: {
         workspaceId: workspace.id,
@@ -203,10 +203,10 @@ describe("release audit — runtime and session API tenant boundaries", () => {
     });
     auth.requireUser.mockResolvedValue(operator);
 
-    const context = { params: Promise.resolve({ id: "runtime-hermes-clint" }) };
+    const context = { params: Promise.resolve({ id: "runtime-hermes-lisa" }) };
     const [restart, reload] = await Promise.all([
-      restartRuntime(new Request("http://localhost/api/agent-runtimes/runtime-hermes-clint/restart", { method: "POST" }), context),
-      reloadRuntime(new Request("http://localhost/api/agent-runtimes/runtime-hermes-clint/reload", { method: "POST" }), context),
+      restartRuntime(new Request("http://localhost/api/agent-runtimes/runtime-hermes-lisa/restart", { method: "POST" }), context),
+      reloadRuntime(new Request("http://localhost/api/agent-runtimes/runtime-hermes-lisa/reload", { method: "POST" }), context),
     ]);
     expect(restart.status).toBe(403);
     expect(reload.status).toBe(403);

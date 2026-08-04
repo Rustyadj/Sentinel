@@ -17,7 +17,13 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: true,
-    exclude: ["**/node_modules/**", "**/.next/**", "tests/e2e/**"],
+    // runtime-agents/ (bind-mounted claude/codex binaries + copied host
+    // credentials — see docker-compose.yml) and runtime-projects/ (CLI job
+    // working directory) are gitignored deployment data, not source, but
+    // they still exist on disk locally and vitest's default discovery
+    // walks them — confirmed runtime-agents/.../node_modules ships its own
+    // *.test.mjs fixtures that aren't vitest-compatible.
+    exclude: ["**/node_modules/**", "**/.next/**", "tests/e2e/**", "runtime-agents/**", "runtime-projects/**"],
     fileParallelism: false,
     // Without this, vitest treats next-auth as SSR-external and loads it via
     // Node's native resolver, which skips the alias above entirely — same
