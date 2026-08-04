@@ -37,13 +37,23 @@ RUN npm run build
 
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+# Debian slim (real glibc), not Alpine, specifically so the bind-mounted
+# `claude` CLI binary (glibc-linked, embedded-V8 — see docker-compose.yml's
+# runtime-bin mount) can execute. Confirmed on Alpine: gcompat's shim can't
+# handle its TLS relocations ("unsupported relocation type 37" /
+# __pthread_key_create missing), and the usual sgerrand/alpine-pkg-glibc
+# workaround no longer has its key file hosted anywhere. Debian slim sidesteps
+# the whole problem — deps/builder stay on Alpine; only this stage changed.
+# prisma/schema.prisma's binaryTargets includes debian-openssl-3.0.x to match.
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ARG SENTINEL_COMMIT=unknown
 ARG SENTINEL_BUILT_AT=unknown
 
-RUN apk add --no-cache openssl
+# wget: the container healthcheck below uses it (Alpine ships it in busybox
+# by default; Debian slim doesn't include it at all).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -51,8 +61,8 @@ ENV SENTINEL_COMMIT=$SENTINEL_COMMIT
 ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
 
 # Non-root user for security
-RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs \
+ && useradd  --system --uid 1001 --gid nodejs nextjs
 
 # Standalone output — only what's needed to run
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

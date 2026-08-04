@@ -1,6 +1,10 @@
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  // linux-musl-openssl-3.0.x: the app's own Alpine-based deps/builder/most
+  // deployments. debian-openssl-3.0.x: the runner stage specifically, which
+  // switched to a glibc (Debian slim) base purely so the bind-mounted
+  // `claude` CLI binary (glibc-linked) can execute — see Dockerfile.
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
   previewFeatures = ["postgresqlExtensions"]
 }
 

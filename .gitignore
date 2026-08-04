@@ -55,3 +55,13 @@ __pycache__/
 # (see docker-compose.hermes.yml) — includes live credentials (auth.json)
 # and mutable state (logs, kanban.db). Never source, never tracked.
 hermes-hub/
+
+# Claude Code/Codex binaries + copied host credentials bind-mounted into the
+# app container (see docker-compose.yml's runtime-bin/runtime-home mounts) —
+# includes live OAuth tokens (.claude/.credentials.json, .codex/auth.json).
+# Never source, never tracked.
+runtime-agents/
+# CLI job working directory (mounted at CODEX_PROJECT_ROOT/
+# CLAUDE_CODE_PROJECT_ROOT) — its own git repo, mutable job output. Never
+# source, never tracked by the parent repo.
+runtime-projects/

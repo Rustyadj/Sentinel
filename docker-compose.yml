@@ -105,16 +105,25 @@ services:
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
       AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
-      CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-claude}
+      # claude/codex binaries + auth are copied from the host (see
+      # /opt/sentinel-os/runtime-agents/) and mounted below — this VPS
+      # already has both installed and authenticated interactively; the
+      # container reuses those same credentials rather than a fresh login.
+      CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-/opt/runtime-bin/claude}
       CLAUDE_CODE_PROJECT_ROOT: /opt/sentinel-os/projects
       CLAUDE_CODE_WORKSPACE_ID: ${CLAUDE_CODE_WORKSPACE_ID:-}
-      CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-codex}
+      CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-/opt/runtime-bin/codex}
       CODEX_PROJECT_ROOT: /opt/sentinel-os/projects
       CODEX_WORKSPACE_ID: ${CODEX_WORKSPACE_ID:-}
+      HOME: /opt/runtime-home
+      CLAUDE_CONFIG_DIR: /opt/runtime-home/.claude
+      CODEX_HOME: /opt/runtime-home/.codex
     volumes:
       - agent_configs:/opt/sentinel-os/agents
       - agent_logs:/opt/sentinel-os/logs
       - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
+      - ./runtime-agents/bin:/opt/runtime-bin:ro
+      - ./runtime-agents/home:/opt/runtime-home:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # gw_priority forces sentinel_net to stay the default-route network.
