@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ElementType } from "react";
 import {
   Shield, Target, Zap, BookOpen, Link2,
@@ -10,7 +10,10 @@ import {
   TrendingDown, Minus, Search,
   Plus,
   Crosshair, Sword, ShieldCheck,
-  Radar,
+  Radar, Monitor, MousePointerClick, Package,
+  Binoculars, KeyRound, ArrowUp, Share2, CloudUpload,
+  Mail, Sparkles, Star, MonitorSmartphone, FileSignature,
+  KeySquare, Bug, Fingerprint, ArrowRightLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -118,89 +121,284 @@ function StatusDot({ status }: { status: "active" | "completed" | "pending" | "f
 
 // ─── Range Console ─────────────────────────────────────────────────────────────
 
-const ACTIVE_OPERATIONS = [
-  { id: "op1", name: "Internal Network Pentest", team: "Red", status: "active" as const, progress: 67, target: "10.0.0.0/8", started: "2h ago" },
-  { id: "op2", name: "Phishing Campaign — Q2", team: "Red", status: "active" as const, progress: 40, target: "Finance Dept", started: "4h ago" },
-  { id: "op3", name: "SIEM Rule Tuning", team: "Blue", status: "completed" as const, progress: 100, target: "Splunk", started: "1d ago" },
-  { id: "op4", name: "AD Hardening Audit", team: "Purple", status: "pending" as const, progress: 0, target: "corp.local", started: "—" },
+const CONSOLE_STATS = [
+  { label: "Active Campaigns", value: "7", icon: Crosshair, color: "#8b7cf6", sub: "2 new today" },
+  { label: "Compromised Hosts", value: "12", icon: Monitor, color: "#3b82f6", sub: "3 high value" },
+  { label: "Phishing Click Rate", value: "18.7%", icon: MousePointerClick, color: "#10b981", sub: "+4.3% vs last 7d" },
+  { label: "Vulnerabilities Found", value: "34", icon: AlertTriangle, color: "#ef4444", sub: "8 critical" },
+  { label: "Tools Installed", value: "23", icon: Package, color: "#8b7cf6", sub: "5 updates" },
 ];
 
-const RECENT_FINDINGS = [
-  { id: "f1", title: "SMB Signing Disabled on 3 Hosts", severity: "high" as const, team: "Red", time: "35m ago" },
-  { id: "f2", title: "Weak Password Policy in AD", severity: "critical" as const, team: "Red", time: "2h ago" },
-  { id: "f3", title: "Unpatched CVE-2024-1234 on DB Server", severity: "critical" as const, team: "Blue", time: "3h ago" },
-  { id: "f4", title: "Lateral Movement Detected — T1550", severity: "high" as const, team: "Purple", time: "5h ago" },
-  { id: "f5", title: "SSH Brute Force from 185.220.x.x", severity: "medium" as const, team: "Blue", time: "6h ago" },
+const CHAIN_PHASES = [
+  { label: "Recon", icon: Binoculars, status: "complete" as const },
+  { label: "Initial Access", icon: KeyRound, status: "complete" as const },
+  { label: "Execution", icon: Terminal, status: "complete" as const },
+  { label: "Privilege Esc.", icon: ArrowUp, status: "in-progress" as const },
+  { label: "Lateral Movement", icon: Share2, status: "pending" as const },
+  { label: "Exfiltration", icon: CloudUpload, status: "pending" as const },
 ];
+
+const CONSOLE_TECHNIQUES = [
+  { id: "T1566", name: "Phishing", campaigns: 23 },
+  { id: "T1078", name: "Valid Accounts", campaigns: 12 },
+  { id: "T1059", name: "Command Shell", campaigns: 8 },
+  { id: "T1003", name: "Credential Dumping", campaigns: 6 },
+  { id: "T1021", name: "Remote Services", campaigns: 5 },
+];
+
+const PHISHING_TEMPLATES = [
+  { name: "Outlook - Secure Doc", icon: Mail, color: "#3b82f6", clickRate: 24.3, usage: 18 },
+  { name: "Google Drive - Share", icon: MonitorSmartphone, color: "#ef4444", clickRate: 19.7, usage: 14 },
+  { name: "HR - Policy Update", icon: Mail, color: "#f59e0b", clickRate: 17.2, usage: 22 },
+  { name: "Docusign - Review", icon: FileSignature, color: "#3b82f6", clickRate: 12.1, usage: 9 },
+  { name: "Password Reset", icon: KeySquare, color: "#3b82f6", clickRate: 9.8, usage: 31 },
+];
+
+const RECENT_ACTIVITY = [
+  { title: "New host compromised", detail: "WEB-01.acme.local", time: "2m ago", icon: Monitor, color: "#10b981" },
+  { title: "Phishing campaign launched", detail: "HR - Policy Update", time: "15m ago", icon: MousePointerClick, color: "#ef4444" },
+  { title: "Credential dumped", detail: "john.doe@acme.local", time: "32m ago", icon: KeyRound, color: "#f59e0b" },
+  { title: "New vulnerability found", detail: "CVE-2024-3094", time: "1h ago", icon: Bug, color: "#ef4444" },
+  { title: "Lateral movement detected", detail: "WS-23 → DB-01", time: "2h ago", icon: ArrowRightLeft, color: "#8b7cf6" },
+];
+
+const MARKETPLACE_TOOLS = [
+  { name: "Mimikatz", desc: "Credential dumping", rating: 4.8, icon: Fingerprint },
+  { name: "BloodHound", desc: "AD enumeration", rating: 4.7, icon: Share2 },
+  { name: "Cobalt Strike", desc: "Advanced C2", rating: 4.9, icon: Terminal },
+  { name: "Responder", desc: "LLMNR/NBT-NS poisoner", rating: 4.6, icon: AlertCircle },
+  { name: "Shellter", desc: "Shellcode injector", rating: 4.5, icon: Zap },
+];
+
+function ConsoleStatCard({ label, value, icon: Icon, color, sub }: {
+  label: string;
+  value: string;
+  icon: ElementType;
+  color: string;
+  sub: string;
+}) {
+  return (
+    <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-4">
+      <div className="flex items-start justify-between mb-3">
+        <span className="text-xs text-[--canvas-muted]">{label}</span>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: color + "22" }}>
+          <Icon className="w-4 h-4" style={{ color }} />
+        </div>
+      </div>
+      <div className="text-2xl font-bold text-[--canvas-foreground]">{value}</div>
+      <div className="text-[11px] text-[--canvas-muted] mt-1">{sub}</div>
+    </div>
+  );
+}
+
+function ChainNode({ phase, isLast }: { phase: (typeof CHAIN_PHASES)[number]; isLast: boolean }) {
+  const Icon = phase.icon;
+  const ringColor = phase.status === "complete" ? "#10b981" : phase.status === "in-progress" ? "#f59e0b" : "#2a3344";
+  const bgColor = phase.status === "complete" ? "#10b98122" : phase.status === "in-progress" ? "#f59e0b22" : "#1a2230";
+  const statusLabel = phase.status === "complete" ? "Complete" : phase.status === "in-progress" ? "In Progress" : "Pending";
+  const statusColor = phase.status === "complete" ? "#10b981" : phase.status === "in-progress" ? "#f59e0b" : "#5a6478";
+  return (
+    <div className="flex items-center flex-1">
+      <div className="flex flex-col items-center gap-2 shrink-0">
+        <div className="w-11 h-11 rounded-full flex items-center justify-center border-2" style={{ backgroundColor: bgColor, borderColor: ringColor }}>
+          <Icon className="w-4.5 h-4.5" style={{ color: ringColor }} />
+        </div>
+        <div className="text-center">
+          <div className="text-xs font-medium text-[--canvas-foreground] whitespace-nowrap">{phase.label}</div>
+          <div className="text-[10px] font-medium mt-0.5" style={{ color: statusColor }}>{statusLabel}</div>
+        </div>
+      </div>
+      {!isLast && <div className="h-px flex-1 mx-1 mb-6" style={{ backgroundColor: "#232c3d" }} />}
+    </div>
+  );
+}
 
 function RangeConsole() {
+  const [toolsInstalled, setToolsInstalled] = useState<number | null>(null);
+  const [templateName, setTemplateName] = useState("");
+  const [generateNotice, setGenerateNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/modules")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.installed)) setToolsInstalled(data.installed.length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const stats = CONSOLE_STATS.map((s) =>
+    s.label === "Tools Installed" && toolsInstalled !== null ? { ...s, value: String(toolsInstalled) } : s
+  );
+
   return (
-    <div className="p-6 space-y-6 overflow-y-auto h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-[#1a1d26]">Range Console</h1>
-          <p className="text-xs text-[#7a8099] mt-0.5">Unified operations view across all teams</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] text-[#7a8099] bg-[#f5f6f9] border border-[#e0e3ea] rounded-lg px-2.5 py-1.5 font-mono">
-            {new Date().toLocaleString()}
+    <div className="p-6 space-y-5 overflow-y-auto h-full bg-[--canvas] text-[--canvas-foreground]">
+      {/* Stat tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {stats.map((s) => <ConsoleStatCard key={s.label} {...s} />)}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* Attack Chain Progress */}
+        <div className="xl:col-span-1 bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-sm font-bold text-[--canvas-foreground]">Attack Chain Progress</h2>
+            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+          </div>
+          <div className="flex items-start">
+            {CHAIN_PHASES.map((phase, i) => (
+              <ChainNode key={phase.label} phase={phase} isLast={i === CHAIN_PHASES.length - 1} />
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="Active Operations" value={2} icon={Crosshair} color="#ef4444" trend="up" sub="↑1 from yesterday" />
-        <StatCard label="Open Findings" value={7} icon={AlertTriangle} color="#f59e0b" trend="down" sub="↓2 this week" />
-        <StatCard label="Controls Passing" value="34/36" icon={CheckCircle2} color="#10b981" trend="up" sub="94% coverage" />
-        <StatCard label="MITRE Techniques" value={128} icon={BookOpen} color="#6366f1" trend="flat" sub="tested this sprint" />
-      </div>
-
-      {/* Active operations */}
-      <div>
-        <h2 className="text-sm font-semibold text-[#1a1d26] mb-3">Active Operations</h2>
-        <div className="space-y-2">
-          {ACTIVE_OPERATIONS.map((op) => (
-            <div key={op.id} className="bg-white border border-[#e0e3ea] rounded-xl p-3 hover:border-[#c8cdd8] transition-colors">
-              <div className="flex items-center gap-3">
-                <StatusDot status={op.status} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[#1a1d26] truncate">{op.name}</span>
-                    <span className={cn("text-[9px] font-bold uppercase px-1.5 py-0.5 rounded",
-                      op.team === "Red" ? "bg-red-500/10 text-red-600" :
-                      op.team === "Blue" ? "bg-blue-500/10 text-blue-600" :
-                      "bg-purple-500/10 text-purple-600"
-                    )}>{op.team}</span>
-                  </div>
-                  <div className="text-[10px] text-[#aab0c0] mt-0.5">Target: {op.target} · Started {op.started}</div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-xs font-mono font-medium text-[#1a1d26]">{op.progress}%</div>
-                  <div className="w-24 h-1.5 bg-[#e8eaf0] rounded-full mt-1 overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${op.progress}%`, backgroundColor: op.team === "Red" ? "#ef4444" : op.team === "Blue" ? "#3b82f6" : "#8b5cf6" }} />
-                  </div>
-                </div>
+        {/* Technique Library */}
+        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-[--canvas-foreground]">Technique Library</h2>
+            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+          </div>
+          <div className="space-y-2.5">
+            {CONSOLE_TECHNIQUES.map((t) => (
+              <div key={t.id} className="flex items-center gap-3">
+                <span className="text-[10px] font-mono font-bold text-[#a78bfa] bg-[#8b7cf6]/15 border border-[#8b7cf6]/20 px-1.5 py-0.5 rounded-md shrink-0">{t.id}</span>
+                <span className="text-xs text-[--canvas-foreground] flex-1 truncate">{t.name}</span>
+                <span className="text-[11px] text-[--canvas-muted] shrink-0">{t.campaigns} Campaigns</span>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+
+        {/* Phishing Templates */}
+        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-[--canvas-foreground]">Phishing Templates</h2>
+            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+          </div>
+          <div className="grid grid-cols-[1fr_auto_auto] gap-3 text-[10px] uppercase tracking-wider text-[--canvas-muted] mb-2 px-0.5">
+            <span>Template</span><span>Click Rate</span><span className="text-right">Usage</span>
+          </div>
+          <div className="space-y-1">
+            {PHISHING_TEMPLATES.map((t) => {
+              const Icon = t.icon;
+              const rateColor = t.clickRate >= 20 ? "#10b981" : t.clickRate >= 15 ? "#f59e0b" : "#ef4444";
+              return (
+                <div key={t.name} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: t.color + "22" }}>
+                      <Icon className="w-3 h-3" style={{ color: t.color }} />
+                    </div>
+                    <span className="text-xs text-[--canvas-foreground] truncate">{t.name}</span>
+                  </div>
+                  <span className="text-xs font-mono font-medium" style={{ color: rateColor }}>{t.clickRate}%</span>
+                  <span className="text-xs text-[--canvas-muted] text-right">{t.usage}</span>
+                </div>
+              );
+            })}
+          </div>
+          <button className="w-full mt-3 flex items-center justify-center gap-1.5 bg-[#7c6cf6] hover:bg-[#6d5cf0] text-white text-xs px-3 py-2 rounded-xl font-medium transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Build New Template
+          </button>
         </div>
       </div>
 
-      {/* Recent findings */}
-      <div>
-        <h2 className="text-sm font-semibold text-[#1a1d26] mb-3">Recent Findings</h2>
-        <div className="bg-white border border-[#e0e3ea] rounded-xl overflow-hidden">
-          {RECENT_FINDINGS.map((f, i) => (
-            <div key={f.id} className={cn("flex items-center gap-3 px-4 py-3 hover:bg-[#f8f9fb] transition-colors", i > 0 && "border-t border-[#f0f2f7]")}>
-              <SeverityBadge level={f.severity} />
-              <span className="text-sm text-[#1a1d26] flex-1">{f.title}</span>
-              <span className={cn("text-[9px] font-bold uppercase px-1.5 py-0.5 rounded",
-                f.team === "Red" ? "text-red-600" : f.team === "Blue" ? "text-blue-600" : "text-purple-600"
-              )}>{f.team}</span>
-              <span className="text-[10px] text-[#aab0c0] shrink-0">{f.time}</span>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* Recent Activity */}
+        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <h2 className="text-sm font-bold text-[--canvas-foreground] mb-4">Recent Activity</h2>
+          <div className="space-y-3.5">
+            {RECENT_ACTIVITY.map((a, i) => {
+              const Icon = a.icon;
+              return (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: a.color + "22" }}>
+                    <Icon className="w-3.5 h-3.5" style={{ color: a.color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-[--canvas-foreground] font-medium truncate">{a.title}</div>
+                    <div className="text-[11px] text-[--canvas-muted] truncate">{a.detail}</div>
+                  </div>
+                  <span className="text-[10px] text-[--canvas-muted] shrink-0">{a.time}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Build New Phishing Template */}
+        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <h2 className="text-sm font-bold text-[--canvas-foreground]">Build New Phishing Template</h2>
+          <p className="text-[11px] text-[--canvas-muted] mb-4">AI-powered template creation</p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Template Name</label>
+              <input
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="e.g., Invoice from Acme Corp"
+                className="w-full bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-3 py-2 text-xs text-[--canvas-foreground] placeholder:text-[--canvas-muted] outline-none focus:border-[#7c6cf6] transition-colors"
+              />
             </div>
-          ))}
+            <div>
+              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Category</label>
+              <select className="w-full bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-3 py-2 text-xs text-[--canvas-foreground] outline-none focus:border-[#7c6cf6] transition-colors">
+                <option>Financial</option>
+                <option>HR</option>
+                <option>IT</option>
+                <option>Shipping</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Target Platform</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {["Outlook", "Gmail", "Office 365", "Other"].map((p) => (
+                  <button key={p} className="flex items-center justify-center gap-1.5 bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-2 py-1.5 text-[11px] text-[--canvas-foreground] hover:border-[#7c6cf6] transition-colors">
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setGenerateNotice("Template generation isn't wired up yet — this is a UI preview.")}
+              className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#7c6cf6] to-[#a78bfa] hover:opacity-90 text-white text-xs px-3 py-2.5 rounded-xl font-medium transition-opacity"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Generate with AI
+            </button>
+            {generateNotice && <p className="text-[10px] text-[--canvas-muted] text-center">{generateNotice}</p>}
+          </div>
+        </div>
+
+        {/* Marketplace */}
+        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-[--canvas-foreground]">Marketplace</h2>
+            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+          </div>
+          <div className="space-y-3">
+            {MARKETPLACE_TOOLS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <div key={t.name} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[--canvas] border border-[--canvas-card-border] flex items-center justify-center shrink-0">
+                    <Icon className="w-3.5 h-3.5 text-[--canvas-muted]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-[--canvas-foreground] truncate">{t.name}</div>
+                    <div className="text-[10px] text-[--canvas-muted] truncate">{t.desc}</div>
+                  </div>
+                  <div className="flex items-center gap-0.5 text-[10px] text-[--canvas-muted] shrink-0">
+                    <Star className="w-3 h-3 fill-current text-[#f59e0b]" style={{ color: "#f59e0b" }} />
+                    {t.rating}
+                  </div>
+                  <button className="text-[10px] bg-[#7c6cf6] hover:bg-[#6d5cf0] text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors shrink-0">
+                    Install
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
