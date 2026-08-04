@@ -111,6 +111,12 @@ export interface ChatSession {
   activeRoom: ChatRoom | undefined;
   activeRoomId: string | null;
   roomAgents: Agent[];
+  /** All agents currently selected into the active conversation — defaults to every roomAgent until toggled. */
+  selectedAgents: Agent[];
+  selectedAgentIds: string[];
+  toggleSelectedAgent: (agentId: string) => void;
+  /** Primary responder for un-mentioned messages — the most recently selected agent. */
+  activeAgent: Agent | undefined;
   agents: Agent[];
   input: string;
   setInput: (value: string) => void;
@@ -153,11 +159,42 @@ export function useChatSession(): ChatSession {
   const [candidates, setCandidates] = useState<ExtractionCandidate[]>([]);
   const [showCandidates, setShowCandidates] = useState(false);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
+  // Which agent in the room receives un-mentioned messages — a persistent
+  // choice via the header dropdown, distinct from an inline @mention (which
+  // still wins for that one message). Multiple agents can be selected at
+  // once — order matters, since the most-recently-selected one is who
+  // un-mentioned messages default to. Keyed by roomId since a selection is
+  // meaningless across rooms with a different agent roster.
+  const [selectedAgentIdsByRoom, setSelectedAgentIdsByRoom] = useState<Record<string, string[]>>({});
   const contentRef = useRef<string>("");
   const loadedRoomsRef = useRef<Set<string>>(new Set());
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
   const roomAgents = agents.filter((a) => activeRoom?.agents.includes(a.id));
+  const selectedAgentIdsRaw = activeRoomId ? selectedAgentIdsByRoom[activeRoomId] : undefined;
+  // Nothing explicitly selected yet (fresh room) — default to everyone in
+  // the room, matching the prior single-agent behavior's implicit "whoever
+  // is in the room is who you're talking to."
+  const selectedAgentIds = (selectedAgentIdsRaw ?? roomAgents.map((a) => a.id)).filter((id) =>
+    roomAgents.some((a) => a.id === id)
+  );
+  const selectedAgents = roomAgents.filter((a) => selectedAgentIds.includes(a.id));
+  // Primary responder for un-mentioned messages: the most recently selected agent.
+  const activeAgent =
+    roomAgents.find((a) => a.id === selectedAgentIds[selectedAgentIds.length - 1]) ?? roomAgents[0];
+  const toggleSelectedAgent = useCallback(
+    (agentId: string) => {
+      if (!activeRoomId) return;
+      setSelectedAgentIdsByRoom((prev) => {
+        const current = prev[activeRoomId] ?? roomAgents.map((a) => a.id);
+        const next = current.includes(agentId)
+          ? current.filter((id) => id !== agentId)
+          : [...current, agentId];
+        return { ...prev, [activeRoomId]: next };
+      });
+    },
+    [activeRoomId, roomAgents]
+  );
 
   // Hydrate rooms from DB on first mount
   useEffect(() => {
@@ -295,9 +332,10 @@ export function useChatSession(): ChatSession {
       timestamp: new Date(),
     });
 
-    // Pick responding agent
+    // Pick responding agent — an explicit @mention wins for this one
+    // message; otherwise whichever agent is selected in the header dropdown.
     const mentionedAgent = parseMention(userContent, roomAgents);
-    const respondingAgent = mentionedAgent ?? roomAgents[0];
+    const respondingAgent = mentionedAgent ?? activeAgent;
     if (!respondingAgent) return;
 
     updateAgentStatus(respondingAgent.id, "busy");
@@ -448,6 +486,7 @@ export function useChatSession(): ChatSession {
     activeRoomId,
     isThinking,
     roomAgents,
+    activeAgent,
     activeRoom?.messages,
     addMessage,
     updateMessage,
@@ -525,6 +564,10 @@ export function useChatSession(): ChatSession {
     activeRoom,
     activeRoomId,
     roomAgents,
+    selectedAgents,
+    selectedAgentIds,
+    toggleSelectedAgent,
+    activeAgent,
     agents,
     input,
     setInput,

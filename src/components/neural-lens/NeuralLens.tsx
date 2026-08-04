@@ -58,6 +58,13 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const selected = useGraphStore((state) => state.selectedNode);
   const setSelectedNode = useGraphStore((state) => state.setSelectedNode);
   const setAvailableTypes = useGraphStore((state) => state.setAvailableTypes);
+  // Title-based focus requests (e.g. switching the active chat agent) —
+  // resolved against the full graph, not just what's currently filtered in,
+  // so focusing an agent works even mid-search/mid-filter.
+  const focusRequestTitle = useGraphStore((state) => state.focusRequest);
+  // Every agent currently selected into the active chat — their nodes stay
+  // lit continuously, independent of hover/click focus or live-event pulses.
+  const pinnedTitles = useGraphStore((state) => state.pinnedTitles);
   const [zoomLevel, setZoomLevel] = useState<SemanticZoomLevel>("galaxy");
   const [toolbarAction, setToolbarAction] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -178,6 +185,25 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     };
   }, []);
 
+  // Resolve pinned titles (selected chat agents) to node ids — same
+  // case-insensitive substring match the search box and focus resolution
+  // both already use — then union into the pulsing/lit set below.
+  const pinnedNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const title of pinnedTitles) {
+      const q = title.trim().toLowerCase();
+      if (!q) continue;
+      const node = baseGraph.nodes.find((n) => n.label.toLowerCase().includes(q));
+      if (node) ids.add(node.id);
+    }
+    return ids;
+  }, [pinnedTitles, baseGraph.nodes]);
+
+  const litNodeIds = useMemo(
+    () => new Set([...activeNodeIds, ...pinnedNodeIds]),
+    [activeNodeIds, pinnedNodeIds]
+  );
+
   // Apply type + search filters. Default (no active chips) shows the whole
   // constellation — the lens is a preset that sets the active chips, not a
   // hard default filter — so the graph reads dense on load like the reference.
@@ -238,13 +264,27 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     if (id === "time") setTimelineOpen((v) => !v);
   }, []);
 
+  // Resolve a title-based focus request (agent switch, chat reference) to a
+  // concrete node id in the current graph. Case-insensitive substring match,
+  // same convention the search box already uses. Silently no-ops if nothing
+  // matches (e.g. the agent has no corresponding graph node yet) rather than
+  // erroring — consistent with the rest of this component's degrade-quietly style.
+  const resolvedFocusRequest = useMemo(() => {
+    if (!focusRequestTitle) return null;
+    const q = focusRequestTitle.title.trim().toLowerCase();
+    if (!q) return null;
+    const node = baseGraph.nodes.find((n) => n.label.toLowerCase().includes(q));
+    return node ? { nodeId: node.id, ts: focusRequestTitle.ts } : null;
+  }, [focusRequestTitle, baseGraph.nodes]);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#010409]">
       <NeuralLensGraph
         graph={filteredGraph}
-        activeNodeIds={activeNodeIds}
+        activeNodeIds={litNodeIds}
         onSelect={handleSelect}
         onZoomLevel={setZoomLevel}
+        focusRequest={resolvedFocusRequest}
       />
 
       <NeuralLensPanel

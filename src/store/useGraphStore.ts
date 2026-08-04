@@ -44,6 +44,11 @@ interface GraphUIState {
   focusRequest: { title: string; ts: number } | null;
   /** Incrementing counter — KnowledgeGraph fits the view when it changes. */
   fitRequest: number;
+  /** Titles that should stay lit regardless of hover/click focus or live-event
+   * pulses — e.g. every agent currently selected into the active chat. Set
+   * wholesale (not toggled individually) since the owner (ChatHeader's agent
+   * picker) already tracks its own selection state. */
+  pinnedTitles: string[];
 }
 
 interface GraphUIActions {
@@ -59,6 +64,7 @@ interface GraphUIActions {
   setAvailableTypes: (types: string[]) => void;
   requestFocus: (title: string) => void;
   requestFit: () => void;
+  setPinnedTitles: (titles: string[]) => void;
 }
 
 export type GraphStore = GraphUIState & GraphUIActions;
@@ -75,6 +81,7 @@ export const useGraphStore = create<GraphStore>((set) => ({
   availableTypes: [],
   focusRequest: null,
   fitRequest: 0,
+  pinnedTitles: [],
 
   setSearch: (search) => set({ search }),
   toggleType: (type) =>
@@ -100,4 +107,5 @@ export const useGraphStore = create<GraphStore>((set) => ({
   setAvailableTypes: (availableTypes) => set({ availableTypes }),
   requestFocus: (title) => set({ focusRequest: { title, ts: Date.now() } }),
   requestFit: () => set((state) => ({ fitRequest: state.fitRequest + 1 })),
+  setPinnedTitles: (pinnedTitles) => set({ pinnedTitles }),
 }));

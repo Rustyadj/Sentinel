@@ -29,6 +29,11 @@ interface NeuralLensGraphProps {
   onSelect: (node: LensNode | null) => void;
   onZoomLevel?: (level: SemanticZoomLevel) => void;
   paused?: boolean;
+  /** External focus trigger (e.g. switching the active chat agent) — same
+   * camera move + lit-up neighborhood a click produces, driven from outside
+   * the canvas. A ts/nonce alongside the id so re-focusing the same node
+   * still retriggers the camera move. */
+  focusRequest?: { nodeId: string; ts: number } | null;
 }
 
 type LensNode3D = LensNode & {
@@ -57,6 +62,7 @@ export function NeuralLensGraph({
   onSelect,
   onZoomLevel,
   paused,
+  focusRequest,
 }: NeuralLensGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // react-force-graph exposes an imperative Three.js camera surface.
@@ -170,37 +176,55 @@ export function NeuralLensGraph({
   // pull-in rather than diving all the way to the node's surface.
   const FOCUS_DISTANCE = 260;
 
+  // "Square up" on a node: keep the camera's current viewing direction
+  // (whatever angle the user was already looking from) and pull in to a
+  // fixed, moderate distance from the node along that same line — a slight
+  // zoom that frames the node face-on, rather than recomputing an angle from
+  // the origin and diving all the way in. Shared by click-to-focus and any
+  // external focus trigger (e.g. switching the active chat agent).
+  const focusOnNode = useCallback((selected: LensNode3D) => {
+    const camera = fgRef.current?.camera?.();
+    const current = camera?.position ?? { x: 0, y: 0, z: 1100 };
+    const dx = current.x - selected.x;
+    const dy = current.y - selected.y;
+    const dz = current.z - selected.z;
+    const distance = Math.hypot(dx, dy, dz) || 1;
+    const scale = FOCUS_DISTANCE / distance;
+    fgRef.current?.cameraPosition?.(
+      {
+        x: selected.x + dx * scale,
+        y: selected.y + dy * scale,
+        z: selected.z + dz * scale,
+      },
+      { x: selected.x, y: selected.y, z: selected.z },
+      850,
+    );
+  }, []);
+
   const handleClick = useCallback(
     (node: object) => {
       const selected = node as LensNode3D;
       onSelect(selected);
       onZoomLevel?.("neighborhood");
       setFocusedId(selected.id);
-
-      // "Square up" on the node: keep the camera's current viewing
-      // direction (whatever angle the user was already looking from) and
-      // pull in to a fixed, moderate distance from the node along that same
-      // line — a slight zoom that frames the node face-on, rather than
-      // recomputing an angle from the origin and diving all the way in.
-      const camera = fgRef.current?.camera?.();
-      const current = camera?.position ?? { x: 0, y: 0, z: 1100 };
-      const dx = current.x - selected.x;
-      const dy = current.y - selected.y;
-      const dz = current.z - selected.z;
-      const distance = Math.hypot(dx, dy, dz) || 1;
-      const scale = FOCUS_DISTANCE / distance;
-      fgRef.current?.cameraPosition?.(
-        {
-          x: selected.x + dx * scale,
-          y: selected.y + dy * scale,
-          z: selected.z + dz * scale,
-        },
-        { x: selected.x, y: selected.y, z: selected.z },
-        850,
-      );
+      focusOnNode(selected);
     },
-    [onSelect, onZoomLevel],
+    [onSelect, onZoomLevel, focusOnNode],
   );
+
+  // External focus trigger — same effect as a click, without requiring one.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!focusRequest) return;
+    const node = data.nodes.find((n) => n.id === focusRequest.nodeId);
+    if (!node) return;
+    onSelect(node);
+    onZoomLevel?.("neighborhood");
+    setFocusedId(node.id);
+    focusOnNode(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div

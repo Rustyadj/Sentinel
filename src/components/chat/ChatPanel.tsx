@@ -45,6 +45,10 @@ export function ChatPanel({
     activeRoom,
     activeRoomId,
     roomAgents,
+    selectedAgents,
+    selectedAgentIds,
+    toggleSelectedAgent,
+    activeAgent,
     input,
     setInput,
     isThinking,
@@ -64,7 +68,7 @@ export function ChatPanel({
 
   const [agentsOpen, setAgentsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const lead = roomAgents[0];
+  const lead = activeAgent ?? roomAgents[0];
   const live = isThinking || isStreaming || lead?.status === "busy";
   const setRightPanelOpen = useAppStore((state) => state.setRightPanelOpen);
 
@@ -117,7 +121,11 @@ export function ChatPanel({
         activeRoom={activeRoom}
         activeRoomId={activeRoomId}
         rooms={rooms}
-        lead={lead}
+        roomAgents={roomAgents}
+        selectedAgents={selectedAgents}
+        selectedAgentIds={selectedAgentIds}
+        toggleSelectedAgent={toggleSelectedAgent}
+        activeAgent={activeAgent}
         live={live}
         offline={offline}
         setActiveRoom={setActiveRoom}
