@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bell, ChevronDown, Command, Search, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Command, Search, Sparkles } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
 import { SentinelLogo } from "@/components/branding/SentinelLogo";
+import { VoiceControls } from "@/components/voice/VoiceControls";
+import { TopBarAgentIndicator } from "./TopBarAgentIndicator";
+import { TopBarApprovals } from "./TopBarApprovals";
+import { TopBarNotifications } from "./TopBarNotifications";
+import { TopBarProfileMenu } from "./TopBarProfileMenu";
 
 function useClock() {
   const [now, setNow] = useState<Date | null>(null);
@@ -19,14 +24,32 @@ function useClock() {
 }
 
 /** Dense mission-control header extracted from the accepted reference. */
+type TopBarMenu = "workspace" | "agents" | "approvals" | "notifications" | "profile" | null;
+
 export function TopBar() {
   const { setCommandBarOpen } = useAppStore();
   const { data: session } = useSession();
   const now = useClock();
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<TopBarMenu>(null);
+  const workspaceOpen = openMenu === "workspace";
+  const setWorkspaceOpen = (value: boolean | ((prev: boolean) => boolean)) =>
+    setOpenMenu((prev) => {
+      const next = typeof value === "function" ? value(prev === "workspace") : value;
+      return next ? "workspace" : null;
+    });
   const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [workspaceState, setWorkspaceState] = useState<"loading" | "live" | "unavailable">("loading");
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) setOpenMenu(null);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [openMenu]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,7 +78,7 @@ export function TopBar() {
       : "?";
 
   return (
-    <header className="relative z-[60] flex h-16 shrink-0 items-center border-b border-[#182338] bg-[#040b14]/98 px-3 shadow-[0_10px_35px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+    <header ref={headerRef} className="relative z-[60] flex h-16 shrink-0 items-center border-b border-[#182338] bg-[#040b14]/98 px-3 shadow-[0_10px_35px_rgba(0,0,0,0.18)] backdrop-blur-xl">
       <SentinelLogo className="mr-5" />
       <div className="hidden min-w-[150px] items-center gap-2.5 border-l border-white/[0.055] pl-5 sm:flex">
         <Sparkles className="h-5 w-5 stroke-[1.4] text-[#d4d9e3]" />
@@ -114,6 +137,19 @@ export function TopBar() {
           ) : null}
         </div>
 
+        <TopBarAgentIndicator
+          open={openMenu === "agents"}
+          onOpenChange={(next) => setOpenMenu(next ? "agents" : null)}
+        />
+
+        <div className="hidden items-center border-l border-white/[0.055] pl-3 md:flex">
+          <VoiceControls
+            onTranscript={(text) => {
+              window.dispatchEvent(new CustomEvent("sentinel:voice-transcript", { detail: { text } }));
+            }}
+          />
+        </div>
+
         <time className="hidden font-mono text-[11px] tabular-nums text-[#aab4c3] lg:block" suppressHydrationWarning>
           {now
             ? `${now.toLocaleTimeString([], {
@@ -124,21 +160,21 @@ export function TopBar() {
               })} CT`
             : "--:--:-- CT"}
         </time>
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#bac4d2] hover:bg-white/[0.05] hover:text-white"
-        >
-          <Bell className="h-4.5 w-4.5 stroke-[1.5]" />
-        </button>
-        <button
-          type="button"
-          aria-label="Open user menu"
-          title={displayName}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.09] bg-[#111c29] text-[9px] font-semibold text-[#dbe5f1] outline-none transition-colors hover:border-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-400/55"
-        >
-          {initials}
-        </button>
+        <TopBarApprovals
+          workspaceId={workspaceId}
+          open={openMenu === "approvals"}
+          onOpenChange={(next) => setOpenMenu(next ? "approvals" : null)}
+        />
+        <TopBarNotifications
+          open={openMenu === "notifications"}
+          onOpenChange={(next) => setOpenMenu(next ? "notifications" : null)}
+        />
+        <TopBarProfileMenu
+          initials={initials}
+          displayName={displayName}
+          open={openMenu === "profile"}
+          onOpenChange={(next) => setOpenMenu(next ? "profile" : null)}
+        />
       </div>
     </header>
   );
