@@ -64,6 +64,20 @@ ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
 RUN groupadd --system --gid 1001 nodejs \
  && useradd  --system --uid 1001 --gid nodejs nextjs
 
+# Bare-name PATH resolution for the bind-mounted CLI runtimes (see
+# docker-compose.yml's runtime-agents/bin mount at /opt/runtime-bin). The
+# app itself calls these via the absolute-path *_EXECUTABLE env vars, but
+# `command -v claude`/`command -v codex` — used by ops tooling and the VPS
+# acceptance script — need them resolvable by bare name too. Dangling at
+# build time is fine; the mount exists by the time the container runs.
+# codex gets a wrapper, not a symlink: its launcher does
+# `dirname "$0"` to find its sibling codex-lib directory, which resolves to
+# the symlink's own location (/usr/local/bin) rather than following the
+# link — an exec wrapper keeps $0 as the real absolute path instead.
+RUN ln -s /opt/runtime-bin/claude /usr/local/bin/claude \
+ && printf '#!/bin/sh\nexec /opt/runtime-bin/codex "$@"\n' > /usr/local/bin/codex \
+ && chmod +x /usr/local/bin/codex
+
 # Standalone output — only what's needed to run
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static

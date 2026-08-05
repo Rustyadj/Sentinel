@@ -89,14 +89,22 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
     return health.ready ? { ready: true } : { ready: false, reason: health.failureCode ?? "not_ready" };
   }
 
+  // Route-audited against the live Hermes gateway (OpenAPI at :4860/openapi.json)
+  // and the OpenClaw core server: neither exposes a REST "send message"
+  // endpoint. Hermes's dashboard authenticates chat over a WebSocket (issued
+  // via POST /api/auth/ws-ticket); OpenClaw's core server has no chat
+  // endpoint at all (only /terminal/run, a raw execSync passthrough — not a
+  // safe or semantically correct stand-in for chat). Live chat requires a
+  // WebSocket client against each vendor's undocumented protocol, which is
+  // unimplemented — this is an accurate capability gap, not a placeholder.
   async startSession(): Promise<AgentSession> {
-    throw new UnsupportedRuntimeCapabilityError("session_api_unverified");
+    throw new UnsupportedRuntimeCapabilityError("start_session_requires_websocket_client");
   }
   async resumeSession(): Promise<AgentSession> {
-    throw new UnsupportedRuntimeCapabilityError("resume");
+    throw new UnsupportedRuntimeCapabilityError("resume_requires_websocket_client");
   }
-  async *send() { throw new UnsupportedRuntimeCapabilityError("send"); }
-  async cancel(): Promise<RuntimeActionResult> { throw new UnsupportedRuntimeCapabilityError("cancel"); }
+  async *send() { throw new UnsupportedRuntimeCapabilityError("send_requires_websocket_client"); }
+  async cancel(): Promise<RuntimeActionResult> { throw new UnsupportedRuntimeCapabilityError("cancel_requires_websocket_client"); }
   getSession(sessionId: string) { return this.store.get(sessionId); }
   listSessions(query: SessionQuery) { return this.store.list(query); }
 
@@ -119,15 +127,38 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
   async restart(runtimeId: string) {
     const runtime = await this.requireRuntime(runtimeId);
     if (!runtime.containerName) throw new UnsupportedRuntimeCapabilityError("restart");
-    const result = await this.runner.run("docker", ["restart", runtime.containerName], { timeoutMs: 30_000 });
-    return { success: result.exitCode === 0, message: result.stderr || result.stdout };
+    return this.hostControlAction(runtime.containerName, "restart");
   }
 
   async reload(runtimeId: string) {
     const runtime = await this.requireRuntime(runtimeId);
     if (!runtime.containerName) throw new UnsupportedRuntimeCapabilityError("reload");
-    const result = await this.runner.run("docker", ["kill", "--signal=SIGHUP", runtime.containerName], { timeoutMs: 10_000 });
-    return { success: result.exitCode === 0, message: result.stderr || result.stdout };
+    return this.hostControlAction(runtime.containerName, "reload");
+  }
+
+  // The app container has no Docker socket or CLI by design (see
+  // docs/reviews/RUNTIME_ADAPTER_LAYER.md), so restart/reload are delegated
+  // to a narrow, loopback + docker-bridge-only, bearer-token-authenticated
+  // host service (/opt/host-control on the VPS host) rather than shelling
+  // out to a local `docker` binary that doesn't exist in this container.
+  private async hostControlAction(containerName: string, action: "restart" | "reload") {
+    const baseUrl = process.env.HOST_CONTROL_URL;
+    const token = process.env.HOST_CONTROL_TOKEN;
+    if (!baseUrl || !token) return { success: false, message: "Host control service is not configured" };
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const res = await this.fetcher(`${baseUrl}/containers/${encodeURIComponent(containerName)}/${action}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+      const body = (await res.json()) as { ok: boolean; error?: string; message?: string };
+      return { success: res.ok && body.ok, message: body.message ?? body.error ?? `Host control request failed (${res.status})` };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   async capabilities(runtime: RuntimeInstance): Promise<RuntimeCapabilities> {

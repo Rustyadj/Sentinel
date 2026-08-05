@@ -1,6 +1,15 @@
 import { db } from "@/lib/db";
 import { getAllVpsAgents } from "@/lib/agents/registry";
 import { logger } from "@/lib/logger";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+const CLI_EXECUTABLE_BY_KIND: Record<string, string> = {
+  "claude-code": process.env.CLAUDE_CODE_EXECUTABLE ?? "claude",
+  codex: process.env.CODEX_EXECUTABLE ?? "codex",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +50,26 @@ async function checkAgent(endpoint: string): Promise<{ ok: boolean; latencyMs?: 
   }
 }
 
+async function checkCliRuntime(executable: string): Promise<{ ok: boolean; latencyMs?: number }> {
+  const start = Date.now();
+  try {
+    await execFileAsync("which", [executable]);
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function GET() {
   const [db_check, redis_check] = await Promise.all([checkDb(), checkRedis()]);
 
   const agents = getAllVpsAgents();
   const agentChecks = await Promise.all(
-    agents.map(async (a) => ({ id: a.id, ...(await checkAgent(a.endpoint)) }))
+    agents.map(async (a) => {
+      const cliExecutable = CLI_EXECUTABLE_BY_KIND[a.kind];
+      const result = cliExecutable ? await checkCliRuntime(cliExecutable) : await checkAgent(a.endpoint);
+      return { id: a.id, ...result };
+    })
   );
 
   const agentsReady = agentChecks.every((agent) => agent.ok);

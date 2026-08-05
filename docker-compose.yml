@@ -84,7 +84,9 @@ services:
       HERMES_ENDPOINT: ${HERMES_ENDPOINT:-http://host.docker.internal:4860}
       OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:3001}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
-      OPENCLAW_CONTAINER: ${OPENCLAW_CONTAINER:-openclaw}
+      OPENCLAW_CONTAINER: ${OPENCLAW_CONTAINER:-openclaw-cash-cash-1}
+      HOST_CONTROL_URL: ${HOST_CONTROL_URL:-http://host.docker.internal:8977}
+      HOST_CONTROL_TOKEN: ${HOST_CONTROL_TOKEN:-}
       HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
       OPENCLAW_NATIVE_URL: ${OPENCLAW_NATIVE_URL:-/legacy/openclaw}
       HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-claude-sonnet-4-6}

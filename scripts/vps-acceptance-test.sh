@@ -67,10 +67,19 @@ done
 # actual app execution boundary separately and leave the runtime Partial if it
 # is absent there.
 if docker compose ps --status running app >/dev/null 2>&1; then
+  # The app container intentionally has no Docker socket or CLI (see
+  # docs/reviews/RUNTIME_ADAPTER_LAYER.md) — restart/reload/logs are
+  # delegated to a narrow, authenticated host-side service instead
+  # (/opt/host-control on the VPS host). So the correct boundary check is
+  # "can the app reach that service", not "does the app have a docker
+  # socket" — the latter would be a regression, not a pass condition.
   if docker compose exec -T app sh -lc 'command -v docker' >"$EVIDENCE_DIR/docker-app-boundary.txt" 2>&1; then
-    record PARTIAL "Docker control boundary" "review socket scope before enabling restart/log control"
+    record FAIL "Docker control boundary" "app container has a docker CLI/socket — this is a regression, not the intended architecture"
+  elif docker compose exec -T app sh -lc 'wget -qO- --timeout=5 "$HOST_CONTROL_URL/health"' >"$EVIDENCE_DIR/host-control-boundary.txt" 2>&1 \
+      && grep -q '"ok":true' "$EVIDENCE_DIR/host-control-boundary.txt"; then
+    record PASS "Docker control boundary" "no docker CLI in app container; host-control service reachable"
   else
-    record FAIL "Docker control boundary" "app cannot perform Docker logs/restart/reload"
+    record FAIL "Docker control boundary" "app cannot reach host-control service for restart/reload/logs"
   fi
   for binary in claude codex; do
     if docker compose exec -T app sh -lc "command -v '$binary' && '$binary' --version" >"$EVIDENCE_DIR/$binary-app-boundary.txt" 2>&1; then
