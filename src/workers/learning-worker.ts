@@ -6,7 +6,7 @@
 //
 // Verified live against a running Redis instance: connection succeeds, the
 // worker starts and processes a real job to completion, a failing job
-// retries and lands on the dead-letter queue after MAX_ATTEMPTS, repeated
+// retries and lands on the dead-letter queue after its bounded attempts, repeated
 // scheduleRecurringJobs() calls do not duplicate schedules, and SIGTERM
 // closes the worker gracefully.
 
