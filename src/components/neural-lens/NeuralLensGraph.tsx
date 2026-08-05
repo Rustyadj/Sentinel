@@ -88,7 +88,7 @@ function endpointId(end: unknown): string | null {
 }
 
 // Camera distance -> semantic-zoom "scale". Tuned against this component's
-// own camera constants (initial z=1100, click-focus distance=260) so the
+// own camera constants (initial z=5600, click-focus distance=260) so the
 // five levels land where they visually should: far out reads as the galaxy,
 // a focused node reads as region/neighborhood detail.
 const ZOOM_REFERENCE_DISTANCE = 220;
@@ -164,7 +164,13 @@ export function NeuralLensGraph({
   useEffect(() => {
     if (dims.width === 0) return;
     const timer = setTimeout(() => {
-      const position = initialCamera?.position ?? { x: 0, y: 0, z: 1100 };
+      // Framed for the cluster-of-hubs layout: 10 clusters ring out to
+      // ~2,970 units from origin (clusterRingRadius 2,200 x up to 1.35
+      // sizeFactor), plus each cluster's own internal spread — z=1100 (the
+      // old single-hub-ring layout's distance) left the camera pointed at
+      // mostly-empty space near the origin instead of framing the whole
+      // constellation.
+      const position = initialCamera?.position ?? { x: 0, y: 0, z: 5600 };
       const lookAt = initialCamera?.lookAt ?? { x: 0, y: 0, z: 0 };
       fgRef.current?.cameraPosition?.(position, lookAt, 950);
       fgRef.current?.refresh?.();
@@ -568,7 +574,7 @@ export function NeuralLensGraph({
   // external focus trigger (e.g. switching the active chat agent).
   const focusOnNode = useCallback((selected: LensNode3D) => {
     const camera = fgRef.current?.camera?.();
-    const current = camera?.position ?? { x: 0, y: 0, z: 1100 };
+    const current = camera?.position ?? { x: 0, y: 0, z: 5600 };
     const dx = current.x - selected.x;
     const dy = current.y - selected.y;
     const dz = current.z - selected.z;
@@ -666,6 +672,7 @@ export function NeuralLensGraph({
   // their actual pixels come from the bulk Points layer above.
   const buildNodeObject = useCallback(
     (node: object) => {
+      try {
       const n = node as LensNode3D;
       const isSelected = n.id === selectedId;
       const isLensHub = n.isHub && lensClusterId !== null && n.clusterId === lensClusterId;
@@ -708,6 +715,13 @@ export function NeuralLensGraph({
       }
 
       return group;
+      } catch (err) {
+        // A malformed node (bad radius, missing color, etc.) shouldn't take
+        // the whole scene down — fall back to an empty, harmless object.
+         
+        console.error("[neural-lens] failed to build node object", err);
+        return new THREE.Object3D();
+      }
     },
     [selectedId, lensClusterId],
   );
