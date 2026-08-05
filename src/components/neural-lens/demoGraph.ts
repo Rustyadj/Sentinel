@@ -1,13 +1,16 @@
-// Neural Lens — deterministic demo graph (Phase D, pure).
+// Neural Lens — deterministic OS-scale demo graph (Phase E).
 //
-// Builds a dense hub-and-spoke knowledge graph that reads like the reference
-// screenshot (~880 nodes / ~2700 edges, a few big dandelion hubs + smaller
-// peripheral clusters, mostly neutral dots with sparse colour accents). This
-// is DEMO data — the Neural Lens surfaces it behind an explicit DEMO badge
-// (mirroring the reference's own "DEMO" chip). SCOPED mode fetches the real
-// /api/graph instead.
+// Builds a dense, multi-cluster graph spanning every category Sentinel
+// tracks — Chat, Projects, Knowledge, Memory, Learning, Cybersecurity,
+// Coding, Organization, Infrastructure, Voice — at a scale (5,000+ nodes,
+// 15,000+ edges by default) big enough to exercise the GPU rendering path
+// for real, not a toy. This is DEMO data — the Neural Lens surfaces it
+// behind an explicit DEMO badge. SCOPED mode fetches the real /api/graph
+// instead.
 
-import { computeRadialLayout, type LayoutInputNode } from "./radialLayout";
+import { computeClusteredRadialLayout, type ClusteredLayoutInputNode } from "./radialLayout";
+import { CLUSTER_IDS, CATEGORY_CLUSTER, HUB_CATEGORIES, type ClusterId, type NodeCategory } from "./categories";
+import { ACCENT_COLORS } from "./palette";
 import type { LensGraph, LensLink, LensNode } from "./types";
 
 function mulberry32(seed: number): () => number {
@@ -21,141 +24,140 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** Accent node types (get a tint); everything else is a neutral dot. */
-const ACCENT_TYPES = ["Memory", "Decision", "Agent", "Note", "Task", "Artifact"];
-const HUB_TYPES = ["Project", "Workspace", "Conversation"];
-const LEAF_TYPES = ["Message", "File", "Note", "Memory", "Task", "Concept", "Decision", "Artifact"];
+/** Every category assigned to each cluster, derived from the canonical
+ * CATEGORY_CLUSTER map so the demo graph can never drift out of sync with
+ * the real taxonomy. */
+const CATEGORIES_BY_CLUSTER: Record<ClusterId, NodeCategory[]> = (() => {
+  const map = Object.fromEntries(CLUSTER_IDS.map((c) => [c, [] as NodeCategory[]])) as Record<ClusterId, NodeCategory[]>;
+  for (const [category, cluster] of Object.entries(CATEGORY_CLUSTER) as [NodeCategory, ClusterId][]) {
+    map[cluster].push(category);
+  }
+  // Voice has no categories of its own yet (see categories.ts) — seed it with
+  // Conversation/Message so the region isn't empty in the demo.
+  if (map.Voice.length === 0) map.Voice = ["Conversation", "Message"];
+  return map;
+})();
 
 export interface DemoGraphOptions {
   seed?: number;
-  hubCount?: number;
+  /** Hubs per cluster. */
+  hubsPerCluster?: number;
   targetNodes?: number;
   targetEdges?: number;
 }
 
 export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
-  const { seed = 20260722, hubCount = 4, targetNodes = 885, targetEdges = 2715 } = options;
+  const { seed = 20260722, hubsPerCluster = 5, targetNodes = 5400, targetEdges = 52000 } = options;
   const rnd = mulberry32(seed);
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
 
-  const layoutInput: LayoutInputNode[] = [];
-  const raw: Array<{ id: string; type: string; hubId: string; tier: number; label: string }> = [];
+  const layoutInput: ClusteredLayoutInputNode[] = [];
+  const raw: Array<{ id: string; type: NodeCategory; clusterId: ClusterId; hubId: string; tier: number; label: string }> = [];
   const links: LensLink[] = [];
   const childrenOfHub = new Map<string, string[]>();
 
-  // A few big major hubs plus a couple of minor peripheral clusters — the
-  // reference is dominated by 3-4 dense dandelions.
-  const minorHubs = 2;
-  const totalHubs = hubCount + minorHubs;
+  const nodesPerCluster = Math.floor(targetNodes / CLUSTER_IDS.length);
 
-  let created = 0;
-  const hubIds: string[] = [];
+  for (const clusterId of CLUSTER_IDS) {
+    const categories = CATEGORIES_BY_CLUSTER[clusterId];
+    const hubCategories = categories.filter((c) => HUB_CATEGORIES.has(c));
+    const leafCategories = categories.length > 0 ? categories : (["Task"] as NodeCategory[]);
+    const hubPool = hubCategories.length > 0 ? hubCategories : leafCategories;
 
-  for (let h = 0; h < totalHubs; h++) {
-    const hubId = `hub-${h}`;
-    hubIds.push(hubId);
-    const hubType = pick(HUB_TYPES);
-    raw.push({ id: hubId, type: hubType, hubId, tier: 0, label: `${hubType} ${h + 1}` });
-    layoutInput.push({ id: hubId, hubId, parentId: hubId, tier: 0 });
-    created++;
-  }
+    const hubIds: string[] = [];
+    for (let h = 0; h < hubsPerCluster; h++) {
+      const hubId = `${clusterId}-hub-${h}`;
+      const hubType = pick(hubPool);
+      hubIds.push(hubId);
+      raw.push({ id: hubId, type: hubType, clusterId, hubId, tier: 0, label: `${hubType} ${h + 1}` });
+      layoutInput.push({ id: hubId, clusterId, hubId, parentId: hubId, tier: 0 });
+    }
 
-  // Distribute remaining nodes: major hubs get a large fan, minor hubs a small one.
-  const remaining = targetNodes - created;
-  for (let h = 0; h < totalHubs; h++) {
-    const hubId = hubIds[h];
-    const isMajor = h < hubCount;
-    // Long-tailed share so hubs differ in density like the reference.
-    const share = isMajor
-      ? remaining * (0.14 + rnd() * 0.06)
-      : remaining * (0.02 + rnd() * 0.02);
-    const childCount = Math.max(6, Math.floor(share));
+    let created = 0;
+    for (let h = 0; h < hubIds.length; h++) {
+      const hubId = hubIds[h];
+      const isMajor = h === 0;
+      const share = isMajor ? nodesPerCluster * 0.32 : (nodesPerCluster * 0.68) / (hubIds.length - 1 || 1);
+      const childCount = Math.max(8, Math.floor(share));
+      const hubChildren: string[] = [];
+      childrenOfHub.set(hubId, hubChildren);
 
-    let childIndex = 0;
-    const hubChildren: string[] = [];
-    childrenOfHub.set(hubId, hubChildren);
-    for (let c = 0; c < childCount && created < targetNodes; c++) {
-      const childId = `${hubId}-c${c}`;
-      const type = pick(LEAF_TYPES);
-      raw.push({ id: childId, type, hubId, tier: 1, label: `${type} ${childIndex}` });
-      layoutInput.push({ id: childId, hubId, parentId: hubId, tier: 1 });
-      links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45 });
-      hubChildren.push(childId);
-      created++;
-      childIndex++;
+      let childIndex = 0;
+      for (let c = 0; c < childCount && created < nodesPerCluster; c++) {
+        const childId = `${hubId}-c${c}`;
+        const type = pick(leafCategories);
+        raw.push({ id: childId, type, clusterId, hubId, tier: 1, label: `${type} ${childIndex}` });
+        layoutInput.push({ id: childId, clusterId, hubId, parentId: hubId, tier: 1 });
+        links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45 });
+        hubChildren.push(childId);
+        created++;
+        childIndex++;
 
-      // Some children sprout a small grandchild cluster (the fine radial tips).
-      if (rnd() > 0.72 && created < targetNodes) {
-        const grandCount = 1 + Math.floor(rnd() * 4);
-        for (let g = 0; g < grandCount && created < targetNodes; g++) {
-          const gid = `${childId}-g${g}`;
-          const type = pick(LEAF_TYPES);
-          raw.push({ id: gid, type, hubId, tier: 2, label: `${type} ${childIndex}` });
-          layoutInput.push({ id: gid, hubId, parentId: childId, tier: 2 });
-          links.push({ source: childId, target: gid, weight: 0.2 + rnd() * 0.3 });
-          created++;
-          childIndex++;
+        if (rnd() > 0.7 && created < nodesPerCluster) {
+          const grandCount = 1 + Math.floor(rnd() * 4);
+          for (let g = 0; g < grandCount && created < nodesPerCluster; g++) {
+            const gid = `${childId}-g${g}`;
+            const type = pick(leafCategories);
+            raw.push({ id: gid, type, clusterId, hubId, tier: 2, label: `${type} ${childIndex}` });
+            layoutInput.push({ id: gid, clusterId, hubId, parentId: childId, tier: 2 });
+            links.push({ source: childId, target: gid, weight: 0.2 + rnd() * 0.3 });
+            created++;
+            childIndex++;
+          }
         }
       }
     }
-  }
 
-  // Intra-cluster mesh: link each child to a couple of its hub siblings so the
-  // constellation reads as a dense web (~2-3 edges/node) rather than a bare
-  // tree — matching the reference's edge density.
-  for (const siblings of childrenOfHub.values()) {
-    if (siblings.length < 3) continue;
-    for (const child of siblings) {
-      const crossCount = 1 + Math.floor(rnd() * 2);
-      for (let k = 0; k < crossCount; k++) {
-        const other = siblings[Math.floor(rnd() * siblings.length)];
-        if (other !== child) {
-          links.push({ source: child, target: other, weight: 0.12 + rnd() * 0.28 });
+    // Intra-cluster mesh so each region reads as a dense web, not a bare tree.
+    for (const siblings of childrenOfHub.values()) {
+      if (siblings.length < 3) continue;
+      for (const child of siblings) {
+        const crossCount = 1 + Math.floor(rnd() * 2);
+        for (let k = 0; k < crossCount; k++) {
+          const other = siblings[Math.floor(rnd() * siblings.length)];
+          if (other !== child) links.push({ source: child, target: other, weight: 0.12 + rnd() * 0.28 });
         }
       }
     }
+
+    // Hub backbone within the cluster.
+    for (let i = 0; i < hubIds.length; i++) {
+      if (rnd() > 0.4) links.push({ source: hubIds[i], target: pick(hubIds), weight: 0.5 + rnd() * 0.3 });
+    }
   }
 
-  // Sparse cross-hub bridges — the faint long strands between constellations.
-  const bridgeCount = Math.round(totalHubs * 6);
+  // Sparse cross-cluster bridges — e.g. a Coding commit that closed a Task,
+  // an Agent that wrote a Memory. These are the faint long strands that make
+  // the whole thing read as one graph instead of ten separate ones.
+  const bridgeCount = Math.round(CLUSTER_IDS.length * 45);
   for (let b = 0; b < bridgeCount; b++) {
     const a = raw[Math.floor(rnd() * raw.length)];
     const z = raw[Math.floor(rnd() * raw.length)];
-    if (a.hubId !== z.hubId) {
-      links.push({ source: a.id, target: z.id, weight: 0.12 + rnd() * 0.2 });
-    }
+    if (a.clusterId !== z.clusterId) links.push({ source: a.id, target: z.id, weight: 0.1 + rnd() * 0.18 });
   }
 
-  // Hub backbone.
-  for (let i = 0; i < hubIds.length; i++) {
-    if (rnd() > 0.45) {
-      links.push({ source: hubIds[i], target: pick(hubIds), weight: 0.5 + rnd() * 0.3 });
-    }
-  }
-
-  const positions = computeRadialLayout(layoutInput);
+  const { positions, outlines } = computeClusteredRadialLayout(layoutInput, [...CLUSTER_IDS]);
 
   const nodes: LensNode[] = raw.map((n) => {
     const pos = positions.get(n.id)!;
     const isHub = n.tier === 0;
-    const hubIndex = isHub ? Number(n.id.replace("hub-", "")) : -1;
-    const isMajorHub = isHub && hubIndex >= 0 && hubIndex < hubCount;
-    const accent = ACCENT_TYPES.includes(n.type) && rnd() > 0.86;
+    const isMajorHub = isHub && n.id.endsWith("-hub-0");
+    const accent = !!ACCENT_COLORS[n.type] && rnd() > 0.82;
     return {
       id: n.id,
       label: n.label,
       type: n.type,
       hubId: n.hubId,
+      clusterId: n.clusterId,
       x: pos.x,
       y: pos.y,
-      val: isMajorHub ? 6.4 : isHub ? 3.2 : n.tier === 1 ? 2.15 : 1.35,
+      val: isMajorHub ? 6.4 : isHub ? 3.6 : n.tier === 1 ? 2.15 : 1.35,
       accent,
+      isHub,
       active: false,
     };
   });
 
-  // Drop self-links, dangling links, and duplicate unordered pairs so the
-  // edge count stays honest and lines don't overdraw.
   const nodeIds = new Set(nodes.map((n) => n.id));
   const seen = new Set<string>();
   const cleanLinks: LensLink[] = [];
@@ -167,9 +169,8 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     cleanLinks.push(l);
   }
 
-  // Fill the constellation with irregular intra-family synapses. Deterministic
-  // random pairing avoids the visible circular bands produced by linking
-  // adjacent members of a radial fan.
+  // Fill toward the edge target with irregular intra-family synapses so
+  // density matches real knowledge-graph texture rather than a bare tree.
   const membersByHub = new Map<string, typeof raw>();
   for (const node of raw) {
     const members = membersByHub.get(node.hubId) ?? [];
@@ -177,7 +178,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     membersByHub.set(node.hubId, members);
   }
   const families = [...membersByHub.values()];
-  for (let pass = 0; cleanLinks.length < targetEdges && pass < 40; pass++) {
+  for (let pass = 0; cleanLinks.length < targetEdges && pass < 60; pass++) {
     for (const family of families) {
       for (const source of family) {
         if (cleanLinks.length >= targetEdges) break;
@@ -186,11 +187,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
         const key = source.id < target.id ? `${source.id}|${target.id}` : `${target.id}|${source.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        cleanLinks.push({
-          source: source.id,
-          target: target.id,
-          weight: 0.08 + rnd() * 0.14,
-        });
+        cleanLinks.push({ source: source.id, target: target.id, weight: 0.08 + rnd() * 0.14 });
       }
     }
   }
@@ -199,5 +196,6 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     nodes,
     links: cleanLinks,
     meta: { demo: true, nodeCount: nodes.length, edgeCount: cleanLinks.length },
+    clusterOutlines: outlines,
   };
 }

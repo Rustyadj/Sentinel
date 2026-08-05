@@ -1,8 +1,9 @@
 // Neural Lens — map the real /api/graph payload into a radial LensGraph
-// (Phase D, SCOPED mode). Pure so it can be reasoned about without the DOM.
+// (Phase E, SCOPED mode). Pure so it can be reasoned about without the DOM.
 
-import { computeRadialLayout, type LayoutInputNode } from "./radialLayout";
+import { computeClusteredRadialLayout, type ClusteredLayoutInputNode } from "./radialLayout";
 import { ACCENT_COLORS } from "./palette";
+import { clusterOf, isHubCategory } from "./categories";
 import type { LensGraph, LensLink, LensNode } from "./types";
 
 interface ApiNode {
@@ -17,14 +18,15 @@ interface ApiEdge {
   weight?: number;
 }
 
-const HUB_TYPES = new Set(["Project", "Workspace", "Conversation", "Organization"]);
 const HUB_DEGREE_THRESHOLD = 6;
 
 /**
- * Build a hub-and-spoke LensGraph from arbitrary knowledge nodes/edges: hubs
- * are type-hubs or high-degree nodes; every other node attaches (tier 1) to a
- * hub it shares an edge with, or to a synthetic "orphans" hub. Positions come
- * from the shared radial layout so SCOPED and DEMO look consistent.
+ * Build a hub-and-spoke LensGraph from arbitrary knowledge nodes/edges,
+ * grouped first by OS-level cluster (categories.ts) and laid out with the
+ * clustered radial layout so SCOPED and DEMO read as the same kind of graph.
+ * Within a cluster, hubs are hub-eligible categories or high-degree nodes;
+ * every other node attaches (tier 1) to a hub it shares an edge with, or to
+ * a synthetic per-cluster "orphans" hub.
  */
 export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] }): LensGraph {
   const degree = new Map<string, number>();
@@ -33,13 +35,15 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     degree.set(e.toObjectId, (degree.get(e.toObjectId) ?? 0) + 1);
   }
 
+  const clusterOfNode = new Map<string, string>();
+  for (const n of api.nodes) clusterOfNode.set(n.id, clusterOf(n.type));
+
   const hubIds = new Set(
     api.nodes
-      .filter((n) => HUB_TYPES.has(n.type) || (degree.get(n.id) ?? 0) >= HUB_DEGREE_THRESHOLD)
+      .filter((n) => isHubCategory(n.type) || (degree.get(n.id) ?? 0) >= HUB_DEGREE_THRESHOLD)
       .map((n) => n.id),
   );
 
-  // Adjacency for hub assignment.
   const adjacency = new Map<string, string[]>();
   for (const e of api.edges) {
     if (!adjacency.has(e.fromObjectId)) adjacency.set(e.fromObjectId, []);
@@ -48,35 +52,42 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     adjacency.get(e.toObjectId)!.push(e.fromObjectId);
   }
 
-  const ORPHAN_HUB = "__orphans__";
+  const orphanHubOf = (clusterId: string) => `__orphans__:${clusterId}`;
   const hubOf = new Map<string, string>();
   for (const n of api.nodes) {
     if (hubIds.has(n.id)) {
       hubOf.set(n.id, n.id);
       continue;
     }
-    const neighborHub = (adjacency.get(n.id) ?? []).find((nb) => hubIds.has(nb));
-    hubOf.set(n.id, neighborHub ?? ORPHAN_HUB);
+    const neighborHub = (adjacency.get(n.id) ?? []).find((nb) => hubIds.has(nb) && clusterOfNode.get(nb) === clusterOfNode.get(n.id));
+    hubOf.set(n.id, neighborHub ?? orphanHubOf(clusterOfNode.get(n.id)!));
   }
 
-  const hasOrphans = [...hubOf.values()].includes(ORPHAN_HUB);
+  const orphanClusters = new Set<string>();
+  for (const [nodeId, hub] of hubOf) {
+    if (hub === orphanHubOf(clusterOfNode.get(nodeId)!)) orphanClusters.add(clusterOfNode.get(nodeId)!);
+  }
 
-  const layoutInput: LayoutInputNode[] = [];
+  const layoutInput: ClusteredLayoutInputNode[] = [];
   for (const n of api.nodes) {
+    const clusterId = clusterOfNode.get(n.id)!;
     const hub = hubOf.get(n.id)!;
     const isHub = hubIds.has(n.id);
     layoutInput.push({
       id: n.id,
+      clusterId,
       hubId: hub,
       parentId: isHub ? n.id : hub,
       tier: isHub ? 0 : 1,
     });
   }
-  if (hasOrphans) {
-    layoutInput.push({ id: ORPHAN_HUB, hubId: ORPHAN_HUB, parentId: ORPHAN_HUB, tier: 0 });
+  for (const clusterId of orphanClusters) {
+    const id = orphanHubOf(clusterId);
+    layoutInput.push({ id, clusterId, hubId: id, parentId: id, tier: 0 });
   }
 
-  const positions = computeRadialLayout(layoutInput);
+  const clusterOrder = [...new Set(api.nodes.map((n) => clusterOfNode.get(n.id)!))];
+  const { positions, outlines } = computeClusteredRadialLayout(layoutInput, clusterOrder);
 
   const nodes: LensNode[] = api.nodes.map((n) => {
     const pos = positions.get(n.id) ?? { x: 0, y: 0 };
@@ -86,25 +97,30 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
       label: n.title,
       type: n.type,
       hubId: hubOf.get(n.id)!,
+      clusterId: clusterOfNode.get(n.id)! as LensNode["clusterId"],
       x: pos.x,
       y: pos.y,
       val: isHub ? 7 : 2.2,
       accent: !!ACCENT_COLORS[n.type],
+      isHub,
       active: false,
       workspaceId: n.workspaceId ?? undefined,
     };
   });
 
-  if (hasOrphans) {
-    const pos = positions.get(ORPHAN_HUB) ?? { x: 0, y: 0 };
+  for (const clusterId of orphanClusters) {
+    const id = orphanHubOf(clusterId);
+    const pos = positions.get(id) ?? { x: 0, y: 0 };
     nodes.push({
-      id: ORPHAN_HUB,
+      id,
       label: "Unclustered",
       type: "Workspace",
-      hubId: ORPHAN_HUB,
+      hubId: id,
+      clusterId: clusterId as LensNode["clusterId"],
       x: pos.x,
       y: pos.y,
       val: 6,
+      isHub: true,
       active: false,
     });
   }
@@ -114,12 +130,10 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     .filter((e) => nodeIds.has(e.fromObjectId) && nodeIds.has(e.toObjectId))
     .map((e) => ({ source: e.fromObjectId, target: e.toObjectId, weight: e.weight ?? 0.4 }));
 
-  // Attach orphan-hub spokes so unclustered nodes aren't floating.
-  if (hasOrphans) {
+  for (const clusterId of orphanClusters) {
+    const id = orphanHubOf(clusterId);
     for (const n of nodes) {
-      if (n.hubId === ORPHAN_HUB && n.id !== ORPHAN_HUB) {
-        links.push({ source: ORPHAN_HUB, target: n.id, weight: 0.15 });
-      }
+      if (n.hubId === id && n.id !== id) links.push({ source: id, target: n.id, weight: 0.15 });
     }
   }
 
@@ -127,5 +141,6 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     nodes,
     links,
     meta: { demo: false, nodeCount: nodes.length, edgeCount: links.length },
+    clusterOutlines: outlines,
   };
 }

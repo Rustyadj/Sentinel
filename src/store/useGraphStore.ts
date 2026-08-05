@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { ClusterId } from "@/components/neural-lens/categories";
+import type { SemanticZoomLevel } from "@/components/neural-lens/types";
 
 export type GraphTimeWindow = "all" | "7d" | "30d" | "90d";
 
@@ -14,8 +17,14 @@ export interface GraphNodeSummary {
   type: string;
   val: number;
   hubId?: string;
+  clusterId?: ClusterId;
   accent?: boolean;
   active?: boolean;
+}
+
+export interface GraphCameraState {
+  position: { x: number; y: number; z: number };
+  lookAt: { x: number; y: number; z: number };
 }
 
 const TIME_WINDOW_MS: Record<Exclude<GraphTimeWindow, "all">, number> = {
@@ -49,6 +58,20 @@ interface GraphUIState {
    * wholesale (not toggled individually) since the owner (ChatHeader's agent
    * picker) already tracks its own selection state. */
   pinnedTitles: string[];
+  /** The OS-level cluster the active lens targets, if any. Dims (not
+   * removes) everything outside it — see NeuralLensGraph's lensClusterId
+   * prop. Persisted so reloading keeps you in the same lens. */
+  lensClusterId: ClusterId | null;
+  /** When true, Lens Only additionally hides everything outside the lens
+   * cluster + its direct neighbors, without recomputing layout. */
+  lensOnly: boolean;
+  /** Last reported semantic zoom level — persisted so a reload restores
+   * roughly the same "how zoomed in was I" context even before the camera
+   * state below finishes restoring. */
+  zoomLevel: SemanticZoomLevel;
+  /** Camera position/target — persisted so reloading the graph doesn't reset
+   * to the default overview every time. */
+  cameraState: GraphCameraState | null;
 }
 
 interface GraphUIActions {
@@ -65,47 +88,76 @@ interface GraphUIActions {
   requestFocus: (title: string) => void;
   requestFit: () => void;
   setPinnedTitles: (titles: string[]) => void;
+  setLensCluster: (clusterId: ClusterId | null) => void;
+  setLensOnly: (on: boolean) => void;
+  setZoomLevel: (level: SemanticZoomLevel) => void;
+  setCameraState: (camera: GraphCameraState) => void;
 }
 
 export type GraphStore = GraphUIState & GraphUIActions;
 
-export const useGraphStore = create<GraphStore>((set) => ({
-  search: "",
-  activeTypes: new Set<string>(),
-  focusMode: false,
-  clustering: false,
-  timeWindow: "all",
-  timeWindowCutoff: 0,
-  selectedNodeId: null,
-  selectedNode: null,
-  availableTypes: [],
-  focusRequest: null,
-  fitRequest: 0,
-  pinnedTitles: [],
+export const useGraphStore = create<GraphStore>()(
+  persist(
+    (set) => ({
+      search: "",
+      activeTypes: new Set<string>(),
+      focusMode: false,
+      clustering: false,
+      timeWindow: "all",
+      timeWindowCutoff: 0,
+      selectedNodeId: null,
+      selectedNode: null,
+      availableTypes: [],
+      focusRequest: null,
+      fitRequest: 0,
+      pinnedTitles: [],
+      lensClusterId: null,
+      lensOnly: false,
+      zoomLevel: "galaxy",
+      cameraState: null,
 
-  setSearch: (search) => set({ search }),
-  toggleType: (type) =>
-    set((state) => {
-      const next = new Set(state.activeTypes);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return { activeTypes: next };
+      setSearch: (search) => set({ search }),
+      toggleType: (type) =>
+        set((state) => {
+          const next = new Set(state.activeTypes);
+          if (next.has(type)) next.delete(type);
+          else next.add(type);
+          return { activeTypes: next };
+        }),
+      setTypes: (types) => set({ activeTypes: new Set(types) }),
+      clearTypes: () => set({ activeTypes: new Set() }),
+      setFocusMode: (focusMode) => set({ focusMode }),
+      setClustering: (clustering) => set({ clustering }),
+      setTimeWindow: (timeWindow) =>
+        set({
+          timeWindow,
+          timeWindowCutoff:
+            timeWindow === "all" ? 0 : Date.now() - TIME_WINDOW_MS[timeWindow],
+        }),
+      selectNode: (selectedNodeId) => set({ selectedNodeId }),
+      setSelectedNode: (selectedNode) =>
+        set({ selectedNode, selectedNodeId: selectedNode?.id ?? null }),
+      setAvailableTypes: (availableTypes) => set({ availableTypes }),
+      requestFocus: (title) => set({ focusRequest: { title, ts: Date.now() } }),
+      requestFit: () => set((state) => ({ fitRequest: state.fitRequest + 1 })),
+      setPinnedTitles: (pinnedTitles) => set({ pinnedTitles }),
+      setLensCluster: (lensClusterId) => set({ lensClusterId }),
+      setLensOnly: (lensOnly) => set({ lensOnly }),
+      setZoomLevel: (zoomLevel) => set({ zoomLevel }),
+      setCameraState: (cameraState) => set({ cameraState }),
     }),
-  setTypes: (types) => set({ activeTypes: new Set(types) }),
-  clearTypes: () => set({ activeTypes: new Set() }),
-  setFocusMode: (focusMode) => set({ focusMode }),
-  setClustering: (clustering) => set({ clustering }),
-  setTimeWindow: (timeWindow) =>
-    set({
-      timeWindow,
-      timeWindowCutoff:
-        timeWindow === "all" ? 0 : Date.now() - TIME_WINDOW_MS[timeWindow],
-    }),
-  selectNode: (selectedNodeId) => set({ selectedNodeId }),
-  setSelectedNode: (selectedNode) =>
-    set({ selectedNode, selectedNodeId: selectedNode?.id ?? null }),
-  setAvailableTypes: (availableTypes) => set({ availableTypes }),
-  requestFocus: (title) => set({ focusRequest: { title, ts: Date.now() } }),
-  requestFit: () => set((state) => ({ fitRequest: state.fitRequest + 1 })),
-  setPinnedTitles: (pinnedTitles) => set({ pinnedTitles }),
-}));
+    {
+      name: "sentinel.neural-lens.view-state",
+      // Only the durable "where was I looking / what was I focused on" bits
+      // persist — search text, filter chips, and one-shot request fields
+      // are session-scoped and would be actively wrong to restore.
+      partialize: (state) => ({
+        lensClusterId: state.lensClusterId,
+        lensOnly: state.lensOnly,
+        zoomLevel: state.zoomLevel,
+        cameraState: state.cameraState,
+        selectedNodeId: state.selectedNodeId,
+      }),
+    },
+  ),
+);

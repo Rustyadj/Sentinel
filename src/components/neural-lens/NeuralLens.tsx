@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useGraphStore } from "@/store/useGraphStore";
 import { NeuralLensGraph } from "./NeuralLensGraph";
 import { NeuralLensPanel } from "./NeuralLensPanel";
@@ -8,18 +9,13 @@ import { NeuralLensToolbar } from "./NeuralLensToolbar";
 import { NeuralLensStatusBar } from "./NeuralLensStatusBar";
 import { NeuralLensInspector } from "./NeuralLensInspector";
 import { NeuralLensMinimap } from "./NeuralLensMinimap";
+import { NeuralLensContextMenu, type ContextMenuTarget } from "./NeuralLensContextMenu";
 import { TimelineScrubber, type TimeRange } from "./TimelineScrubber";
 import { generateDemoGraph } from "./demoGraph";
 import { buildLensGraphFromApi } from "./fromApiGraph";
 import { useNeuralStream } from "./useNeuralStream";
-import type { SemanticZoomLevel } from "./palette";
-import type { LensGraph, LensId, LensNode } from "./types";
-
-const LENS_TYPES: Record<LensId, string[]> = {
-  Knowledge: ["Note", "Memory", "Decision", "Concept", "Conversation", "Message", "File"],
-  Execution: ["Agent", "Task", "Artifact", "Project", "Workflow"],
-  People: ["Agent", "Organization", "Workspace", "Project"],
-};
+import { routeForCluster } from "./categories";
+import type { LensGraph, LensNode } from "./types";
 
 const ACTIVE_PULSE_MS = 2600;
 
@@ -45,34 +41,49 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
-  const [lens, setLens] = useState<LensId>("Knowledge");
-  // Search, type filters, and the selected node are shared via useGraphStore
-  // rather than kept as local state — RightPanel's compact Graph tab (and any
-  // future consumer) reads and writes the same selection/filter state the
-  // canvas does, instead of each surface tracking its own copy.
+  // Search, type filters, the selected node, the lens, and view state
+  // (camera/zoom) are shared via useGraphStore rather than kept as local
+  // state — RightPanel's compact Graph tab reads the same selection/filter
+  // state the canvas does, and camera/lens/selection persist across reloads.
   const activeTypes = useGraphStore((state) => state.activeTypes);
   const toggleGraphType = useGraphStore((state) => state.toggleType);
-  const setGraphTypes = useGraphStore((state) => state.setTypes);
   const search = useGraphStore((state) => state.search);
   const setSearch = useGraphStore((state) => state.setSearch);
   const selected = useGraphStore((state) => state.selectedNode);
   const setSelectedNode = useGraphStore((state) => state.setSelectedNode);
   const setAvailableTypes = useGraphStore((state) => state.setAvailableTypes);
+  const lensClusterId = useGraphStore((state) => state.lensClusterId);
+  const setLensCluster = useGraphStore((state) => state.setLensCluster);
+  const lensOnly = useGraphStore((state) => state.lensOnly);
+  const setLensOnly = useGraphStore((state) => state.setLensOnly);
+  const zoomLevel = useGraphStore((state) => state.zoomLevel);
+  const setZoomLevel = useGraphStore((state) => state.setZoomLevel);
+  const cameraState = useGraphStore((state) => state.cameraState);
+  const setCameraState = useGraphStore((state) => state.setCameraState);
   // Title-based focus requests (e.g. switching the active chat agent) —
   // resolved against the full graph, not just what's currently filtered in,
   // so focusing an agent works even mid-search/mid-filter.
   const focusRequestTitle = useGraphStore((state) => state.focusRequest);
+  const requestFocus = useGraphStore((state) => state.requestFocus);
   // Every agent currently selected into the active chat — their nodes stay
   // lit continuously, independent of hover/click focus or live-event pulses.
   const pinnedTitles = useGraphStore((state) => state.pinnedTitles);
-  const [zoomLevel, setZoomLevel] = useState<SemanticZoomLevel>("galaxy");
   const [toolbarAction, setToolbarAction] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>("Now");
   const [historicalGraph, setHistoricalGraph] = useState<LensGraph | null>(null);
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [activeNodeIds, setActiveNodeIds] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
+  const router = useRouter();
   const isHistorical = !demoMode && timeRange !== "Now";
+
+  const handleOpenModule = useCallback(
+    (node: LensNode) => {
+      router.push(routeForCluster(node.clusterId));
+    },
+    [router],
+  );
 
   // Reconstruct historical state via temporal-service (Phase E) — only
   // meaningful in SCOPED mode, since the demo graph carries no real
@@ -204,9 +215,10 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     [activeNodeIds, pinnedNodeIds]
   );
 
-  // Apply type + search filters. Default (no active chips) shows the whole
-  // constellation — the lens is a preset that sets the active chips, not a
-  // hard default filter — so the graph reads dense on load like the reference.
+  // Search + type-chip filtering — an explicit user action, distinct from
+  // the lens (which dims rather than removes; see NeuralLensGraph's
+  // lensClusterId/lensOnly props). Default (no active chips, no search)
+  // shows the whole constellation.
   const filteredGraph = useMemo<LensGraph>(() => {
     const q = search.trim().toLowerCase();
 
@@ -217,7 +229,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     });
     const keep = new Set(nodes.map((n) => n.id));
     const links = baseGraph.links.filter((l) => keep.has(l.source) && keep.has(l.target));
-    return { nodes, links, meta: { ...baseGraph.meta, nodeCount: nodes.length, edgeCount: links.length } };
+    return { nodes, links, meta: { ...baseGraph.meta, nodeCount: nodes.length, edgeCount: links.length }, clusterOutlines: baseGraph.clusterOutlines };
   }, [baseGraph, activeTypes, search]);
 
   const typeChips = useMemo(() => {
@@ -250,6 +262,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
               type: node.type,
               val: node.val,
               hubId: node.hubId,
+              clusterId: node.clusterId,
               accent: node.accent,
               active: node.active,
             }
@@ -277,6 +290,24 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
     return node ? { nodeId: node.id, ts: focusRequestTitle.ts } : null;
   }, [focusRequestTitle, baseGraph.nodes]);
 
+  // A handful of the selected node's direct neighbors — "connected entities"
+  // in the detail drawer. Capped so a 5,000-edge hub doesn't dump its entire
+  // fan into a sidebar.
+  const connectedEntities = useMemo(() => {
+    if (!selected) return [];
+    const nodesById = new Map(baseGraph.nodes.map((n) => [n.id, n]));
+    const neighborIds = new Set<string>();
+    for (const link of baseGraph.links) {
+      if (link.source === selected.id) neighborIds.add(link.target);
+      else if (link.target === selected.id) neighborIds.add(link.source);
+      if (neighborIds.size >= 8) break;
+    }
+    return [...neighborIds]
+      .map((id) => nodesById.get(id))
+      .filter((n): n is NonNullable<typeof n> => !!n)
+      .slice(0, 6);
+  }, [selected, baseGraph.nodes, baseGraph.links]);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#010409]">
       <NeuralLensGraph
@@ -285,18 +316,26 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         onSelect={handleSelect}
         onZoomLevel={setZoomLevel}
         focusRequest={resolvedFocusRequest}
+        lensClusterId={lensClusterId}
+        lensOnly={lensOnly}
+        initialCamera={cameraState}
+        onCameraChange={setCameraState}
+        onDoubleClickNode={handleOpenModule}
+        onContextMenuNode={(node, screen) => setContextMenu({ node, x: screen.x, y: screen.y })}
+      />
+
+      <NeuralLensContextMenu
+        target={contextMenu}
+        onClose={() => setContextMenu(null)}
+        onFocus={(node) => requestFocus(node.label)}
+        onOpenModule={handleOpenModule}
       />
 
       <NeuralLensPanel
-        lens={lens}
-        onLensChange={(next) => {
-          setLens(next);
-          // Selecting a lens applies its type preset as the active filter;
-          // re-selecting the same lens clears back to the full graph.
-          const preset = new Set(LENS_TYPES[next]);
-          const same = activeTypes.size === preset.size && [...preset].every((t) => activeTypes.has(t));
-          setGraphTypes(same ? [] : [...preset]);
-        }}
+        lensClusterId={lensClusterId}
+        onLensChange={setLensCluster}
+        lensOnly={lensOnly}
+        onLensOnlyChange={setLensOnly}
         workingSetName={demoMode ? "Mission Control" : "Live Graph"}
         nodeCount={filteredGraph.meta.nodeCount}
         edgeCount={filteredGraph.meta.edgeCount}
@@ -311,7 +350,13 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
 
       <NeuralLensToolbar active={toolbarAction} onAction={handleToolbarAction} />
       <NeuralLensMinimap graph={baseGraph} />
-      <NeuralLensInspector node={selected} onClose={() => setSelectedNode(null)} />
+      <NeuralLensInspector
+        node={selected}
+        connected={connectedEntities}
+        onClose={() => setSelectedNode(null)}
+        onFocusConnected={(label) => requestFocus(label)}
+        onOpenModule={() => selected?.clusterId && router.push(routeForCluster(selected.clusterId))}
+      />
       <TimelineScrubber
         open={timelineOpen}
         range={timeRange}

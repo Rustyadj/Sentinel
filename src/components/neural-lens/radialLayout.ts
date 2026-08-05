@@ -150,3 +150,75 @@ export function rotatePositions(
     p.y = y;
   }
 }
+
+export interface ClusteredLayoutInputNode extends LayoutInputNode {
+  clusterId: string;
+}
+
+export interface ClusterOutline {
+  clusterId: string;
+  x: number;
+  y: number;
+  /** Bounding radius covering every node currently placed in this cluster —
+   * recomputed from actual member positions, not guessed, so the zoomed-out
+   * cluster outline always tracks reality even as member counts vary. */
+  radius: number;
+  nodeCount: number;
+}
+
+/**
+ * OS-scale layout: clusters (the ~10 top-level regions — Chat, Projects,
+ * Knowledge, etc.) are spread around a large outer ring; each cluster's own
+ * members are laid out with the existing hub-and-spoke radial layout, then
+ * offset to the cluster's ring position. This keeps clusters visually
+ * distinct and stable — the same cluster always claims the same general
+ * screen region — while reusing the proven per-cluster dandelion geometry.
+ */
+export function computeClusteredRadialLayout(
+  nodes: ClusteredLayoutInputNode[],
+  clusterOrder: string[],
+  options: RadialLayoutOptions & { clusterRingRadius?: number } = {},
+): { positions: Map<string, Positioned>; outlines: ClusterOutline[] } {
+  const clusterRingRadius = options.clusterRingRadius ?? 2200;
+
+  const byCluster = new Map<string, ClusteredLayoutInputNode[]>();
+  for (const n of nodes) {
+    if (!byCluster.has(n.clusterId)) byCluster.set(n.clusterId, []);
+    byCluster.get(n.clusterId)!.push(n);
+  }
+
+  // Clusters with more members get proportionally more angular real estate
+  // isn't necessary for a stable ring — equal spacing keeps the OS-level
+  // silhouette legible (ten evenly spaced regions) regardless of how lopsided
+  // real workspace data ends up being.
+  const orderedClusters = clusterOrder.filter((id) => byCluster.has(id));
+  for (const id of byCluster.keys()) {
+    if (!orderedClusters.includes(id)) orderedClusters.push(id);
+  }
+
+  const positions = new Map<string, Positioned>();
+  const outlines: ClusterOutline[] = [];
+
+  orderedClusters.forEach((clusterId, i) => {
+    const members = byCluster.get(clusterId)!;
+    const angle = (i / orderedClusters.length) * Math.PI * 2;
+    // Larger clusters sit slightly farther out so their wider spread doesn't
+    // collide with neighboring clusters' rings.
+    const sizeFactor = 0.85 + Math.min(members.length / 400, 1) * 0.5;
+    const cx = Math.cos(angle) * clusterRingRadius * sizeFactor;
+    const cy = Math.sin(angle) * clusterRingRadius * sizeFactor;
+
+    const localPositions = computeRadialLayout(members, options);
+
+    let maxDist = 1;
+    for (const p of localPositions.values()) {
+      positions.set(p.id, { id: p.id, x: cx + p.x, y: cy + p.y });
+      const dist = Math.hypot(p.x, p.y);
+      if (dist > maxDist) maxDist = dist;
+    }
+
+    outlines.push({ clusterId, x: cx, y: cy, radius: maxDist + 60, nodeCount: members.length });
+  });
+
+  return { positions, outlines };
+}

@@ -1,18 +1,14 @@
 "use client";
 
-import { Layers, Network, Cpu, Users, Search } from "lucide-react";
-import { ACCENT_COLORS, NEUTRAL_NODE } from "./palette";
-import type { LensId } from "./types";
-
-const LENSES: { id: LensId; icon: typeof Network; label: string }[] = [
-  { id: "Knowledge", icon: Network, label: "Knowledge" },
-  { id: "Execution", icon: Cpu, label: "Execution" },
-  { id: "People", icon: Users, label: "People" },
-];
+import { Layers, Search, Sparkles } from "lucide-react";
+import { ACCENT_COLORS, NEUTRAL_NODE, clusterColor } from "./palette";
+import { CLUSTER_IDS, type ClusterId } from "./categories";
 
 interface NeuralLensPanelProps {
-  lens: LensId;
-  onLensChange: (lens: LensId) => void;
+  lensClusterId: ClusterId | null;
+  onLensChange: (cluster: ClusterId | null) => void;
+  lensOnly: boolean;
+  onLensOnlyChange: (on: boolean) => void;
   workingSetName: string;
   nodeCount: number;
   edgeCount: number;
@@ -26,8 +22,10 @@ interface NeuralLensPanelProps {
 }
 
 export function NeuralLensPanel({
-  lens,
+  lensClusterId,
   onLensChange,
+  lensOnly,
+  onLensOnlyChange,
   workingSetName,
   nodeCount,
   edgeCount,
@@ -49,20 +47,46 @@ export function NeuralLensPanel({
         <span className="ml-auto h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
       </div>
 
-      <div className="space-y-0.5">
-        {LENSES.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => onLensChange(id)}
-            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-              lens === id ? "bg-white/10 text-white" : "text-white/50 hover:bg-white/5 hover:text-white/80"
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+      <div className="grid grid-cols-2 gap-0.5">
+        <button
+          onClick={() => onLensChange(null)}
+          className={`col-span-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+            lensClusterId === null ? "bg-white/10 text-white" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+          }`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
+          Full graph
+        </button>
+        {CLUSTER_IDS.map((cluster) => {
+          const active = lensClusterId === cluster;
+          const color = clusterColor(cluster);
+          return (
+            <button
+              key={cluster}
+              onClick={() => onLensChange(active ? null : cluster)}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[10.5px] transition-colors"
+              style={{
+                backgroundColor: active ? `${color}1c` : "transparent",
+                color: active ? color : "rgba(255,255,255,0.5)",
+              }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+              {cluster}
+            </button>
+          );
+        })}
       </div>
+
+      <button
+        onClick={() => onLensOnlyChange(!lensOnly)}
+        disabled={!lensClusterId}
+        className={`mt-2 flex w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-[10.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
+          lensOnly ? "border-indigo-400/40 bg-indigo-400/10 text-indigo-200" : "border-white/8 text-white/45 hover:text-white/70"
+        }`}
+      >
+        <Sparkles className="h-3 w-3" />
+        Lens Only
+      </button>
 
       <div className="mt-3 border-t border-white/8 pt-3">
         <div className="text-[9px] uppercase tracking-[0.18em] text-white/35">Working set</div>
