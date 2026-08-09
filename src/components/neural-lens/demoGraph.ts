@@ -42,6 +42,7 @@ export interface DemoGraphOptions {
   seed?: number;
   /** Hubs per cluster. */
   hubsPerCluster?: number;
+  /** Approximate total node count, including hubs. */
   targetNodes?: number;
   targetEdges?: number;
 }
@@ -56,7 +57,9 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
   const links: LensLink[] = [];
   const childrenOfHub = new Map<string, string[]>();
 
-  const nodesPerCluster = Math.floor(targetNodes / CLUSTER_IDS.length);
+  const totalHubCount = hubsPerCluster * CLUSTER_IDS.length;
+  const childTarget = Math.max(0, targetNodes - totalHubCount);
+  const nodesPerCluster = Math.floor(childTarget / CLUSTER_IDS.length);
 
   for (const clusterId of CLUSTER_IDS) {
     const categories = CATEGORIES_BY_CLUSTER[clusterId];

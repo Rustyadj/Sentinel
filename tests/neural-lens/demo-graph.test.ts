@@ -21,8 +21,8 @@ describe("demoGraph — deterministic dense radial generator", () => {
 
   it("matches the default Neural Lens working-set density", () => {
     const g = generateDemoGraph();
-    expect(g.meta.nodeCount).toBe(885);
-    expect(g.meta.edgeCount).toBe(2715);
+    expect(g.meta.nodeCount).toBe(5400);
+    expect(g.meta.edgeCount).toBe(52000);
   });
 
   it("has a small set of large hubs and a majority of small leaf nodes", () => {
