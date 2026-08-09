@@ -1,152 +1,93 @@
 "use client";
 
-import { useState } from "react";
-import { BookOpen, Plus, Search, Hash, FileText, ChevronRight } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { NeuralLens } from "@/components/neural-lens/NeuralLens";
+import { NotesPanel } from "@/components/knowledge/NotesPanel";
+import { useGraphStore } from "@/store/useGraphStore";
 
-const SAMPLE_NOTES = [
-  { id: "n1", title: "Project Goals - Sentinel OS", tags: ["project", "sentinel", "planning"], content: "# Sentinel OS Project Goals\n\nBuild a minimalist, clean AI mission control platform...\n\n## Core Requirements\n- Multi-agent collaboration\n- Persistent memory\n- Clean dark UI", folder: "Projects", updatedAt: new Date(Date.now() - 1 * 60 * 60 * 1000) },
-  { id: "n2", title: "Agent Architecture Notes", tags: ["architecture", "agents", "design"], content: "## Agent Design Principles\n\nEach agent needs:\n- Unique identity and system prompt\n- Scoped memory access\n- Defined tool permissions", folder: "Architecture", updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000) },
-  { id: "n3", title: "Memory System Design", tags: ["memory", "pgvector", "architecture"], content: "## Tiered Memory Architecture\n\n1. session_memory - ephemeral\n2. project_memory - per project\n3. org_memory - company wide\n4. vector_memory - semantic search", folder: "Architecture", updatedAt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
-  { id: "n4", title: "Daily Log - Jun 28", tags: ["daily", "log"], content: "## Today's Progress\n\n- Refactored nav to workspace OS shell\n- Built cybersecurity + org + studio workspaces\n- Wired persistent chat history", folder: "Daily Logs", updatedAt: new Date(Date.now() - 30 * 60 * 1000) },
-  { id: "n5", title: "Client: Acme Corp", tags: ["client", "acme", "crm"], content: "## Acme Corp Profile\n\n**Industry:** SaaS\n**Contact:** Jane Smith\n**Status:** Active\n**Key needs:** AI workflow automation", folder: "Clients", updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
-];
-
-const FOLDERS = ["All", "Projects", "Architecture", "Daily Logs", "Clients", "Agents"];
-
+/**
+ * Knowledge — the same canonical graph /chat uses, opened with the
+ * Knowledge lens active by default (Obsidian-style: graph-first, notes as
+ * a translucent panel over it, never a separate graph). See NotesPanel for
+ * the real ObsidianNote CRUD and src/lib/knowledge/wikilinks.ts for how
+ * notes bridge into real KnowledgeObject/KnowledgeEdge rows on save.
+ */
 export default function MemoryPage() {
-  const [search, setSearch] = useState("");
-  const [activeFolder, setActiveFolder] = useState("All");
-  const [selectedNote, setSelectedNote] = useState(SAMPLE_NOTES[0]);
+  const setLensCluster = useGraphStore((state) => state.setLensCluster);
+  const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [unbuiltTab, setUnbuiltTab] = useState<"memories" | "sources" | null>(null);
 
-  const filtered = SAMPLE_NOTES.filter((note) => {
-    const matchesFolder = activeFolder === "All" || note.folder === activeFolder;
-    const matchesSearch =
-      !search ||
-      note.title.toLowerCase().includes(search.toLowerCase()) ||
-      note.tags.some((t) => t.includes(search.toLowerCase()));
-    return matchesFolder && matchesSearch;
-  });
+  useEffect(() => {
+    setLensCluster("Knowledge");
+  }, [setLensCluster]);
+
+  useEffect(() => {
+    const onModuleTab = (event: Event) => {
+      const detail = (event as CustomEvent<{ moduleId: string; tabId: string }>).detail;
+      if (detail?.moduleId !== "knowledge") return;
+
+      switch (detail.tabId) {
+        case "graph":
+          setUnbuiltTab(null);
+          setNotesCollapsed(true);
+          break;
+        case "documents":
+          setUnbuiltTab(null);
+          setNotesCollapsed(false);
+          break;
+        case "memories":
+          setUnbuiltTab("memories");
+          break;
+        case "sources":
+          setUnbuiltTab("sources");
+          break;
+      }
+    };
+    window.addEventListener("sentinel:module-tab", onModuleTab);
+    return () => window.removeEventListener("sentinel:module-tab", onModuleTab);
+  }, []);
 
   return (
-    <div className="flex h-full">
-      {/* Vault sidebar */}
-      <div className="w-48 border-r border-[--border] bg-[--sidebar] flex flex-col shrink-0">
-        <div className="p-3 border-b border-[--border]">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen className="w-4 h-4 text-[--primary]" />
-            <span className="text-sm font-medium text-[--foreground]">Vault</span>
-            <Button size="icon" variant="ghost" className="h-6 w-6 ml-auto">
-              <Plus className="w-3 h-3" />
-            </Button>
-          </div>
-        </div>
-        <ScrollArea className="flex-1 p-2">
-          <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground] px-2 mb-2">
-            Folders
-          </div>
-          {FOLDERS.map((folder) => (
-            <button
-              key={folder}
-              onClick={() => setActiveFolder(folder)}
-              className={cn(
-                "w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
-                activeFolder === folder
-                  ? "bg-[--primary]/15 text-[--primary]"
-                  : "text-[--muted-foreground] hover:text-[--foreground] hover:bg-[--accent]"
-              )}
-            >
-              <ChevronRight className="w-3 h-3" />
-              {folder}
-            </button>
-          ))}
-          <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground] px-2 mt-4 mb-2">
-            Tags
-          </div>
-          {["project", "architecture", "memory", "agents", "daily"].map((tag) => (
-            <button
-              key={tag}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-[--muted-foreground] hover:text-[--foreground] hover:bg-[--accent] transition-colors"
-            >
-              <Hash className="w-3 h-3" />
-              {tag}
-            </button>
-          ))}
-        </ScrollArea>
+    <div className="relative h-full w-full overflow-hidden bg-[#050810]">
+      <div className="absolute inset-0">
+        <NeuralLens />
       </div>
 
-      {/* Note list */}
-      <div className="w-64 border-r border-[--border] flex flex-col shrink-0">
-        <div className="p-3 border-b border-[--border]">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[--muted-foreground]" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search notes…"
-              className="pl-7 h-8 text-xs"
-            />
-          </div>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {filtered.map((note) => (
-              <button
-                key={note.id}
-                onClick={() => setSelectedNote(note)}
-                className={cn(
-                  "w-full text-left px-3 py-2.5 rounded-md transition-colors",
-                  selectedNote.id === note.id
-                    ? "bg-[--primary]/15 border border-[--primary]/30"
-                    : "hover:bg-[--accent] border border-transparent"
-                )}
-              >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FileText className="w-3 h-3 text-[--muted-foreground] shrink-0" />
-                  <span className="text-xs font-medium text-[--foreground] truncate">{note.title}</span>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {note.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="text-[9px] text-[--muted-foreground]">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-                <div className="text-[10px] text-[--muted-foreground] mt-1">
-                  {note.updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </div>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
+      <NotesPanel
+        collapsed={notesCollapsed}
+        onToggleCollapsed={() => setNotesCollapsed((v) => !v)}
+      />
 
-      {/* Note editor */}
-      {selectedNote && (
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="border-b border-[--border] px-6 h-14 flex items-center gap-3 bg-[--card] shrink-0">
-            <span className="font-medium text-sm text-[--foreground]">{selectedNote.title}</span>
-            <div className="flex gap-1 ml-auto">
-              {selectedNote.tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-[9px]">
-                  #{tag}
-                </Badge>
-              ))}
-            </div>
-          </div>
-          <div className="flex-1 p-6 overflow-auto">
-            <div className="max-w-2xl mx-auto">
-              <pre className="text-sm text-[--foreground] font-mono leading-relaxed whitespace-pre-wrap">
-                {selectedNote.content}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
+      {unbuiltTab ? (
+        <UnbuiltTabOverlay
+          title={unbuiltTab === "memories" ? "Memories" : "Sources"}
+          detail={
+            unbuiltTab === "memories"
+              ? "A dedicated Memories view (session/project/org-scoped memory, distinct from notes) is not built yet — real Memory rows already exist and feed the graph via chat capture."
+              : "A dedicated Sources view (citations and provenance for knowledge in the graph) is not built yet."
+          }
+          onClose={() => setUnbuiltTab(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function UnbuiltTabOverlay({ title, detail, onClose }: { title: string; detail: string; onClose: () => void }) {
+  return (
+    <div className="pointer-events-auto absolute bottom-4 left-3 top-0 z-30 flex w-[calc(100%-24px)] max-w-[330px] flex-col overflow-hidden rounded-xl border border-[#1a2a3c] bg-[#07111d]/88 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl xl:max-w-[376px]">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-medium text-[#dbe5f1]">{title}</h2>
+        <span className="rounded border border-slate-400/25 px-1.5 py-0.5 text-[8px] text-slate-300">unavailable</span>
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-[#8b93a5]">{detail}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 inline-flex w-fit rounded border border-violet-400/30 px-2.5 py-1.5 text-[10px] text-violet-200"
+      >
+        Back to graph
+      </button>
     </div>
   );
 }

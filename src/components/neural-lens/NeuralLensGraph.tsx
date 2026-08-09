@@ -170,8 +170,20 @@ export function NeuralLensGraph({
       // old single-hub-ring layout's distance) left the camera pointed at
       // mostly-empty space near the origin instead of framing the whole
       // constellation.
-      const position = initialCamera?.position ?? { x: 0, y: 0, z: 5600 };
-      const lookAt = initialCamera?.lookAt ?? { x: 0, y: 0, z: 0 };
+      //
+      // A persisted camera from before this layout shrank the graph's
+      // apparent size 5x is stale, not just outdated — useGraphStore bumps
+      // its persist version to invalidate it, but this floor is a second,
+      // independent guard: a too-close restored position (below where any
+      // legitimate framing of THIS layout would ever sit) is distrusted and
+      // replaced with the default rather than trusted verbatim, so a future
+      // layout-scale change can't silently reintroduce "nothing visible"
+      // just because a version bump was missed.
+      const MIN_TRUSTED_INITIAL_DISTANCE = 2500;
+      const restoredDistance = initialCamera ? Math.hypot(initialCamera.position.x, initialCamera.position.y, initialCamera.position.z) : 0;
+      const trustRestoredCamera = initialCamera && restoredDistance >= MIN_TRUSTED_INITIAL_DISTANCE;
+      const position = trustRestoredCamera ? initialCamera.position : { x: 0, y: 0, z: 5600 };
+      const lookAt = trustRestoredCamera ? initialCamera.lookAt : { x: 0, y: 0, z: 0 };
       fgRef.current?.cameraPosition?.(position, lookAt, 950);
       fgRef.current?.refresh?.();
       const distance = Math.hypot(position.x, position.y, position.z);

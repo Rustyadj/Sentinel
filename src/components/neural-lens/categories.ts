@@ -129,7 +129,7 @@ export function isHubCategory(category: string): boolean {
 export const CLUSTER_ROUTE: Record<ClusterId, string> = {
   Chat: "/chat",
   Projects: "/projects",
-  Knowledge: "/obsidian",
+  Knowledge: "/memory",
   Memory: "/memory",
   Learning: "/learning",
   Cybersecurity: "/security",

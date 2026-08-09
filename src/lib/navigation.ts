@@ -19,6 +19,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { id: "home",         label: "Mission Control", icon: "Home",          href: "/", exact: true },
   { id: "chat",         label: "Chat",         icon: "MessageSquare", href: "/chat" },
   { id: "projects",     label: "Projects",     icon: "Folder",        href: "/projects" },
+  { id: "kanban",       label: "Kanban",       icon: "Kanban",        href: "/kanban" },
   { id: "knowledge",    label: "Knowledge",    icon: "BookOpen",      href: "/memory" },
   { id: "agents",       label: "Agents",       icon: "Bot",           href: "/agents" },
   { id: "organization", label: "Organization", icon: "Building2",     href: "/orgchart" },

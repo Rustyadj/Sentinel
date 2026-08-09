@@ -25,6 +25,10 @@ export interface BridgeSourceParams {
   sourceId: string;
   scope: KnowledgeScope;
   projectId?: string | null;
+  /** Without this, buildGraphData's access filter (`OR: [{userId}, {projectId
+   * in accessible}]`) can never match a project-less bridged row — it would
+   * be created but permanently invisible, to its own creator included. */
+  userId?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -50,6 +54,7 @@ export async function getOrCreateKnowledgeObjectForSource(
       sourceId: params.sourceId,
       scope: params.scope,
       projectId: params.projectId ?? null,
+      userId: params.userId ?? null,
       metadata: toJson(params.metadata ?? {}),
     },
   });
@@ -73,6 +78,7 @@ export async function bridgeBatch(
     title: string;
     scope: KnowledgeScope;
     projectId?: string | null;
+    userId?: string | null;
   }>,
 ): Promise<string[]> {
   const ids: string[] = [];
@@ -84,6 +90,7 @@ export async function bridgeBatch(
       sourceId: item.sourceId,
       scope: item.scope,
       projectId: item.projectId,
+      userId: item.userId,
     });
     ids.push(id);
   }
@@ -101,6 +108,7 @@ export async function bridgeBatch(
 export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
   const result = await retrieveContext(ctx);
   const projectId = ctx.projectId ?? null;
+  const userId = ctx.userId;
 
   const knowledgeObjectIds = await bridgeBatch([
     ...result.memories.map((m) => ({
@@ -110,6 +118,7 @@ export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
       title: m.content.slice(0, 80),
       scope: m.scope as KnowledgeScope,
       projectId,
+      userId,
     })),
     ...result.notes.map((n) => ({
       sourceType: "obsidian_note",
@@ -118,6 +127,7 @@ export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
       title: n.title,
       scope: (projectId ? "project" : "global") as KnowledgeScope,
       projectId,
+      userId,
     })),
     ...result.decisions.map((d) => ({
       sourceType: "decision",
@@ -126,6 +136,7 @@ export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
       title: d.title,
       scope: (projectId ? "project" : "global") as KnowledgeScope,
       projectId,
+      userId,
     })),
   ]);
 

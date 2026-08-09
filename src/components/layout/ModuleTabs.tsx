@@ -99,6 +99,35 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
     },
   },
   {
+    match: (pathname) => pathname.startsWith("/security") || pathname.startsWith("/workspaces/cybersecurity"),
+    config: {
+      id: "cybersecurity",
+      label: "RANGE CONSOLE",
+      defaultTab: "overview",
+      // Range Console's full information architecture (see the Sentinel Range
+      // Console spec). Only Overview is implemented today — the rest render
+      // an explicit not-yet-built state, same convention as Learning Core's
+      // unimplemented tabs, rather than a silent dead click.
+      tabs: [
+        { id: "overview", label: "Overview" },
+        { id: "operations", label: "Operations" },
+        { id: "red-team", label: "Red Team" },
+        { id: "blue-team", label: "Blue Team" },
+        { id: "purple-team", label: "Purple Team" },
+        { id: "attack-paths", label: "Attack Paths" },
+        { id: "assets", label: "Assets" },
+        { id: "vulnerabilities", label: "Vulnerabilities" },
+        { id: "threat-intel", label: "Threat Intelligence" },
+        { id: "phishing", label: "Phishing" },
+        { id: "detection-engineering", label: "Detection Engineering" },
+        { id: "workflows", label: "Workflows" },
+        { id: "reports", label: "Reports" },
+        { id: "chat", label: "Chat" },
+        { id: "settings", label: "Settings" },
+      ],
+    },
+  },
+  {
     match: (pathname) => pathname.startsWith("/marketplace"),
     config: {
       id: "marketplace",

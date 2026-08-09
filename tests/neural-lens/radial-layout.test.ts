@@ -59,8 +59,8 @@ describe("fromApiGraph — buildLensGraphFromApi", () => {
     const g = buildLensGraphFromApi({
       nodes: [
         { id: "p1", type: "Project", title: "Proj" },
-        { id: "n1", type: "Note", title: "Note 1" },
-        { id: "n2", type: "Note", title: "Note 2" },
+        { id: "n1", type: "Task", title: "Task 1" },
+        { id: "n2", type: "Task", title: "Task 2" },
       ],
       edges: [
         { fromObjectId: "p1", toObjectId: "n1" },
@@ -101,8 +101,9 @@ describe("fromApiGraph — buildLensGraphFromApi", () => {
     // loose has no edge to the hub ⇒ orphan hub is synthesized and it attaches.
     const ids = g.nodes.map((n) => n.id);
     expect(ids).toContain("loose");
-    expect(ids).toContain("__orphans__");
-    expect(g.links.some((l) => l.target === "loose")).toBe(true);
+    const orphanId = ids.find((id) => id.startsWith("__orphans__:"));
+    expect(orphanId).toBeDefined();
+    expect(g.links.some((l) => l.source === orphanId && l.target === "loose")).toBe(true);
   });
 
   it("marks the result as non-demo (SCOPED) data", () => {

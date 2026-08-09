@@ -96,6 +96,15 @@ interface GraphUIActions {
 
 export type GraphStore = GraphUIState & GraphUIActions;
 
+/** Shape actually written to localStorage — must match `partialize` below. */
+interface PersistedGraphState {
+  lensClusterId: ClusterId | null;
+  lensOnly: boolean;
+  zoomLevel: SemanticZoomLevel;
+  cameraState: GraphCameraState | null;
+  selectedNodeId: string | null;
+}
+
 export const useGraphStore = create<GraphStore>()(
   persist(
     (set) => ({
@@ -158,6 +167,18 @@ export const useGraphStore = create<GraphStore>()(
         cameraState: state.cameraState,
         selectedNodeId: state.selectedNodeId,
       }),
+      // v1: the cluster-of-hubs layout rewrite spread content across a much
+      // larger radius (~2,970 units vs. the old single-hub-ring's ~150), so
+      // any camera position persisted under v0 (e.g. z=1000-1100, framed for
+      // the old layout) is now wrong — it points at what's effectively empty
+      // space near the origin instead of the graph. Discard just the stale
+      // camera on migration; everything else a v0 client saved is still valid.
+      version: 1,
+      migrate: (persisted, fromVersion) => {
+        const state = persisted as PersistedGraphState;
+        if (fromVersion < 1) return { ...state, cameraState: null };
+        return state;
+      },
     },
   ),
 );
