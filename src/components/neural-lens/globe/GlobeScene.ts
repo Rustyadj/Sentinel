@@ -1305,7 +1305,15 @@ export class GlobeScene {
     const loop = () => {
       if (!this.running) return;
       this.frame = requestAnimationFrame(loop);
-      this.renderFrame();
+      try {
+        this.renderFrame();
+      } catch (error) {
+        // A lost GL context or a driver that refuses a shader would otherwise
+        // throw sixty times a second for the rest of the session. Stop once,
+        // report once; the surrounding chrome keeps working.
+        this.stop();
+        console.error("[neural-lens] globe renderer stopped after a frame error", error);
+      }
     };
     this.frame = requestAnimationFrame(loop);
   }
