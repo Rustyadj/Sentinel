@@ -1,74 +1,89 @@
-// Neural Lens — colour palette (Phase E: OS-scale graph).
+// Neural Lens — colour system for the globe renderer.
 //
-// Near-black field of mostly dim blue-gray dots. No neon, no rainbow, no
-// glowing-Christmas-tree hub nodes. Almost everything is quiet; the handful
-// of things that should stand out (hubs, the active lens, a selection,
-// activity) each get exactly one distinct treatment so the eye can tell them
-// apart at a glance without the graph ever looking busy.
+// Near-black space, a field of faint blue-white dust, and a small number of
+// deliberate accents. Sentinel purple is reserved for the thing the operator
+// is acting on — the selected node and the active lens — so purple always
+// means "this is live/mine" rather than "this is decoration". Every other
+// region gets one muted hue from a narrow palette (blue, cyan, teal, amber,
+// violet, soft white); nothing is allowed to be neon, and no two regions are
+// equally loud.
 
 import type { ClusterId } from "./categories";
 import type { SemanticZoomLevel } from "./types";
 
-export const LENS_BG = "#010409";
+export const LENS_BG = "#01040a";
 
 // ---------------------------------------------------------------------------
 // Node states
 // ---------------------------------------------------------------------------
 
-/** The bulk of the graph: dim blue-gray, 1-3px, barely-there opacity. */
-export const NEUTRAL_NODE = "#7f92ac";
-/** Structural hubs (Workspace/Project/Conversation/…): same family, brighter. */
-export const HUB_NODE = "#b9c8e0";
-/** The hub currently targeted by the active lens — the one deliberate accent
- * color allowed outside the muted cluster palette. */
-export const LENS_HUB_NODE = "#b083f0";
-/** A user-selected node: white outline + small bloom, per the brief. */
-export const SELECTED_NODE = "#ffffff";
+/** The bulk of the graph: faint blue-white dust. Deliberately close to
+ * neutral — regions read through a *tint* of this, so the globe as a whole
+ * stays blue-white instead of taking on whichever hue is most common. */
+export const NEUTRAL_NODE = "#95a9cc";
+/** Structural hubs (Workspace/Project/Repository/…): same family, brighter. */
+export const HUB_NODE = "#c3d1e8";
+/** The hub currently targeted by the active lens. */
+export const LENS_HUB_NODE = "#b49bf7";
+/** Sentinel purple, as the graph uses it: emphasis, never decoration. */
+export const LENS_ACCENT = "#a78bfa";
+/** A user-selected node — a near-white core inside a purple bloom. */
+export const SELECTED_NODE = "#f4efff";
+export const SELECTED_GLOW = "#8f6ff2";
+/** Direct neighbours of the selection. Fixed rather than derived from the
+ * node's workspace: "related to what I clicked" has to mean the same colour
+ * every time, and the legend has to be able to name it. Workspace identity
+ * colour (groupColor) still drives live-activity lighting. */
+export const RELATED_NODE = "#8fb0f5";
 
-export const NEUTRAL_NODE_OPACITY_RANGE: [number, number] = [0.35, 0.6];
-export const HUB_NODE_OPACITY = 0.85;
-export const CONNECTED_NODE_OPACITY = 0.8;
-export const FADED_NODE_OPACITY = 0.08;
-export const SELECTED_NODE_OPACITY = 1;
+export const NEUTRAL_NODE_OPACITY_RANGE: [number, number] = [0.6, 1];
+export const HUB_NODE_OPACITY = 0.9;
+export const CONNECTED_NODE_OPACITY = 0.85;
+/** Multiplier applied to anything outside the active lens in Full Graph mode —
+ * present, legible as structure, clearly not the subject. */
+export const OUT_OF_LENS_DIM = 0.3;
 
-/** Draw-radius (px) by role — most nodes stay in the 1-3px band. */
+/** Draw radius (world units at the globe's scale) by role. Most nodes stay
+ * tiny; only hubs and the selection are allowed to read as objects. */
 export const NODE_RADIUS = {
-  normal: [1, 3] as [number, number],
+  normal: [1.5, 3.5] as [number, number],
   hub: 5,
-  lensHub: 6.5,
-  selected: 4.5,
+  /** A region's primary hub — the thing its name is attached to. */
+  majorHub: 8,
+  selected: 8,
 };
 
 /** Muted accent tints by category. Only a minority of nodes use these —
  * everything else falls back to NEUTRAL_NODE. */
 export const ACCENT_COLORS: Record<string, string> = {
-  Memory: "#5fae86",
-  Decision: "#c96b6b",
-  Agent: "#c2a06a",
-  Knowledge: "#c7a15f",
-  Task: "#6f97c9",
-  File: "#8fb668",
-  Threat: "#c9686f",
-  Detection: "#d99a52",
+  Memory: "#57c2a8",
+  Decision: "#c97f7f",
+  Agent: "#b49bf7",
+  Knowledge: "#c9ab6a",
+  Task: "#6aa9e9",
+  File: "#7fb489",
+  Threat: "#c9757f",
+  Detection: "#dba05e",
 };
 
 // ---------------------------------------------------------------------------
 // Cluster identity — one muted, distinguishable hue per OS-level region.
 // Stable and explicit (not hashed) so "which region is this" reads the same
-// way every session, in legends, chips, and cluster-outline rings alike.
+// way every session, in legends, layer rows, and region labels alike.
 // ---------------------------------------------------------------------------
 
 export const CLUSTER_COLORS: Record<ClusterId, string> = {
-  Chat: "#7dd3fc",
-  Projects: "#6f97c9",
-  Knowledge: "#c7a15f",
-  Memory: "#5fae86",
-  Learning: "#7de0c9",
-  Cybersecurity: "#c9686f",
-  Coding: "#9db8ea",
-  Organization: "#c2a06a",
-  Infrastructure: "#8a94a8",
-  Voice: "#c07dfc",
+  Chat: "#5c9fe0",
+  Projects: "#e09a52",
+  Knowledge: "#4a89c4",
+  Memory: "#57c2a8",
+  Learning: "#d4b45f",
+  Cybersecurity: "#9179ef",
+  Coding: "#dd8a4c",
+  Organization: "#a98bf5",
+  Infrastructure: "#4f7fc9",
+  Voice: "#93a2d8",
+  External: "#b57cf0",
 };
 
 export function clusterColor(cluster: ClusterId): string {
@@ -79,19 +94,32 @@ export function clusterColor(cluster: ClusterId): string {
 // Edges — near-invisible at rest, brighten only for hover/selection/activity.
 // ---------------------------------------------------------------------------
 
-export const EDGE_BASE = "rgba(96, 130, 175, 0.05)";
-export const EDGE_LIT = "rgba(140, 190, 245, 0.55)";
-export const EDGE_ACTIVE = "rgba(255, 255, 255, 0.75)";
-export const EDGE_HIGHLIGHT = EDGE_LIT;
-export const PARTICLE_COLOR = "#7dd3fc";
-export const EXECUTION_PARTICLE_COLOR = "#ffffff";
-
-/** Hex-only counterparts of the rgba edge colors above, for THREE.Color
- * (which doesn't reliably parse rgba-with-alpha strings) — the WebGL layer
- * applies alpha separately via vertex-color scaling instead. */
-export const EDGE_BASE_HEX = "#6082af";
+/** Edge colours for THREE.Color, which doesn't reliably parse rgba strings —
+ * the WebGL layer applies alpha separately via vertex-colour scaling.
+ *
+ * The baseline is deliberately indigo rather than blue-grey: edges are drawn
+ * additively and there are >100k of them, so wherever the web is dense their
+ * colour accumulates. A blue-grey base saturates its blue and green channels
+ * first and floods the globe with cyan; indigo accumulates toward the violet
+ * the rest of the system already speaks. */
+export const EDGE_BASE_HEX = "#5a63a6";
 export const EDGE_LIT_HEX = "#8cbef5";
 export const EDGE_ACTIVE_HEX = "#ffffff";
+/** The active lens's edges: purple, matching the lens accent. */
+export const EDGE_LENS_HEX = "#8f76e8";
+
+/** Baseline alpha for an edge at rest — deliberately near the floor of what a
+ * display can show, because tens of thousands of them add up. */
+export const EDGE_BASE_ALPHA = 0.021;
+export const EDGE_LENS_ALPHA = 0.062;
+export const EDGE_LIT_ALPHA = 0.5;
+export const EDGE_OUT_OF_LENS_ALPHA = 0.008;
+
+/** Depth-fog band, as fractions of the camera's distance to the globe centre:
+ * nothing fades before `near`, everything past `far` is at full fog. Keeping
+ * these relative means fog reads the same whether you're framing the whole
+ * globe or one cluster. */
+export const FOG = { near: 0.6, far: 1.68, strength: 0.86 };
 
 /**
  * Muted, technical hues for the focused neighborhood — one per
@@ -119,40 +147,60 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
+/**
+ * FNV-1a with an avalanche finalizer, normalised to [0, 1).
+ *
+ * The plain multiply-31 hash above is fine for picking a bucket out of eight,
+ * but it clusters badly for the near-identical ids a graph is full of
+ * ("…-c1", "…-c2", …): taken as a fraction, three quarters of a sequential run
+ * lands in the bottom half of the range. That skew would quietly break the
+ * density control, whose whole contract is that keeping the lowest-ranked 70%
+ * of nodes draws about 70% of them. The finalizer spreads adjacent inputs
+ * across the whole range, so per-node variation is even and thinning the field
+ * removes roughly the fraction the operator asked for.
+ */
+function hashUnit(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 2246822507);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 3266489909);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) / 4294967296;
+}
+
 /** Deterministic focus color for a workspace (or hub, in DEMO mode where there's no real workspace). */
 export function groupColor(key: string | undefined): string {
   if (!key) return GROUP_HUES[0];
   return GROUP_HUES[hashString(key) % GROUP_HUES.length];
 }
 
-/** `#rrggbb` -> `rgba(r, g, b, alpha)`, for translucent edge/particle tints. */
-export function hexToRgba(hex: string, alpha: number): string {
-  const value = hex.replace("#", "");
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/** Deterministic 1-3px radius for a "normal" node — stable per id so it
- * doesn't flicker in size across renders. */
+/** Deterministic radius for a "normal" node — stable per id so it doesn't
+ * flicker in size across renders. */
 export function normalNodeRadius(id: string): number {
   const [min, max] = NODE_RADIUS.normal;
-  return min + (hashString(id) % 100) / 100 * (max - min);
+  return min + hashUnit(`${id}:radius`) * (max - min);
 }
 
 /** Deterministic subtle opacity variation for a "normal" node. */
 export function normalNodeOpacity(id: string): number {
   const [min, max] = NEUTRAL_NODE_OPACITY_RANGE;
-  return min + ((hashString(id) >> 3) % 100) / 100 * (max - min);
+  return min + hashUnit(`${id}:opacity`) * (max - min);
 }
 
-/** The muted lens accents used for filter chips / legend swatches, and the
- * base fill color for a node before opacity/state adjustments are applied. */
-export function nodeColor(type: string, accent: boolean, isHub: boolean): string {
-  if (isHub) return HUB_NODE;
-  if (accent && ACCENT_COLORS[type]) return ACCENT_COLORS[type];
-  return NEUTRAL_NODE;
+/**
+ * Deterministic 0..1 "rank" for a node, used by the visual-density control:
+ * density 60% keeps the 60% of the dust field with the lowest rank. Because
+ * the rank is derived from the id, lowering density always removes the same
+ * dots and raising it brings the same ones back — the field thins out, it
+ * doesn't reshuffle.
+ */
+export function densityRank(id: string): number {
+  return hashUnit(`${id}:density`);
 }
 
 export function zoomLevelFor(scale: number): SemanticZoomLevel {
@@ -161,14 +209,4 @@ export function zoomLevelFor(scale: number): SemanticZoomLevel {
   if (scale < 1.1) return "region";
   if (scale < 2.6) return "neighborhood";
   return "detail";
-}
-
-/** Whether a node's label should ever be drawn at this zoom level — the
- * brief's "no label explosion" constraint. Hubs earn a label one level
- * earlier than leaf nodes. */
-export function labelsVisibleAt(level: SemanticZoomLevel, isHub: boolean): boolean {
-  if (level === "galaxy") return false;
-  if (level === "cluster") return isHub;
-  if (level === "region") return isHub;
-  return true;
 }

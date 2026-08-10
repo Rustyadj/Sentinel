@@ -1,9 +1,7 @@
 // Neural Lens — shared view types (Phase E: OS-scale graph).
 
-import type { ClusterOutline } from "./radialLayout";
+import type { GlobeRegion } from "./globeLayout";
 import type { ClusterId, NodeCategory } from "./categories";
-
-export type LensId = "Knowledge" | "Execution" | "People";
 
 export type { ClusterId, NodeCategory };
 
@@ -14,9 +12,11 @@ export interface LensNode {
   type: string;
   /** Draw radius weight. */
   val: number;
-  /** Fixed radial-layout position. */
+  /** Fixed position on the globe. Assigned once by computeGlobeLayout and
+   * never recomputed — lens switching changes emphasis, never geometry. */
   x: number;
   y: number;
+  z: number;
   /** Cluster/hub this node belongs to (for LOD collapsing + coloring). */
   hubId: string;
   /** One of the ~10 OS-level regions (Chat, Projects, Knowledge, …). */
@@ -48,9 +48,10 @@ export interface LensGraph {
   nodes: LensNode[];
   links: LensLink[];
   meta: { demo: boolean; nodeCount: number; edgeCount: number };
-  /** Cluster bounding circles for the zoomed-out outline view — present once
-   * the graph has been laid out with computeClusteredRadialLayout. */
-  clusterOutlines?: ClusterOutline[];
+  /** Per-cluster footprint on the globe — region labels, minimap outlines,
+   * and region framing all read from this. Present once the graph has been
+   * laid out with computeGlobeLayout. */
+  regions?: GlobeRegion[];
 }
 
 /**

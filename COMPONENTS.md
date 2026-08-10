@@ -60,6 +60,17 @@ Exactly how every component should behave. Visual tokens live in [DESIGN.md](DES
 - Zoom/pan controls are always visible, not hover-only, since graph navigation is a primary task.
 - Respect `prefers-reduced-motion`: disable graph pulse/particle animation and any continuous motion; keep discrete transitions (node select, edge highlight) since those carry information.
 
+### The canonical graph (Neural Lens globe)
+
+There is one Sentinel graph, rendered as a globe. Everything below follows from that; treat these as invariants, not styling preferences.
+
+- **Fixed positions.** `computeGlobeLayout` assigns every node a coordinate as a pure function of its id, cluster, and hub. Nothing re-lays-out at runtime — not on lens change, not on filter, not on data refresh. A region keeps the same patch of the globe across sessions, which is what makes spatial memory possible.
+- **Regions.** Each cluster (`ClusterId`) owns a cap of the shell; the core cluster (Agents) is a dense ball at the centre. Region names are presentation (`CLUSTER_LABEL`); `ClusterId` stays the key that layout, routes, and persisted state use.
+- **Lens = emphasis.** Selecting a layer lights it and dims the rest. Full Graph keeps everything present; Lens Only hides all but the layer and its direct dependencies. Neither reloads, re-clusters, or moves anything.
+- **Density is deterministic.** The Visual Density control keeps the lowest-`densityRank` fraction of the dust field. Lowering it always removes the same dots and raising it brings the same ones back — the field thins, it never reshuffles.
+- **Four draw calls.** Dust, edges, hub bloom, focus bloom. Drift, activity pulse, depth fog, and active-path traversal are computed per-vertex from one `uTime` uniform; the CPU only rewrites buffers when the operator changes something (selection, lens, density). Hover updates only the edges it touches.
+- **Text is DOM.** Region names, the selection frame, and the hover readout are projected each frame and written to element refs, never re-rendered through React per frame.
+
 ## Command Palette
 
 - Global keyboard-first entry point (see [UX_RULES.md](UX_RULES.md) for the shortcut). Opens as a centered overlay over a scrim, never inline in the top bar.
