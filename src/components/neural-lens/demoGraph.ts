@@ -1,15 +1,23 @@
-// Neural Lens — deterministic OS-scale demo graph (Phase E).
+// Neural Lens — deterministic OS-scale demo graph.
 //
-// Builds a dense, multi-cluster graph spanning every category Sentinel
-// tracks — Chat, Projects, Knowledge, Memory, Learning, Cybersecurity,
-// Coding, Organization, Infrastructure, Voice — at a scale (5,000+ nodes,
-// 15,000+ edges by default) big enough to exercise the GPU rendering path
-// for real, not a toy. This is DEMO data — the Neural Lens surfaces it
+// Builds a dense, multi-cluster graph spanning every region Sentinel tracks —
+// Agents at the core, and Communications, Projects, Data Lake, Memory,
+// Workflows, Cybersecurity, Code, Infrastructure, Voice and External Partners
+// spread over the shell — at a scale big enough to exercise the GPU path for
+// real rather than a toy. This is DEMO data — the Neural Lens surfaces it
 // behind an explicit DEMO badge. SCOPED mode fetches the real /api/graph
-// instead.
+// instead, and gets the same geometry from the same layout function.
 
-import { computeClusteredRadialLayout, type ClusteredLayoutInputNode } from "./radialLayout";
-import { CLUSTER_IDS, CATEGORY_CLUSTER, HUB_CATEGORIES, type ClusterId, type NodeCategory } from "./categories";
+import { computeGlobeLayout, type GlobeLayoutInputNode } from "./globeLayout";
+import {
+  CLUSTER_IDS,
+  CLUSTER_LABEL,
+  CATEGORY_CLUSTER,
+  CORE_CLUSTER_ID,
+  HUB_CATEGORIES,
+  type ClusterId,
+  type NodeCategory,
+} from "./categories";
 import { ACCENT_COLORS } from "./palette";
 import type { LensGraph, LensLink, LensNode } from "./types";
 
@@ -32,9 +40,11 @@ const CATEGORIES_BY_CLUSTER: Record<ClusterId, NodeCategory[]> = (() => {
   for (const [category, cluster] of Object.entries(CATEGORY_CLUSTER) as [NodeCategory, ClusterId][]) {
     map[cluster].push(category);
   }
-  // Voice has no categories of its own yet (see categories.ts) — seed it with
-  // Conversation/Message so the region isn't empty in the demo.
+  // Voice and External have no categories of their own yet (see
+  // categories.ts) — seed them with the closest existing node types so the
+  // regions aren't empty in the demo.
   if (map.Voice.length === 0) map.Voice = ["Conversation", "Message"];
+  if (map.External.length === 0) map.External = ["Organization", "Provider", "Agent"];
   return map;
 })();
 
@@ -42,63 +52,78 @@ export interface DemoGraphOptions {
   seed?: number;
   /** Hubs per cluster. */
   hubsPerCluster?: number;
-  /** Approximate total node count, including hubs. */
+  /** Exact total node count, including hubs. */
   targetNodes?: number;
   targetEdges?: number;
 }
 
 export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
-  const { seed = 20260722, hubsPerCluster = 5, targetNodes = 5400, targetEdges = 52000 } = options;
+  const { seed = 20260722, hubsPerCluster = 5, targetNodes = 24000, targetEdges = 150000 } = options;
   const rnd = mulberry32(seed);
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
 
-  const layoutInput: ClusteredLayoutInputNode[] = [];
+  const layoutInput: GlobeLayoutInputNode[] = [];
   const raw: Array<{ id: string; type: NodeCategory; clusterId: ClusterId; hubId: string; tier: number; label: string }> = [];
   const links: LensLink[] = [];
-  const childrenOfHub = new Map<string, string[]>();
+  const majorHubByCluster = new Map<ClusterId, string>();
 
+  // Node budget is split so the total lands exactly on targetNodes: every
+  // cluster gets the same quota of non-hub nodes, and the leftover from the
+  // division is handed to the first few clusters one node at a time.
   const totalHubCount = hubsPerCluster * CLUSTER_IDS.length;
-  const childTarget = Math.max(0, targetNodes - totalHubCount);
-  const nodesPerCluster = Math.floor(childTarget / CLUSTER_IDS.length);
+  const childBudget = Math.max(0, targetNodes - totalHubCount);
+  const baseQuota = Math.floor(childBudget / CLUSTER_IDS.length);
+  const quotaRemainder = childBudget - baseQuota * CLUSTER_IDS.length;
 
-  for (const clusterId of CLUSTER_IDS) {
+  CLUSTER_IDS.forEach((clusterId, clusterIndex) => {
+    const quota = baseQuota + (clusterIndex < quotaRemainder ? 1 : 0);
     const categories = CATEGORIES_BY_CLUSTER[clusterId];
     const hubCategories = categories.filter((c) => HUB_CATEGORIES.has(c));
     const leafCategories = categories.length > 0 ? categories : (["Task"] as NodeCategory[]);
     const hubPool = hubCategories.length > 0 ? hubCategories : leafCategories;
+    const childrenOfHub = new Map<string, string[]>();
 
     const hubIds: string[] = [];
     for (let h = 0; h < hubsPerCluster; h++) {
       const hubId = `${clusterId}-hub-${h}`;
       const hubType = pick(hubPool);
       hubIds.push(hubId);
-      raw.push({ id: hubId, type: hubType, clusterId, hubId, tier: 0, label: `${hubType} ${h + 1}` });
+      // The primary hub carries the region's own name, so the label drawn on
+      // the globe and the label in its tooltip are the same thing.
+      const label = h === 0 ? CLUSTER_LABEL[clusterId] : `${hubType} ${h}`;
+      raw.push({ id: hubId, type: hubType, clusterId, hubId, tier: 0, label });
       layoutInput.push({ id: hubId, clusterId, hubId, parentId: hubId, tier: 0 });
     }
+    majorHubByCluster.set(clusterId, hubIds[0]);
 
     let created = 0;
-    for (let h = 0; h < hubIds.length; h++) {
+    const addChild = (hubId: string, index: number): string => {
+      const childId = `${hubId}-c${index}`;
+      const type = pick(leafCategories);
+      raw.push({ id: childId, type, clusterId, hubId, tier: 1, label: `${type} ${index}` });
+      layoutInput.push({ id: childId, clusterId, hubId, parentId: hubId, tier: 1 });
+      links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45 });
+      const siblings = childrenOfHub.get(hubId);
+      if (siblings) siblings.push(childId);
+      else childrenOfHub.set(hubId, [childId]);
+      created++;
+      return childId;
+    };
+
+    for (let h = 0; h < hubIds.length && created < quota; h++) {
       const hubId = hubIds[h];
       const isMajor = h === 0;
-      const share = isMajor ? nodesPerCluster * 0.32 : (nodesPerCluster * 0.68) / (hubIds.length - 1 || 1);
+      const share = isMajor ? quota * 0.32 : (quota * 0.68) / (hubIds.length - 1 || 1);
       const childCount = Math.max(8, Math.floor(share));
-      const hubChildren: string[] = [];
-      childrenOfHub.set(hubId, hubChildren);
 
       let childIndex = 0;
-      for (let c = 0; c < childCount && created < nodesPerCluster; c++) {
-        const childId = `${hubId}-c${c}`;
-        const type = pick(leafCategories);
-        raw.push({ id: childId, type, clusterId, hubId, tier: 1, label: `${type} ${childIndex}` });
-        layoutInput.push({ id: childId, clusterId, hubId, parentId: hubId, tier: 1 });
-        links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45 });
-        hubChildren.push(childId);
-        created++;
+      for (let c = 0; c < childCount && created < quota; c++) {
+        const childId = addChild(hubId, childIndex);
         childIndex++;
 
-        if (rnd() > 0.7 && created < nodesPerCluster) {
+        if (rnd() > 0.7 && created < quota) {
           const grandCount = 1 + Math.floor(rnd() * 4);
-          for (let g = 0; g < grandCount && created < nodesPerCluster; g++) {
+          for (let g = 0; g < grandCount && created < quota; g++) {
             const gid = `${childId}-g${g}`;
             const type = pick(leafCategories);
             raw.push({ id: gid, type, clusterId, hubId, tier: 2, label: `${type} ${childIndex}` });
@@ -109,6 +134,16 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
           }
         }
       }
+    }
+
+    // Grandchildren consume the quota faster than the per-hub child counts
+    // predict, so a cluster can finish under budget. Top up on the primary
+    // hub until the quota is met exactly — the totals a status readout shows
+    // should be the totals that were asked for.
+    let topUp = childrenOfHub.get(hubIds[0])?.length ?? 0;
+    while (created < quota) {
+      addChild(hubIds[0], topUp);
+      topUp++;
     }
 
     // Intra-cluster mesh so each region reads as a dense web, not a bare tree.
@@ -127,19 +162,34 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     for (let i = 0; i < hubIds.length; i++) {
       if (rnd() > 0.4) links.push({ source: hubIds[i], target: pick(hubIds), weight: 0.5 + rnd() * 0.3 });
     }
+  });
+
+  // Core spokes: the Agents region sits at the centre of the globe, and every
+  // other region answers to it. These are the long strands that read as the
+  // graph's skeleton when you look at the whole planet at once.
+  const coreHub = majorHubByCluster.get(CORE_CLUSTER_ID);
+  if (coreHub) {
+    for (const [clusterId, hubId] of majorHubByCluster) {
+      if (clusterId === CORE_CLUSTER_ID) continue;
+      links.push({ source: coreHub, target: hubId, weight: 0.85 });
+    }
   }
 
-  // Sparse cross-cluster bridges — e.g. a Coding commit that closed a Task,
-  // an Agent that wrote a Memory. These are the faint long strands that make
-  // the whole thing read as one graph instead of ten separate ones.
-  const bridgeCount = Math.round(CLUSTER_IDS.length * 45);
+  // Cross-cluster bridges — e.g. a Coding commit that closed a Task, an Agent
+  // that wrote a Memory. These are the long strands that make the whole thing
+  // read as one graph instead of eleven separate ones, so there are enough of
+  // them to see structure at planet scale, but they stay a rounding error
+  // against the ~100k intra-region edges.
+  const bridgeCount = Math.round(CLUSTER_IDS.length * 260);
   for (let b = 0; b < bridgeCount; b++) {
     const a = raw[Math.floor(rnd() * raw.length)];
     const z = raw[Math.floor(rnd() * raw.length)];
     if (a.clusterId !== z.clusterId) links.push({ source: a.id, target: z.id, weight: 0.1 + rnd() * 0.18 });
   }
 
-  const { positions, outlines } = computeClusteredRadialLayout(layoutInput, [...CLUSTER_IDS]);
+  const { positions, regions } = computeGlobeLayout(layoutInput, [...CLUSTER_IDS], {
+    coreClusterId: CORE_CLUSTER_ID,
+  });
 
   const nodes: LensNode[] = raw.map((n) => {
     const pos = positions.get(n.id)!;
@@ -154,6 +204,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
       clusterId: n.clusterId,
       x: pos.x,
       y: pos.y,
+      z: pos.z,
       val: isMajorHub ? 6.4 : isHub ? 3.6 : n.tier === 1 ? 2.15 : 1.35,
       accent,
       isHub,
@@ -181,7 +232,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     membersByHub.set(node.hubId, members);
   }
   const families = [...membersByHub.values()];
-  for (let pass = 0; cleanLinks.length < targetEdges && pass < 60; pass++) {
+  for (let pass = 0; cleanLinks.length < targetEdges && pass < 80; pass++) {
     for (const family of families) {
       for (const source of family) {
         if (cleanLinks.length >= targetEdges) break;
@@ -199,6 +250,6 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
     nodes,
     links: cleanLinks,
     meta: { demo: true, nodeCount: nodes.length, edgeCount: cleanLinks.length },
-    clusterOutlines: outlines,
+    regions,
   };
 }

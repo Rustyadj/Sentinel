@@ -1,12 +1,12 @@
 "use client";
 
-import { Hash, Clock, ShieldCheck } from "lucide-react";
+import { Hash, Clock, Network, ShieldCheck } from "lucide-react";
 
 /**
- * Shared node-detail building blocks — used by both the floating
- * NeuralLensInspector (on-canvas, immersive) and RightPanel's compact Graph
- * tab (docked). Kept presentational and layout-agnostic so each caller can
- * wrap them in whatever container suits its context.
+ * Shared node-detail building blocks — used by both the graph's own context
+ * rail (on-canvas) and RightPanel's compact Graph tab (docked). Kept
+ * presentational and layout-agnostic so each caller can wrap them in whatever
+ * container suits its context.
  */
 
 export function Facet({
@@ -53,7 +53,7 @@ export function NodeFacetList({
   return (
     <div className="space-y-2 text-[11px]">
       <Facet icon={ShieldCheck} label="Provenance" value={node.accent ? "Curated" : "Derived"} />
-      {node.hubId ? <Facet icon={Clock} label="Cluster" value={node.hubId} /> : null}
+      {node.hubId ? <Facet icon={Network} label="Hub" value={node.hubId} mono /> : null}
       <Facet icon={Hash} label="Node id" value={node.id} mono />
       {node.active && (
         <div className="flex items-center gap-1.5 text-emerald-300/80">

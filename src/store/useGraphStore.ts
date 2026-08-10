@@ -2,14 +2,19 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ClusterId } from "@/components/neural-lens/categories";
 import type { SemanticZoomLevel } from "@/components/neural-lens/types";
+import {
+  DEFAULT_GLOBE_SETTINGS,
+  normalizeGlobeSettings,
+  type GlobeSettings,
+} from "@/components/neural-lens/graphSettings";
 
 export type GraphTimeWindow = "all" | "7d" | "30d" | "90d";
 
 /**
  * Denormalized snapshot of the node currently selected in the graph canvas —
- * just enough to render a detail card (RightPanel's Graph tab, the floating
- * NeuralLensInspector) without every consumer needing direct access to the
- * full LensGraph the canvas is rendering.
+ * just enough to render a detail card (RightPanel's Graph tab, the graph's own
+ * context rail) without every consumer needing direct access to the full
+ * LensGraph the canvas is rendering.
  */
 export interface GraphNodeSummary {
   id: string;
@@ -72,6 +77,9 @@ interface GraphUIState {
   /** Camera position/target — persisted so reloading the graph doesn't reset
    * to the default overview every time. */
   cameraState: GraphCameraState | null;
+  /** How the globe is drawn (density, labels, edges, glow, motion, fog).
+   * Persisted: these are preferences, not view state. */
+  graphSettings: GlobeSettings;
 }
 
 interface GraphUIActions {
@@ -92,6 +100,7 @@ interface GraphUIActions {
   setLensOnly: (on: boolean) => void;
   setZoomLevel: (level: SemanticZoomLevel) => void;
   setCameraState: (camera: GraphCameraState) => void;
+  setGraphSettings: (patch: Partial<GlobeSettings>) => void;
 }
 
 export type GraphStore = GraphUIState & GraphUIActions;
@@ -103,6 +112,7 @@ interface PersistedGraphState {
   zoomLevel: SemanticZoomLevel;
   cameraState: GraphCameraState | null;
   selectedNodeId: string | null;
+  graphSettings?: Partial<GlobeSettings>;
 }
 
 export const useGraphStore = create<GraphStore>()(
@@ -124,6 +134,7 @@ export const useGraphStore = create<GraphStore>()(
       lensOnly: false,
       zoomLevel: "galaxy",
       cameraState: null,
+      graphSettings: DEFAULT_GLOBE_SETTINGS,
 
       setSearch: (search) => set({ search }),
       toggleType: (type) =>
@@ -154,6 +165,8 @@ export const useGraphStore = create<GraphStore>()(
       setLensOnly: (lensOnly) => set({ lensOnly }),
       setZoomLevel: (zoomLevel) => set({ zoomLevel }),
       setCameraState: (cameraState) => set({ cameraState }),
+      setGraphSettings: (patch) =>
+        set((state) => ({ graphSettings: { ...state.graphSettings, ...patch } })),
     }),
     {
       name: "sentinel.neural-lens.view-state",
@@ -166,18 +179,19 @@ export const useGraphStore = create<GraphStore>()(
         zoomLevel: state.zoomLevel,
         cameraState: state.cameraState,
         selectedNodeId: state.selectedNodeId,
+        graphSettings: state.graphSettings,
       }),
-      // v1: the cluster-of-hubs layout rewrite spread content across a much
-      // larger radius (~2,970 units vs. the old single-hub-ring's ~150), so
-      // any camera position persisted under v0 (e.g. z=1000-1100, framed for
-      // the old layout) is now wrong — it points at what's effectively empty
-      // space near the origin instead of the graph. Discard just the stale
-      // camera on migration; everything else a v0 client saved is still valid.
-      version: 1,
+      // Each layout rewrite invalidates any camera persisted before it: a
+      // position framed for the old geometry points at empty space in the new
+      // one. v1 was the cluster-of-hubs ring; v2 is the globe (radius 1,000,
+      // camera ~2.9k out). Discard just the stale camera on migration, and
+      // fill in render settings for clients that predate them.
+      version: 2,
       migrate: (persisted, fromVersion) => {
         const state = persisted as PersistedGraphState;
-        if (fromVersion < 1) return { ...state, cameraState: null };
-        return state;
+        const graphSettings = normalizeGlobeSettings(state.graphSettings);
+        if (fromVersion < 2) return { ...state, cameraState: null, graphSettings };
+        return { ...state, graphSettings };
       },
     },
   ),
