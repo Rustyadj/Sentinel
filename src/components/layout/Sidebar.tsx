@@ -63,6 +63,12 @@ function NavLink({ item, active, expanded }: { item: NavItem; active: boolean; e
   return (
     <Link
       href={item.href}
+      // The sidebar keeps all nav items mounted and visible at once (unlike
+      // a typical page where only a few links are ever in viewport), so
+      // Next's default prefetch-on-visible behavior was eagerly prefetching
+      // every route in the app on every render — the actual cause behind
+      // the shell feeling like it "freezes" on navigation.
+      prefetch={false}
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
       title={item.label}
@@ -87,6 +93,7 @@ function WorkspaceLink({ item, active, expanded }: { item: WorkspaceNavItem; act
   return (
     <Link
       href={item.href}
+      prefetch={false}
       aria-label={`${item.label} workspace`}
       aria-current={active ? "page" : undefined}
       title={item.label}
