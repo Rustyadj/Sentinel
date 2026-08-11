@@ -1,9 +1,9 @@
-// Neural Lens — map the real /api/graph payload into a radial LensGraph
-// (Phase E, SCOPED mode). Pure so it can be reasoned about without the DOM.
+// Neural Lens — map the real /api/graph payload onto the globe (SCOPED mode).
+// Pure so it can be reasoned about without the DOM.
 
-import { computeClusteredRadialLayout, type ClusteredLayoutInputNode } from "./radialLayout";
+import { computeGlobeLayout, type GlobeLayoutInputNode } from "./globeLayout";
 import { ACCENT_COLORS } from "./palette";
-import { clusterOf, isHubCategory } from "./categories";
+import { CLUSTER_IDS, CORE_CLUSTER_ID, clusterOf, isHubCategory } from "./categories";
 import type { LensGraph, LensLink, LensNode } from "./types";
 
 interface ApiNode {
@@ -22,8 +22,8 @@ const HUB_DEGREE_THRESHOLD = 6;
 
 /**
  * Build a hub-and-spoke LensGraph from arbitrary knowledge nodes/edges,
- * grouped first by OS-level cluster (categories.ts) and laid out with the
- * clustered radial layout so SCOPED and DEMO read as the same kind of graph.
+ * grouped first by OS-level cluster (categories.ts) and laid out on the same
+ * globe DEMO mode uses, so SCOPED and DEMO read as the same graph.
  * Within a cluster, hubs are hub-eligible categories or high-degree nodes;
  * every other node attaches (tier 1) to a hub it shares an edge with, or to
  * a synthetic per-cluster "orphans" hub.
@@ -68,7 +68,7 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     if (hub === orphanHubOf(clusterOfNode.get(nodeId)!)) orphanClusters.add(clusterOfNode.get(nodeId)!);
   }
 
-  const layoutInput: ClusteredLayoutInputNode[] = [];
+  const layoutInput: GlobeLayoutInputNode[] = [];
   for (const n of api.nodes) {
     const clusterId = clusterOfNode.get(n.id)!;
     const hub = hubOf.get(n.id)!;
@@ -86,11 +86,15 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     layoutInput.push({ id, clusterId, hubId: id, parentId: id, tier: 0 });
   }
 
-  const clusterOrder = [...new Set(api.nodes.map((n) => clusterOfNode.get(n.id)!))];
-  const { positions, outlines } = computeClusteredRadialLayout(layoutInput, clusterOrder);
+  // Cluster order comes from the canonical list, not from whatever order the
+  // API happened to return, so a region keeps the same patch of the globe
+  // between refreshes even as the underlying rows change.
+  const { positions, regions } = computeGlobeLayout(layoutInput, [...CLUSTER_IDS], {
+    coreClusterId: CORE_CLUSTER_ID,
+  });
 
   const nodes: LensNode[] = api.nodes.map((n) => {
-    const pos = positions.get(n.id) ?? { x: 0, y: 0 };
+    const pos = positions.get(n.id) ?? { x: 0, y: 0, z: 0 };
     const isHub = hubIds.has(n.id);
     return {
       id: n.id,
@@ -100,6 +104,7 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
       clusterId: clusterOfNode.get(n.id)! as LensNode["clusterId"],
       x: pos.x,
       y: pos.y,
+      z: pos.z,
       val: isHub ? 7 : 2.2,
       accent: !!ACCENT_COLORS[n.type],
       isHub,
@@ -110,7 +115,7 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
 
   for (const clusterId of orphanClusters) {
     const id = orphanHubOf(clusterId);
-    const pos = positions.get(id) ?? { x: 0, y: 0 };
+    const pos = positions.get(id) ?? { x: 0, y: 0, z: 0 };
     nodes.push({
       id,
       label: "Unclustered",
@@ -119,6 +124,7 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
       clusterId: clusterId as LensNode["clusterId"],
       x: pos.x,
       y: pos.y,
+      z: pos.z,
       val: 6,
       isHub: true,
       active: false,
@@ -141,6 +147,6 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     nodes,
     links,
     meta: { demo: false, nodeCount: nodes.length, edgeCount: links.length },
-    clusterOutlines: outlines,
+    regions,
   };
 }

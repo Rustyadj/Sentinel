@@ -48,6 +48,28 @@
   animation: sentinel-star-drift 78s linear infinite;
 }
 
+/* Graph control rail: the density slider. Styled here rather than inline
+   because range-input thumbs are only reachable through vendor pseudo-elements. */
+.sentinel-density-slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 11px;
+  width: 11px;
+  border-radius: 9999px;
+  background: #c4b5fd;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 6px rgba(167, 139, 250, 0.55);
+  cursor: pointer;
+}
+
+.sentinel-density-slider::-moz-range-thumb {
+  height: 11px;
+  width: 11px;
+  border-radius: 9999px;
+  background: #c4b5fd;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
 /* Organization editor: a quieter neural field that keeps the hierarchy legible. */
 .org-neural-canvas {
   background:

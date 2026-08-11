@@ -6,8 +6,8 @@ import { NodeFacetList, Stat, nodeTier } from "@/components/neural-lens/NodeFace
 import { cn } from "@/lib/utils";
 
 /**
- * Compact, docked counterpart to the floating NeuralLens canvas controls
- * (NeuralLensPanel/Toolbar/Inspector). Reads and writes the same
+ * Compact, docked counterpart to the graph's own canvas rails
+ * (GraphControlRail/GraphContextRail). Reads and writes the same
  * useGraphStore state the canvas does — there is one selection/filter model,
  * not two — so toggling a type chip here filters the live graph, and
  * clicking a node on the canvas populates the detail card here too.
@@ -25,13 +25,13 @@ export function GraphTab() {
   return (
     <div className="flex h-full flex-col gap-4 p-3">
       <div>
-        <div className="mb-2 text-[10px] uppercase tracking-widest text-[--muted-foreground]">Search nodes</div>
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-[--muted-foreground]">Find a node</div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[--muted-foreground]" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by label…"
+            placeholder="Find a node…"
             className="w-full rounded-md border border-[--border] bg-transparent py-1.5 pl-7 pr-2 text-xs text-[--foreground] outline-none placeholder:text-[--muted-foreground] focus-visible:border-violet-400/50"
           />
         </div>

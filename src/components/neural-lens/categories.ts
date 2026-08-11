@@ -15,7 +15,8 @@ export type ClusterId =
   | "Coding"
   | "Organization"
   | "Infrastructure"
-  | "Voice";
+  | "Voice"
+  | "External";
 
 export const CLUSTER_IDS: ClusterId[] = [
   "Chat",
@@ -28,6 +29,65 @@ export const CLUSTER_IDS: ClusterId[] = [
   "Organization",
   "Infrastructure",
   "Voice",
+  "External",
+];
+
+/**
+ * The cluster laid out as the dense core at the centre of the globe rather
+ * than as a cap on the shell. Agents sit at the middle of Sentinel's graph
+ * because everything else is something an agent reads, writes, or acts on —
+ * so the active agent's node is the seat the camera frames by default.
+ */
+export const CORE_CLUSTER_ID: ClusterId = "Organization";
+
+/**
+ * Region names drawn on the globe and used as the cluster's display name in
+ * the layer rail. These are presentation only — `ClusterId` stays the stable
+ * key that layout positions, routes, and persisted lens state are keyed on.
+ */
+export const CLUSTER_LABEL: Record<ClusterId, string> = {
+  Chat: "Communications",
+  Projects: "Projects",
+  Knowledge: "Data Lake",
+  Memory: "Memory Core",
+  Learning: "Workflows Engine",
+  Cybersecurity: "Cybersecurity Operations",
+  Coding: "Code Repositories",
+  Organization: "Agents",
+  Infrastructure: "Infrastructure",
+  Voice: "Voice",
+  External: "External Partners",
+};
+
+/** Compact form for dense chrome (layer rows, legend, status readouts). */
+export const CLUSTER_SHORT_LABEL: Record<ClusterId, string> = {
+  Chat: "Communications",
+  Projects: "Projects",
+  Knowledge: "Knowledge",
+  Memory: "Memory",
+  Learning: "Workflows",
+  Cybersecurity: "Cybersecurity",
+  Coding: "Code",
+  Organization: "Agents",
+  Infrastructure: "Infrastructure",
+  Voice: "Voice",
+  External: "External",
+};
+
+/** Layer-rail order — grouped roughly by how often an operator reaches for
+ * them, not alphabetically. */
+export const CLUSTER_LAYER_ORDER: ClusterId[] = [
+  "Infrastructure",
+  "Cybersecurity",
+  "Knowledge",
+  "Memory",
+  "Organization",
+  "Learning",
+  "Projects",
+  "Coding",
+  "Chat",
+  "Voice",
+  "External",
 ];
 
 export type NodeCategory =
@@ -98,9 +158,10 @@ export const CATEGORY_CLUSTER: Record<NodeCategory, ClusterId> = {
   Model: "Infrastructure",
   Provider: "Infrastructure",
 
-  // No dedicated Voice category yet on the data side — voice sessions are
-  // Conversations under the hood — but the cluster exists so the graph has a
-  // place for it the moment voice-session nodes ship.
+  // No dedicated Voice or External category yet on the data side — voice
+  // sessions are Conversations under the hood, and partner/vendor objects
+  // aren't modelled yet — but the clusters exist so the graph already has a
+  // region for them the moment those node types ship.
 };
 
 /** Categories large/structural enough to become hub nodes (bigger radius,
@@ -137,6 +198,7 @@ export const CLUSTER_ROUTE: Record<ClusterId, string> = {
   Organization: "/orgchart",
   Infrastructure: "/settings",
   Voice: "/chat",
+  External: "/marketplace",
 };
 
 export function routeForCluster(cluster: ClusterId): string {
