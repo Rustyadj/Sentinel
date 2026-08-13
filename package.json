@@ -79,10 +79,12 @@
     "vitest": "^4.1.10"
   },
   "allowScripts": {
-    "@prisma/client@6.19.3": true,
-    "@prisma/engines@6.19.3": true,
-    "prisma@6.19.3": true,
     "sharp@0.34.5": true,
-    "unrs-resolver@1.12.2": true
+    "esbuild@0.28.1": true,
+    "msgpackr-extract@3.0.4": true,
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "prisma": true,
+    "unrs-resolver": true
   }
 }
