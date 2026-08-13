@@ -4,7 +4,6 @@ import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
 import { HermesRuntimeAdapter } from "./hermes";
-import { HttpAgentRuntimeAdapter } from "./http-adapter";
 import { OpenClawRuntimeAdapter } from "./openclaw";
 import { RuntimeError } from "./errors";
 import type {
