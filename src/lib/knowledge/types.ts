@@ -31,7 +31,15 @@ export type KnowledgeObjectType =
   | "Benchmark"
   | "TrustEvent"
   | "Failure"
-  | "Lesson";
+  | "Lesson"
+  // Governed Evolutionary Self-Improvement (see docs/LEARNING_CORE_EVOLUTION.md)
+  // — additive, same "graph type is a display concept, not 1:1 with a model"
+  // rule as the Learning Core block above.
+  | "EvalCase"
+  | "EvalSuite"
+  | "GuardianDecision"
+  | "Principle"
+  | "AdversarialRun";
 
 export type KnowledgeEdgeType =
   | "references"
@@ -57,7 +65,19 @@ export type KnowledgeEdgeType =
   | "affects_workspace"
   | "created_skill"
   | "resolved_gap"
-  | "derived_from_trace";
+  | "derived_from_trace"
+  // Governed Evolutionary Self-Improvement — additive. `rolled_back_to`,
+  // `supports`, and `contradicts` above already cover two of the spec's
+  // requested relationship names; these are the genuinely new ones.
+  | "descended_from"
+  | "competes_with"
+  | "evaluated_by"
+  | "failed_on"
+  | "passed"
+  | "promoted_to"
+  | "distilled_from"
+  | "protected_by"
+  | "attacked_by";
 
 export type KnowledgeScope =
   | "session"
