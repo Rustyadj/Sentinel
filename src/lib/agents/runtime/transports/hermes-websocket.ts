@@ -61,20 +61,24 @@ export class HermesWebSocketClient {
     endpoint: string,
     fetcher: typeof fetch = fetch,
     timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
-    authorization?: string,
+    sessionToken?: string,
   ): Promise<HermesWebSocketClient> {
-    const headers = authorization ? { Authorization: authorization } : undefined;
-    const ticketRes = await fetcher(`${endpoint}/api/auth/ws-ticket`, {
-      method: "POST",
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!ticketRes.ok) throw new HermesWsError(`ws-ticket request failed (${ticketRes.status})`);
-    const ticketBody = (await ticketRes.json()) as { ticket?: string };
-    if (!ticketBody.ticket) throw new HermesWsError("ws-ticket response missing ticket");
+    let authQuery: string;
+    if (sessionToken) {
+      authQuery = `token=${encodeURIComponent(sessionToken)}`;
+    } else {
+      const ticketRes = await fetcher(`${endpoint}/api/auth/ws-ticket`, {
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!ticketRes.ok) throw new HermesWsError(`ws-ticket request failed (${ticketRes.status})`);
+      const ticketBody = (await ticketRes.json()) as { ticket?: string };
+      if (!ticketBody.ticket) throw new HermesWsError("ws-ticket response missing ticket");
+      authQuery = `ticket=${encodeURIComponent(ticketBody.ticket)}`;
+    }
 
-    const wsUrl = `${endpoint.replace(/^http/, "ws")}/api/ws?ticket=${encodeURIComponent(ticketBody.ticket)}`;
-    const ws = new WebSocket(wsUrl, headers ? { headers } : undefined);
+    const wsUrl = `${endpoint.replace(/^http/, "ws")}/api/ws?${authQuery}`;
+    const ws = new WebSocket(wsUrl);
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

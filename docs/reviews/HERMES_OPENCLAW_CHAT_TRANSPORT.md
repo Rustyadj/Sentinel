@@ -8,6 +8,11 @@ Real product: "Hermes Agent" v0.18.0, FastAPI/uvicorn on port 4862 (the `hermes-
 
 **Auth**: `POST /api/auth/ws-ticket` → single-use, 30s-TTL ticket. Append as `?ticket=<value>` to `/api/ws` (also gates `/api/pty`, `/api/pub`, `/api/events`). Ticket auth is the SPA path; a legacy `?token=<HERMES_DASHBOARD_SESSION_TOKEN>` form also exists server-side but the ticket flow is what the real dashboard uses.
 
+The current VPS runs Hermes in loopback/insecure dashboard mode behind its
+own reverse proxy. Sentinel therefore uses the service-only
+`HERMES_SESSION_TOKEN` query flow; browser sessions continue to use tickets
+when the dashboard auth gate is enabled.
+
 **Transport**: `ws://<host>:4862/api/ws?ticket=...`. Newline-delimited JSON-RPC 2.0, both directions. Server sends `{"jsonrpc":"2.0","method":"event","params":{"type":"gateway.ready","payload":{"skin":...}}}` immediately after accept.
 
 **RPC methods that matter** (from `@method(...)` registrations in `tui_gateway/server.py`, 13.7k lines):

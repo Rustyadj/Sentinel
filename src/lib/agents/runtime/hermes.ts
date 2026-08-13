@@ -23,11 +23,8 @@ import type {
 
 interface QueueItem<T> { value?: T; error?: Error; done?: boolean }
 
-function hermesAuthorizationHeader(): string | undefined {
-  const username = process.env.HERMES_BASIC_AUTH_USERNAME;
-  const password = process.env.HERMES_BASIC_AUTH_PASSWORD;
-  if (!username || !password) return undefined;
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+function hermesSessionToken(): string | undefined {
+  return process.env.HERMES_SESSION_TOKEN?.trim() || undefined;
 }
 
 /** Bridges the WS client's event-callback model into an AsyncIterable for send(). */
@@ -111,7 +108,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesAuthorizationHeader(),
+      hermesSessionToken(),
     );
     try {
       const result = await client.call<{ session_id: string }>("session.create", {
@@ -132,7 +129,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesAuthorizationHeader(),
+      hermesSessionToken(),
     );
     try {
       await client.call("session.resume", { session_id: input.externalSessionId });
@@ -157,7 +154,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesAuthorizationHeader(),
+      hermesSessionToken(),
     );
     activeConnections.set(input.sessionId, client);
 
@@ -202,7 +199,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesAuthorizationHeader(),
+      hermesSessionToken(),
     );
     try {
       await client.call("session.interrupt", { session_id: session.externalSessionId });
