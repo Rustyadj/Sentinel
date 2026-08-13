@@ -145,9 +145,6 @@ The Module Manager (Settings → Modules) provides the UI for toggling installab
 ## Design Invariants
 
 - A module must never import from another module
-- Shared shell-level UI is the intentional exception: `src/components/graph/`
-  and `src/components/ui/` may be imported by multiple pages and modules because
-  they are shared infrastructure, not module-internal implementation code.
 - A module must never add navigation items outside the registry
 - A module must never create its own sidebar or icon rail
 - The shell must never import module component code directly

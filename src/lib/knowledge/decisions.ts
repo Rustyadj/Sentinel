@@ -1,12 +1,11 @@
-// Knowledge Engine — Decision CRUD used by the authenticated Decision API.
+// Knowledge Engine — Decision CRUD
 
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import type { ApprovalEvent, DecisionStatus } from "./types";
-import { removeDecisionFromGraph, syncDecisionToGraph } from "./decisiongraph";
+import type { DecisionStatus, DecisionRecord, ApprovalEvent } from "./types";
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
-  return value as Prisma.InputJsonValue;
+  return value as unknown as Prisma.InputJsonValue;
 }
 
 function toDecisionRecord(record: {

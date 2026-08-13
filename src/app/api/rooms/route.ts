@@ -37,7 +37,6 @@ export async function GET() {
           _count: { select: { messages: true } },
         },
       });
-      await syncRoomToGraph(defaultRoom);
       rooms = [defaultRoom];
     }
 
@@ -78,7 +77,6 @@ export async function POST(request: NextRequest) {
         _count: { select: { messages: true } },
       },
     });
-    await syncRoomToGraph(room);
 
     return NextResponse.json(room, { status: 201 });
   } catch (err) {

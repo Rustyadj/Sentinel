@@ -1,6 +1,5 @@
 "use client";
 
-import { knowledgeNodeColor } from "@/lib/knowledge/colors";
 import type { KnowledgeNode } from "@/lib/knowledge/types";
 
 interface KnowledgeNodeDrawerProps {
@@ -9,13 +8,26 @@ interface KnowledgeNodeDrawerProps {
   immersive?: boolean;
 }
 
+const TYPE_COLORS: Record<string, string> = {
+  Conversation: "#6366f1",
+  Message: "#8b5cf6",
+  Memory: "#10b981",
+  Note: "#f59e0b",
+  Decision: "#ef4444",
+  Task: "#3b82f6",
+  Agent: "#ec4899",
+  Project: "#6366f1",
+  Workspace: "#0891b2",
+  Artifact: "#84cc16",
+  File: "#64748b",
+  default: "#6b7280",
+};
+
 export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: KnowledgeNodeDrawerProps) {
   const isOpen = node !== null;
 
   return (
     <div
-      data-knowledge-node-drawer
-      data-open={isOpen}
       className={immersive ? "absolute bottom-4 right-4 top-16 z-30 w-64 overflow-y-auto rounded-lg border border-white/10 bg-[#07101c]/90 shadow-2xl backdrop-blur-xl" : "absolute top-0 right-0 bottom-0 w-64 bg-[--card] border-l border-[--border] z-10 overflow-y-auto"}
       style={{
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
@@ -31,8 +43,8 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
               <span
                 className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium mb-1"
                 style={{
-                  backgroundColor: knowledgeNodeColor(node.type) + "22",
-                  color: knowledgeNodeColor(node.type),
+                  backgroundColor: (TYPE_COLORS[node.type] ?? TYPE_COLORS.default) + "22",
+                  color: TYPE_COLORS[node.type] ?? TYPE_COLORS.default,
                 }}
               >
                 {node.type}
@@ -42,8 +54,6 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
               </div>
             </div>
             <button
-              type="button"
-              aria-label="Close node details"
               onClick={onClose}
               className="shrink-0 text-[--muted-foreground] hover:text-[--foreground] transition-colors text-sm leading-none"
             >
