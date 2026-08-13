@@ -57,14 +57,24 @@ export class HermesWebSocketClient {
    * is the HTTP base (e.g. `http://127.0.0.1:4862`); this derives the `ws://`
    * URL and ticket in one step so callers never see the auth mechanics.
    */
-  static async connect(endpoint: string, fetcher: typeof fetch = fetch, timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS): Promise<HermesWebSocketClient> {
-    const ticketRes = await fetcher(`${endpoint}/api/auth/ws-ticket`, { method: "POST", signal: AbortSignal.timeout(timeoutMs) });
+  static async connect(
+    endpoint: string,
+    fetcher: typeof fetch = fetch,
+    timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
+    authorization?: string,
+  ): Promise<HermesWebSocketClient> {
+    const headers = authorization ? { Authorization: authorization } : undefined;
+    const ticketRes = await fetcher(`${endpoint}/api/auth/ws-ticket`, {
+      method: "POST",
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!ticketRes.ok) throw new HermesWsError(`ws-ticket request failed (${ticketRes.status})`);
     const ticketBody = (await ticketRes.json()) as { ticket?: string };
     if (!ticketBody.ticket) throw new HermesWsError("ws-ticket response missing ticket");
 
     const wsUrl = `${endpoint.replace(/^http/, "ws")}/api/ws?ticket=${encodeURIComponent(ticketBody.ticket)}`;
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, headers ? { headers } : undefined);
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

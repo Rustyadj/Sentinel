@@ -23,6 +23,13 @@ import type {
 
 interface QueueItem<T> { value?: T; error?: Error; done?: boolean }
 
+function hermesAuthorizationHeader(): string | undefined {
+  const username = process.env.HERMES_BASIC_AUTH_USERNAME;
+  const password = process.env.HERMES_BASIC_AUTH_PASSWORD;
+  if (!username || !password) return undefined;
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
 /** Bridges the WS client's event-callback model into an AsyncIterable for send(). */
 class AsyncQueue<T> implements AsyncIterable<T> {
   private items: QueueItem<T>[] = [];
@@ -100,7 +107,12 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async startSession(input: StartSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
-    const client = await HermesWebSocketClient.connect(runtime.endpoint!);
+    const client = await HermesWebSocketClient.connect(
+      runtime.endpoint!,
+      fetch,
+      undefined,
+      hermesAuthorizationHeader(),
+    );
     try {
       const result = await client.call<{ session_id: string }>("session.create", {
         cwd: input.workingDirectory,
@@ -116,7 +128,12 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async resumeSession(input: ResumeSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
-    const client = await HermesWebSocketClient.connect(runtime.endpoint!);
+    const client = await HermesWebSocketClient.connect(
+      runtime.endpoint!,
+      fetch,
+      undefined,
+      hermesAuthorizationHeader(),
+    );
     try {
       await client.call("session.resume", { session_id: input.externalSessionId });
     } catch (err) {
@@ -136,7 +153,12 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     if (!session.externalSessionId) throw new RuntimeError("Session has no Hermes session id", "session_not_ready", 409);
     const runtime = await this.requireRuntime(session.runtimeInstanceId);
 
-    const client = await HermesWebSocketClient.connect(runtime.endpoint!);
+    const client = await HermesWebSocketClient.connect(
+      runtime.endpoint!,
+      fetch,
+      undefined,
+      hermesAuthorizationHeader(),
+    );
     activeConnections.set(input.sessionId, client);
 
     const queue = new AsyncQueue<RuntimeEvent>();
@@ -176,7 +198,12 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     // Prefer interrupting over the live streaming connection if send() is
     // active right now; otherwise open a fresh one just to send the RPC.
     const live = activeConnections.get(sessionId);
-    const client = live ?? await HermesWebSocketClient.connect(runtime.endpoint!);
+    const client = live ?? await HermesWebSocketClient.connect(
+      runtime.endpoint!,
+      fetch,
+      undefined,
+      hermesAuthorizationHeader(),
+    );
     try {
       await client.call("session.interrupt", { session_id: session.externalSessionId });
       return { success: true };
