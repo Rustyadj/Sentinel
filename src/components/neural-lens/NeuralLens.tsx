@@ -96,6 +96,8 @@ export function NeuralLens({
   const setGraphSettings = useGraphStore((state) => state.setGraphSettings);
   const fitRequest = useGraphStore((state) => state.fitRequest);
   const requestFit = useGraphStore((state) => state.requestFit);
+  const followLive = useGraphStore((state) => state.followLive);
+  const setFollowLive = useGraphStore((state) => state.setFollowLive);
   // Title-based focus requests (e.g. switching the active chat agent) —
   // resolved against the full graph, not just what's currently filtered in,
   // so focusing an agent works even mid-search/mid-filter.
@@ -207,6 +209,10 @@ export function NeuralLens({
       const idx = Math.abs(hashStr(latest.id)) % baseGraph.nodes.length;
       matched = [baseGraph.nodes[idx].id, baseGraph.nodes[(idx + 7) % baseGraph.nodes.length].id];
     }
+    // Follow Live (default off): camera moves to the node the newest event
+    // touched. Off by default — the graph never spins the operator's camera
+    // on its own; this only fires once the operator has opted in.
+    if (followLive && matched.length > 0) graphApi.current?.focusNode(matched[0]);
     setActiveNodeIds((prev) => {
       const next = new Set(prev);
       for (const id of matched) {
@@ -421,6 +427,8 @@ export function NeuralLens({
         layerCounts={layerCounts}
         timelineOpen={timelineOpen}
         onToggleTimeline={() => setTimelineOpen((open) => !open)}
+        followLive={followLive}
+        onFollowLiveChange={setFollowLive}
       />
 
       <GraphContextRail
