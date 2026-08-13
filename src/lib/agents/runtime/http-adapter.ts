@@ -11,10 +11,14 @@ import type {
   RuntimeDiscovery,
   RuntimeHealth,
   RuntimeInstance,
+  RuntimeEvent,
   RuntimeLogPage,
   RuntimeLogQuery,
   RuntimeReadiness,
+  ResumeSessionInput,
+  SendTaskInput,
   SessionQuery,
+  StartSessionInput,
 } from "./types";
 import type { RuntimeResolver } from "./cli-adapter";
 
@@ -97,14 +101,22 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
   // safe or semantically correct stand-in for chat). Live chat requires a
   // WebSocket client against each vendor's undocumented protocol, which is
   // unimplemented — this is an accurate capability gap, not a placeholder.
-  async startSession(): Promise<AgentSession> {
+  async startSession(_input: StartSessionInput): Promise<AgentSession> {
+    void _input;
     throw new UnsupportedRuntimeCapabilityError("start_session_requires_websocket_client");
   }
-  async resumeSession(): Promise<AgentSession> {
+  async resumeSession(_input: ResumeSessionInput): Promise<AgentSession> {
+    void _input;
     throw new UnsupportedRuntimeCapabilityError("resume_requires_websocket_client");
   }
-  async *send() { throw new UnsupportedRuntimeCapabilityError("send_requires_websocket_client"); }
-  async cancel(): Promise<RuntimeActionResult> { throw new UnsupportedRuntimeCapabilityError("cancel_requires_websocket_client"); }
+  async *send(_input: SendTaskInput): AsyncGenerator<RuntimeEvent, void, unknown> {
+    void _input;
+    throw new UnsupportedRuntimeCapabilityError("send_requires_websocket_client");
+  }
+  async cancel(_sessionId: string): Promise<RuntimeActionResult> {
+    void _sessionId;
+    throw new UnsupportedRuntimeCapabilityError("cancel_requires_websocket_client");
+  }
   getSession(sessionId: string) { return this.store.get(sessionId); }
   listSessions(query: SessionQuery) { return this.store.list(query); }
 

@@ -82,7 +82,10 @@ services:
       SENTINEL_TELEMETRY_URL: ${SENTINEL_TELEMETRY_URL:-}
       SENTINEL_TELEMETRY_TOKEN: ${SENTINEL_TELEMETRY_TOKEN:-}
       HERMES_ENDPOINT: ${HERMES_ENDPOINT:-http://host.docker.internal:4860}
-      OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://host.docker.internal:3001}
+      OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://cash:18789/readyz}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-ws://cash:18789}
+      OPENCLAW_DEVICE_IDENTITY_FILE: /run/secrets/openclaw-device.json
+      OPENCLAW_AGENT_ID: ${OPENCLAW_AGENT_ID:-main}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
       OPENCLAW_CONTAINER: ${OPENCLAW_CONTAINER:-openclaw-cash-cash-1}
       HOST_CONTROL_URL: ${HOST_CONTROL_URL:-http://host.docker.internal:8977}
@@ -121,6 +124,7 @@ services:
       - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
       - ./runtime-agents/bin:/opt/runtime-bin:ro
       - ./runtime-agents/home:/opt/runtime-home:rw
+      - ${OPENCLAW_DEVICE_IDENTITY_HOST:-/opt/sentinel-secrets/openclaw-device.json}:/run/secrets/openclaw-device.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # gw_priority forces sentinel_net to stay the default-route network.

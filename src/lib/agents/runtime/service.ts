@@ -4,6 +4,7 @@ import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
 import { HttpAgentRuntimeAdapter } from "./http-adapter";
+import { OpenClawRuntimeAdapter } from "./openclaw";
 import { RuntimeError } from "./errors";
 import type {
   AgentRuntimeAdapter,
@@ -72,7 +73,7 @@ const adapters: Record<AgentRuntimeKind, AgentRuntimeAdapter> = {
   "claude-code": new ClaudeCodeRuntimeAdapter(resolveRuntimeInstance),
   codex: new CodexRuntimeAdapter(resolveRuntimeInstance),
   hermes: new HttpAgentRuntimeAdapter("hermes", resolveRuntimeInstance),
-  openclaw: new HttpAgentRuntimeAdapter("openclaw", resolveRuntimeInstance),
+  openclaw: new OpenClawRuntimeAdapter(resolveRuntimeInstance),
 };
 
 export function getRuntimeAdapter(kind: AgentRuntimeKind): AgentRuntimeAdapter {
