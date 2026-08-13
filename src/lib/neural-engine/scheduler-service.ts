@@ -4,8 +4,12 @@ import {
   runDegradationSweep,
   type DegradationSweepResult,
 } from "./degradation-service";
+import { runMemoryDecaySweep, type DecaySweepResult } from "@/lib/learning/memory-governance";
+import { decayStaleTrust, type TrustDecayResult } from "@/lib/learning/trust";
 
 export const DEGRADATION_SWEEP_JOB_KEY = "degradation-sweep";
+export const MEMORY_DECAY_SWEEP_JOB_KEY = "memory-decay-sweep";
+export const TRUST_DECAY_SWEEP_JOB_KEY = "trust-decay-sweep";
 
 export interface RecordedDegradationSweep {
   jobRunId: string;
@@ -50,4 +54,18 @@ export async function runRecordedScheduledJob<T>(
  */
 export async function runRecordedDegradationSweep(): Promise<RecordedDegradationSweep> {
   return runRecordedScheduledJob(DEGRADATION_SWEEP_JOB_KEY, runDegradationSweep);
+}
+
+/**
+ * Governed memory forgetting's decay sweep — same externally-triggered,
+ * durably-recorded convention as the degradation sweep above. See
+ * docs/LEARNING_CORE_EVOLUTION.md.
+ */
+export async function runRecordedMemoryDecaySweep(): Promise<{ jobRunId: string; result: DecaySweepResult }> {
+  return runRecordedScheduledJob(MEMORY_DECAY_SWEEP_JOB_KEY, () => runMemoryDecaySweep({}));
+}
+
+/** Capability-specific trust decay's sweep — same convention. */
+export async function runRecordedTrustDecaySweep(): Promise<{ jobRunId: string; result: TrustDecayResult }> {
+  return runRecordedScheduledJob(TRUST_DECAY_SWEEP_JOB_KEY, () => decayStaleTrust());
 }
