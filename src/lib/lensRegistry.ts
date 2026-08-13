@@ -93,11 +93,10 @@ export const LENS_CONFIG: Record<LensId, LensConfig> = {
     description: "Campaign, content, and growth operations.",
     route: "/workspaces/marketing",
     accent: "#F59E0B",
-    tabs: [
-      { id: "overview", label: "Overview", href: "/workspaces/marketing" },
-      { id: "projects", label: "Campaigns", href: "/workspaces/marketing/projects" },
-      { id: "documents", label: "Content", href: "/workspaces/marketing/documents" },
-    ],
+    // Marketing owns its own in-app section switcher (Overview / Dashboard /
+    // Leads / CRM / Clients / Campaigns / SEO / Analytics / AI Agents /
+    // Website), so only the workspace root is listed here.
+    tabs: [{ id: "overview", label: "Overview", href: "/workspaces/marketing" }],
   },
 };
 

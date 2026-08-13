@@ -11,12 +11,15 @@ import {
   ExternalLink, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LensOverview } from "@/components/neural-lens/LensOverview";
+import type { LensOverviewStats } from "@/lib/workspaces/lensStats";
 
-type Section = "dashboard" | "leads" | "crm" | "clients" | "campaigns" | "seo" | "analytics" | "agents" | "website";
+type Section = "overview" | "dashboard" | "leads" | "crm" | "clients" | "campaigns" | "seo" | "analytics" | "agents" | "website";
 
 // ─── Sub-navigation ───────────────────────────────────────────────────────────
 
 const NAV_ITEMS: { id: Section; label: string; icon: ElementType; color: string }[] = [
+  { id: "overview", label: "Overview", icon: Globe, color: "#f59e0b" },
   { id: "dashboard", label: "Dashboard", icon: BarChart3, color: "#6366f1" },
   { id: "leads", label: "Leads", icon: Users, color: "#8b5cf6" },
   { id: "crm", label: "CRM", icon: Briefcase, color: "#06b6d4" },
@@ -747,13 +750,14 @@ function Website() {
 
 // ─── Main MarketingPage ───────────────────────────────────────────────────────
 
-export function MarketingPage() {
-  const [section, setSection] = useState<Section>("dashboard");
+export function MarketingPage({ stats = null }: { stats?: LensOverviewStats | null }) {
+  const [section, setSection] = useState<Section>("overview");
 
   return (
     <div className="h-full flex overflow-hidden">
       <SubNav active={section} onSelect={setSection} />
       <div className="flex-1 overflow-hidden bg-[--background]">
+        {section === "overview" && <LensOverview lens="marketing" stats={stats} />}
         {section === "dashboard" && <Dashboard />}
         {section === "leads" && <Leads />}
         {section === "crm" && <CRM />}
