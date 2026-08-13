@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
-import { HttpAgentRuntimeAdapter } from "./http-adapter";
+import { HermesRuntimeAdapter } from "./hermes";
+import { OpenClawRuntimeAdapter } from "./openclaw";
 import { RuntimeError } from "./errors";
 import type {
   AgentRuntimeAdapter,
@@ -71,8 +72,8 @@ export async function resolveRuntimeInstance(id: string): Promise<RuntimeInstanc
 const adapters: Record<AgentRuntimeKind, AgentRuntimeAdapter> = {
   "claude-code": new ClaudeCodeRuntimeAdapter(resolveRuntimeInstance),
   codex: new CodexRuntimeAdapter(resolveRuntimeInstance),
-  hermes: new HttpAgentRuntimeAdapter("hermes", resolveRuntimeInstance),
-  openclaw: new HttpAgentRuntimeAdapter("openclaw", resolveRuntimeInstance),
+  hermes: new HermesRuntimeAdapter(resolveRuntimeInstance),
+  openclaw: new OpenClawRuntimeAdapter(resolveRuntimeInstance),
 };
 
 export function getRuntimeAdapter(kind: AgentRuntimeKind): AgentRuntimeAdapter {

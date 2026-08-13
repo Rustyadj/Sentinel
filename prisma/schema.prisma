@@ -32,6 +32,7 @@ model User {
   knowledgeObjects         KnowledgeObject[]
   notes                    ObsidianNote[]
   workflows                Workflow[]
+  ownedBrands              Brand[]           @relation("BrandOwner")
 
   @@map("users")
 }
@@ -317,15 +318,15 @@ model Permission {
 }
 
 model RoleAssignment {
-  id            String    @id @default(cuid())
-  workspaceId   String
-  roleId        String
+  id          String   @id @default(cuid())
+  workspaceId String
+  roleId      String
   userId        String?
   agentId       String?
   teamId        String?
   expiresAt     DateTime?
   delegatedById String?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -398,29 +399,32 @@ model Meeting {
 }
 
 model Task {
-  id          String    @id @default(cuid())
-  workspaceId String?
-  projectId   String?
-  teamId      String?
-  title       String
-  description String?
-  status      String    @default("backlog")
-  priority    String    @default("medium")
-  assignee    String?
-  agentId     String?
-  dueDate     DateTime?
-  tags        String[]
-  position    Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  workspaceId      String?
+  projectId        String?
+  teamId           String?
+  contentProjectId String?
+  title            String
+  description      String?
+  status           String    @default("backlog")
+  priority         String    @default("medium")
+  assignee         String?
+  agentId          String?
+  dueDate          DateTime?
+  tags             String[]
+  position         Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team      Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  agent     Agent?     @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  workspace      Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team           Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  agent          Agent?          @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  contentProject ContentProject? @relation("ContentProjectTasks", fields: [contentProjectId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
   @@index([projectId])
+  @@index([contentProjectId])
   @@map("tasks")
 }
 
@@ -954,6 +958,160 @@ model Artifact {
   updatedAt   DateTime @updatedAt
 
   @@map("artifacts")
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  ownerId   String
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner    User             @relation("BrandOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  profile  BrandProfile?
+  ideas    Idea[]
+  projects ContentProject[]
+  items    ContentItem[]
+  assets   Asset[]
+
+  @@index([ownerId])
+  @@map("creator_studio_brands")
+}
+
+// Asset Library — URL-reference based (no file storage backend exists in this
+// codebase yet; uploading/hosting binary files is a separate infra decision).
+// Also backs Brand Kit: assets tagged with a kit-slot category (logo, intro,
+// outro, watermark, lower_third, transition, thumbnail_template) are the
+// brand's curated creative kit, not a separate model.
+model Asset {
+  id         String   @id @default(cuid())
+  brandId    String
+  name       String
+  category   String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
+  url        String
+  mimeType   String?
+  sizeBytes  Int?
+  tags       String[]
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, category])
+  @@map("creator_studio_assets")
+}
+
+model ContentProject {
+  id          String   @id @default(cuid())
+  brandId     String
+  name        String
+  description String?
+  status      String   @default("active") // active, archived
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  brand Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  items ContentItem[]
+  tasks Task[]        @relation("ContentProjectTasks")
+
+  @@index([brandId])
+  @@map("creator_studio_projects")
+}
+
+model ContentItem {
+  id           String    @id @default(cuid())
+  brandId      String
+  projectId    String?
+  sourceItemId String? // set when this item (typically a "short") was generated from another item's content
+  title        String
+  type         String    @default("video") // video, short, social, blog, podcast
+  status       String    @default("idea") // idea, research, writing, editing, review, scheduled, published, archived
+  platform     String?
+  content      String?
+  description  String? // YouTube/platform description field
+  thumbnailUrl String? // final chosen thumbnail image — pasted in, no image-gen/storage backend exists
+  chapters     Json      @default("[]") // [{ timestamp: "0:00", title: "Intro" }, ...]
+  outline      Json      @default("[]") // [{ id, text }, ...] — script outline beats
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  tags         String[]
+  position     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  brand      Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project    ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceItem ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
+  derivedItems ContentItem[] @relation("ContentItemDerivedFrom")
+  hooks      ContentHook[]
+
+  @@index([brandId, status])
+  @@index([projectId])
+  @@index([sourceItemId])
+  @@map("creator_studio_items")
+}
+
+model ContentHook {
+  id            String   @id @default(cuid())
+  contentItemId String
+  style         String // curiosity, authority, fear, statistics, question, contrarian, story, problem_solution
+  text          String
+  selected      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([contentItemId])
+  @@map("creator_studio_hooks")
+}
+
+model BrandProfile {
+  id               String   @id @default(cuid())
+  brandId          String   @unique
+  logoUrl          String?
+  primaryColor     String   @default("#6366F1")
+  secondaryColor   String   @default("#8B5CF6")
+  typography       Json     @default("{}")
+  mission          String?
+  targetAudience   String?
+  painPoints       String[]
+  toneOfVoice      String?
+  products         String[]
+  services         String[]
+  competitors      String[]
+  frequentPhrases  String[]
+  wordsToAvoid     String[]
+  ctaPreferences   String?
+  thumbnailStyle   String?
+  videoStyle       String?
+  hookStyle        String?
+  seoKeywords      String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("creator_studio_brand_profiles")
+}
+
+model Idea {
+  id                String   @id @default(cuid())
+  brandId           String
+  title             String
+  content           String?
+  source            String   @default("manual") // manual, voice_note, url, tweet, article, reddit, youtube, customer_question, competitor
+  sourceUrl         String?
+  tags              String[]
+  knowledgeObjectId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@map("creator_studio_ideas")
 }
 
 model Entity {
