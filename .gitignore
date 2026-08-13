@@ -68,3 +68,7 @@ runtime-projects/
 
 # Machine-specific Compose overrides are intentionally local.
 docker-compose.override.yml
+
+# Local Redis persistence snapshot and Playwright artifacts.
+dump.rdb
+test-results/

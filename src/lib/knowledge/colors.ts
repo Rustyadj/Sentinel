@@ -30,6 +30,12 @@ export const KNOWLEDGE_NODE_COLORS: Record<KnowledgeObjectType | "default", stri
   TrustEvent: "#94c47a",
   Failure: "#cf7d7d",
   Lesson: "#c7ae6c",
+  // Governed Evolutionary Self-Improvement — additive, same family.
+  EvalSuite: "#b58fd6",
+  EvalCase: "#d69a6a",
+  GuardianDecision: "#e0a94a",
+  Principle: "#6cc490",
+  AdversarialRun: "#d66a6a",
   default: "#7f8694",
 };
 

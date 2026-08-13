@@ -72,10 +72,14 @@ export const MAX_SANDBOX_OUTPUT_BYTES = 64 * 1024;
 // Nothing that looks like a credential, a network tool, or a shell escape is
 // allowed through — this is a coarse allowlist-adjacent filter, not a
 // substitute for the container boundary itself (both layers matter).
-const DISALLOWED_COMMAND_PATTERN = /(curl|wget|nc\b|ssh|scp|rm\s+-rf\s+\/|sudo|chmod\s+777|;|\|\||&&|`|\$\()/i;
-const SENSITIVE_PATH_PATTERN =
+// Exported so adversarial self-play (src/lib/learning/adversarial.ts) can
+// judge path-traversal/shell-escape attack payloads against the exact same
+// detectors the sandbox itself enforces, instead of a second copy that could
+// drift out of sync.
+export const DISALLOWED_COMMAND_PATTERN = /(curl|wget|nc\b|ssh|scp|rm\s+-rf\s+\/|sudo|chmod\s+777|;|\|\||&&|`|\$\()/i;
+export const SENSITIVE_PATH_PATTERN =
   /(?:^|[\s/\\])\.\.(?:[\/\\]|$)|(?:^|[\s/\\])\.env(?:[.\s/\\]|$)|(?:^|[\s/\\])secrets?(?:[\s/\\]|$)/i;
-const SENSITIVE_ENV_KEY_PATTERN =
+export const SENSITIVE_ENV_KEY_PATTERN =
   /(?:^|_)(?:SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY|DATABASE_URL)(?:_|$)/i;
 
 function validateCommand(command: string[]): ValidationResult {

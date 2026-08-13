@@ -146,3 +146,42 @@ export function normalizeTrustDomain(domain: string): string {
 function clampScore(score: number): number {
   return Math.round(Math.min(1, Math.max(0, score)) * 1000) / 1000;
 }
+
+// --- Trust decay (capability-specific — see Workstream 13) -----------------
+
+const TRUST_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000; // 30 days without new evidence
+const TRUST_DECAY_STEP = 0.02;
+const TRUST_DECAY_NEUTRAL = 0.5;
+
+export interface TrustDecayResult {
+  scanned: number;
+  decayed: number;
+}
+
+/**
+ * "Trust must decay where evidence becomes stale" (spec). Externally
+ * triggered — same convention as monitorAndAutoRollback/runDegradationSweep
+ * (no in-process scheduler in this repo). Pulls a stale domain's score
+ * toward neutral (0.5), not toward 0 — staleness means "no recent evidence
+ * either way", not "this failed." A domain with score already at/near
+ * neutral is left alone.
+ */
+export async function decayStaleTrust(limit = 500): Promise<TrustDecayResult> {
+  const cutoff = new Date(Date.now() - TRUST_STALE_AFTER_MS);
+  const stale = await db.agentCompetency.findMany({
+    where: { OR: [{ lastEvaluatedAt: { lt: cutoff } }, { lastEvaluatedAt: null }] },
+    take: Math.min(Math.max(limit, 1), 2000),
+  });
+
+  let decayed = 0;
+  for (const competency of stale) {
+    const direction =
+      competency.score > TRUST_DECAY_NEUTRAL ? -1 : competency.score < TRUST_DECAY_NEUTRAL ? 1 : 0;
+    if (direction === 0) continue;
+    const nextScore = clampScore(competency.score + direction * TRUST_DECAY_STEP);
+    await db.agentCompetency.update({ where: { id: competency.id }, data: { score: nextScore } });
+    decayed += 1;
+  }
+
+  return { scanned: stale.length, decayed };
+}
