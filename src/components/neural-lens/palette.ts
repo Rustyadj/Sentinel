@@ -82,6 +82,7 @@ export const CLUSTER_COLORS: Record<ClusterId, string> = {
   Coding: "#dd8a4c",
   Organization: "#a98bf5",
   Infrastructure: "#4f7fc9",
+  Marketing: "#e0a83f",
   Voice: "#93a2d8",
   External: "#b57cf0",
 };

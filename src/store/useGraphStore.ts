@@ -80,6 +80,10 @@ interface GraphUIState {
   /** How the globe is drawn (density, labels, edges, glow, motion, fog).
    * Persisted: these are preferences, not view state. */
   graphSettings: GlobeSettings;
+  /** When true, the camera follows significant live-event activity as it
+   * arrives. Defaults OFF every session (not persisted) — the graph should
+   * never start spinning the operator's camera on its own. */
+  followLive: boolean;
 }
 
 interface GraphUIActions {
@@ -101,6 +105,7 @@ interface GraphUIActions {
   setZoomLevel: (level: SemanticZoomLevel) => void;
   setCameraState: (camera: GraphCameraState) => void;
   setGraphSettings: (patch: Partial<GlobeSettings>) => void;
+  setFollowLive: (on: boolean) => void;
 }
 
 export type GraphStore = GraphUIState & GraphUIActions;
@@ -135,6 +140,7 @@ export const useGraphStore = create<GraphStore>()(
       zoomLevel: "galaxy",
       cameraState: null,
       graphSettings: DEFAULT_GLOBE_SETTINGS,
+      followLive: false,
 
       setSearch: (search) => set({ search }),
       toggleType: (type) =>
@@ -167,6 +173,7 @@ export const useGraphStore = create<GraphStore>()(
       setCameraState: (cameraState) => set({ cameraState }),
       setGraphSettings: (patch) =>
         set((state) => ({ graphSettings: { ...state.graphSettings, ...patch } })),
+      setFollowLive: (followLive) => set({ followLive }),
     }),
     {
       name: "sentinel.neural-lens.view-state",

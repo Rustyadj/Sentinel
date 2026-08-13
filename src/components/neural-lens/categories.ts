@@ -15,6 +15,7 @@ export type ClusterId =
   | "Coding"
   | "Organization"
   | "Infrastructure"
+  | "Marketing"
   | "Voice"
   | "External";
 
@@ -28,6 +29,7 @@ export const CLUSTER_IDS: ClusterId[] = [
   "Coding",
   "Organization",
   "Infrastructure",
+  "Marketing",
   "Voice",
   "External",
 ];
@@ -55,6 +57,7 @@ export const CLUSTER_LABEL: Record<ClusterId, string> = {
   Coding: "Code Repositories",
   Organization: "Agents",
   Infrastructure: "Infrastructure",
+  Marketing: "Marketing Operations",
   Voice: "Voice",
   External: "External Partners",
 };
@@ -70,6 +73,7 @@ export const CLUSTER_SHORT_LABEL: Record<ClusterId, string> = {
   Coding: "Code",
   Organization: "Agents",
   Infrastructure: "Infrastructure",
+  Marketing: "Marketing",
   Voice: "Voice",
   External: "External",
 };
@@ -85,6 +89,7 @@ export const CLUSTER_LAYER_ORDER: ClusterId[] = [
   "Learning",
   "Projects",
   "Coding",
+  "Marketing",
   "Chat",
   "Voice",
   "External",
@@ -117,7 +122,10 @@ export type NodeCategory =
   | "Detection"
   | "Campaign"
   | "Threat"
-  | "Organization";
+  | "Organization"
+  | "MarketingCampaign"
+  | "Lead"
+  | "Content";
 
 /** Every category's home cluster. Hub-eligible categories (org/workspace-ish
  * anchors) are called out separately in HUB_CATEGORIES below. */
@@ -145,6 +153,10 @@ export const CATEGORY_CLUSTER: Record<NodeCategory, ClusterId> = {
   Detection: "Cybersecurity",
   Campaign: "Cybersecurity",
   Threat: "Cybersecurity",
+
+  MarketingCampaign: "Marketing",
+  Lead: "Marketing",
+  Content: "Marketing",
 
   Repository: "Coding",
   Branch: "Coding",
@@ -197,6 +209,7 @@ export const CLUSTER_ROUTE: Record<ClusterId, string> = {
   Coding: "/projects",
   Organization: "/orgchart",
   Infrastructure: "/settings",
+  Marketing: "/workspaces/marketing",
   Voice: "/chat",
   External: "/marketplace",
 };
