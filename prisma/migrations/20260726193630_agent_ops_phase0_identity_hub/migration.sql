@@ -1,27 +1,3 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `instructionFiles` on the `agents` table. All the data in the column will be lost.
-  - You are about to drop the column `memoryScope` on the `agents` table. All the data in the column will be lost.
-  - You are about to drop the column `model` on the `agents` table. All the data in the column will be lost.
-  - You are about to drop the column `promptHistory` on the `agents` table. All the data in the column will be lost.
-  - You are about to drop the column `systemPrompt` on the `agents` table. All the data in the column will be lost.
-  - You are about to drop the column `toolPermissions` on the `agents` table. All the data in the column will be lost.
-  - Added the required column `updatedAt` to the `agents` table without a default value. This is not possible if the table is not empty.
-
-*/
--- AlterTable
-ALTER TABLE "agents" DROP COLUMN "instructionFiles",
-DROP COLUMN "memoryScope",
-DROP COLUMN "model",
-DROP COLUMN "promptHistory",
-DROP COLUMN "systemPrompt",
-DROP COLUMN "toolPermissions",
-ADD COLUMN     "ownerId" TEXT,
-ADD COLUMN     "promptVersion" TEXT NOT NULL DEFAULT '1.0.0',
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL,
-ADD COLUMN     "version" TEXT NOT NULL DEFAULT '1.0.0';
-
 -- CreateTable
 CREATE TABLE "agent_configurations" (
     "id" TEXT NOT NULL,
@@ -101,9 +77,6 @@ CREATE INDEX "agent_health_checks_agentId_checkedAt_idx" ON "agent_health_checks
 
 -- CreateIndex
 CREATE INDEX "agent_events_agentId_createdAt_idx" ON "agent_events"("agentId", "createdAt");
-
--- AddForeignKey
-ALTER TABLE "agents" ADD CONSTRAINT "agents_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "agent_configurations" ADD CONSTRAINT "agent_configurations_agentId_fkey" FOREIGN KEY ("agentId") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE;

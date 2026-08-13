@@ -1,12 +1,3 @@
-/*
-  Warnings:
-
-  - You are about to alter the column `embedding` on the `memories` table. The data in that column could be lost. The data in that column will be cast from `vector(1536)` to `Text`.
-
-*/
--- AlterTable
-ALTER TABLE "memories" ALTER COLUMN "embedding" SET DATA TYPE TEXT;
-
 -- CreateTable
 CREATE TABLE "creator_studio_brands" (
     "id" TEXT NOT NULL,
@@ -83,18 +74,3 @@ ALTER TABLE "creator_studio_brand_profiles" ADD CONSTRAINT "creator_studio_brand
 
 -- AddForeignKey
 ALTER TABLE "creator_studio_ideas" ADD CONSTRAINT "creator_studio_ideas_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "creator_studio_brands"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- RenameIndex
-ALTER INDEX "knowledge_edges_from_object_id_to_object_id_type_key" RENAME TO "knowledge_edges_fromObjectId_toObjectId_type_key";
-
--- RenameIndex
-ALTER INDEX "knowledge_edges_from_object_id_type_idx" RENAME TO "knowledge_edges_fromObjectId_type_idx";
-
--- RenameIndex
-ALTER INDEX "knowledge_edges_to_object_id_type_idx" RENAME TO "knowledge_edges_toObjectId_type_idx";
-
--- RenameIndex
-ALTER INDEX "knowledge_objects_project_id_idx" RENAME TO "knowledge_objects_projectId_idx";
-
--- RenameIndex
-ALTER INDEX "knowledge_objects_source_type_source_id_idx" RENAME TO "knowledge_objects_sourceType_sourceId_idx";
