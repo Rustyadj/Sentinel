@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 const FOCUS_RETRY_MS = 150;
 const FOCUS_MAX_ATTEMPTS = 24; // ~3.6s — covers WebGL init + first graph load
 
-function relativeTime(at: Date): string {
+export function relativeTime(at: Date): string {
   const diffMs = Date.now() - at.getTime();
   const minutes = Math.round(diffMs / 60_000);
   if (minutes < 1) return "just now";
