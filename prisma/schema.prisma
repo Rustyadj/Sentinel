@@ -68,11 +68,6 @@ model Project {
   @@map("projects")
 }
 
-// Agent is an identity/control-plane record only: who this agent is, what it
-// can do, and what it links to. Volatile runtime metrics (CPU/memory/token
-// counters/cost accumulators) never live here — they belong in dedicated
-// time-series-shaped tables introduced when something actually consumes them
-// (see docs/AGENT_OPS_CENTER_PLAN.md).
 model Agent {
   id                 String            @id @default(cuid())
   name               String
@@ -96,93 +91,11 @@ model Agent {
   healthChecks       AgentHealthCheck[]
   events             AgentEvent[]
   roleAssignments    RoleAssignment[]
-  requestedApprovals ApprovalRequest[]   @relation("ApprovalRequesterAgent")
-  assignedTasks      Task[]              @relation("TaskAgent")
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequesterAgent")
+  assignedTasks      Task[]            @relation("TaskAgent")
 
   @@index([workspaceId])
   @@map("agents")
-}
-
-// Persisted configuration — how this agent behaves. 1:1 with Agent.
-model AgentConfiguration {
-  id                String   @id @default(cuid())
-  agentId           String   @unique
-  model             String   @default("claude-sonnet-4-6")
-  systemPrompt      String   @default("")
-  temperature       Float    @default(0.7)
-  reasoningMode     String   @default("standard")
-  memoryScope       String   @default("session") // session, project, workspace, global
-  workspaceAccess   String[] @default([])
-  allowedTools      String[] @default([])
-  allowedMcpServers String[] @default([])
-  budgets           Json     @default("{}")
-  rateLimits        Json     @default("{}")
-  instructionFiles  Json     @default("{}")
-  promptHistory     Json     @default("[]")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@map("agent_configurations")
-}
-
-// Runtime instance + provider identity — a concrete deployed process backing
-// an agent (e.g. a VPS-hosted Claude Code process). One agent identity can
-// have zero (pure chat persona), one, or multiple bound instances.
-model AgentInstance {
-  id              String   @id @default(cuid())
-  agentId         String
-  kind            String // hermes, openclaw, custom
-  type            String // claude-code-agent, open-webui-agent, ...
-  provider        String? // anthropic, openai, local
-  authMode        String? // oauth, api-key, local
-  model           String?
-  endpoint        String?
-  configPath      String?
-  logPath         String?
-  dashboardPort   Int?
-  legacyPath      String?
-  vpsWorkspaceTag String?
-  enabled         Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@map("agent_instances")
-}
-
-// Discrete health check results (last-known-status snapshots), not a metrics
-// time series. A dedicated metrics store is a later, explicitly-scoped phase.
-model AgentHealthCheck {
-  id         String   @id @default(cuid())
-  agentId    String
-  instanceId String?
-  status     String // online, offline, degraded, unknown
-  latencyMs  Int?
-  details    Json     @default("{}")
-  checkedAt  DateTime @default(now())
-
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId, checkedAt])
-  @@map("agent_health_checks")
-}
-
-// Event history — the append-only source for activity feeds and replay.
-model AgentEvent {
-  id        String   @id @default(cuid())
-  agentId   String
-  type      String // delegation, tool_call, memory_retrieval, status_change, task_completed, approval_requested, error, restart, reload, message
-  payload   Json     @default("{}")
-  createdAt DateTime @default(now())
-
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId, createdAt])
-  @@map("agent_events")
 }
 
 model ChatRoom {

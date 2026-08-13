@@ -40,19 +40,13 @@ export async function POST(req: Request) {
       role: body.role.trim(),
       avatar: body.avatar ?? "AI",
       color: body.color ?? "#6366f1",
+      model: body.model ?? "claude-sonnet-4-6",
+      systemPrompt: body.systemPrompt ?? "",
+      toolPermissions: body.toolPermissions ?? [],
+      memoryScope: body.memoryScope ?? "session",
       description: body.description ?? "",
       skills: body.skills ?? [],
-      configuration: {
-        create: {
-          model: body.model ?? "claude-sonnet-4-6",
-          systemPrompt: body.systemPrompt ?? "",
-          allowedTools: body.toolPermissions ?? [],
-          memoryScope: body.memoryScope ?? "session",
-        },
-      },
     },
-    include: { configuration: true },
   });
-  await syncAgentToGraph(agent);
   return NextResponse.json(agent, { status: 201 });
 }
