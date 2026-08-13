@@ -146,7 +146,7 @@ export function NeuralLens({
         if (projectId) query.set("projectId", projectId);
         const res = await fetch(`/api/neural/temporal?${query.toString()}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
+        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number; type?: string }[] };
         if (!cancelled) setHistoricalGraph(buildLensGraphFromApi(data));
       } catch {
         /* keep whatever was showing before */
@@ -171,7 +171,7 @@ export function NeuralLens({
         const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
         const res = await fetch(`/api/graph${query}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
+        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number; type?: string }[] };
         if (!cancelled) setScopedGraph(buildLensGraphFromApi(data));
       } catch {
         /* keep demo fallback */
@@ -346,19 +346,23 @@ export function NeuralLens({
   }, [search, filteredGraph.nodes, handleSelect]);
 
   // A handful of the selected node's direct neighbors — "connected entities"
-  // in the detail panel. Capped so a 5,000-edge hub doesn't dump its entire
-  // fan into a sidebar.
+  // in the detail panel, each carrying the relationship type off its edge so
+  // the panel can say *how* it connects, not just that it does. Capped so a
+  // 5,000-edge hub doesn't dump its entire fan into a sidebar.
   const connectedEntities = useMemo(() => {
     if (!selected) return [];
     const nodesById = new Map(baseGraph.nodes.map((n) => [n.id, n]));
-    const neighborIds = new Set<string>();
+    const relationshipOf = new Map<string, string | undefined>();
     for (const link of baseGraph.links) {
-      if (link.source === selected.id) neighborIds.add(link.target);
-      else if (link.target === selected.id) neighborIds.add(link.source);
-      if (neighborIds.size >= 8) break;
+      if (link.source === selected.id) relationshipOf.set(link.target, link.type);
+      else if (link.target === selected.id) relationshipOf.set(link.source, link.type);
+      if (relationshipOf.size >= 8) break;
     }
-    return [...neighborIds]
-      .map((id) => nodesById.get(id))
+    return [...relationshipOf.entries()]
+      .map(([id, relationship]) => {
+        const node = nodesById.get(id);
+        return node ? { ...node, relationship } : null;
+      })
       .filter((n): n is NonNullable<typeof n> => !!n)
       .slice(0, 6);
   }, [selected, baseGraph.nodes, baseGraph.links]);

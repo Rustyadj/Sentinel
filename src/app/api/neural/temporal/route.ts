@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       fromObjectId: e.fromObjectId,
       toObjectId: e.toObjectId,
       weight: e.weight,
+      type: e.type,
     }));
 
     return NextResponse.json({ nodes, edges, at: at.toISOString(), source: "temporal" });
