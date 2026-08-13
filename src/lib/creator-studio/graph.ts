@@ -1,6 +1,113 @@
 import { db } from "@/lib/db";
-import { syncToGraph, removeFromGraph } from "@/lib/knowledge/sync";
-import type { GraphEdgeSpec } from "@/lib/knowledge/sync";
+import { upsertEdge } from "@/lib/knowledge/edges";
+import {
+  removeEntityFromGraph,
+  syncEntityToGraph,
+} from "@/lib/knowledge/entity-sync";
+import type {
+  KnowledgeEdgeType,
+  KnowledgeObjectType,
+  KnowledgeScope,
+} from "@/lib/knowledge/types";
+
+interface GraphEdgeSpec {
+  toSourceType: string;
+  toSourceId: string;
+  type: KnowledgeEdgeType;
+}
+
+async function resolveOwnerUserId(sourceType: string, sourceId: string): Promise<string | null> {
+  switch (sourceType) {
+    case "brand":
+      return (
+        await db.brand.findUnique({ where: { id: sourceId }, select: { ownerId: true } })
+      )?.ownerId ?? null;
+    case "content_project":
+      return (
+        await db.contentProject.findUnique({
+          where: { id: sourceId },
+          select: { brand: { select: { ownerId: true } } },
+        })
+      )?.brand.ownerId ?? null;
+    case "content_item":
+      return (
+        await db.contentItem.findUnique({
+          where: { id: sourceId },
+          select: { brand: { select: { ownerId: true } } },
+        })
+      )?.brand.ownerId ?? null;
+    case "asset":
+      return (
+        await db.asset.findUnique({
+          where: { id: sourceId },
+          select: { brand: { select: { ownerId: true } } },
+        })
+      )?.brand.ownerId ?? null;
+    case "task":
+      return (
+        await db.task.findUnique({
+          where: { id: sourceId },
+          select: {
+            contentProject: { select: { brand: { select: { ownerId: true } } } },
+          },
+        })
+      )?.contentProject?.brand.ownerId ?? null;
+    case "idea":
+      return (
+        await db.idea.findUnique({
+          where: { id: sourceId },
+          select: { brand: { select: { ownerId: true } } },
+        })
+      )?.brand.ownerId ?? null;
+    default:
+      return null;
+  }
+}
+
+async function syncToGraph(params: {
+  sourceType: string;
+  sourceId: string;
+  type: KnowledgeObjectType;
+  title: string;
+  summary?: string;
+  scope: KnowledgeScope;
+  metadata?: Record<string, unknown>;
+  edges?: GraphEdgeSpec[];
+}): Promise<string> {
+  const ownerUserId = await resolveOwnerUserId(params.sourceType, params.sourceId);
+  const objectId = await syncEntityToGraph({
+    type: params.type,
+    title: params.title,
+    summary: params.summary,
+    sourceType: params.sourceType,
+    sourceId: params.sourceId,
+    scope: params.scope,
+    metadata: params.metadata,
+    ownerUserId,
+  });
+
+  for (const edge of params.edges ?? []) {
+    const target = await db.knowledgeObject.findFirst({
+      where: {
+        sourceType: edge.toSourceType,
+        sourceId: edge.toSourceId,
+        userId: ownerUserId,
+      },
+      select: { id: true },
+    });
+    if (target) {
+      await upsertEdge({
+        fromObjectId: objectId,
+        toObjectId: target.id,
+        type: edge.type,
+      });
+    }
+  }
+
+  return objectId;
+}
+
+const removeFromGraph = removeEntityFromGraph;
 
 // Mapped onto the existing KnowledgeObjectType union rather than extending
 // it — Brand is conceptually closest to Organization, ContentProject to
@@ -159,7 +266,7 @@ export async function syncIdeaToGraph(idea: {
   const edges: GraphEdgeSpec[] = [
     { toSourceType: "brand", toSourceId: idea.brandId, type: "belongs_to" },
   ];
-  const node = await syncToGraph({
+  const knowledgeObjectId = await syncToGraph({
     sourceType: "idea",
     sourceId: idea.id,
     type: "Note",
@@ -168,7 +275,7 @@ export async function syncIdeaToGraph(idea: {
     scope: "global",
     edges,
   });
-  await db.idea.update({ where: { id: idea.id }, data: { knowledgeObjectId: node.id } }).catch(() => {});
+  await db.idea.update({ where: { id: idea.id }, data: { knowledgeObjectId } }).catch(() => {});
 }
 
 export async function removeIdeaFromGraph(ideaId: string): Promise<void> {

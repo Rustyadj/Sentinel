@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Clapperboard, ChevronDown, Check, Plus, Lock } from "lucide-react";
-import { GraphCanvas } from "@/components/graph/GraphCanvas";
+import { KnowledgeGraph } from "@/components/graph/KnowledgeGraph";
 import { cn } from "@/lib/utils";
 import type { Brand, CreatorStudioSection } from "../types";
 
@@ -127,14 +127,9 @@ export function CreatorStudioShell({
         className="hidden h-full w-[28%] min-w-[260px] max-w-[420px] shrink-0 border-l border-[--sidebar-border] bg-[#101215] lg:block"
       >
         {activeBrand ? (
-          <GraphCanvas
-            key={activeBrand.id}
-            view="cluster"
-            sourceType="brand"
-            sourceId={activeBrand.id}
-            title={`${activeBrand.name} cluster`}
-            className="border-l-0"
-          />
+          <div className="relative h-full" aria-label={`${activeBrand.name} knowledge graph`}>
+            <KnowledgeGraph key={activeBrand.id} />
+          </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[--muted-foreground]">

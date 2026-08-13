@@ -86,10 +86,6 @@ model Agent {
   createdAt          DateTime          @default(now())
   workspaceId        String?
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  configuration      AgentConfiguration?
-  instances          AgentInstance[]
-  healthChecks       AgentHealthCheck[]
-  events             AgentEvent[]
   roleAssignments    RoleAssignment[]
   requestedApprovals ApprovalRequest[] @relation("ApprovalRequesterAgent")
   assignedTasks      Task[]            @relation("TaskAgent")
