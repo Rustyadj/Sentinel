@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
 import { useGraphStore } from "@/store/useGraphStore";
@@ -65,7 +65,10 @@ function buildActivityPath(graph: LensGraph, litIds: Set<string>, demo: boolean)
   return nodeIds.length >= 2 ? { id: "demo:spine", nodeIds, startedAt: 0 } : null;
 }
 
-export function NeuralLens({ projectId }: { projectId?: string } = {}) {
+export function NeuralLens({
+  projectId,
+  apiRef: externalApiRef,
+}: { projectId?: string; apiRef?: RefObject<GlobeGraphApi | null> } = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
@@ -109,7 +112,11 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [activeNodeIds, setActiveNodeIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
   const [scene, setScene] = useState<GlobeScene | null>(null);
-  const graphApi = useRef<GlobeGraphApi | null>(null);
+  // A caller (LensOverview) can hand in its own ref to drive the camera
+  // (e.g. focusRegion on entry) without this component forking into two
+  // implementations — falls back to an internal ref when embedded standalone.
+  const internalApiRef = useRef<GlobeGraphApi | null>(null);
+  const graphApi = externalApiRef ?? internalApiRef;
   const router = useRouter();
   const isHistorical = !demoMode && timeRange !== "Now";
 

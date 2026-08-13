@@ -16,15 +16,24 @@ import {
   KeySquare, Bug, Fingerprint, ArrowRightLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LensOverview } from "@/components/neural-lens/LensOverview";
+import type { LensOverviewStats } from "@/lib/workspaces/lensStats";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type Section = "console" | "red" | "blue" | "purple" | "intel" | "chains" | "techniques" | "reports";
+type Section = "overview" | "console" | "red" | "blue" | "purple" | "intel" | "chains" | "techniques" | "reports";
 
 // ─── Sub-navigation ────────────────────────────────────────────────────────────
+//
+// "Range Console" is the whole application's name (shown as the workspace
+// title above this nav), not a tab — a tab named the same as the app it
+// lives inside is the exact ambiguity the graph-first lens architecture
+// calls out. This first entry is the graph-first Overview; "Summary" below
+// it is the pre-existing stats dashboard, kept but demoted and relabeled.
 
 const NAV_ITEMS: { id: Section; label: string; icon: ElementType; color: string }[] = [
-  { id: "console", label: "Range Console", icon: Radar, color: "#6366f1" },
+  { id: "overview", label: "Overview", icon: Globe, color: "#6366f1" },
+  { id: "console", label: "Summary", icon: Radar, color: "#6366f1" },
   { id: "red", label: "Red Team", icon: Sword, color: "#ef4444" },
   { id: "blue", label: "Blue Team", icon: ShieldCheck, color: "#3b82f6" },
   { id: "purple", label: "Purple Team", icon: Zap, color: "#8b5cf6" },
@@ -908,13 +917,14 @@ function Reports() {
 
 // ─── Main CybersecurityPage ────────────────────────────────────────────────────
 
-export function CybersecurityPage() {
-  const [section, setSection] = useState<Section>("console");
+export function CybersecurityPage({ stats = null }: { stats?: LensOverviewStats | null }) {
+  const [section, setSection] = useState<Section>("overview");
 
   return (
     <div className="h-full flex overflow-hidden">
       <SubNav active={section} onSelect={setSection} />
       <div className="flex-1 overflow-hidden bg-[--background]">
+        {section === "overview" && <LensOverview lens="cybersecurity" stats={stats} />}
         {section === "console" && <RangeConsole />}
         {section === "red" && <RedTeam />}
         {section === "blue" && <BlueTeam />}
