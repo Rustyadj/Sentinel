@@ -1,8 +1,11 @@
 /**
  * VPS Agent Registry — server-side typed service layer.
- * No DB model needed: reads from env + static config.
- * Never imported in client components.
+ * Reads runtime-instance data from the DB (AgentInstance, joined with its
+ * owning Agent). Never imported in client components.
  */
+import { db } from "@/lib/db";
+import type { Agent, AgentInstance } from "@prisma/client";
+import { ensureAgentsSeeded } from "./seed";
 
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
 export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
@@ -25,13 +28,25 @@ export interface VpsAgent {
   dashboardPort: number | null;
 }
 
-const AGENT_CONFIG_DIR = process.env.AGENT_CONFIG_DIR ?? "/opt/sentinel-os/agents";
-const AGENT_LOG_DIR = process.env.AGENT_LOG_DIR ?? "/opt/sentinel-os/logs";
+type InstanceWithAgent = AgentInstance & { agent: Agent };
 
-function envFlag(name: string, fallback = true): boolean {
-  const value = process.env[name];
-  if (value === undefined) return fallback;
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+function toVpsAgent(instance: InstanceWithAgent): VpsAgent {
+  return {
+    id: instance.agentId,
+    name: instance.agent.name,
+    kind: (instance.kind as AgentKind) ?? "custom",
+    type: instance.type,
+    description: instance.agent.description,
+    model: instance.model ?? "unknown",
+    endpoint: instance.endpoint ?? "",
+    configPath: instance.configPath ?? "",
+    logPath: instance.logPath ?? "",
+    memoryScope: instance.vpsWorkspaceTag ?? "session",
+    workspaceId: instance.vpsWorkspaceTag ?? "default",
+    enabled: instance.enabled,
+    legacyPath: instance.legacyPath,
+    dashboardPort: instance.dashboardPort,
+  };
 }
 
 const REGISTRY: VpsAgent[] = [
@@ -109,8 +124,15 @@ export function getAllVpsAgents(): VpsAgent[] {
   return REGISTRY.filter((a) => a.enabled);
 }
 
-export function getVpsAgent(id: string): VpsAgent | undefined {
-  return REGISTRY.find((a) => a.id === id && a.enabled);
+export async function getVpsAgent(id: string): Promise<VpsAgent | null> {
+  await ensureAgentsSeeded();
+  const instance = await db.agentInstance.findFirst({
+    where: { agentId: id, enabled: true },
+    include: { agent: true },
+  });
+  return instance ? toVpsAgent(instance) : null;
 }
 
-export const ALLOWED_AGENT_IDS = new Set(REGISTRY.map((a) => a.id));
+export async function isAllowedVpsAgentId(id: string): Promise<boolean> {
+  return (await getVpsAgent(id)) !== null;
+}

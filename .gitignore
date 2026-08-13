@@ -65,3 +65,6 @@ runtime-agents/
 # CLAUDE_CODE_PROJECT_ROOT) — its own git repo, mutable job output. Never
 # source, never tracked by the parent repo.
 runtime-projects/
+
+# Machine-specific Compose overrides are intentionally local.
+docker-compose.override.yml

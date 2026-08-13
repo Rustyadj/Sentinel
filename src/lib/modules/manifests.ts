@@ -67,6 +67,20 @@ export const MODULE_MANIFESTS: ModuleManifestV2[] = [
       { resource: "document", actions: ["read", "create"] },
     ],
   },
+  {
+    manifestVersion: 2,
+    id: "learning-core",
+    name: "Learning Core",
+    version: "0.1.0",
+    description: "Curiosity, reflection, experiments, and continuous improvement for every agent.",
+    category: "Intelligence",
+    href: "/learning-core",
+    declaredPermissions: [
+      { resource: "curiosityEvent", actions: ["read", "create", "update"] },
+      { resource: "knowledgeGap", actions: ["read", "create", "update"] },
+      { resource: "reflection", actions: ["read", "create"] },
+    ],
+  },
 ];
 
 export function getModuleManifest(moduleId: string) {

@@ -6,6 +6,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId") ?? undefined;
   const projectId = searchParams.get("projectId") ?? undefined;
+  const sourceType = searchParams.get("sourceType") ?? undefined;
+  const sourceId = searchParams.get("sourceId") ?? undefined;
 
   try {
     const user = await requireUser();

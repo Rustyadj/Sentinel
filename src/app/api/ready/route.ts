@@ -63,7 +63,7 @@ async function checkCliRuntime(executable: string): Promise<{ ok: boolean; laten
 export async function GET() {
   const [db_check, redis_check] = await Promise.all([checkDb(), checkRedis()]);
 
-  const agents = getAllVpsAgents();
+  const agents = await getAllVpsAgents();
   const agentChecks = await Promise.all(
     agents.map(async (a) => {
       const cliExecutable = CLI_EXECUTABLE_BY_KIND[a.kind];

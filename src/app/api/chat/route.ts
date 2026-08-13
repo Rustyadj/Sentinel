@@ -354,9 +354,9 @@ export async function POST(request: NextRequest) {
     return sseError("Workflow runtime is not configured; choose a runtime or direct model explicitly", 503);
   }
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
-  const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
+  const model = dbAgent?.configuration?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
   const basePrompt =
-    dbAgent?.systemPrompt ||
+    dbAgent?.configuration?.systemPrompt ||
     agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
   const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
@@ -421,6 +421,9 @@ export async function POST(request: NextRequest) {
     return sseStream(async (ctrl) => {
       let fullContent = "";
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
+      if (retrievalNodeIds.length > 0) {
+        ctrl.enqueue(sse({ type: "knowledge_update", roomId, event: "retrieval", nodes: retrievalNodeIds }));
+      }
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
         const response = await anthropic.messages.create({
@@ -479,6 +482,9 @@ export async function POST(request: NextRequest) {
     return sseStream(async (ctrl) => {
       let fullContent = "";
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
+      if (retrievalNodeIds.length > 0) {
+        ctrl.enqueue(sse({ type: "knowledge_update", roomId, event: "retrieval", nodes: retrievalNodeIds }));
+      }
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
         const stream = await openai.chat.completions.create({
