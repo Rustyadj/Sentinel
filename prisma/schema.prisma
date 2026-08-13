@@ -32,6 +32,7 @@ model User {
   knowledgeObjects         KnowledgeObject[]
   notes                    ObsidianNote[]
   workflows                Workflow[]
+  ownedBrands              Brand[]           @relation("BrandOwner")
 
   @@map("users")
 }
@@ -90,16 +91,13 @@ model Agent {
   createdAt          DateTime          @default(now())
   workspaceId        String?
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  configuration      AgentConfiguration?
+  instances          AgentInstance[]
+  healthChecks       AgentHealthCheck[]
+  events             AgentEvent[]
   roleAssignments    RoleAssignment[]
   requestedApprovals ApprovalRequest[]   @relation("ApprovalRequesterAgent")
   assignedTasks      Task[]              @relation("TaskAgent")
-
-  // Learning Core (see docs/LEARNING_CORE_PLAN.md)
-  curiosityEvents CuriosityEvent[]
-  knowledgeGaps   KnowledgeGap[]
-  reflections     Reflection[]
-  trustScore      AgentTrustScore?
-  trustEvents     TrustEvent[]
 
   @@index([workspaceId])
   @@map("agents")
@@ -411,15 +409,15 @@ model Permission {
 }
 
 model RoleAssignment {
-  id            String    @id @default(cuid())
-  workspaceId   String
-  roleId        String
+  id          String   @id @default(cuid())
+  workspaceId String
+  roleId      String
   userId        String?
   agentId       String?
   teamId        String?
   expiresAt     DateTime?
   delegatedById String?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -1078,17 +1076,17 @@ model Brand {
 // outro, watermark, lower_third, transition, thumbnail_template) are the
 // brand's curated creative kit, not a separate model.
 model Asset {
-  id        String   @id @default(cuid())
-  brandId   String
-  name      String
-  category  String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
-  url       String
-  mimeType  String?
-  sizeBytes Int?
-  tags      String[]
-  version   Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  brandId    String
+  name       String
+  category   String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
+  url        String
+  mimeType   String?
+  sizeBytes  Int?
+  tags       String[]
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -1134,11 +1132,11 @@ model ContentItem {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  brand        Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  project      ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  sourceItem   ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
-  derivedItems ContentItem[]   @relation("ContentItemDerivedFrom")
-  hooks        ContentHook[]
+  brand      Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project    ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceItem ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
+  derivedItems ContentItem[] @relation("ContentItemDerivedFrom")
+  hooks      ContentHook[]
 
   @@index([brandId, status])
   @@index([projectId])
@@ -1161,28 +1159,28 @@ model ContentHook {
 }
 
 model BrandProfile {
-  id              String   @id @default(cuid())
-  brandId         String   @unique
-  logoUrl         String?
-  primaryColor    String   @default("#6366F1")
-  secondaryColor  String   @default("#8B5CF6")
-  typography      Json     @default("{}")
-  mission         String?
-  targetAudience  String?
-  painPoints      String[]
-  toneOfVoice     String?
-  products        String[]
-  services        String[]
-  competitors     String[]
-  frequentPhrases String[]
-  wordsToAvoid    String[]
-  ctaPreferences  String?
-  thumbnailStyle  String?
-  videoStyle      String?
-  hookStyle       String?
-  seoKeywords     String[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  brandId          String   @unique
+  logoUrl          String?
+  primaryColor     String   @default("#6366F1")
+  secondaryColor   String   @default("#8B5CF6")
+  typography       Json     @default("{}")
+  mission          String?
+  targetAudience   String?
+  painPoints       String[]
+  toneOfVoice      String?
+  products         String[]
+  services         String[]
+  competitors      String[]
+  frequentPhrases  String[]
+  wordsToAvoid     String[]
+  ctaPreferences   String?
+  thumbnailStyle   String?
+  videoStyle       String?
+  hookStyle        String?
+  seoKeywords      String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
