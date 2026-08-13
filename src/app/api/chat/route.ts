@@ -14,7 +14,7 @@ import { startExperience, completeExperience } from "@/lib/neural-engine/experie
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { analyzeCuriosityContext, recordCuriosityEvent, answerCuriosityEvent } from "@/lib/learning/curiosity";
 import type { NextRequest } from "next/server";
-import { isRuntimeChatMode, routeRuntimeChat, type ChatExecutionMode } from "@/lib/agents/runtime/chat-routing";
+import { isRuntimeChatMode, routeRuntimeChat, RUNTIME_AGENT_MAP, type ChatExecutionMode } from "@/lib/agents/runtime/chat-routing";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
 
 interface ContextBlockResult {
@@ -342,10 +342,19 @@ export async function POST(request: NextRequest) {
     return sseError("Agent not found", 404);
   }
 
-  if (!voiceTurn && isRuntimeChatMode(body.executionMode)) {
+  // Runtime routing is authoritative server-side: an agentId registered in
+  // RUNTIME_AGENT_MAP (Hermes, OpenClaw, Claude Code, Codex) always goes
+  // through its real runtime adapter, regardless of what — if anything — the
+  // browser sent as executionMode. This is what keeps a client from ever
+  // needing to pick a mode, and stops a persistent-agent request from
+  // silently falling back to generic model_chat (and failing on a missing
+  // provider API key that runtime agents never needed in the first place).
+  const runtimeRoute = RUNTIME_AGENT_MAP[agentId];
+  const runtimeMode = runtimeRoute?.mode ?? body.executionMode;
+  if (!voiceTurn && isRuntimeChatMode(runtimeMode)) {
     if (!userContent) return sseError("Missing required field: userContent");
     try {
-      return await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: body.executionMode! });
+      return await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: runtimeMode! });
     } catch (error) {
       return sseError(error instanceof Error ? error.message : "Runtime routing failed", error instanceof RuntimeError ? error.status : 503);
     }
