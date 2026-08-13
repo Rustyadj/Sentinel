@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { persistChatExchange } from "@/lib/chat/persistence";
+import { appendSessionMemory } from "@/lib/knowledge/retrieval";
+import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { RUNTIME_PERMISSIONS, requireRuntimeAccess, validateSessionScope } from "./authorization";
 import { asRuntimeInstance } from "./config";
@@ -101,6 +103,7 @@ export async function routeRuntimeChat(input: {
     source: "chat",
   });
 
+  const requestStartedAtMs = Date.now();
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -130,6 +133,19 @@ export async function routeRuntimeChat(input: {
               model: runtime.model,
               agentRuntimeSessionId: session.id,
             },
+          });
+          await appendSessionMemory(room.id, [
+            { role: "user", content: input.userContent },
+            { role: "agent", content: fullContent },
+          ]).catch(() => {});
+          void captureAgentTurn({
+            agentId: input.agentId,
+            roomId: room.id,
+            userContent: input.userContent,
+            model: runtime.model ?? runtime.kind,
+            startedAtMs: requestStartedAtMs,
+            fullContent,
+            knowledgeUsedIds: [],
           });
           enqueue({ type: "knowledge_update", roomId: room.id });
         }
