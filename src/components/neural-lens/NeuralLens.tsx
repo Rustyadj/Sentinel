@@ -320,7 +320,12 @@ export function NeuralLens({
   // Hubs always survive so a filtered graph still reads as the same planet.
   const filteredGraph = useMemo<LensGraph>(() => {
     if (activeTypes.size === 0) return baseGraph;
-    const nodes = baseGraph.nodes.filter((n) => n.isHub || activeTypes.has(n.type));
+    // A trace being replayed must stay renderable even if its nodes' types
+    // aren't in the active type filter — otherwise selecting a trace advances
+    // the step counter while GlobeScene has nothing to draw a route through
+    // (its nodes were filtered out of the graph passed to it, not just dimmed).
+    const forcedIds = activeTrace ? new Set(activeTrace.nodeIds) : null;
+    const nodes = baseGraph.nodes.filter((n) => n.isHub || activeTypes.has(n.type) || forcedIds?.has(n.id));
     const keep = new Set(nodes.map((n) => n.id));
     const links = baseGraph.links.filter((l) => keep.has(l.source) && keep.has(l.target));
     return {
@@ -329,7 +334,7 @@ export function NeuralLens({
       meta: { ...baseGraph.meta, nodeCount: nodes.length, edgeCount: links.length },
       regions: baseGraph.regions,
     };
-  }, [baseGraph, activeTypes]);
+  }, [baseGraph, activeTypes, activeTrace]);
 
   const typeChips = useMemo(() => {
     const set = new Set<string>();

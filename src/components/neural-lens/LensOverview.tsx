@@ -60,7 +60,14 @@ export function LensOverview({ lens, stats }: { lens: LensId; stats: LensOvervie
   const config = LENS_CONFIG[lens];
   const apiRef = useRef<GlobeGraphApi | null>(null);
   const setLensCluster = useGraphStore((state) => state.setLensCluster);
+  const exitTrace = useGraphStore((state) => state.exitTrace);
   const { connected } = useNeuralStream({ enabled: true });
+
+  // Trace Replay's transport controls (TraceReplayPanel) only render here.
+  // useGraphStore's activeTrace is global, so leaving this tab without
+  // clearing it would leave any other NeuralLens mount (e.g. /memory, /chat)
+  // stuck rendering a stale replay path with no way to exit it.
+  useEffect(() => exitTrace, [exitTrace]);
 
   useEffect(() => {
     const previousCluster = useGraphStore.getState().lensClusterId;
