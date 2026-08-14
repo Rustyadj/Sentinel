@@ -162,7 +162,14 @@ export async function routeRuntimeChat(input: {
 }
 
 function runtimeEventText(event: RuntimeEvent) {
-  if (event.type === "stderr" || event.type === "warning" || event.type === "error") return "";
+  // Only assistant_delta carries streamable content. Other event types
+  // (status, completed, ...) can legitimately carry a `text`/`message` field
+  // too — e.g. Hermes emits the full final response again in both a
+  // status.update and message.complete event, on top of every individual
+  // delta chunk already streamed — but that's a summary/housekeeping value,
+  // not additional content. Extracting it here duplicated every response
+  // (once per delta, plus once more per summary event carrying the same text).
+  if (event.type !== "assistant_delta") return "";
   if (typeof event.data.text === "string") return event.data.text;
   const payload = event.data.event;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";

@@ -158,18 +158,51 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     );
     activeConnections.set(input.sessionId, client);
 
+    // Hermes's own session dict is process-memory-bound and reaps sessions
+    // whose owning WS transport has been disconnected past a grace window —
+    // ordinary between-turn gaps on a per-turn connection like this one can
+    // trip it (RPC error 4001 "session not found"), even though Sentinel's
+    // own session row is perfectly healthy. `let` (not `const`) so a recovery
+    // below can swap in a freshly minted Hermes session id.
+    let externalSessionId = session.externalSessionId;
+
     const queue = new AsyncQueue<RuntimeEvent>();
+    // handleFrame() does an async DB round-trip (store.append) to assign each
+    // event's sequence number. Firing it unawaited per WS message let a later
+    // frame's DB write occasionally resolve before an earlier one's, pushing
+    // deltas onto the queue out of arrival order — the garbled/duplicated
+    // streamed text bug. Chaining onto a single promise serializes handleFrame
+    // calls so each one's queue.push happens strictly after the previous
+    // frame's, regardless of DB latency variance.
+    let frameChain: Promise<void> = Promise.resolve();
     const unsubscribe = client.onEvent((frame: HermesEventFrame) => {
-      if (frame.session_id !== session.externalSessionId) return; // not our turn
-      void handleFrame(this.store, input.sessionId, frame, queue);
+      if (frame.session_id !== externalSessionId) return; // not our turn
+      frameChain = frameChain.then(() => handleFrame(this.store, input.sessionId, frame, queue));
     });
 
     (async () => {
       try {
-        const ack = await client.call<{ status: string }>("prompt.submit", {
-          session_id: session.externalSessionId,
-          text: input.prompt,
-        });
+        let ack: { status: string };
+        try {
+          ack = await client.call<{ status: string }>("prompt.submit", {
+            session_id: externalSessionId,
+            text: input.prompt,
+          });
+        } catch (err) {
+          if (!(err instanceof HermesWsError) || err.code !== 4001) throw err;
+          // Hermes reaped the old session — mint a fresh one transparently
+          // and persist it so the next turn starts from a live session too.
+          const created = await client.call<{ session_id: string }>("session.create", {
+            cwd: session.workingDirectory,
+            source: "sentinel",
+          });
+          externalSessionId = created.session_id;
+          await this.store.update(input.sessionId, { externalSessionId });
+          ack = await client.call<{ status: string }>("prompt.submit", {
+            session_id: externalSessionId,
+            text: input.prompt,
+          });
+        }
         if (ack.status !== "streaming") {
           queue.fail(new RuntimeError(`Unexpected prompt.submit ack: ${ack.status}`, "hermes_protocol_error", 503));
         }
