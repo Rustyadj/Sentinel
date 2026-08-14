@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "learning_curiosity_events" ADD COLUMN     "contradictionUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "environmentUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "expectedCostOfInterruption" DOUBLE PRECISION,
+ADD COLUMN     "expectedValueOfClarification" DOUBLE PRECISION,
+ADD COLUMN     "goalUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "intentUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "knowledgeUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "preferenceUncertainty" DOUBLE PRECISION,
+ADD COLUMN     "questionInformationGain" DOUBLE PRECISION,
+ADD COLUMN     "questionNecessity" DOUBLE PRECISION,
+ADD COLUMN     "questionQualityScore" DOUBLE PRECISION,
+ADD COLUMN     "questionRedundancy" DOUBLE PRECISION,
+ADD COLUMN     "questionSpecificity" DOUBLE PRECISION,
+ADD COLUMN     "questionUserBurden" DOUBLE PRECISION,
+ADD COLUMN     "riskUncertainty" DOUBLE PRECISION;

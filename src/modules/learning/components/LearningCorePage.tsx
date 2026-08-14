@@ -15,6 +15,12 @@ import { SkillsView } from "./SkillsView";
 import { ReplayView } from "./ReplayView";
 import { ImprovementQueueView } from "./ImprovementQueueView";
 import { EvolutionView } from "./EvolutionView";
+import { EvolutionArchiveView } from "./EvolutionArchiveView";
+import { EvaluationsView } from "./EvaluationsView";
+import { AdversarialView } from "./AdversarialView";
+import { PrinciplesView } from "./PrinciplesView";
+import { MemoryHealthView } from "./MemoryHealthView";
+import { GuardianView } from "./GuardianView";
 import { LearningSettingsView } from "./LearningSettingsView";
 import { NotYetBuiltView } from "./NotYetBuiltView";
 
@@ -24,13 +30,19 @@ const TAB_LABELS: Record<string, string> = {
   reflections: "Reflections",
   preferences: "Preferences",
   "knowledge-gaps": "Knowledge Gaps",
-  hypotheses: "Hypotheses",
+  hypotheses: "Candidates",
+  "evolution-archive": "Evolution",
+  evaluations: "Evaluations",
   experiments: "Experience Replay",
   "shadow-runs": "Shadow Runs",
+  adversarial: "Adversarial",
   benchmarks: "Benchmarks",
+  principles: "Principles",
+  "memory-health": "Memory Health",
   skills: "Skills",
   "improvement-queue": "Improvement Queue",
   trust: "Trust",
+  guardian: "Guardian",
   "feature-flags": "Feature Flags",
   evolution: "Evolution Timeline",
   "learning-settings": "Settings",
@@ -67,6 +79,12 @@ export default function LearningCorePage() {
   if (activeTab === "experiments") return <ReplayView />;
   if (activeTab === "improvement-queue") return <ImprovementQueueView />;
   if (activeTab === "evolution") return <EvolutionView />;
+  if (activeTab === "evolution-archive") return <EvolutionArchiveView />;
+  if (activeTab === "evaluations") return <EvaluationsView />;
+  if (activeTab === "adversarial") return <AdversarialView />;
+  if (activeTab === "principles") return <PrinciplesView />;
+  if (activeTab === "memory-health") return <MemoryHealthView />;
+  if (activeTab === "guardian") return <GuardianView />;
   if (activeTab === "learning-settings") return <LearningSettingsView />;
   return <NotYetBuiltView label={TAB_LABELS[activeTab] ?? activeTab} />;
 }

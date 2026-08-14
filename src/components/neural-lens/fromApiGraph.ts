@@ -16,6 +16,9 @@ interface ApiEdge {
   fromObjectId: string;
   toObjectId: string;
   weight?: number;
+  /** Real relationship type from KnowledgeEdgeType (lib/knowledge/types.ts) —
+   * e.g. "created_by", "depends_on", "triggered_by". */
+  type?: string;
 }
 
 const HUB_DEGREE_THRESHOLD = 6;
@@ -134,12 +137,12 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
   const nodeIds = new Set(nodes.map((n) => n.id));
   const links: LensLink[] = api.edges
     .filter((e) => nodeIds.has(e.fromObjectId) && nodeIds.has(e.toObjectId))
-    .map((e) => ({ source: e.fromObjectId, target: e.toObjectId, weight: e.weight ?? 0.4 }));
+    .map((e) => ({ source: e.fromObjectId, target: e.toObjectId, weight: e.weight ?? 0.4, type: e.type }));
 
   for (const clusterId of orphanClusters) {
     const id = orphanHubOf(clusterId);
     for (const n of nodes) {
-      if (n.hubId === id && n.id !== id) links.push({ source: id, target: n.id, weight: 0.15 });
+      if (n.hubId === id && n.id !== id) links.push({ source: id, target: n.id, weight: 0.15, type: "part_of" });
     }
   }
 

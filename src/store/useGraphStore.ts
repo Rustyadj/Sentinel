@@ -32,6 +32,25 @@ export interface GraphCameraState {
   lookAt: { x: number; y: number; z: number };
 }
 
+export interface RecentTrace {
+  id: string;
+  label: string;
+  nodeIds: string[];
+  capturedAt: number;
+}
+
+const RECENT_TRACE_LIMIT = 8;
+const TRACE_DEDUPE_WINDOW_MS = 5_000;
+
+function sameNodeSequence(left: RecentTrace, right: RecentTrace): boolean {
+  return left.nodeIds.length === right.nodeIds.length
+    && left.nodeIds.every((id, index) => id === right.nodeIds[index]);
+}
+
+function clampedTraceStep(trace: RecentTrace, index: number): number {
+  return Math.max(0, Math.min(index, trace.nodeIds.length - 1));
+}
+
 const TIME_WINDOW_MS: Record<Exclude<GraphTimeWindow, "all">, number> = {
   "7d": 7 * 86_400_000,
   "30d": 30 * 86_400_000,
@@ -80,6 +99,16 @@ interface GraphUIState {
   /** How the globe is drawn (density, labels, edges, glow, motion, fog).
    * Persisted: these are preferences, not view state. */
   graphSettings: GlobeSettings;
+  /** When true, the camera follows significant live-event activity as it
+   * arrives. Defaults OFF every session (not persisted) — the graph should
+   * never start spinning the operator's camera on its own. */
+  followLive: boolean;
+  /** Session-only activity history and replay transport state. These are
+   * deliberately excluded from persistence below: a reload starts fresh. */
+  recentTraces: RecentTrace[];
+  activeTrace: RecentTrace | null;
+  traceStepIndex: number;
+  tracePlaying: boolean;
 }
 
 interface GraphUIActions {
@@ -101,6 +130,15 @@ interface GraphUIActions {
   setZoomLevel: (level: SemanticZoomLevel) => void;
   setCameraState: (camera: GraphCameraState) => void;
   setGraphSettings: (patch: Partial<GlobeSettings>) => void;
+  setFollowLive: (on: boolean) => void;
+  addRecentTrace: (trace: RecentTrace) => void;
+  seedRecentTraces: (traces: RecentTrace[]) => void;
+  selectTrace: (trace: RecentTrace) => void;
+  setTracePlaying: (on: boolean) => void;
+  restartTrace: () => void;
+  stepTrace: (delta: number) => void;
+  advanceTrace: () => void;
+  exitTrace: () => void;
 }
 
 export type GraphStore = GraphUIState & GraphUIActions;
@@ -135,6 +173,11 @@ export const useGraphStore = create<GraphStore>()(
       zoomLevel: "galaxy",
       cameraState: null,
       graphSettings: DEFAULT_GLOBE_SETTINGS,
+      followLive: false,
+      recentTraces: [],
+      activeTrace: null,
+      traceStepIndex: 0,
+      tracePlaying: false,
 
       setSearch: (search) => set({ search }),
       toggleType: (type) =>
@@ -166,13 +209,72 @@ export const useGraphStore = create<GraphStore>()(
       setZoomLevel: (zoomLevel) => set({ zoomLevel }),
       setCameraState: (cameraState) => set({ cameraState }),
       setGraphSettings: (patch) =>
-        set((state) => ({ graphSettings: { ...state.graphSettings, ...patch } })),
+        set((state) => ({
+          graphSettings: { ...state.graphSettings, ...patch },
+          ...(patch.animate === false ? { tracePlaying: false } : {}),
+        })),
+      setFollowLive: (followLive) => set({ followLive }),
+      addRecentTrace: (trace) =>
+        set((state) => {
+          if (trace.nodeIds.length < 2) return {};
+          const newest = state.recentTraces[0];
+          const isNearDuplicate = newest
+            && Math.abs(trace.capturedAt - newest.capturedAt) <= TRACE_DEDUPE_WINDOW_MS
+            && sameNodeSequence(trace, newest);
+          if (isNearDuplicate) return {};
+          return { recentTraces: [trace, ...state.recentTraces].slice(0, RECENT_TRACE_LIMIT) };
+        }),
+      seedRecentTraces: (traces) =>
+        set((state) => {
+          if (state.recentTraces.length > 0) return {};
+          return {
+            recentTraces: traces
+              .filter((trace) => trace.nodeIds.length >= 2)
+              .sort((left, right) => right.capturedAt - left.capturedAt)
+              .slice(0, RECENT_TRACE_LIMIT),
+          };
+        }),
+      selectTrace: (activeTrace) =>
+        set((state) => ({
+          activeTrace,
+          traceStepIndex: 0,
+          tracePlaying: state.graphSettings.animate && activeTrace.nodeIds.length > 1,
+        })),
+      setTracePlaying: (tracePlaying) =>
+        set((state) => ({
+          tracePlaying: Boolean(
+            tracePlaying
+            && state.graphSettings.animate
+            && state.activeTrace
+            && state.traceStepIndex < state.activeTrace.nodeIds.length - 1
+          ),
+        })),
+      restartTrace: () =>
+        set((state) => state.activeTrace ? { traceStepIndex: 0 } : {}),
+      stepTrace: (delta) =>
+        set((state) => state.activeTrace
+          ? {
+              traceStepIndex: clampedTraceStep(state.activeTrace, state.traceStepIndex + delta),
+              tracePlaying: false,
+            }
+          : { tracePlaying: false }),
+      advanceTrace: () =>
+        set((state) => {
+          if (!state.activeTrace) return { tracePlaying: false };
+          const nextStep = clampedTraceStep(state.activeTrace, state.traceStepIndex + 1);
+          return {
+            traceStepIndex: nextStep,
+            tracePlaying: nextStep < state.activeTrace.nodeIds.length - 1,
+          };
+        }),
+      exitTrace: () => set({ activeTrace: null, traceStepIndex: 0, tracePlaying: false }),
     }),
     {
       name: "sentinel.neural-lens.view-state",
       // Only the durable "where was I looking / what was I focused on" bits
-      // persist — search text, filter chips, and one-shot request fields
-      // are session-scoped and would be actively wrong to restore.
+      // persist — search text, filter chips, replay history/transport, and
+      // one-shot request fields are session-scoped and would be actively
+      // wrong to restore.
       partialize: (state) => ({
         lensClusterId: state.lensClusterId,
         lensOnly: state.lensOnly,

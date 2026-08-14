@@ -147,9 +147,29 @@ model Memory {
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
 
+  // --- Governed forgetting (additive; see docs/LEARNING_CORE_EVOLUTION.md) ---
+  // Net memory value is a configurable/versioned policy computed over these,
+  // not a hardcoded formula — see src/lib/learning/memory-governance.ts.
+  valueScore         Float?
+  harmScore          Float?
+  stalenessScore     Float?
+  provenanceTrust    Float?
+  transferability    Float?
+  retrievalCost      Float?
+  poisonRisk         Float?
+  contradictionCount Int       @default(0)
+  confirmationCount  Int       @default(0)
+  lastUsefulAt       DateTime?
+  lastValidatedAt    DateTime?
+  // active, stable, candidate, stale, disputed, quarantined, archived, forgotten
+  // "forgotten" removes a memory from normal retrieval without necessarily
+  // deleting the row — see excludeFromRetrieval() in memory-governance.ts.
+  state              String    @default("active")
+
   preferenceEvidence UserPreferenceEvidence[]
 
   @@index([projectId])
+  @@index([state])
   @@map("memories")
 }
 
@@ -829,6 +849,28 @@ model LearningCandidate {
   shadowSampleSize  Int?
   shadowConfidence  Float?
 
+  // --- Evolution Archive (additive; see docs/LEARNING_CORE_EVOLUTION.md) ---
+  // `status` above remains the approval-workflow field (proposed/approved/
+  // rejected/auto_approved/rolled_back) exactly as before — untouched.
+  // `survivalStatus` is a separate, additive axis describing this candidate's
+  // place in the evolutionary archive; the two are orthogonal (a candidate
+  // can be `approved` and `challenger` at the same time).
+  parentCandidateId String? // another LearningCandidate.id this one descended from
+  rootCandidateId    String? // the original ancestor's id (plain string — no cascading relation semantics, matches the agentId convention elsewhere in this file)
+  generation         Int     @default(0)
+  lineageDepth        Int     @default(0)
+  mutationType        String? // e.g. weight_adjustment, strategy_change, hybrid, crossover, mutation
+  createdFrom         String? // free-text provenance, e.g. "opportunity:<knowledgeGapId>", "mutation:<parentCandidateId>", "manual"
+  noveltyScore        Float?
+  fitnessScore        Float?
+  fitnessVector       Json? // { taskSuccess, accuracy, userCorrectionRate, hallucinationRate, toolSuccess, clarificationQuality, retrievalQuality, latency, tokenCost, monetaryCost, safety, security, userPreferenceAlignment, generalization, robustness, novelty }
+  survivalStatus      String  @default("generated") // generated, testing, archive, challenger, champion, rejected, superseded, rolled_back, unsafe
+  championGroup       String? // groups challengers competing over the same improvable subsystem, e.g. "retrieval_ranking", "clarification_policy"
+  evaluationCount      Int     @default(0)
+  archiveStatus        String  @default("retained") // retained, pruned — archive never deletes; this only marks low-priority rows for UI collapsing
+  generatorModel       String? // which model proposed this candidate (model diversity, see docs)
+  evaluatorModel       String? // which model evaluated it
+
   experience Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
   evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
 
@@ -840,11 +882,24 @@ model LearningCandidate {
   featureFlags     FeatureFlag[]
   artifactVersions LearningArtifactVersion[]
 
+  parentCandidate LearningCandidate?  @relation("CandidateLineage", fields: [parentCandidateId], references: [id], onDelete: SetNull)
+  descendants     LearningCandidate[] @relation("CandidateLineage")
+
+  evalResults         EvalResult[]
+  evalRuns             EvalRun[]
+  guardianDecisions    GuardianDecision[]
+  adversarialRuns      AdversarialRun[]
+  experimentManifests  ExperimentManifest[]
+
   @@index([status])
   @@index([riskLevel])
   @@index([type])
   @@index([knowledgeGapId])
   @@index([approvalRequestId])
+  @@index([parentCandidateId])
+  @@index([rootCandidateId])
+  @@index([survivalStatus])
+  @@index([championGroup])
   @@map("neural_learning_candidates")
 }
 
@@ -1207,6 +1262,30 @@ model CuriosityEvent {
   createdAt           DateTime  @default(now())
   answeredAt          DateTime?
 
+  // --- Curiosity Engine upgrade (additive; see docs/LEARNING_CORE_EVOLUTION.md)
+  // Evidence-driven uncertainty dimensions — a finer-grained decomposition
+  // than ambiguityScore/conflictScore above, which stay unchanged and in use.
+  intentUncertainty        Float?
+  knowledgeUncertainty     Float?
+  preferenceUncertainty    Float?
+  goalUncertainty          Float?
+  environmentUncertainty   Float?
+  riskUncertainty          Float?
+  contradictionUncertainty Float?
+  // Expected-value-of-clarification vs. expected-cost-of-interruption — the
+  // computational form of "should the agent consider asking" rather than
+  // asking on every uncertainty signal.
+  expectedValueOfClarification Float?
+  expectedCostOfInterruption   Float?
+  // Question quality evaluation — scored independently of whether the
+  // question was ultimately asked, so the engine can learn when NOT to ask.
+  questionNecessity       Float?
+  questionSpecificity     Float?
+  questionInformationGain Float?
+  questionUserBurden      Float?
+  questionRedundancy      Float?
+  questionQualityScore    Float?
+
   @@index([agentId, createdAt])
   @@index([traceId])
   @@map("learning_curiosity_events")
@@ -1560,8 +1639,271 @@ model LearningSettings {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  // --- Learning budget (additive; see docs/LEARNING_CORE_EVOLUTION.md) ---
+  // Self-improvement resource limits. Null means "no configured limit at this
+  // scope" — getEffectiveLearningSettings still resolves agent -> workspace
+  // -> organization -> hardcoded defaults, same as every other field here.
+  dailyModelBudgetUsd         Float?
+  dailyTokenBudget            Int?
+  dailyExperimentBudget       Int?
+  maxConcurrentExperiments    Int?
+  maxCandidatesPerOpportunity Int?
+  maxAdversarialRunsPerDay    Int?
+  maxReplaySamples            Int?
+
   @@unique([scopeType, scopeId])
   @@map("learning_settings")
+}
+
+// ============================================================================
+// Governed Evolutionary Self-Improvement — see docs/LEARNING_CORE_EVOLUTION.md
+//
+// Extends the Learning Core above. Every model here is genuinely net-new —
+// confirmed absent by direct inspection of the schema before writing it.
+// LearningCandidate itself is extended in place (see its "Evolution Archive"
+// block above) rather than duplicated; these models are the pieces that have
+// no existing equivalent: a permanent regression-eval compiler, an
+// independent Guardian monitor, sandboxed adversarial self-play, versioned
+// principle distillation, and a pipeline-level experiment manifest (distinct
+// from ExperimentRun, which is one row per sample/trial, not per pipeline).
+// ============================================================================
+
+model EvalSuite {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String // e.g. intent_clarification, retrieval_quality, tool_security
+  status      String   @default("active") // active, retired
+  workspaceId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cases EvalCase[]
+  runs  EvalRun[]
+
+  @@index([category])
+  @@index([workspaceId])
+  @@map("learning_eval_suites")
+}
+
+// Provenance-tracked, durable regression test derived from a real production
+// failure. Never stores hidden chain-of-thought — only observable behavior
+// and evaluation evidence (sanitizedInput/expectedBehavior), redacted the
+// same way LearningEvent payloads are (see src/lib/learning/redaction.ts).
+model EvalCase {
+  id       String  @id @default(cuid())
+  suiteId  String?
+  source   String // user_correction, rejected_response, thumbs_down, failed_tool_call, failed_workflow, failed_deployment, rollback, bad_retrieval, hallucination, contradiction, unauthorized_action, rejected_approval, security_violation, malformed_code_change, failing_test, delegation_failure, adversarial_run
+  sourceId String? // id of the originating row (Experience, Reflection, LearningCandidate, AdversarialRun, ...)
+  userId          String?
+  workspaceId     String?
+  failureType     String
+  severity        String   @default("medium") // low, medium, high, critical
+  sanitizedInput  Json     @default("{}")
+  expectedBehavior String
+  grader          String   @default("rule_based") // deterministic, llm_judge, rule_based
+  graderVersion   String   @default("v1")
+  confidence      Float    @default(0.5)
+  status          String   @default("active") // active, retired, superseded
+  // Stable hash of (source, failureType, normalized sanitizedInput) — repeated
+  // production failures increment occurrenceCount on the same row instead of
+  // creating duplicate regression cases.
+  dedupeKey       String   @unique
+  occurrenceCount Int      @default(1)
+  redactedKeys    String[] @default([])
+  createdAt       DateTime @default(now())
+
+  suite           EvalSuite?       @relation(fields: [suiteId], references: [id], onDelete: SetNull)
+  results         EvalResult[]
+  adversarialRuns AdversarialRun[]
+
+  @@index([suiteId])
+  @@index([source])
+  @@index([failureType])
+  @@index([workspaceId])
+  @@map("learning_eval_cases")
+}
+
+model EvalRun {
+  id          String    @id @default(cuid())
+  suiteId     String?
+  candidateId String?
+  triggeredBy String // manual, experiment_orchestrator, scheduled, adversarial
+  status      String    @default("running") // running, completed, failed
+  summary     Json      @default("{}")
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  suite     EvalSuite?         @relation(fields: [suiteId], references: [id], onDelete: SetNull)
+  candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  results   EvalResult[]
+
+  @@index([suiteId])
+  @@index([candidateId])
+  @@map("learning_eval_runs")
+}
+
+model EvalResult {
+  id             String   @id @default(cuid())
+  evalRunId      String
+  evalCaseId     String
+  candidateId    String?
+  passed         Boolean
+  score          Float?
+  actualBehavior String?
+  reasonCodes    String[] @default([])
+  createdAt      DateTime @default(now())
+
+  run       EvalRun            @relation(fields: [evalRunId], references: [id], onDelete: Cascade)
+  evalCase  EvalCase           @relation(fields: [evalCaseId], references: [id], onDelete: Cascade)
+  candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([evalRunId])
+  @@index([evalCaseId])
+  @@index([candidateId])
+  @@map("learning_eval_results")
+}
+
+// Independent monitoring evidence — Sentinel Guardian. Concise structured
+// decision evidence only; no private internal reasoning is persisted here,
+// matching the same discipline LearningEvent redaction already enforces.
+model GuardianDecision {
+  id               String   @id @default(cuid())
+  action           String // free-text description of the governed action
+  actor            String // agentId or system actor id proposing the action
+  runtime          String? // AgentRuntime id/kind, if applicable
+  candidateId      String?
+  tier             Int // 1, 2, or 3 — mirrors classifyRiskLevel's low/medium/high
+  mode             String // observe, review, block
+  risk             String // low, medium, high
+  policyDecision   String // what the canonical policy-service classification said
+  guardianDecision String // allow, hold, block
+  confidence       Float?
+  reasonCodes      String[] @default([])
+  evidence         Json     @default("{}")
+  blocked          Boolean  @default(false)
+  workspaceId      String?
+  createdAt        DateTime @default(now())
+
+  candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId])
+  @@index([mode])
+  @@index([tier])
+  @@map("learning_guardian_decisions")
+}
+
+// Sandboxed adversarial self-play. One row per attempt; Guardian evidence for
+// containment lives in GuardianDecision, not duplicated here. A successful
+// attack (outcome = "breached") becomes a permanent EvalCase via
+// src/lib/learning/eval-compiler.ts — evalCaseId records that link.
+model AdversarialRun {
+  id                   String    @id @default(cuid())
+  attackType           String // prompt_injection, malicious_tool_output, poisoned_memory, conflicting_instructions, deceptive_web_content, malicious_repository_content, malformed_file, fake_approval, workspace_boundary, path_traversal, prompt_hierarchy_confusion, privilege_escalation, runtime_impersonation, false_telemetry, corrupted_retrieval_context, social_engineering
+  candidateId          String? // defender under test (a challenger)
+  championCandidateId  String? // baseline compared against, if any (plain string — comparison reference, not a cascading relation)
+  payload              Json // the crafted attack content (sanitized before persistence)
+  targetSurface        String // memory, tool_output, retrieval, approval, runtime, ...
+  outcome              String    @default("pending") // pending, blocked, breached, inconclusive
+  severity             String    @default("medium")
+  judgeNotes           String?
+  sandboxViolation     Boolean   @default(false)
+  evalCaseId           String?
+  workspaceId          String?
+  createdAt            DateTime  @default(now())
+  completedAt          DateTime?
+
+  candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  evalCase  EvalCase?          @relation(fields: [evalCaseId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId])
+  @@index([attackType])
+  @@index([outcome])
+  @@map("learning_adversarial_runs")
+}
+
+// Distilled, reusable procedural knowledge — never a summarized blob.
+// Extends the Skill/Procedure family conceptually but is genuinely distinct:
+// a Principle is a conditional behavioral rule with an evidence trail, not an
+// executable step sequence. Versioned so behavioral rules are never silently
+// overwritten (see PrincipleVersion).
+model Principle {
+  id                         String    @id @default(cuid())
+  statement                  String
+  scope                      String // global, workspace, agent, domain
+  domain                     String?
+  workspaceId                String?
+  agentId                    String?
+  conditions                 Json      @default("[]")
+  exceptions                 Json      @default("[]")
+  confidence                 Float     @default(0.5)
+  evidenceCount              Int       @default(1)
+  supportingExperienceIds    String[]  @default([])
+  contradictingExperienceIds String[]  @default([])
+  status                     String    @default("active") // active, superseded, retracted
+  currentVersion             Int       @default(1)
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  lastValidatedAt            DateTime?
+
+  versions PrincipleVersion[]
+
+  @@index([domain])
+  @@index([workspaceId])
+  @@index([agentId])
+  @@index([status])
+  @@map("learning_principles")
+}
+
+model PrincipleVersion {
+  id                         String   @id @default(cuid())
+  principleId                String
+  version                    Int
+  statement                  String
+  conditions                 Json     @default("[]")
+  exceptions                 Json     @default("[]")
+  confidence                 Float
+  changeReason               String
+  supportingExperienceIds    String[] @default([])
+  contradictingExperienceIds String[] @default([])
+  createdAt                  DateTime @default(now())
+
+  principle Principle @relation(fields: [principleId], references: [id], onDelete: Cascade)
+
+  @@unique([principleId, version])
+  @@map("learning_principle_versions")
+}
+
+// Pipeline-level record for one candidate's run through the Experiment
+// Orchestrator (static validation -> sandbox -> eval suites -> adversarial ->
+// replay -> shadow -> fitness -> Guardian -> promotion decision). Distinct
+// from ExperimentRun, which is one row per sample/trial within a stage, not
+// per pipeline invocation — no existing model covers this granularity.
+model ExperimentManifest {
+  id                String    @id @default(cuid())
+  candidateId       String
+  championVersion   String?
+  candidateVersion  String?
+  evalSuiteIds      String[]  @default([])
+  sandboxVersion    String?
+  modelVersion      String?
+  toolVersions      Json      @default("{}")
+  memorySnapshotRef String?
+  datasetHash       String?
+  graderVersions    Json      @default("{}")
+  randomSeed        String?
+  // static_validation, sandbox, eval_suites, adversarial, replay, shadow,
+  // fitness, guardian, promotion_decision, completed, stopped
+  stage             String    @default("static_validation")
+  stopReason        String? // budget_exceeded, no_meaningful_improvement, hard_guardrail_failure, guardian_block, required_human_approval, repeated_experiment_failure, unsafe_candidate, infrastructure_unavailable
+  results           Json      @default("{}")
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  candidate LearningCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@map("learning_experiment_manifests")
 }
 
 // --- Agent Runtime Control Plane (production/final-agent-control-plane) ---

@@ -102,7 +102,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
       const type = pick(leafCategories);
       raw.push({ id: childId, type, clusterId, hubId, tier: 1, label: `${type} ${index}` });
       layoutInput.push({ id: childId, clusterId, hubId, parentId: hubId, tier: 1 });
-      links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45 });
+      links.push({ source: hubId, target: childId, weight: 0.35 + rnd() * 0.45, type: "part_of" });
       const siblings = childrenOfHub.get(hubId);
       if (siblings) siblings.push(childId);
       else childrenOfHub.set(hubId, [childId]);
@@ -128,7 +128,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
             const type = pick(leafCategories);
             raw.push({ id: gid, type, clusterId, hubId, tier: 2, label: `${type} ${childIndex}` });
             layoutInput.push({ id: gid, clusterId, hubId, parentId: childId, tier: 2 });
-            links.push({ source: childId, target: gid, weight: 0.2 + rnd() * 0.3 });
+            links.push({ source: childId, target: gid, weight: 0.2 + rnd() * 0.3, type: "part_of" });
             created++;
             childIndex++;
           }
@@ -153,25 +153,27 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
         const crossCount = 1 + Math.floor(rnd() * 2);
         for (let k = 0; k < crossCount; k++) {
           const other = siblings[Math.floor(rnd() * siblings.length)];
-          if (other !== child) links.push({ source: child, target: other, weight: 0.12 + rnd() * 0.28 });
+          if (other !== child) links.push({ source: child, target: other, weight: 0.12 + rnd() * 0.28, type: "related_to" });
         }
       }
     }
 
     // Hub backbone within the cluster.
     for (let i = 0; i < hubIds.length; i++) {
-      if (rnd() > 0.4) links.push({ source: hubIds[i], target: pick(hubIds), weight: 0.5 + rnd() * 0.3 });
+      if (rnd() > 0.4) links.push({ source: hubIds[i], target: pick(hubIds), weight: 0.5 + rnd() * 0.3, type: "related_to" });
     }
   });
 
   // Core spokes: the Agents region sits at the centre of the globe, and every
   // other region answers to it. These are the long strands that read as the
-  // graph's skeleton when you look at the whole planet at once.
+  // graph's skeleton when you look at the whole planet at once. Typed as
+  // "delegates_to" — the agent core is what every other region ultimately
+  // acts on behalf of.
   const coreHub = majorHubByCluster.get(CORE_CLUSTER_ID);
   if (coreHub) {
     for (const [clusterId, hubId] of majorHubByCluster) {
       if (clusterId === CORE_CLUSTER_ID) continue;
-      links.push({ source: coreHub, target: hubId, weight: 0.85 });
+      links.push({ source: coreHub, target: hubId, weight: 0.85, type: "delegates_to" });
     }
   }
 
@@ -184,7 +186,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
   for (let b = 0; b < bridgeCount; b++) {
     const a = raw[Math.floor(rnd() * raw.length)];
     const z = raw[Math.floor(rnd() * raw.length)];
-    if (a.clusterId !== z.clusterId) links.push({ source: a.id, target: z.id, weight: 0.1 + rnd() * 0.18 });
+    if (a.clusterId !== z.clusterId) links.push({ source: a.id, target: z.id, weight: 0.1 + rnd() * 0.18, type: "references" });
   }
 
   const { positions, regions } = computeGlobeLayout(layoutInput, [...CLUSTER_IDS], {
@@ -241,7 +243,7 @@ export function generateDemoGraph(options: DemoGraphOptions = {}): LensGraph {
         const key = source.id < target.id ? `${source.id}|${target.id}` : `${target.id}|${source.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        cleanLinks.push({ source: source.id, target: target.id, weight: 0.08 + rnd() * 0.14 });
+        cleanLinks.push({ source: source.id, target: target.id, weight: 0.08 + rnd() * 0.14, type: "related_to" });
       }
     }
   }

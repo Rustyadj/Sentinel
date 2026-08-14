@@ -16,9 +16,14 @@ import {
 } from "./palette";
 import { NodeFacetList, Stat, nodeTier } from "./NodeFacets";
 import { GraphMinimap } from "./GraphMinimap";
+import { formatRelationshipType } from "./relationships";
 import type { LensGraph, SemanticZoomLevel } from "./types";
 import type { NeuralStreamEvent } from "./useNeuralStream";
 import type { GlobeScene } from "./globe/GlobeScene";
+
+/** A neighbor of the selected node, plus the relationship the connecting
+ * edge carries (e.g. "depends_on") — see NeuralLens.tsx's connectedEntities. */
+type ConnectedEntity = GraphNodeSummary & { relationship?: string };
 
 interface GraphContextRailProps {
   graph: LensGraph;
@@ -32,7 +37,7 @@ interface GraphContextRailProps {
   lensOnly: boolean;
   onLensChange: (clusterId: ClusterId | null) => void;
   selected: GraphNodeSummary | null;
-  connectedEntities: GraphNodeSummary[];
+  connectedEntities: ConnectedEntity[];
   onClearSelection: () => void;
   onFocusEntity: (label: string) => void;
   onOpenModule: () => void;
@@ -350,10 +355,14 @@ function DetailsTab({
                 key={entity.id}
                 type="button"
                 onClick={() => onFocusEntity(entity.label)}
+                title={`${selected.label} → ${formatRelationshipType(entity.relationship)} → ${entity.label}`}
                 className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[10.5px] text-white/55 transition-colors hover:bg-white/[0.05] hover:text-white/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
               >
                 <span className="h-1 w-1 shrink-0 rounded-full bg-white/25" />
                 <span className="truncate">{entity.label}</span>
+                <span className="ml-2 shrink-0 text-[8.5px] uppercase tracking-wide text-violet-300/70">
+                  {formatRelationshipType(entity.relationship)}
+                </span>
                 <span className="ml-auto shrink-0 text-[8.5px] uppercase tracking-wide text-white/25">
                   {entity.type}
                 </span>

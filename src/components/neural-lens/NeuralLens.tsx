@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
-import { useGraphStore } from "@/store/useGraphStore";
+import { useGraphStore, type RecentTrace } from "@/store/useGraphStore";
 import { NeuralLensGraph, type GlobeGraphApi } from "./NeuralLensGraph";
 import { GraphControlRail } from "./GraphControlRail";
 import { GraphContextRail } from "./GraphContextRail";
@@ -18,6 +18,7 @@ import type { ExecutionPath, LensGraph, LensNode } from "./types";
 
 const ACTIVE_PULSE_MS = 2600;
 const SEARCH_FOCUS_DEBOUNCE_MS = 320;
+const DEMO_TRACE_COUNT = 3;
 
 /** Range -> how far back "at" reaches. "Today" means local midnight, not a rolling 24h. */
 function timestampForRange(range: TimeRange): Date {
@@ -65,7 +66,42 @@ function buildActivityPath(graph: LensGraph, litIds: Set<string>, demo: boolean)
   return nodeIds.length >= 2 ? { id: "demo:spine", nodeIds, startedAt: 0 } : null;
 }
 
-export function NeuralLens({ projectId }: { projectId?: string } = {}) {
+/** Honest, illustrative replay history for the graph's explicitly-labelled
+ * DEMO mode. Every sample is a walk along the same canonical spine used by
+ * buildActivityPath, so replay never invents a second graph route. */
+function buildDemoTraces(graph: LensGraph): RecentTrace[] {
+  const path = buildActivityPath(graph, new Set(), true);
+  if (!path) return [];
+
+  const labels = new Map(graph.nodes.map((node) => [node.id, node.label]));
+  const routes = [
+    path.nodeIds,
+    path.nodeIds.slice(0, 4),
+    path.nodeIds.slice(-4),
+  ];
+  const now = Date.now();
+  const seen = new Set<string>();
+
+  return routes
+    .filter((nodeIds) => {
+      const key = nodeIds.join("\u0000");
+      if (nodeIds.length < 2 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, DEMO_TRACE_COUNT)
+    .map((nodeIds, index) => ({
+      id: `demo:trace:${index + 1}`,
+      label: `DEMO · ${nodeIds.map((id) => labels.get(id) ?? id).join(" → ")}`,
+      nodeIds,
+      capturedAt: now - (index + 1) * 75_000,
+    }));
+}
+
+export function NeuralLens({
+  projectId,
+  apiRef: externalApiRef,
+}: { projectId?: string; apiRef?: RefObject<GlobeGraphApi | null> } = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
@@ -93,6 +129,12 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const setGraphSettings = useGraphStore((state) => state.setGraphSettings);
   const fitRequest = useGraphStore((state) => state.fitRequest);
   const requestFit = useGraphStore((state) => state.requestFit);
+  const followLive = useGraphStore((state) => state.followLive);
+  const setFollowLive = useGraphStore((state) => state.setFollowLive);
+  const addRecentTrace = useGraphStore((state) => state.addRecentTrace);
+  const seedRecentTraces = useGraphStore((state) => state.seedRecentTraces);
+  const activeTrace = useGraphStore((state) => state.activeTrace);
+  const traceStepIndex = useGraphStore((state) => state.traceStepIndex);
   // Title-based focus requests (e.g. switching the active chat agent) —
   // resolved against the full graph, not just what's currently filtered in,
   // so focusing an agent works even mid-search/mid-filter.
@@ -109,7 +151,11 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   const [activeNodeIds, setActiveNodeIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
   const [scene, setScene] = useState<GlobeScene | null>(null);
-  const graphApi = useRef<GlobeGraphApi | null>(null);
+  // A caller (LensOverview) can hand in its own ref to drive the camera
+  // (e.g. focusRegion on entry) without this component forking into two
+  // implementations — falls back to an internal ref when embedded standalone.
+  const internalApiRef = useRef<GlobeGraphApi | null>(null);
+  const graphApi = externalApiRef ?? internalApiRef;
   const router = useRouter();
   const isHistorical = !demoMode && timeRange !== "Now";
 
@@ -139,7 +185,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         if (projectId) query.set("projectId", projectId);
         const res = await fetch(`/api/neural/temporal?${query.toString()}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
+        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number; type?: string }[] };
         if (!cancelled) setHistoricalGraph(buildLensGraphFromApi(data));
       } catch {
         /* keep whatever was showing before */
@@ -164,7 +210,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
         const res = await fetch(`/api/graph${query}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number }[] };
+        const data = (await res.json()) as { nodes: { id: string; type: string; title: string }[]; edges: { fromObjectId: string; toObjectId: string; weight?: number; type?: string }[] };
         if (!cancelled) setScopedGraph(buildLensGraphFromApi(data));
       } catch {
         /* keep demo fallback */
@@ -181,6 +227,11 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
       ? demoGraph
       : scopedGraph ?? demoGraph;
 
+  useEffect(() => {
+    if (!demoMode) return;
+    seedRecentTraces(buildDemoTraces(demoGraph));
+  }, [demoMode, demoGraph, seedRecentTraces]);
+
   // Pulse nodes touched by live events. Suppressed while viewing historical
   // state — a past snapshot shouldn't animate as if it were live right now.
   // If a payload id matches a node, pulse it; otherwise (DEMO ids won't match
@@ -195,11 +246,25 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         .match(/[a-z0-9]{16,}/gi)
         ?.slice(0, 4) ?? [],
     );
-    let matched = baseGraph.nodes.filter((n) => payloadIds.has(n.id)).map((n) => n.id);
+    const realMatches = baseGraph.nodes.filter((node) => payloadIds.has(node.id));
+    let matched = realMatches.map((node) => node.id);
+    if (realMatches.length >= 2) {
+      const capturedAt = Date.parse(latest.createdAt);
+      addRecentTrace({
+        id: `live:${latest.id}`,
+        label: realMatches.map((node) => node.label).join(" → "),
+        nodeIds: matched,
+        capturedAt: Number.isNaN(capturedAt) ? lastEventAt ?? Date.now() : capturedAt,
+      });
+    }
     if (matched.length === 0 && baseGraph.nodes.length > 0) {
       const idx = Math.abs(hashStr(latest.id)) % baseGraph.nodes.length;
       matched = [baseGraph.nodes[idx].id, baseGraph.nodes[(idx + 7) % baseGraph.nodes.length].id];
     }
+    // Follow Live (default off): camera moves to the node the newest event
+    // touched. Off by default — the graph never spins the operator's camera
+    // on its own; this only fires once the operator has opted in.
+    if (followLive && matched.length > 0) graphApi.current?.focusNode(matched[0]);
     setActiveNodeIds((prev) => {
       const next = new Set(prev);
       for (const id of matched) {
@@ -255,7 +320,12 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   // Hubs always survive so a filtered graph still reads as the same planet.
   const filteredGraph = useMemo<LensGraph>(() => {
     if (activeTypes.size === 0) return baseGraph;
-    const nodes = baseGraph.nodes.filter((n) => n.isHub || activeTypes.has(n.type));
+    // A trace being replayed must stay renderable even if its nodes' types
+    // aren't in the active type filter — otherwise selecting a trace advances
+    // the step counter while GlobeScene has nothing to draw a route through
+    // (its nodes were filtered out of the graph passed to it, not just dimmed).
+    const forcedIds = activeTrace ? new Set(activeTrace.nodeIds) : null;
+    const nodes = baseGraph.nodes.filter((n) => n.isHub || activeTypes.has(n.type) || forcedIds?.has(n.id));
     const keep = new Set(nodes.map((n) => n.id));
     const links = baseGraph.links.filter((l) => keep.has(l.source) && keep.has(l.target));
     return {
@@ -264,7 +334,7 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
       meta: { ...baseGraph.meta, nodeCount: nodes.length, edgeCount: links.length },
       regions: baseGraph.regions,
     };
-  }, [baseGraph, activeTypes]);
+  }, [baseGraph, activeTypes, activeTrace]);
 
   const typeChips = useMemo(() => {
     const set = new Set<string>();
@@ -339,27 +409,39 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
   }, [search, filteredGraph.nodes, handleSelect]);
 
   // A handful of the selected node's direct neighbors — "connected entities"
-  // in the detail panel. Capped so a 5,000-edge hub doesn't dump its entire
-  // fan into a sidebar.
+  // in the detail panel, each carrying the relationship type off its edge so
+  // the panel can say *how* it connects, not just that it does. Capped so a
+  // 5,000-edge hub doesn't dump its entire fan into a sidebar.
   const connectedEntities = useMemo(() => {
     if (!selected) return [];
     const nodesById = new Map(baseGraph.nodes.map((n) => [n.id, n]));
-    const neighborIds = new Set<string>();
+    const relationshipOf = new Map<string, string | undefined>();
     for (const link of baseGraph.links) {
-      if (link.source === selected.id) neighborIds.add(link.target);
-      else if (link.target === selected.id) neighborIds.add(link.source);
-      if (neighborIds.size >= 8) break;
+      if (link.source === selected.id) relationshipOf.set(link.target, link.type);
+      else if (link.target === selected.id) relationshipOf.set(link.source, link.type);
+      if (relationshipOf.size >= 8) break;
     }
-    return [...neighborIds]
-      .map((id) => nodesById.get(id))
+    return [...relationshipOf.entries()]
+      .map(([id, relationship]) => {
+        const node = nodesById.get(id);
+        return node ? { ...node, relationship } : null;
+      })
       .filter((n): n is NonNullable<typeof n> => !!n)
       .slice(0, 6);
   }, [selected, baseGraph.nodes, baseGraph.links]);
 
-  const executionPath = useMemo(
+  const liveExecutionPath = useMemo(
     () => buildActivityPath(filteredGraph, litNodeIds, demoMode),
     [filteredGraph, litNodeIds, demoMode],
   );
+  const executionPath = useMemo<ExecutionPath | null>(() => {
+    if (!activeTrace) return liveExecutionPath;
+    return {
+      id: activeTrace.id,
+      nodeIds: activeTrace.nodeIds.slice(0, traceStepIndex + 1),
+      startedAt: activeTrace.capturedAt,
+    };
+  }, [activeTrace, traceStepIndex, liveExecutionPath]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#01040a]">
@@ -410,6 +492,8 @@ export function NeuralLens({ projectId }: { projectId?: string } = {}) {
         layerCounts={layerCounts}
         timelineOpen={timelineOpen}
         onToggleTimeline={() => setTimelineOpen((open) => !open)}
+        followLive={followLive}
+        onFollowLiveChange={setFollowLive}
       />
 
       <GraphContextRail

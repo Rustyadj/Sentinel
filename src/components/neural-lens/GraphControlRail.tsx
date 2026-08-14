@@ -11,6 +11,7 @@ import {
   Database,
   Globe2,
   Layers,
+  Megaphone,
   MessagesSquare,
   Mic,
   Search,
@@ -33,6 +34,7 @@ const LAYER_ICONS: Record<ClusterId, typeof Layers> = {
   Learning: Workflow,
   Projects: Boxes,
   Coding: Braces,
+  Marketing: Megaphone,
   Chat: MessagesSquare,
   Voice: Mic,
   External: Globe2,
@@ -56,6 +58,9 @@ interface GraphControlRailProps {
   layerCounts: Map<string, number>;
   timelineOpen: boolean;
   onToggleTimeline: () => void;
+  /** Camera follows significant live activity when on. Default off. */
+  followLive: boolean;
+  onFollowLiveChange: (on: boolean) => void;
 }
 
 /**
@@ -83,6 +88,8 @@ export function GraphControlRail({
   layerCounts,
   timelineOpen,
   onToggleTimeline,
+  followLive,
+  onFollowLiveChange,
 }: GraphControlRailProps) {
   const densityId = useId();
   const [typesOpen, setTypesOpen] = useState(false);
@@ -250,6 +257,10 @@ export function GraphControlRail({
             ) : null}
           </div>
         ) : null}
+
+        <div className="mt-2.5 border-t border-white/[0.06] pt-2.5">
+          <ToggleRow label="Follow Live" checked={followLive} onChange={onFollowLiveChange} />
+        </div>
 
         <div className="mt-2.5 flex items-center gap-1 border-t border-white/[0.06] pt-2.5">
           <SourceButton label="Demo" active={demoMode} tone="#5fae86" onClick={() => onToggleDemoMode(true)} />

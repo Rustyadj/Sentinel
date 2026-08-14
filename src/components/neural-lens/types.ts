@@ -42,6 +42,11 @@ export interface LensLink {
   target: string;
   /** 0..1 relationship weight → width/opacity. */
   weight: number;
+  /** Relationship semantics (e.g. "created_by", "depends_on", "part_of") —
+   * see relationships.ts for the real vocabulary and its display labels.
+   * Optional: older/synthetic edges without a specific type default to a
+   * generic "related_to" wherever a label is shown. */
+  type?: string;
 }
 
 export interface LensGraph {

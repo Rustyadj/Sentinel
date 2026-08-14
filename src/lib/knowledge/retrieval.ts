@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { redisGet, redisSet } from "@/lib/redis";
 import type { Prisma } from "@prisma/client";
 import type { RetrievalContext } from "./types";
+import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const SESSION_MEMORY_MAX_TURNS = 20;
@@ -62,12 +63,18 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
 } {
   const includeUserContext = ctx.scopePolicy === "user-context";
 
+  // Quarantined/forgotten memories are governance states, not a retrieval
+  // scope — excluded from every branch below regardless of project/user
+  // context (see src/lib/learning/memory-governance.ts).
+  const notForgottenOrQuarantined = excludeFromRetrieval();
+
   if (ctx.projectId) {
     return {
       memory: includeUserContext
         ? {
             owner: ctx.userId,
             archived: false,
+            ...notForgottenOrQuarantined,
             OR: [
               { scope: "project", projectId: ctx.projectId },
               { scope: { in: ["user", "global"] }, projectId: null },
@@ -76,6 +83,7 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
         : {
             owner: ctx.userId,
             archived: false,
+            ...notForgottenOrQuarantined,
             scope: "project",
             projectId: ctx.projectId,
           },
@@ -90,6 +98,7 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
       archived: false,
       projectId: null,
       scope: { in: ["user", "global"] },
+      ...notForgottenOrQuarantined,
     },
     note: { projectId: null, userId: ctx.userId },
     decision: {

@@ -5,6 +5,7 @@ const routes = [
   ["Chat", "/chat"],
   ["Organization", "/workspaces/organization"],
   ["Agents", "/agents"],
+  ["Learning Core", "/learning"],
 ] as const;
 
 for (const [name, route] of routes) {

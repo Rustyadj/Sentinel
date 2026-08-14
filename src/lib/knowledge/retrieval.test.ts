@@ -6,6 +6,7 @@ describe("project memory isolation", () => {
     const filters = buildRetrievalFilters({ userId: "user-a", projectId: "project-a" });
     expect(filters.memory).toEqual({
       owner: "user-a", archived: false, scope: "project", projectId: "project-a",
+      state: { notIn: ["quarantined", "forgotten"] },
     });
     expect(filters.note).toEqual({ projectId: "project-a" });
     expect(filters.decision).toEqual({

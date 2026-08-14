@@ -1,3 +1,5 @@
+import { LENS_CONFIG } from "@/lib/lensRegistry";
+
 export interface SubnavItem {
   id: string;
   label: string;
@@ -39,53 +41,43 @@ export const SETTINGS_NAV: PrimaryNavItem = {
   href: "/settings",
 };
 
+// Tab rows come straight from the lens registry (lib/lensRegistry.ts) —
+// Overview is always first and lands on the canonical Sentinel graph focused
+// on this lens's cluster; the rest are the workspace's normal application
+// tabs. Sidebar-only fields (label/icon/color/route) stay defined here since
+// they're app-shell chrome, not lens concerns.
 export const WORKSPACE_NAV: WorkspaceNavDefinition[] = [
   {
     id: "cybersecurity",
     label: "Cybersecurity",
     icon: "Shield",
-    route: "/workspaces/cybersecurity",
-    color: "#EF4444",
-    subnav: [
-      { id: "range", label: "Range Console", href: "/workspaces/cybersecurity" },
-      { id: "red-team", label: "Red Team", href: "/workspaces/cybersecurity/red-team" },
-      { id: "blue-team", label: "Blue Team", href: "/workspaces/cybersecurity/blue-team" },
-      { id: "marketplace", label: "Marketplace", href: "/marketplace" },
-    ],
+    route: LENS_CONFIG.cybersecurity.route,
+    color: LENS_CONFIG.cybersecurity.accent,
+    subnav: LENS_CONFIG.cybersecurity.tabs,
   },
   {
     id: "organization",
     label: "Organization",
     icon: "Building2",
-    route: "/workspaces/organization",
-    color: "#3B82F6",
-    subnav: [
-      { id: "dashboard", label: "Dashboard", href: "/workspaces/organization" },
-      { id: "org-chart", label: "Org Chart", href: "/workspaces/organization/org-chart" },
-      { id: "teams", label: "Teams", href: "/workspaces/organization/teams" },
-      { id: "projects", label: "Projects", href: "/workspaces/organization/projects" },
-      { id: "board", label: "Board", href: "/workspaces/organization/board" },
-      { id: "documents", label: "Documents", href: "/workspaces/organization/documents" },
-      { id: "meetings", label: "Meetings", href: "/workspaces/organization/meetings" },
-      { id: "permissions", label: "Permissions", href: "/workspaces/organization/permissions" },
-      { id: "approvals", label: "Approvals", href: "/workspaces/organization/approvals" },
-    ],
+    route: LENS_CONFIG.organization.route,
+    color: LENS_CONFIG.organization.accent,
+    subnav: LENS_CONFIG.organization.tabs,
   },
   {
     id: "studio",
     label: "Studio",
     icon: "Wand2",
-    route: "/workspaces/studio",
-    color: "#8B5CF6",
-    subnav: [{ id: "builder", label: "Builder", href: "/workspaces/studio" }],
+    route: LENS_CONFIG.studio.route,
+    color: LENS_CONFIG.studio.accent,
+    subnav: LENS_CONFIG.studio.tabs,
   },
   {
     id: "marketing",
     label: "Marketing",
     icon: "Megaphone",
-    route: "/workspaces/marketing",
-    color: "#F59E0B",
-    subnav: [{ id: "dashboard", label: "Dashboard", href: "/workspaces/marketing" }],
+    route: LENS_CONFIG.marketing.route,
+    color: LENS_CONFIG.marketing.accent,
+    subnav: LENS_CONFIG.marketing.tabs,
   },
 ];
 
