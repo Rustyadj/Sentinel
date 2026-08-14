@@ -16,6 +16,7 @@ import type { GlobeGraphApi } from "./NeuralLensGraph";
 import { LENS_CONFIG, type LensId } from "@/lib/lensRegistry";
 import type { LensOverviewStats } from "@/lib/workspaces/lensStats";
 import { useNeuralStream } from "./useNeuralStream";
+import { TraceReplayPanel } from "./TraceReplayPanel";
 import { cn } from "@/lib/utils";
 
 const FOCUS_RETRY_MS = 150;
@@ -161,24 +162,27 @@ export function LensOverview({ lens, stats }: { lens: LensId; stats: LensOvervie
         </aside>
       </div>
 
-      <Panel title="Recent Changes" icon={History}>
-        {!stats || stats.recentChanges.length === 0 ? (
-          <Empty>No recent activity in this workspace.</Empty>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {stats.recentChanges.map((change) => (
-              <div
-                key={change.id}
-                className="flex items-center gap-2 rounded-md border border-[--border] bg-[--background]/40 px-2.5 py-1.5 text-[11px]"
-              >
-                <span className="text-[--canvas-foreground]">{change.label}</span>
-                {change.detail ? <span className="text-[--muted-foreground]">· {change.detail}</span> : null}
-                <span className="text-[--muted-foreground]">· {relativeTime(change.at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.75fr)]">
+        <Panel title="Recent Changes" icon={History}>
+          {!stats || stats.recentChanges.length === 0 ? (
+            <Empty>No recent activity in this workspace.</Empty>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {stats.recentChanges.map((change) => (
+                <div
+                  key={change.id}
+                  className="flex items-center gap-2 rounded-md border border-[--border] bg-[--background]/40 px-2.5 py-1.5 text-[11px]"
+                >
+                  <span className="text-[--canvas-foreground]">{change.label}</span>
+                  {change.detail ? <span className="text-[--muted-foreground]">· {change.detail}</span> : null}
+                  <span className="text-[--muted-foreground]">· {relativeTime(change.at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+        <TraceReplayPanel />
+      </div>
     </div>
   );
 }

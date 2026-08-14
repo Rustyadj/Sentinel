@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
-import { useGraphStore } from "@/store/useGraphStore";
+import { useGraphStore, type RecentTrace } from "@/store/useGraphStore";
 import { NeuralLensGraph, type GlobeGraphApi } from "./NeuralLensGraph";
 import { GraphControlRail } from "./GraphControlRail";
 import { GraphContextRail } from "./GraphContextRail";
@@ -18,6 +18,7 @@ import type { ExecutionPath, LensGraph, LensNode } from "./types";
 
 const ACTIVE_PULSE_MS = 2600;
 const SEARCH_FOCUS_DEBOUNCE_MS = 320;
+const DEMO_TRACE_COUNT = 3;
 
 /** Range -> how far back "at" reaches. "Today" means local midnight, not a rolling 24h. */
 function timestampForRange(range: TimeRange): Date {
@@ -65,6 +66,38 @@ function buildActivityPath(graph: LensGraph, litIds: Set<string>, demo: boolean)
   return nodeIds.length >= 2 ? { id: "demo:spine", nodeIds, startedAt: 0 } : null;
 }
 
+/** Honest, illustrative replay history for the graph's explicitly-labelled
+ * DEMO mode. Every sample is a walk along the same canonical spine used by
+ * buildActivityPath, so replay never invents a second graph route. */
+function buildDemoTraces(graph: LensGraph): RecentTrace[] {
+  const path = buildActivityPath(graph, new Set(), true);
+  if (!path) return [];
+
+  const labels = new Map(graph.nodes.map((node) => [node.id, node.label]));
+  const routes = [
+    path.nodeIds,
+    path.nodeIds.slice(0, 4),
+    path.nodeIds.slice(-4),
+  ];
+  const now = Date.now();
+  const seen = new Set<string>();
+
+  return routes
+    .filter((nodeIds) => {
+      const key = nodeIds.join("\u0000");
+      if (nodeIds.length < 2 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, DEMO_TRACE_COUNT)
+    .map((nodeIds, index) => ({
+      id: `demo:trace:${index + 1}`,
+      label: `DEMO · ${nodeIds.map((id) => labels.get(id) ?? id).join(" → ")}`,
+      nodeIds,
+      capturedAt: now - (index + 1) * 75_000,
+    }));
+}
+
 export function NeuralLens({
   projectId,
   apiRef: externalApiRef,
@@ -98,6 +131,10 @@ export function NeuralLens({
   const requestFit = useGraphStore((state) => state.requestFit);
   const followLive = useGraphStore((state) => state.followLive);
   const setFollowLive = useGraphStore((state) => state.setFollowLive);
+  const addRecentTrace = useGraphStore((state) => state.addRecentTrace);
+  const seedRecentTraces = useGraphStore((state) => state.seedRecentTraces);
+  const activeTrace = useGraphStore((state) => state.activeTrace);
+  const traceStepIndex = useGraphStore((state) => state.traceStepIndex);
   // Title-based focus requests (e.g. switching the active chat agent) —
   // resolved against the full graph, not just what's currently filtered in,
   // so focusing an agent works even mid-search/mid-filter.
@@ -190,6 +227,11 @@ export function NeuralLens({
       ? demoGraph
       : scopedGraph ?? demoGraph;
 
+  useEffect(() => {
+    if (!demoMode) return;
+    seedRecentTraces(buildDemoTraces(demoGraph));
+  }, [demoMode, demoGraph, seedRecentTraces]);
+
   // Pulse nodes touched by live events. Suppressed while viewing historical
   // state — a past snapshot shouldn't animate as if it were live right now.
   // If a payload id matches a node, pulse it; otherwise (DEMO ids won't match
@@ -204,7 +246,17 @@ export function NeuralLens({
         .match(/[a-z0-9]{16,}/gi)
         ?.slice(0, 4) ?? [],
     );
-    let matched = baseGraph.nodes.filter((n) => payloadIds.has(n.id)).map((n) => n.id);
+    const realMatches = baseGraph.nodes.filter((node) => payloadIds.has(node.id));
+    let matched = realMatches.map((node) => node.id);
+    if (realMatches.length >= 2) {
+      const capturedAt = Date.parse(latest.createdAt);
+      addRecentTrace({
+        id: `live:${latest.id}`,
+        label: realMatches.map((node) => node.label).join(" → "),
+        nodeIds: matched,
+        capturedAt: Number.isNaN(capturedAt) ? lastEventAt ?? Date.now() : capturedAt,
+      });
+    }
     if (matched.length === 0 && baseGraph.nodes.length > 0) {
       const idx = Math.abs(hashStr(latest.id)) % baseGraph.nodes.length;
       matched = [baseGraph.nodes[idx].id, baseGraph.nodes[(idx + 7) % baseGraph.nodes.length].id];
@@ -373,10 +425,18 @@ export function NeuralLens({
       .slice(0, 6);
   }, [selected, baseGraph.nodes, baseGraph.links]);
 
-  const executionPath = useMemo(
+  const liveExecutionPath = useMemo(
     () => buildActivityPath(filteredGraph, litNodeIds, demoMode),
     [filteredGraph, litNodeIds, demoMode],
   );
+  const executionPath = useMemo<ExecutionPath | null>(() => {
+    if (!activeTrace) return liveExecutionPath;
+    return {
+      id: activeTrace.id,
+      nodeIds: activeTrace.nodeIds.slice(0, traceStepIndex + 1),
+      startedAt: activeTrace.capturedAt,
+    };
+  }, [activeTrace, traceStepIndex, liveExecutionPath]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#01040a]">
