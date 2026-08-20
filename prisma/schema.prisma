@@ -69,21 +69,27 @@ model Project {
 }
 
 model Agent {
-  id                 String            @id @default(cuid())
-  name               String
-  role               String
-  avatar             String
-  color              String
-  model              String
-  systemPrompt       String?
-  description        String            @default("")
-  skills             String[]
-  instructionFiles   Json              @default("{}")
-  promptHistory      Json              @default("[]")
-  toolPermissions    String[]
-  memoryScope        String            @default("session")
-  status             String            @default("online")
-  createdAt          DateTime          @default(now())
+  id               String   @id @default(cuid())
+  name             String
+  role             String
+  avatar           String
+  color            String
+  model            String
+  systemPrompt     String?
+  description      String   @default("")
+  skills           String[]
+  instructionFiles Json     @default("{}")
+  promptHistory    Json     @default("[]")
+  toolPermissions  String[]
+  memoryScope      String   @default("session")
+  status           String   @default("online")
+  createdAt        DateTime @default(now())
+
+  // --- Peer-worker orchestration (additive) — capability-weighted
+  // routing hints (spec's AgentCapabilities), not a fixed role. Empty
+  // means "use the built-in default weight table for this agent id."
+  capabilityWeights Json @default("{}")
+
   workspaceId        String?
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   roleAssignments    RoleAssignment[]
@@ -542,6 +548,16 @@ model Task {
   reviewerAgentId  String?
   createdByAgentId String?
   dependsOnTaskIds String[] @default([])
+
+  // --- Peer-worker orchestration (additive). Claude Code and Codex are
+  // both implementation workers picked dynamically by the worker-router,
+  // not fixed roles — reviewerAgentId above is now only ever set when a
+  // risk-based cross-review actually happens, never by default.
+  capabilities String[] @default([]) // AgentCapabilityKey hints used once, at worker-selection time
+  fileScope    String[] @default([]) // declared file/glob ownership for this task
+  branch       String?
+  baseBranch   String?
+  worktreePath String?
 
   workspace      Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)

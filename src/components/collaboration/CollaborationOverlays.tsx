@@ -123,7 +123,7 @@ function CollaborationCommandPalette({ room }: { room: CollaborationRoomControll
   const actions = [
     { label: "Assign task", icon: Plus, run: () => room.assignTask("New task from command palette", room.participants.find((participant) => participant.role === "implementation")?.agentId) },
     { label: "Add agent", icon: UserPlus, run: () => room.addCommandResult({ command: "add-agent", title: "Agent invitation staged", detail: "The backend room-membership route can complete this request." }) },
-    { label: "Ask for review", icon: GitPullRequestArrow, run: () => room.sendMessage("Please review the current collaboration artifacts.", [room.participants.find((participant) => participant.role === "review")?.agentId ?? "codex"], "REVIEW_REQUEST") },
+    { label: "Ask for review", icon: GitPullRequestArrow, run: () => room.sendMessage("Please review the current collaboration artifacts.", room.participants.filter((participant) => participant.role === "implementation").map((participant) => participant.agentId), "REVIEW_REQUEST") },
     { label: "Open graph", icon: Network, run: () => room.setGraphOpen(true) },
     { label: "Open task", icon: ListChecks, run: () => room.setSelectedTaskId(room.tasks[0]?.id ?? null) },
     { label: "Pause agent", icon: Pause, run: () => room.setPaused(true) },

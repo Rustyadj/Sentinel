@@ -8,6 +8,8 @@ export interface CreateTaskInput {
   reviewerAgentId?: string;
   createdByAgentId?: string;
   dependsOnTaskIds?: string[];
+  capabilities?: string[];
+  fileScope?: string[];
 }
 
 export async function createRoomTask(input: CreateTaskInput) {
@@ -21,6 +23,8 @@ export async function createRoomTask(input: CreateTaskInput) {
       reviewerAgentId: input.reviewerAgentId,
       createdByAgentId: input.createdByAgentId,
       dependsOnTaskIds: input.dependsOnTaskIds ?? [],
+      capabilities: input.capabilities ?? [],
+      fileScope: input.fileScope ?? [],
     },
   });
 }
