@@ -161,7 +161,7 @@ export async function routeRuntimeChat(input: {
   return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" } });
 }
 
-function runtimeEventText(event: RuntimeEvent) {
+export function runtimeEventText(event: RuntimeEvent) {
   if (event.type === "stderr" || event.type === "warning" || event.type === "error") return "";
   if (typeof event.data.text === "string") return event.data.text;
   const payload = event.data.event;

@@ -10,7 +10,8 @@ ADD COLUMN     "taskId" TEXT;
 -- AlterTable
 ALTER TABLE "chat_rooms" ADD COLUMN     "autonomyLevel" TEXT NOT NULL DEFAULT 'assisted',
 ADD COLUMN     "mode" TEXT NOT NULL DEFAULT 'collaborative',
-ADD COLUMN     "objective" TEXT;
+ADD COLUMN     "objective" TEXT,
+ADD COLUMN     "paused" BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
 ALTER TABLE "decisions" ADD COLUMN     "chatRoomId" TEXT,
