@@ -55,6 +55,8 @@ interface KnowledgeGraphProps {
   projectId?: string;
   isStreaming?: boolean;
   refreshKey?: number;
+  /** Additive collaboration focus by node title; topology is unchanged. */
+  highlightTitles?: string[];
   onDataChange?: (data: GraphData, source: GraphSource) => void;
 }
 
@@ -402,6 +404,7 @@ export function KnowledgeGraph({
   projectId,
   isStreaming,
   refreshKey,
+  highlightTitles = [],
   onDataChange,
 }: KnowledgeGraphProps) {
   const [graphData, setGraphData] = useState<GraphData>(DEMO_ENABLED ? DEMO_GRAPH : EMPTY_GRAPH);
@@ -569,10 +572,14 @@ export function KnowledgeGraph({
   // Approved reasoning-summary hubs + their neighbors pulse while the agent is
   // active. This visualizes retrieved context and actions, never private CoT.
   const pulseIds = useMemo(() => {
-    if (!isStreaming) return null;
+    if (!isStreaming && highlightTitles.length === 0) return null;
+    const queries = highlightTitles.map((title) => title.trim().toLowerCase()).filter(Boolean);
     const activeContext = new Set(
       filteredNodes
-        .filter((n) => n.type === "Agent" || n.type === "Memory" || n.type === "Task")
+        .filter((n) =>
+          (isStreaming && (n.type === "Agent" || n.type === "Memory" || n.type === "Task"))
+          || queries.some((query) => n.title.toLowerCase().includes(query))
+        )
         .map((n) => n.id)
     );
     const set = new Set(activeContext);
@@ -581,7 +588,7 @@ export function KnowledgeGraph({
       if (activeContext.has(e.toObjectId)) set.add(e.fromObjectId);
     }
     return set;
-  }, [isStreaming, filteredNodes, filteredEdges]);
+  }, [isStreaming, highlightTitles, filteredNodes, filteredEdges]);
 
   const fgData = useMemo(() => {
     const nodes: FGNode[] = filteredNodes.map((n) => {
@@ -813,7 +820,10 @@ export function KnowledgeGraph({
       const isSelected = selectedNodeId === n.id;
       const isHovered = hoveredNodeId === n.id;
       const isPulsing = pulseIds?.has(n.id) ?? false;
-      const dimmed = Boolean(focusMode && neighborsOfSelected && !neighborsOfSelected.has(n.id));
+      const dimmed = Boolean(
+        (focusMode && neighborsOfSelected && !neighborsOfSelected.has(n.id))
+        || (highlightTitles.length > 0 && pulseIds && !pulseIds.has(n.id))
+      );
       const emphasis = isSelected ? 1.2 : isHovered ? 1.1 : 1;
       const pulse = isPulsing ? 1 + Math.sin(Date.now() * 0.004 + x * 0.01) * 0.1 : 1;
       const r = n.radius * emphasis * pulse;
@@ -933,7 +943,7 @@ export function KnowledgeGraph({
       }
       ctx.restore();
     },
-    [selectedNodeId, hoveredNodeId, pulseIds, focusMode, neighborsOfSelected]
+    [selectedNodeId, hoveredNodeId, pulseIds, focusMode, neighborsOfSelected, highlightTitles.length]
   );
 
   const isHighlightedLink = useCallback(

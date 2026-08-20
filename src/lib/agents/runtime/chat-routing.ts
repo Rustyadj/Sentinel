@@ -161,7 +161,7 @@ export async function routeRuntimeChat(input: {
   return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" } });
 }
 
-function runtimeEventText(event: RuntimeEvent) {
+export function runtimeEventText(event: RuntimeEvent) {
   // Only assistant_delta carries streamable content. Other event types
   // (status, completed, ...) can legitimately carry a `text`/`message` field
   // too — e.g. Hermes emits the full final response again in both a
