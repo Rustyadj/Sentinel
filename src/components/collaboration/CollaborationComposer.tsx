@@ -62,8 +62,9 @@ function runCommand(command: string, args: string, room: CollaborationRoomContro
     return;
   }
   if (command === "/plan") {
-    room.sendMessage(args || "Create a plan for the current room objective.", ["hermes"], "QUESTION");
-    room.addCommandResult({ command, title: "Planning request sent", detail: args || "Hermes will plan the current objective." });
+    const lead = room.participants.find((participant) => participant.role === "lead")?.agentId ?? "hermes-lisa";
+    room.sendMessage(args || "Create a plan for the current room objective.", [lead], "QUESTION");
+    room.addCommandResult({ command, title: "Planning request sent", detail: args || "The lead agent will plan the current objective." });
     return;
   }
   room.addCommandResult({ command, title: `${command.slice(1)} result`, detail: resultDetail(command, room) });

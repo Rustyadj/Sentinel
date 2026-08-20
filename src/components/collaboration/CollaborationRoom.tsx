@@ -82,7 +82,7 @@ export function CollaborationRoom() {
                 disagreement={disagreement}
                 participants={room.participants}
                 onChoose={(agentId) => room.resolveDisagreement(disagreement.id, agentId)}
-                onAskLead={() => room.sendMessage(`Resolve disagreement ${disagreement.id}: ${disagreement.issue}`, ["hermes"], "QUESTION")}
+                onAskLead={() => room.sendMessage(`Resolve disagreement ${disagreement.id}: ${disagreement.issue}`, [room.participants.find((participant) => participant.role === "lead")?.agentId ?? "hermes-lisa"], "QUESTION")}
               />
             ))}
 
@@ -142,7 +142,7 @@ function HumanControlBar({ room }: { room: ReturnType<typeof useCollaborationRoo
     { label: room.paused ? "Resume" : "Pause All", icon: room.paused ? Play : Pause, run: () => room.setPaused(!room.paused) },
     { label: "Cancel Task", icon: Square, run: () => { if (activeTask) room.cancelTask(activeTask.id); } },
     { label: "Reassign", icon: RefreshCw, run: () => { if (activeTask && nextOwner) room.reassignTask(activeTask.id, nextOwner.agentId); } },
-    { label: "Take Control", icon: Hand, run: () => { room.setMode("solo"); room.setSoloAgentId("hermes"); room.addCommandResult({ command: "take-control", title: "Operator control enabled", detail: "New messages route through the selected solo agent until collaboration mode is restored." }); } },
+    { label: "Take Control", icon: Hand, run: () => { const lead = room.participants.find((participant) => participant.role === "lead")?.agentId ?? "hermes-lisa"; room.setMode("solo"); room.setSoloAgentId(lead); room.addCommandResult({ command: "take-control", title: "Operator control enabled", detail: "New messages route through the selected solo agent until collaboration mode is restored." }); } },
     { label: "Approve", icon: Check, run: () => { if (pendingApproval) room.approve(pendingApproval.id); } },
     { label: "Reject", icon: X, run: () => { if (pendingApproval) room.deny(pendingApproval.id); } },
     { label: "Stop Agent", icon: UserRoundCog, run: () => { if (busyAgent) room.stopAgent(busyAgent.agentId); } },

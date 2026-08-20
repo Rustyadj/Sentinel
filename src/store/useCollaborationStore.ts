@@ -65,6 +65,15 @@ interface CollaborationState {
   commandPaletteOpen: boolean;
 }
 
+/** The subset of CollaborationState the backend owns; everything else
+ *  (selection, panel visibility, command palette, local command results,
+ *  the execution activity timeline) is client-local UI state that a
+ *  hydrate() from the server must never overwrite. */
+export type ServerRoomSnapshot = Pick<
+  CollaborationState,
+  "roomId" | "roomName" | "participants" | "tasks" | "messages" | "artifacts" | "decisions" | "disagreements" | "approvals" | "mode" | "paused"
+> & { workspace?: string };
+
 interface CollaborationActions {
   sendMessage: (content: string, recipientAgentIds: string[], type?: AgentMessageType) => void;
   assignTask: (title: string, ownerAgentId?: string) => void;
@@ -84,6 +93,9 @@ interface CollaborationActions {
   setLaneOpen: (open: boolean) => void;
   setGraphOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
+  /** Replaces the server-owned slice of state with a fresh snapshot
+   *  (see ServerRoomSnapshot) without touching client-local UI state. */
+  hydrate: (snapshot: ServerRoomSnapshot) => void;
   reset: () => void;
 }
 
@@ -410,5 +422,19 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => ({
   setLaneOpen: (laneOpen) => set({ laneOpen }),
   setGraphOpen: (graphOpen) => set({ graphOpen }),
   setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
+  hydrate: (snapshot) => set({
+    roomId: snapshot.roomId,
+    roomName: snapshot.roomName,
+    workspace: snapshot.workspace ?? get().workspace,
+    participants: snapshot.participants,
+    tasks: snapshot.tasks,
+    messages: snapshot.messages,
+    artifacts: snapshot.artifacts,
+    decisions: snapshot.decisions,
+    disagreements: snapshot.disagreements,
+    approvals: snapshot.approvals,
+    mode: snapshot.mode,
+    paused: snapshot.paused,
+  }),
   reset: () => set(initialState()),
 }));

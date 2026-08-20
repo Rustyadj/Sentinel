@@ -19,6 +19,10 @@ export interface RunCollaborationInput {
   chatRoomId: string;
   userId: string;
   userContent: string;
+  /** When exactly one recipient is given, this is a direct @mention: reply
+   *  from that agent alone rather than running the full plan/delegate/review
+   *  pipeline (spec §6/§31 — mentioning one agent routes to that agent). */
+  recipientAgentIds?: string[];
 }
 
 async function resolveRoster(agentIds: string[]): Promise<RoomRoster> {
@@ -94,6 +98,11 @@ export async function runCollaborationTurn(input: RunCollaborationInput): Promis
     return;
   }
 
+  if (input.recipientAgentIds?.length === 1 && getVpsAgent(input.recipientAgentIds[0])) {
+    await runDirectAgentReply(room.id, input.recipientAgentIds[0], input.userId, input.userContent);
+    return;
+  }
+
   if (!roster.lead || !roster.implementation) {
     await emitCollaborationEvent(room.id, "agent.failed", { reason: "Room has no lead/implementation agent configured" });
     return;
@@ -135,6 +144,23 @@ export async function runCollaborationTurn(input: RunCollaborationInput): Promis
   }
 
   await executeTask(room.id, task.id, roster, input.userId);
+}
+
+async function runDirectAgentReply(roomId: string, agentId: string, userId: string, userContent: string): Promise<void> {
+  await emitCollaborationEvent(roomId, "agent.started", { agentId, direct: true });
+  try {
+    const reply = await runAgentTurn({ roomId, agentId, userId, prompt: userContent });
+    await postCollaborationMessage({
+      chatRoomId: roomId,
+      senderAgentId: agentId,
+      recipientAgentIds: ["user"],
+      type: "ANSWER",
+      content: reply.slice(0, 4_000),
+    });
+    await emitCollaborationEvent(roomId, "agent.finished", { agentId, direct: true });
+  } catch (error) {
+    await emitCollaborationEvent(roomId, "agent.failed", { agentId, error: error instanceof Error ? error.message : "Unknown error" });
+  }
 }
 
 async function executeTask(roomId: string, taskId: string, roster: RoomRoster, userId: string): Promise<void> {

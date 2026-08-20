@@ -26,7 +26,7 @@ export async function GET() {
         data: {
           name: "Mission Control",
           userId: user.id,
-          agentIds: ["hermes-lisa", "claude-code"],
+          agentIds: ["hermes-lisa", "claude-code", "codex"],
         },
         select: {
           id: true,

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: Context) {
     const user = await requireUser();
     const { roomId } = await params;
     await requireRoomAccess(roomId, user.id);
-    const body = (await req.json()) as { content?: string };
+    const body = (await req.json()) as { content?: string; recipientAgentIds?: string[] };
     if (!body.content?.trim()) {
       return NextResponse.json({ error: "content is required" }, { status: 400 });
     }
@@ -19,9 +19,12 @@ export async function POST(req: NextRequest, { params }: Context) {
     // the caller gets an immediate 202 and follows progress through the
     // room's messages/tasks/events, which the SSE stream picks up as they
     // land (see the fire-and-forget note on runCollaborationTurn).
-    void runCollaborationTurn({ chatRoomId: roomId, userId: user.id, userContent: body.content.trim() }).catch((error) =>
-      console.error("[collaboration] runCollaborationTurn failed", error),
-    );
+    void runCollaborationTurn({
+      chatRoomId: roomId,
+      userId: user.id,
+      userContent: body.content.trim(),
+      recipientAgentIds: body.recipientAgentIds,
+    }).catch((error) => console.error("[collaboration] runCollaborationTurn failed", error));
 
     return NextResponse.json({ status: "accepted" }, { status: 202 });
   } catch (error) {
