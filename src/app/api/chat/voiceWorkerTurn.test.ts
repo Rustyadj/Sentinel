@@ -8,13 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // or userId to choose from — Sentinel derives both from the room record.
 
 const mocks = vi.hoisted(() => ({
-  requireUser: vi.fn(),
+  requireApiUser: vi.fn(),
   findRoom: vi.fn(),
   findUniqueRoom: vi.fn(),
   findUniqueAgent: vi.fn(),
   getVpsAgent: vi.fn(),
 }));
-vi.mock("@/lib/current-user", () => ({ requireUser: mocks.requireUser }));
+vi.mock("@/lib/current-user", () => ({ requireApiUser: mocks.requireApiUser }));
 vi.mock("@/lib/db", () => ({
   db: {
     chatRoom: { findFirst: mocks.findRoom, findUnique: mocks.findUniqueRoom },
@@ -52,7 +52,7 @@ describe("POST /api/chat — resolveVoiceWorkerTurn (stateless worker path)", ()
   });
 
   it("falls back to the normal session when VOICE_WORKER_SECRET is unset", async () => {
-    mocks.requireUser.mockRejectedValue(new Error("no session"));
+    mocks.requireApiUser.mockRejectedValue(new Error("no session"));
     const response = await POST(request({ roomId: "room-1", userContent: "hi" }, {
       authorization: "Bearer whatever",
     }));
@@ -62,7 +62,7 @@ describe("POST /api/chat — resolveVoiceWorkerTurn (stateless worker path)", ()
 
   it("rejects a bearer token that doesn't match VOICE_WORKER_SECRET", async () => {
     process.env.VOICE_WORKER_SECRET = "correct-secret";
-    mocks.requireUser.mockRejectedValue(new Error("no session"));
+    mocks.requireApiUser.mockRejectedValue(new Error("no session"));
     const response = await POST(request({ roomId: "room-1", userContent: "hi" }, {
       authorization: "Bearer wrong-secret",
     }));
@@ -72,7 +72,7 @@ describe("POST /api/chat — resolveVoiceWorkerTurn (stateless worker path)", ()
 
   it("rejects a roomId with no owner (never trusts a caller-supplied userId)", async () => {
     process.env.VOICE_WORKER_SECRET = "correct-secret";
-    mocks.requireUser.mockRejectedValue(new Error("no session"));
+    mocks.requireApiUser.mockRejectedValue(new Error("no session"));
     mocks.findUniqueRoom.mockResolvedValue(null);
     const response = await POST(request({ roomId: "room-1", userContent: "hi" }, {
       authorization: "Bearer correct-secret",
@@ -90,7 +90,7 @@ describe("POST /api/chat — resolveVoiceWorkerTurn (stateless worker path)", ()
       where: { id: "room-1" },
       select: { userId: true, agentIds: true },
     });
-    expect(mocks.requireUser).not.toHaveBeenCalled();
+    expect(mocks.requireApiUser).not.toHaveBeenCalled();
     // Reaches the same "Agent not found" checkpoint a normal session user would.
     expect(response.status).toBe(404);
   });

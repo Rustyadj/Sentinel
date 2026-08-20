@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/current-user";
+import { requireApiUser } from "@/lib/current-user";
+import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 
 type Params = { params: Promise<{ roomId: string }> };
 
-export async function GET(request: NextRequest, { params }: Params) {
+export function OPTIONS() {
+  return corsPreflightResponse();
+}
+
+export async function GET(request: NextRequest, params: Params) {
+  return withMobileCors(await handleGet(request, params));
+}
+
+async function handleGet(request: NextRequest, { params }: Params): Promise<Response> {
   try {
-    const user = await requireUser();
+    const user = await requireApiUser(request);
     const { roomId } = await params;
 
     // Verify the room belongs to this user

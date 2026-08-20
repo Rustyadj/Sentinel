@@ -23,7 +23,16 @@ export default defineConfig({
     // they still exist on disk locally and vitest's default discovery
     // walks them — confirmed runtime-agents/.../node_modules ships its own
     // *.test.mjs fixtures that aren't vitest-compatible.
-    exclude: ["**/node_modules/**", "**/.next/**", "tests/e2e/**", "runtime-agents/**", "runtime-projects/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.next/**",
+      "tests/e2e/**",
+      "runtime-agents/**",
+      "runtime-projects/**",
+      // mobile/ is a separate Expo app; it has no vitest-runnable tests today
+      // and isn't meant to share this project's jsdom/next-auth test setup.
+      "mobile/**",
+    ],
     fileParallelism: false,
     // Without this, vitest treats next-auth as SSR-external and loads it via
     // Node's native resolver, which skips the alias above entirely — same

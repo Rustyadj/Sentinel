@@ -3,7 +3,8 @@ import OpenAI from "openai";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { appendSessionMemory } from "@/lib/knowledge/retrieval";
-import { requireUser } from "@/lib/current-user";
+import { requireApiUser } from "@/lib/current-user";
+import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permissions";
 import { getVpsAgent } from "@/lib/agents/registry";
@@ -286,7 +287,15 @@ async function checkCuriosityGate(params: {
   return event;
 }
 
+export function OPTIONS() {
+  return corsPreflightResponse();
+}
+
 export async function POST(request: NextRequest) {
+  return withMobileCors(await handlePost(request));
+}
+
+async function handlePost(request: NextRequest): Promise<Response> {
   const requestStartedAtMs = Date.now();
   let body: {
     messages?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -315,7 +324,7 @@ export async function POST(request: NextRequest) {
     agentId = voiceTurn.agentId;
     messages = [{ role: "user", content: userContent }];
   } else {
-    const sessionUser = await requireUser().catch(() => null);
+    const sessionUser = await requireApiUser(request).catch(() => null);
     if (!sessionUser) return sseError("Unauthorized", 401);
     if (!body.messages?.length || !body.agentId) {
       return sseError("Missing required fields: messages, agentId");
