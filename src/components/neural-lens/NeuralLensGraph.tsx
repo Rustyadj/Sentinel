@@ -20,6 +20,8 @@ interface NeuralLensGraphProps {
   graph: LensGraph;
   /** Nodes lit by live events or pinned by the shell (active chat agents). */
   activeNodeIds: Set<string>;
+  /** Collaboration mode can dim unrelated nodes while preserving topology. */
+  dimUnrelatedActive?: boolean;
   /** Controlled selection — the canvas and the panels read the same value. */
   selectedId: string | null;
   onSelect: (node: LensNode | null) => void;
@@ -59,6 +61,7 @@ const CLICK_SLOP_PX = 4;
 export function NeuralLensGraph({
   graph,
   activeNodeIds,
+  dimUnrelatedActive = false,
   selectedId,
   onSelect,
   onZoomLevel,
@@ -159,13 +162,14 @@ export function NeuralLensGraph({
       selectedId,
       hoveredId,
       litIds,
+      dimUnrelatedLit: dimUnrelatedActive,
       litColor,
       lensClusterId,
       lensOnly,
       pathNodeIds,
       settings,
     });
-  }, [scene, selectedId, hoveredId, litIds, litColor, lensClusterId, lensOnly, pathNodeIds, settings]);
+  }, [scene, selectedId, hoveredId, litIds, litColor, dimUnrelatedActive, lensClusterId, lensOnly, pathNodeIds, settings]);
 
   useEffect(() => {
     if (paused) sceneRef.current?.stop();

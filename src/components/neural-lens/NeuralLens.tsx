@@ -98,10 +98,18 @@ function buildDemoTraces(graph: LensGraph): RecentTrace[] {
     }));
 }
 
+const EMPTY_HIGHLIGHT_TITLES: string[] = [];
+
 export function NeuralLens({
   projectId,
   apiRef: externalApiRef,
-}: { projectId?: string; apiRef?: RefObject<GlobeGraphApi | null> } = {}) {
+  highlightTitles = EMPTY_HIGHLIGHT_TITLES,
+}: {
+  projectId?: string;
+  apiRef?: RefObject<GlobeGraphApi | null>;
+  /** Additive collaboration focus: these agent/task/file labels stay lit. */
+  highlightTitles?: string[];
+} = {}) {
   const [demoMode, setDemoMode] = useState(true);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
@@ -296,19 +304,20 @@ export function NeuralLens({
     };
   }, []);
 
-  // Resolve pinned titles (selected chat agents) to node ids — same
+  // Resolve pinned titles (selected chat agents) and collaboration-event
+  // highlights to node ids — same
   // case-insensitive substring match the search box and focus resolution
   // both already use — then union into the pulsing/lit set below.
   const pinnedNodeIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const title of pinnedTitles) {
+    for (const title of [...pinnedTitles, ...highlightTitles]) {
       const q = title.trim().toLowerCase();
       if (!q) continue;
       const node = baseGraph.nodes.find((n) => n.label.toLowerCase().includes(q));
       if (node) ids.add(node.id);
     }
     return ids;
-  }, [pinnedTitles, baseGraph.nodes]);
+  }, [pinnedTitles, highlightTitles, baseGraph.nodes]);
 
   const litNodeIds = useMemo(
     () => new Set([...activeNodeIds, ...pinnedNodeIds]),
@@ -448,6 +457,7 @@ export function NeuralLens({
       <NeuralLensGraph
         graph={filteredGraph}
         activeNodeIds={litNodeIds}
+        dimUnrelatedActive={highlightTitles.length > 0}
         selectedId={selected?.id ?? null}
         onSelect={handleSelect}
         onZoomLevel={setZoomLevel}

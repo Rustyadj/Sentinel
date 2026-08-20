@@ -89,6 +89,7 @@ model Agent {
   roleAssignments    RoleAssignment[]
   requestedApprovals ApprovalRequest[] @relation("ApprovalRequesterAgent")
   assignedTasks      Task[]            @relation("TaskAgent")
+  reviewingTasks     Task[]            @relation("TaskReviewerAgent")
 
   @@index([workspaceId])
   @@map("agents")
@@ -102,9 +103,24 @@ model ChatRoom {
   agentIds  String[]
   createdAt DateTime @default(now())
 
-  project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  messages Message[]
+  // --- Collaboration Room (additive) — a ChatRoom already models a
+  // persistent multi-agent workspace, so it doubles as the CollaborationRoom
+  // rather than introducing a parallel entity.
+  objective     String?
+  mode          String  @default("collaborative") // solo, collaborative, autonomous
+  autonomyLevel String  @default("assisted") // manual, assisted, autonomous
+  paused        Boolean @default(false)
+
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages            Message[]
+  collabTasks         Task[]               @relation("TaskRoom")
+  artifacts           Artifact[]           @relation("ArtifactRoom")
+  decisions           Decision[]           @relation("DecisionRoom")
+  approvalRequests    ApprovalRequest[]    @relation("ApprovalRequestRoom")
+  disagreements       AgentDisagreement[]
+  executionLocks      ExecutionLock[]
+  collaborationEvents CollaborationEvent[]
 
   @@map("chat_rooms")
 }
@@ -123,10 +139,19 @@ model Message {
   agentRuntimeSessionId String?
   createdAt             DateTime @default(now())
 
-  chatRoom           ChatRoom      @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  // --- Collaboration Room (additive) — structured AgentMessage protocol.
+  messageType       String   @default("MESSAGE") // MESSAGE, DELEGATION, REVIEW_REQUEST, QUESTION, ANSWER, BLOCKER, DECISION, RESULT, CHANGES_REQUESTED
+  recipientAgentIds String[] @default([])
+  taskId            String?
+  artifactIds       String[] @default([])
+
+  chatRoom            ChatRoom      @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
   agentRuntimeSession AgentSession? @relation(fields: [agentRuntimeSessionId], references: [id], onDelete: SetNull)
+  task                Task?         @relation("TaskMessages", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([agentRuntimeSessionId])
+  @@index([chatRoomId, createdAt])
+  @@index([taskId])
   @@map("messages")
 }
 
@@ -338,15 +363,15 @@ model Permission {
 }
 
 model RoleAssignment {
-  id          String   @id @default(cuid())
-  workspaceId String
-  roleId      String
+  id            String    @id @default(cuid())
+  workspaceId   String
+  roleId        String
   userId        String?
   agentId       String?
   teamId        String?
   expiresAt     DateTime?
   delegatedById String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -381,17 +406,87 @@ model ApprovalRequest {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // --- Collaboration Room (additive) — approval gates scoped to a room/task.
+  chatRoomId String?
+  taskId     String?
+  risk       String  @default("low") // low, medium, high
+
   workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   requesterUser      User?               @relation("ApprovalRequesterUser", fields: [requesterUserId], references: [id], onDelete: SetNull)
   requesterAgent     Agent?              @relation("ApprovalRequesterAgent", fields: [requesterAgentId], references: [id], onDelete: SetNull)
   reviewer           User?               @relation("ApprovalReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  chatRoom           ChatRoom?           @relation("ApprovalRequestRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
   auditLogs          AuditLog[]
   learningCandidates LearningCandidate[]
 
   @@index([workspaceId, status])
   @@index([projectId])
+  @@index([chatRoomId, status])
   @@map("approval_requests")
+}
+
+// =====================================================================
+// Collaboration Room — additive models with no existing equivalent.
+// Everything else (rooms, tasks, messages, artifacts, decisions,
+// approvals) reuses ChatRoom/Task/Message/Artifact/Decision/ApprovalRequest
+// above rather than duplicating them.
+// =====================================================================
+
+model AgentDisagreement {
+  id                String    @id @default(cuid())
+  chatRoomId        String
+  taskId            String?
+  issue             String
+  positions         Json      @default("[]") // { agentId, position, evidence? }[]
+  severity          String    @default("medium") // low, medium, high
+  resolvedByAgentId String?
+  finalDecision     String?
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  task     Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([chatRoomId, resolvedAt])
+  @@index([taskId])
+  @@map("agent_disagreements")
+}
+
+model ExecutionLock {
+  id               String    @id @default(cuid())
+  chatRoomId       String
+  taskId           String?
+  agentId          String
+  resourcePattern  String // glob over files/paths this lock covers, e.g. "src/lib/orchestration/**"
+  mode             String    @default("write") // read, write
+  workingDirectory String?
+  branch           String?
+  worktreePath     String?
+  createdAt        DateTime  @default(now())
+  releasedAt       DateTime?
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  task     Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([chatRoomId, releasedAt])
+  @@index([taskId])
+  @@map("execution_locks")
+}
+
+model CollaborationEvent {
+  id         String   @id @default(cuid())
+  chatRoomId String
+  sequence   Int
+  type       String // room.created, agent.joined, task.claimed, approval.requested, ... (spec §18)
+  payload    Json     @default("{}")
+  occurredAt DateTime @default(now())
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([chatRoomId, sequence])
+  @@index([chatRoomId, occurredAt])
+  @@map("collaboration_events")
 }
 
 model Meeting {
@@ -436,15 +531,34 @@ model Task {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  workspace      Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team           Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  agent          Agent?          @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
-  contentProject ContentProject? @relation("ContentProjectTasks", fields: [contentProjectId], references: [id], onDelete: Cascade)
+  // --- Collaboration Room (additive) — lets a Task double as a
+  // CollaborationTask node in a room's DAG without a parallel task model.
+  // Collaboration tasks use a richer status vocabulary (PLANNED, QUEUED,
+  // CLAIMED, RUNNING, BLOCKED, WAITING_REVIEW, CHANGES_REQUESTED,
+  // APPROVAL_REQUIRED, COMPLETED, FAILED, CANCELLED) than the plain
+  // kanban `status` column above; both share the untyped string column
+  // and are distinguished by chatRoomId being set.
+  chatRoomId       String?
+  reviewerAgentId  String?
+  createdByAgentId String?
+  dependsOnTaskIds String[] @default([])
+
+  workspace      Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team           Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  agent          Agent?              @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  contentProject ContentProject?     @relation("ContentProjectTasks", fields: [contentProjectId], references: [id], onDelete: Cascade)
+  chatRoom       ChatRoom?           @relation("TaskRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
+  reviewerAgent  Agent?              @relation("TaskReviewerAgent", fields: [reviewerAgentId], references: [id], onDelete: SetNull)
+  messages       Message[]           @relation("TaskMessages")
+  artifacts      Artifact[]          @relation("ArtifactTask")
+  disagreements  AgentDisagreement[]
+  executionLocks ExecutionLock[]
 
   @@index([workspaceId, status])
   @@index([projectId])
   @@index([contentProjectId])
+  @@index([chatRoomId, status])
   @@map("tasks")
 }
 
@@ -611,11 +725,17 @@ model Decision {
   changedBy     String?
   sourceEventId String?
 
+  // --- Collaboration Room (additive) — the decision ledger (spec §47).
+  chatRoomId     String?
+  relatedTaskIds String[] @default([])
+
   supersedes   Decision?  @relation("DecisionSupersedes", fields: [supersedesDecisionId], references: [id])
   supersededBy Decision[] @relation("DecisionSupersedes")
+  chatRoom     ChatRoom?  @relation("DecisionRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([userId])
+  @@index([chatRoomId])
   @@map("decisions")
 }
 
@@ -856,20 +976,20 @@ model LearningCandidate {
   // place in the evolutionary archive; the two are orthogonal (a candidate
   // can be `approved` and `challenger` at the same time).
   parentCandidateId String? // another LearningCandidate.id this one descended from
-  rootCandidateId    String? // the original ancestor's id (plain string — no cascading relation semantics, matches the agentId convention elsewhere in this file)
-  generation         Int     @default(0)
-  lineageDepth        Int     @default(0)
-  mutationType        String? // e.g. weight_adjustment, strategy_change, hybrid, crossover, mutation
-  createdFrom         String? // free-text provenance, e.g. "opportunity:<knowledgeGapId>", "mutation:<parentCandidateId>", "manual"
-  noveltyScore        Float?
-  fitnessScore        Float?
-  fitnessVector       Json? // { taskSuccess, accuracy, userCorrectionRate, hallucinationRate, toolSuccess, clarificationQuality, retrievalQuality, latency, tokenCost, monetaryCost, safety, security, userPreferenceAlignment, generalization, robustness, novelty }
-  survivalStatus      String  @default("generated") // generated, testing, archive, challenger, champion, rejected, superseded, rolled_back, unsafe
-  championGroup       String? // groups challengers competing over the same improvable subsystem, e.g. "retrieval_ranking", "clarification_policy"
-  evaluationCount      Int     @default(0)
-  archiveStatus        String  @default("retained") // retained, pruned — archive never deletes; this only marks low-priority rows for UI collapsing
-  generatorModel       String? // which model proposed this candidate (model diversity, see docs)
-  evaluatorModel       String? // which model evaluated it
+  rootCandidateId   String? // the original ancestor's id (plain string — no cascading relation semantics, matches the agentId convention elsewhere in this file)
+  generation        Int     @default(0)
+  lineageDepth      Int     @default(0)
+  mutationType      String? // e.g. weight_adjustment, strategy_change, hybrid, crossover, mutation
+  createdFrom       String? // free-text provenance, e.g. "opportunity:<knowledgeGapId>", "mutation:<parentCandidateId>", "manual"
+  noveltyScore      Float?
+  fitnessScore      Float?
+  fitnessVector     Json? // { taskSuccess, accuracy, userCorrectionRate, hallucinationRate, toolSuccess, clarificationQuality, retrievalQuality, latency, tokenCost, monetaryCost, safety, security, userPreferenceAlignment, generalization, robustness, novelty }
+  survivalStatus    String  @default("generated") // generated, testing, archive, challenger, champion, rejected, superseded, rolled_back, unsafe
+  championGroup     String? // groups challengers competing over the same improvable subsystem, e.g. "retrieval_ranking", "clarification_policy"
+  evaluationCount   Int     @default(0)
+  archiveStatus     String  @default("retained") // retained, pruned — archive never deletes; this only marks low-priority rows for UI collapsing
+  generatorModel    String? // which model proposed this candidate (model diversity, see docs)
+  evaluatorModel    String? // which model evaluated it
 
   experience Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
   evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
@@ -886,10 +1006,10 @@ model LearningCandidate {
   descendants     LearningCandidate[] @relation("CandidateLineage")
 
   evalResults         EvalResult[]
-  evalRuns             EvalRun[]
-  guardianDecisions    GuardianDecision[]
-  adversarialRuns      AdversarialRun[]
-  experimentManifests  ExperimentManifest[]
+  evalRuns            EvalRun[]
+  guardianDecisions   GuardianDecision[]
+  adversarialRuns     AdversarialRun[]
+  experimentManifests ExperimentManifest[]
 
   @@index([status])
   @@index([riskLevel])
@@ -1000,7 +1120,7 @@ model Evidence {
 
 model Artifact {
   id          String   @id @default(cuid())
-  type        String // generated_app, generated_website, generated_api, generated_module, generated_prompt, generated_diagram, generated_workflow
+  type        String // generated_app, generated_website, generated_api, generated_module, generated_prompt, generated_diagram, generated_workflow, code_diff, plan, research, test_report, review, terminal_output, architecture, document, dataset, decision
   title       String
   description String?
   content     String? // text content if small enough
@@ -1012,6 +1132,16 @@ model Artifact {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // --- Collaboration Room (additive) — links a shared artifact to the
+  // room/task it was produced in.
+  chatRoomId String?
+  taskId     String?
+
+  chatRoom ChatRoom? @relation("ArtifactRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
+  task     Task?     @relation("ArtifactTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([chatRoomId])
+  @@index([taskId])
   @@map("artifacts")
 }
 
@@ -1040,17 +1170,17 @@ model Brand {
 // outro, watermark, lower_third, transition, thumbnail_template) are the
 // brand's curated creative kit, not a separate model.
 model Asset {
-  id         String   @id @default(cuid())
-  brandId    String
-  name       String
-  category   String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
-  url        String
-  mimeType   String?
-  sizeBytes  Int?
-  tags       String[]
-  version    Int      @default(1)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  brandId   String
+  name      String
+  category  String // video, photo, logo, music, font, animation, icon, b_roll, document, intro, outro, watermark, lower_third, transition, thumbnail_template
+  url       String
+  mimeType  String?
+  sizeBytes Int?
+  tags      String[]
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -1096,11 +1226,11 @@ model ContentItem {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  brand      Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  project    ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  sourceItem ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
-  derivedItems ContentItem[] @relation("ContentItemDerivedFrom")
-  hooks      ContentHook[]
+  brand        Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project      ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceItem   ContentItem?    @relation("ContentItemDerivedFrom", fields: [sourceItemId], references: [id], onDelete: SetNull)
+  derivedItems ContentItem[]   @relation("ContentItemDerivedFrom")
+  hooks        ContentHook[]
 
   @@index([brandId, status])
   @@index([projectId])
@@ -1123,28 +1253,28 @@ model ContentHook {
 }
 
 model BrandProfile {
-  id               String   @id @default(cuid())
-  brandId          String   @unique
-  logoUrl          String?
-  primaryColor     String   @default("#6366F1")
-  secondaryColor   String   @default("#8B5CF6")
-  typography       Json     @default("{}")
-  mission          String?
-  targetAudience   String?
-  painPoints       String[]
-  toneOfVoice      String?
-  products         String[]
-  services         String[]
-  competitors      String[]
-  frequentPhrases  String[]
-  wordsToAvoid     String[]
-  ctaPreferences   String?
-  thumbnailStyle   String?
-  videoStyle       String?
-  hookStyle        String?
-  seoKeywords      String[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(cuid())
+  brandId         String   @unique
+  logoUrl         String?
+  primaryColor    String   @default("#6366F1")
+  secondaryColor  String   @default("#8B5CF6")
+  typography      Json     @default("{}")
+  mission         String?
+  targetAudience  String?
+  painPoints      String[]
+  toneOfVoice     String?
+  products        String[]
+  services        String[]
+  competitors     String[]
+  frequentPhrases String[]
+  wordsToAvoid    String[]
+  ctaPreferences  String?
+  thumbnailStyle  String?
+  videoStyle      String?
+  hookStyle       String?
+  seoKeywords     String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -1265,13 +1395,13 @@ model CuriosityEvent {
   // --- Curiosity Engine upgrade (additive; see docs/LEARNING_CORE_EVOLUTION.md)
   // Evidence-driven uncertainty dimensions — a finer-grained decomposition
   // than ambiguityScore/conflictScore above, which stay unchanged and in use.
-  intentUncertainty        Float?
-  knowledgeUncertainty     Float?
-  preferenceUncertainty    Float?
-  goalUncertainty          Float?
-  environmentUncertainty   Float?
-  riskUncertainty          Float?
-  contradictionUncertainty Float?
+  intentUncertainty            Float?
+  knowledgeUncertainty         Float?
+  preferenceUncertainty        Float?
+  goalUncertainty              Float?
+  environmentUncertainty       Float?
+  riskUncertainty              Float?
+  contradictionUncertainty     Float?
   // Expected-value-of-clarification vs. expected-cost-of-interruption — the
   // computational form of "should the agent consider asking" rather than
   // asking on every uncertainty signal.
@@ -1279,12 +1409,12 @@ model CuriosityEvent {
   expectedCostOfInterruption   Float?
   // Question quality evaluation — scored independently of whether the
   // question was ultimately asked, so the engine can learn when NOT to ask.
-  questionNecessity       Float?
-  questionSpecificity     Float?
-  questionInformationGain Float?
-  questionUserBurden      Float?
-  questionRedundancy      Float?
-  questionQualityScore    Float?
+  questionNecessity            Float?
+  questionSpecificity          Float?
+  questionInformationGain      Float?
+  questionUserBurden           Float?
+  questionRedundancy           Float?
+  questionQualityScore         Float?
 
   @@index([agentId, createdAt])
   @@index([traceId])
@@ -1493,17 +1623,17 @@ model TrustEvent {
 }
 
 model FeatureFlag {
-  id                String   @id @default(cuid())
-  key               String   @unique
-  name              String
-  description       String?
-  scopeType         String   @default("global") // global, organization, workspace, project, user, agent
-  scopeId           String?
-  enabled           Boolean  @default(false)
-  rolloutPercentage Int      @default(0)
-  variant           String?
-  config            Json     @default("{}")
-  riskTier          String   @default("low")
+  id                  String    @id @default(cuid())
+  key                 String    @unique
+  name                String
+  description         String?
+  scopeType           String    @default("global") // global, organization, workspace, project, user, agent
+  scopeId             String?
+  enabled             Boolean   @default(false)
+  rolloutPercentage   Int       @default(0)
+  variant             String?
+  config              Json      @default("{}")
+  riskTier            String    @default("low")
   // Rollout scope and learning provenance are separate concerns. `scopeId`
   // remains the tenant/user/agent targeting key; this nullable relation lets
   // automatic rollback find and disable every flag deploying a candidate.
@@ -1512,15 +1642,15 @@ model FeatureFlag {
   // called for these but the schema had nowhere to put them). A flag past
   // its expiresAt evaluates to disabled regardless of `enabled`/rollout —
   // see evaluateFlag() in feature-flags.ts.
-  activatedAt       DateTime?
-  expiresAt         DateTime?
-  rolloutStep       Int      @default(10)
-  maxRollout        Int      @default(100)
-  rollbackThresholds Json    @default("{}")
-  monitoringWindow  Int      @default(3600) // seconds
-  lastEvaluatedAt   DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  activatedAt         DateTime?
+  expiresAt           DateTime?
+  rolloutStep         Int       @default(10)
+  maxRollout          Int       @default(100)
+  rollbackThresholds  Json      @default("{}")
+  monitoringWindow    Int       @default(3600) // seconds
+  lastEvaluatedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   learningCandidate LearningCandidate? @relation(fields: [learningCandidateId], references: [id], onDelete: SetNull)
 
@@ -1621,23 +1751,23 @@ model ScheduledJobRun {
 // agent are resolved agent -> workspace -> organization -> hardcoded
 // defaults (see getEffectiveLearningSettings in src/lib/learning/settings.ts).
 model LearningSettings {
-  id                    String   @id @default(cuid())
-  scopeType             String // organization, workspace, agent
-  scopeId               String
-  curiosityThreshold    Float?
-  minShadowSampleSize   Int?
-  benchmarkThresholds   Json? // e.g. { accuracy: 0.8, maxCostUsd: 1.0, maxLatencyMs: 5000 }
-  trustThresholds       Json? // e.g. { autoApproveMinScore: 0.8 }
-  rolloutSteps          Int[]    @default([])
+  id                     String   @id @default(cuid())
+  scopeType              String // organization, workspace, agent
+  scopeId                String
+  curiosityThreshold     Float?
+  minShadowSampleSize    Int?
+  benchmarkThresholds    Json? // e.g. { accuracy: 0.8, maxCostUsd: 1.0, maxLatencyMs: 5000 }
+  trustThresholds        Json? // e.g. { autoApproveMinScore: 0.8 }
+  rolloutSteps           Int[]    @default([])
   dailyLearningBudgetUsd Float?
-  perAgentBudgetUsd     Float?
-  replayLimits          Json? // e.g. { maxPerCategory: 50, lookbackDays: 30 }
-  modelAllowlist        String[] @default([])
-  maxSandboxConcurrency Int?
-  autoDeployEnabled     Boolean  @default(false)
-  updatedByUserId       String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  perAgentBudgetUsd      Float?
+  replayLimits           Json? // e.g. { maxPerCategory: 50, lookbackDays: 30 }
+  modelAllowlist         String[] @default([])
+  maxSandboxConcurrency  Int?
+  autoDeployEnabled      Boolean  @default(false)
+  updatedByUserId        String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   // --- Learning budget (additive; see docs/LEARNING_CORE_EVOLUTION.md) ---
   // Self-improvement resource limits. Null means "no configured limit at this
@@ -1691,27 +1821,27 @@ model EvalSuite {
 // and evaluation evidence (sanitizedInput/expectedBehavior), redacted the
 // same way LearningEvent payloads are (see src/lib/learning/redaction.ts).
 model EvalCase {
-  id       String  @id @default(cuid())
-  suiteId  String?
-  source   String // user_correction, rejected_response, thumbs_down, failed_tool_call, failed_workflow, failed_deployment, rollback, bad_retrieval, hallucination, contradiction, unauthorized_action, rejected_approval, security_violation, malformed_code_change, failing_test, delegation_failure, adversarial_run
-  sourceId String? // id of the originating row (Experience, Reflection, LearningCandidate, AdversarialRun, ...)
-  userId          String?
-  workspaceId     String?
-  failureType     String
-  severity        String   @default("medium") // low, medium, high, critical
-  sanitizedInput  Json     @default("{}")
+  id               String   @id @default(cuid())
+  suiteId          String?
+  source           String // user_correction, rejected_response, thumbs_down, failed_tool_call, failed_workflow, failed_deployment, rollback, bad_retrieval, hallucination, contradiction, unauthorized_action, rejected_approval, security_violation, malformed_code_change, failing_test, delegation_failure, adversarial_run
+  sourceId         String? // id of the originating row (Experience, Reflection, LearningCandidate, AdversarialRun, ...)
+  userId           String?
+  workspaceId      String?
+  failureType      String
+  severity         String   @default("medium") // low, medium, high, critical
+  sanitizedInput   Json     @default("{}")
   expectedBehavior String
-  grader          String   @default("rule_based") // deterministic, llm_judge, rule_based
-  graderVersion   String   @default("v1")
-  confidence      Float    @default(0.5)
-  status          String   @default("active") // active, retired, superseded
+  grader           String   @default("rule_based") // deterministic, llm_judge, rule_based
+  graderVersion    String   @default("v1")
+  confidence       Float    @default(0.5)
+  status           String   @default("active") // active, retired, superseded
   // Stable hash of (source, failureType, normalized sanitizedInput) — repeated
   // production failures increment occurrenceCount on the same row instead of
   // creating duplicate regression cases.
-  dedupeKey       String   @unique
-  occurrenceCount Int      @default(1)
-  redactedKeys    String[] @default([])
-  createdAt       DateTime @default(now())
+  dedupeKey        String   @unique
+  occurrenceCount  Int      @default(1)
+  redactedKeys     String[] @default([])
+  createdAt        DateTime @default(now())
 
   suite           EvalSuite?       @relation(fields: [suiteId], references: [id], onDelete: SetNull)
   results         EvalResult[]
@@ -1798,20 +1928,20 @@ model GuardianDecision {
 // attack (outcome = "breached") becomes a permanent EvalCase via
 // src/lib/learning/eval-compiler.ts — evalCaseId records that link.
 model AdversarialRun {
-  id                   String    @id @default(cuid())
-  attackType           String // prompt_injection, malicious_tool_output, poisoned_memory, conflicting_instructions, deceptive_web_content, malicious_repository_content, malformed_file, fake_approval, workspace_boundary, path_traversal, prompt_hierarchy_confusion, privilege_escalation, runtime_impersonation, false_telemetry, corrupted_retrieval_context, social_engineering
-  candidateId          String? // defender under test (a challenger)
-  championCandidateId  String? // baseline compared against, if any (plain string — comparison reference, not a cascading relation)
-  payload              Json // the crafted attack content (sanitized before persistence)
-  targetSurface        String // memory, tool_output, retrieval, approval, runtime, ...
-  outcome              String    @default("pending") // pending, blocked, breached, inconclusive
-  severity             String    @default("medium")
-  judgeNotes           String?
-  sandboxViolation     Boolean   @default(false)
-  evalCaseId           String?
-  workspaceId          String?
-  createdAt            DateTime  @default(now())
-  completedAt          DateTime?
+  id                  String    @id @default(cuid())
+  attackType          String // prompt_injection, malicious_tool_output, poisoned_memory, conflicting_instructions, deceptive_web_content, malicious_repository_content, malformed_file, fake_approval, workspace_boundary, path_traversal, prompt_hierarchy_confusion, privilege_escalation, runtime_impersonation, false_telemetry, corrupted_retrieval_context, social_engineering
+  candidateId         String? // defender under test (a challenger)
+  championCandidateId String? // baseline compared against, if any (plain string — comparison reference, not a cascading relation)
+  payload             Json // the crafted attack content (sanitized before persistence)
+  targetSurface       String // memory, tool_output, retrieval, approval, runtime, ...
+  outcome             String    @default("pending") // pending, blocked, breached, inconclusive
+  severity            String    @default("medium")
+  judgeNotes          String?
+  sandboxViolation    Boolean   @default(false)
+  evalCaseId          String?
+  workspaceId         String?
+  createdAt           DateTime  @default(now())
+  completedAt         DateTime?
 
   candidate LearningCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
   evalCase  EvalCase?          @relation(fields: [evalCaseId], references: [id], onDelete: SetNull)
