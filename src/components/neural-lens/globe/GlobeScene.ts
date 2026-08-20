@@ -61,6 +61,8 @@ export interface GlobeVisualState {
   hoveredId: string | null;
   /** Nodes lit by live activity or pinned by the shell (active agents). */
   litIds: ReadonlySet<string>;
+  /** When collaboration events are highlighted, retain context but dim it. */
+  dimUnrelatedLit: boolean;
   /** Colour used for the focused/lit neighbourhood (workspace identity). */
   litColor: string;
   lensClusterId: ClusterId | null;
@@ -223,6 +225,7 @@ export class GlobeScene {
     selectedId: null,
     hoveredId: null,
     litIds: new Set(),
+    dimUnrelatedLit: false,
     litColor: "#7dd3fc",
     lensClusterId: null,
     lensOnly: false,
@@ -605,6 +608,7 @@ export class GlobeScene {
     const hoverChangedOnly =
       next.selectedId === this.state.selectedId &&
       next.litIds === this.state.litIds &&
+      next.dimUnrelatedLit === this.state.dimUnrelatedLit &&
       next.litColor === this.state.litColor &&
       next.lensClusterId === this.state.lensClusterId &&
       next.lensOnly === this.state.lensOnly &&
@@ -641,7 +645,7 @@ export class GlobeScene {
    * per frame, and never on hover. */
   private applyState(): void {
     if (!this.nodePoints || !this.edgeLines) return;
-    const { selectedId, litIds, litColor, lensClusterId, settings } = this.state;
+    const { selectedId, litIds, dimUnrelatedLit, litColor, lensClusterId, settings } = this.state;
     const selectedIndex = selectedId ? this.nodeIndex.get(selectedId) ?? -1 : -1;
     this.lensVisible = this.computeLensVisible();
     this.pathIndices = (this.state.pathNodeIds ?? [])
@@ -715,6 +719,10 @@ export class GlobeScene {
           this.scratchColor.lerp(focusColor, 0.7);
           alpha = CONNECTED_NODE_OPACITY;
           pulse = 1;
+        }
+
+        if (dimUnrelatedLit && litIds.size > 0 && !isLit && !isHub) {
+          alpha *= 0.45;
         }
 
         if (onPath) {
