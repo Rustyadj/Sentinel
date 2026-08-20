@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/current-user";
+import { requireApiUser } from "@/lib/current-user";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
+import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 
-export async function GET() {
+export function OPTIONS() {
+  return corsPreflightResponse();
+}
+
+export async function GET(request: NextRequest) {
+  return withMobileCors(await handleGet(request));
+}
+
+async function handleGet(request: NextRequest): Promise<Response> {
   try {
-    const user = await requireUser();
+    const user = await requireApiUser(request);
 
     let rooms = await db.chatRoom.findMany({
       where: { userId: user.id },
@@ -51,8 +60,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  return withMobileCors(await handlePost(request));
+}
+
+async function handlePost(request: NextRequest): Promise<Response> {
   try {
-    const user = await requireUser();
+    const user = await requireApiUser(request);
     const body = await request.json() as { name?: string; agentIds?: string[]; projectId?: string };
     const { name, agentIds = ["hermes-lisa"], projectId } = body;
 
