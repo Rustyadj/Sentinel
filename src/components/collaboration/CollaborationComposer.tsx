@@ -57,7 +57,13 @@ function runCommand(command: string, args: string, room: CollaborationRoomContro
     return;
   }
   if (command === "/review") {
-    room.sendMessage(args || `Please review ${runningTask?.id ?? "the current work"}.`, [room.participants.find((participant) => participant.role === "review")?.agentId ?? "codex"], "REVIEW_REQUEST");
+    // No participant is permanently "the reviewer" — target whichever
+    // implementation worker didn't own the running task, or broadcast to
+    // every implementation worker if that can't be determined.
+    const implementers = room.participants.filter((participant) => participant.role === "implementation");
+    const reviewer = implementers.find((participant) => participant.agentId !== runningTask?.ownerAgentId);
+    const targets = reviewer ? [reviewer.agentId] : implementers.map((participant) => participant.agentId);
+    room.sendMessage(args || `Please review ${runningTask?.id ?? "the current work"}.`, targets, "REVIEW_REQUEST");
     room.addCommandResult({ command, title: "Review requested", detail: args || runningTask?.title || "Current room work" });
     return;
   }

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getVpsAgent } from "@/lib/agents/registry";
-import { resolveAgentRole } from "./roles";
+import { resolveDisplayRole } from "./capabilities";
 import type {
   AgentDisagreement,
   AgentHealth,
@@ -81,7 +81,7 @@ export async function getRoomSnapshot(chatRoomId: string): Promise<RoomSnapshot>
       name: vpsAgent?.name ?? agentId,
       runtime: vpsAgent?.kind ?? "unknown",
       model: vpsAgent?.model ?? "unknown",
-      role: resolveAgentRole(vpsAgent?.kind ?? "custom"),
+      role: resolveDisplayRole(vpsAgent?.kind ?? "custom"),
       status: session?.status ?? "idle",
       activeTaskId: activeTask?.id,
       health: participantHealth(session?.status),
