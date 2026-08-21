@@ -6,7 +6,7 @@ function patternRoot(pattern: string): string {
   return pattern.replace(/[*].*$/, "");
 }
 
-function patternsOverlap(a: string, b: string): boolean {
+export function patternsOverlap(a: string, b: string): boolean {
   const rootA = patternRoot(a);
   const rootB = patternRoot(b);
   return rootA.startsWith(rootB) || rootB.startsWith(rootA);
@@ -74,4 +74,11 @@ export async function releaseAgentLocks(chatRoomId: string, agentId: string, tas
 
 export async function listActiveLocks(chatRoomId: string) {
   return db.executionLock.findMany({ where: { chatRoomId, releasedAt: null } });
+}
+
+/** Finds an active lock some other agent holds that would conflict with `agentId` taking `fileScope`, if any. */
+export async function findConflictingLock(chatRoomId: string, agentId: string, fileScope: string[]) {
+  if (!fileScope.length) return null;
+  const locks = await listActiveLocks(chatRoomId);
+  return locks.find((lock) => lock.agentId !== agentId && fileScope.some((pattern) => patternsOverlap(lock.resourcePattern, pattern))) ?? null;
 }

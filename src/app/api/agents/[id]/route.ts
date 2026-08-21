@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAgentRecordUser, unauthorized, forbidden } from "@/lib/agents/permissions";
+import { sanitizeCapabilityWeights } from "@/lib/orchestration/capability-defaults";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -46,6 +47,7 @@ export async function PUT(req: Request, { params }: Params) {
       ...(body.skills !== undefined && { skills: body.skills as string[] }),
       ...(body.status !== undefined && { status: body.status as string }),
       ...(body.instructionFiles !== undefined && body.instructionFiles !== null && { instructionFiles: body.instructionFiles as object }),
+      ...(body.capabilityWeights !== undefined && { capabilityWeights: sanitizeCapabilityWeights(body.capabilityWeights) as object }),
       promptHistory,
     },
   });

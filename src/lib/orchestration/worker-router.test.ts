@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { recordExecutionOutcome } from "./adaptive-routing";
 import { acquireExecutionLock } from "./execution-lock";
 import { selectWorker } from "./worker-router";
 
@@ -54,5 +55,24 @@ describe("selectWorker", () => {
     const room = await makeRoom();
     const selection = await selectWorker({ chatRoomId: room.id, requiredCapabilities: [], candidates: ["claude-code", "codex"], exclude: ["claude-code"] });
     expect(selection.agentId).toBe("codex");
+  });
+
+  it("breaks a tie between otherwise-equal candidates using their actual track record", async () => {
+    // Unregistered synthetic ids both fall back to a neutral 0.5 capability
+    // score for any required capability, so a seeded history is the only
+    // thing that can separate them here — proving selectWorker really does
+    // weigh outcomes, not just static weights.
+    const room = await makeRoom();
+    const task = await db.task.create({ data: { chatRoomId: room.id, title: "history seed task" } });
+    const strongAgent = `worker-router-strong-${Date.now()}`;
+    const poorAgent = `worker-router-poor-${Date.now()}`;
+    for (let i = 0; i < 5; i += 1) {
+      await recordExecutionOutcome({ chatRoomId: room.id, taskId: task.id, agentId: strongAgent, capabilities: ["research"], success: true });
+      await recordExecutionOutcome({ chatRoomId: room.id, taskId: task.id, agentId: poorAgent, capabilities: ["research"], success: false });
+    }
+
+    const selection = await selectWorker({ chatRoomId: room.id, requiredCapabilities: ["research"], candidates: [strongAgent, poorAgent] });
+    expect(selection.agentId).toBe(strongAgent);
+    expect(selection.reason).toContain("history=+");
   });
 });

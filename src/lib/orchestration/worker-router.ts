@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
+import { historicalSuccessAdjustment } from "./adaptive-routing";
 import { getCapabilityWeights, type AgentCapabilityKey } from "./capabilities";
-import { listActiveLocks } from "./execution-lock";
+import { findConflictingLock } from "./execution-lock";
 
 const ACTIVE_TASK_STATUSES = ["QUEUED", "CLAIMED", "RUNNING", "WAITING_REVIEW", "CHANGES_REQUESTED"];
 
@@ -8,21 +9,8 @@ export async function currentWorkload(chatRoomId: string, agentId: string): Prom
   return db.task.count({ where: { chatRoomId, agentId, status: { in: ACTIVE_TASK_STATUSES } } });
 }
 
-/** Strips the glob suffix so two patterns can be compared by their root path. */
-function patternRoot(pattern: string): string {
-  return pattern.replace(/[*].*$/, "");
-}
-
-function patternsOverlap(a: string, b: string): boolean {
-  const rootA = patternRoot(a);
-  const rootB = patternRoot(b);
-  return rootA.startsWith(rootB) || rootB.startsWith(rootA);
-}
-
 async function hasFileConflict(chatRoomId: string, agentId: string, fileScope: string[]): Promise<boolean> {
-  if (!fileScope.length) return false;
-  const locks = await listActiveLocks(chatRoomId);
-  return locks.some((lock) => lock.agentId !== agentId && fileScope.some((pattern) => patternsOverlap(lock.resourcePattern, pattern)));
+  return Boolean(await findConflictingLock(chatRoomId, agentId, fileScope));
 }
 
 export interface SelectWorkerInput {
@@ -45,8 +33,10 @@ export interface WorkerSelection {
  * replaces a fixed "Claude implements, Codex reviews" assignment. Every
  * candidate gets a score from its capability weights averaged over the
  * task's required capabilities; active workload and an existing file-scope
- * conflict both push the score down. The routing reason is returned
- * verbatim so callers can persist it for auditability.
+ * conflict both push the score down, and a small bounded adjustment from
+ * that candidate's actual track record on similar work (adaptive-routing.ts)
+ * nudges it further. The routing reason is returned verbatim so callers can
+ * persist it for auditability.
  */
 export async function selectWorker(input: SelectWorkerInput): Promise<WorkerSelection> {
   const candidates = input.candidates.filter((id) => !input.exclude?.includes(id));
@@ -65,8 +55,9 @@ export async function selectWorker(input: SelectWorkerInput): Promise<WorkerSele
     const workloadPenalty = workload * 0.12;
     const conflicted = await hasFileConflict(input.chatRoomId, agentId, input.fileScope ?? []);
     const conflictPenalty = conflicted ? 0.5 : 0;
-    scores[agentId] = Math.max(0, capabilityScore - workloadPenalty - conflictPenalty);
-    reasons.push(`${agentId}: capability=${capabilityScore.toFixed(2)} workload=${workload} (-${workloadPenalty.toFixed(2)}) conflict=${conflicted ? "yes" : "no"} (-${conflictPenalty.toFixed(2)})`);
+    const historyAdjustment = await historicalSuccessAdjustment(agentId, input.requiredCapabilities);
+    scores[agentId] = Math.max(0, capabilityScore - workloadPenalty - conflictPenalty + historyAdjustment);
+    reasons.push(`${agentId}: capability=${capabilityScore.toFixed(2)} workload=${workload} (-${workloadPenalty.toFixed(2)}) conflict=${conflicted ? "yes" : "no"} (-${conflictPenalty.toFixed(2)}) history=${historyAdjustment >= 0 ? "+" : ""}${historyAdjustment.toFixed(2)}`);
   }
 
   const [best] = Object.entries(scores).sort(([, a], [, b]) => b - a);

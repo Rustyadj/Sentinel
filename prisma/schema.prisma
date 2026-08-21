@@ -117,16 +117,17 @@ model ChatRoom {
   autonomyLevel String  @default("assisted") // manual, assisted, autonomous
   paused        Boolean @default(false)
 
-  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  messages            Message[]
-  collabTasks         Task[]               @relation("TaskRoom")
-  artifacts           Artifact[]           @relation("ArtifactRoom")
-  decisions           Decision[]           @relation("DecisionRoom")
-  approvalRequests    ApprovalRequest[]    @relation("ApprovalRequestRoom")
-  disagreements       AgentDisagreement[]
-  executionLocks      ExecutionLock[]
-  collaborationEvents CollaborationEvent[]
+  project              Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user                 User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages             Message[]
+  collabTasks          Task[]                @relation("TaskRoom")
+  artifacts            Artifact[]            @relation("ArtifactRoom")
+  decisions            Decision[]            @relation("DecisionRoom")
+  approvalRequests     ApprovalRequest[]     @relation("ApprovalRequestRoom")
+  disagreements        AgentDisagreement[]
+  executionLocks       ExecutionLock[]
+  collaborationEvents  CollaborationEvent[]
+  taskExecutionRecords TaskExecutionRecord[]
 
   @@map("chat_rooms")
 }
@@ -559,23 +560,51 @@ model Task {
   baseBranch   String?
   worktreePath String?
 
-  workspace      Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team           Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  agent          Agent?              @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
-  contentProject ContentProject?     @relation("ContentProjectTasks", fields: [contentProjectId], references: [id], onDelete: Cascade)
-  chatRoom       ChatRoom?           @relation("TaskRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
-  reviewerAgent  Agent?              @relation("TaskReviewerAgent", fields: [reviewerAgentId], references: [id], onDelete: SetNull)
-  messages       Message[]           @relation("TaskMessages")
-  artifacts      Artifact[]          @relation("ArtifactTask")
-  disagreements  AgentDisagreement[]
-  executionLocks ExecutionLock[]
+  workspace            Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project              Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                 Team?                 @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  agent                Agent?                @relation("TaskAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  contentProject       ContentProject?       @relation("ContentProjectTasks", fields: [contentProjectId], references: [id], onDelete: Cascade)
+  chatRoom             ChatRoom?             @relation("TaskRoom", fields: [chatRoomId], references: [id], onDelete: Cascade)
+  reviewerAgent        Agent?                @relation("TaskReviewerAgent", fields: [reviewerAgentId], references: [id], onDelete: SetNull)
+  messages             Message[]             @relation("TaskMessages")
+  artifacts            Artifact[]            @relation("ArtifactTask")
+  disagreements        AgentDisagreement[]
+  executionLocks       ExecutionLock[]
+  taskExecutionRecords TaskExecutionRecord[]
 
   @@index([workspaceId, status])
   @@index([projectId])
   @@index([contentProjectId])
   @@index([chatRoomId, status])
   @@map("tasks")
+}
+
+// --- Adaptive routing (additive). One row per task's final outcome
+// (COMPLETED or FAILED) — never per intermediate review cycle — so the
+// worker-router can weigh a candidate's real track record on similar
+// work alongside its static capability weights, per spec's "store the
+// data correctly so adaptive routing can be added later" (§30). Deliberately
+// not an ML system: historicalSuccessAdjustment() is a small bounded
+// nudge to selectWorker()'s existing score, gated behind a minimum
+// sample size so a handful of early outcomes can't dominate routing.
+model TaskExecutionRecord {
+  id           String   @id @default(cuid())
+  chatRoomId   String
+  taskId       String
+  agentId      String
+  capabilities String[] @default([])
+  success      Boolean
+  reviewCycles Int      @default(0)
+  durationMs   Int?
+  createdAt    DateTime @default(now())
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, success])
+  @@index([chatRoomId])
+  @@map("task_execution_records")
 }
 
 model Document {
