@@ -6,9 +6,13 @@ import {
   Terminal, FileText, ChevronDown, ChevronRight, Save,
   AlertCircle, CheckCircle2, Clock, Wifi, WifiOff,
   Loader2, Bot, Cpu, RotateCw, FolderOpen, FileCode2,
-  History, ShieldAlert,
+  History, ShieldAlert, SlidersHorizontal, RotateCcw as ResetIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  AGENT_CAPABILITY_KEYS, defaultCapabilityWeights,
+  type AgentCapabilityKey, type CapabilityWeights,
+} from "@/lib/orchestration/capability-defaults";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -250,12 +254,153 @@ export function ConfigEditor({ agentId }: { agentId: string }) {
   );
 }
 
+// ─── Capability Weights Editor ─────────────────────────────────────────────────
+
+const CAPABILITY_LABELS: Record<AgentCapabilityKey, string> = {
+  coding: "Coding", debugging: "Debugging", frontend: "Frontend", backend: "Backend",
+  architecture: "Architecture", testing: "Testing", security: "Security",
+  database: "Database", devops: "DevOps", research: "Research", refactoring: "Refactoring",
+};
+
+export function CapabilityWeightsEditor({ agentId }: { agentId: string }) {
+  const [weights, setWeights] = useState<Record<AgentCapabilityKey, number>>(
+    () => Object.fromEntries(AGENT_CAPABILITY_KEYS.map((k) => [k, 0.5])) as Record<AgentCapabilityKey, number>
+  );
+  const [isCustom, setIsCustom] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  const applyWeights = useCallback((source: CapabilityWeights) => {
+    setWeights(Object.fromEntries(
+      AGENT_CAPABILITY_KEYS.map((k) => [k, source[k] ?? 0.5])
+    ) as Record<AgentCapabilityKey, number>);
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/agents/${agentId}`);
+      if (!res.ok) { setError("Failed to load capability weights"); return; }
+      const data = await res.json() as { capabilityWeights?: CapabilityWeights };
+      const stored = data.capabilityWeights ?? {};
+      const custom = Object.keys(stored).length > 0;
+      setIsCustom(custom);
+      applyWeights(custom ? stored : defaultCapabilityWeights(agentId));
+      setDirty(false);
+    } catch { setError("Failed to load capability weights"); }
+    finally { setLoading(false); }
+  }, [agentId, applyWeights]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { void load(); }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  function setWeight(key: AgentCapabilityKey, value: number) {
+    setWeights((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+    setSaved(false);
+  }
+
+  async function save() {
+    setSaving(true); setSaved(false); setError("");
+    try {
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capabilityWeights: weights }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok || data.error) { setError(data.error ?? "Save failed"); return; }
+      setIsCustom(true);
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { setError("Save failed"); }
+    finally { setSaving(false); }
+  }
+
+  function resetToDefaults() {
+    applyWeights(defaultCapabilityWeights(agentId));
+    setDirty(true);
+    setSaved(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="h-32 flex items-center justify-center">
+        <Loader2 className="w-4 h-4 text-[#3a3f50] animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className={cn(
+          "text-[10px] px-2 py-0.5 rounded-full border",
+          isCustom
+            ? "border-indigo-500/30 text-indigo-300 bg-indigo-500/10"
+            : "border-[#1e2130] text-[#5a5f6e]"
+        )}>
+          {isCustom ? "Custom weights" : "Using built-in defaults"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button onClick={resetToDefaults}
+            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-[#1e2130] text-[#7a8099] hover:text-[#c8cdd8] transition-colors">
+            <ResetIcon className="w-3 h-3" /> Reset to defaults
+          </button>
+          <button onClick={() => void save()} disabled={saving || !dirty}
+            className={cn(
+              "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors",
+              saved
+                ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                : "border-[#1e2130] text-[#7a8099] hover:text-[#c8cdd8] disabled:opacity-40"
+            )}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            {saved ? "Saved" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-[10px] text-red-400 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" /> {error}
+        </p>
+      )}
+
+      <p className="text-[10px] text-[#5a5f6e]">
+        Routing hints the worker-router uses to score this agent against a task&apos;s required capabilities (0 = no fit, 1 = ideal fit). Actual routing also factors in current workload, file-scope conflicts, and this agent&apos;s real track record.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+        {AGENT_CAPABILITY_KEYS.map((key) => (
+          <div key={key} className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-[#c8cdd8]">{CAPABILITY_LABELS[key]}</span>
+              <span className="text-[10px] font-mono text-[#5a5f6e]">{weights[key].toFixed(2)}</span>
+            </div>
+            <input
+              type="range" min={0} max={1} step={0.05} value={weights[key]}
+              onChange={(e) => setWeight(key, Number(e.target.value))}
+              className="w-full accent-indigo-500"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Agent Card ───────────────────────────────────────────────────────────────
 
 function AgentCard({ agent }: { agent: VpsAgent }) {
   const [status, setStatus] = useState<AgentStatus>("checking");
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"logs" | "config" | null>(null);
+  const [panel, setPanel] = useState<"logs" | "config" | "capabilities" | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [actionMsg, setActionMsg] = useState("");
@@ -357,15 +502,15 @@ function AgentCard({ agent }: { agent: VpsAgent }) {
       )}
 
       <div className="flex border-t border-[#1e2130]">
-        {(["logs", "config"] as const).map((p, i) => (
+        {(["logs", "config", "capabilities"] as const).map((p, i) => (
           <button key={p} onClick={() => setPanel(panel === p ? null : p)}
             className={cn(
               "flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-medium transition-colors",
               i > 0 && "border-l border-[#1e2130]",
               panel === p ? "text-indigo-400 bg-indigo-500/5" : "text-[#5a5f6e] hover:text-[#c8cdd8] hover:bg-white/3"
             )}>
-            {p === "logs" ? <Terminal className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
-            {p === "logs" ? "Logs" : "Config"}
+            {p === "logs" ? <Terminal className="w-3 h-3" /> : p === "config" ? <FileText className="w-3 h-3" /> : <SlidersHorizontal className="w-3 h-3" />}
+            {p === "logs" ? "Logs" : p === "config" ? "Config" : "Capabilities"}
             {panel === p ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           </button>
         ))}
@@ -375,6 +520,7 @@ function AgentCard({ agent }: { agent: VpsAgent }) {
         <div className="p-4 border-t border-[#1e2130] bg-[#080a0d]">
           {panel === "logs" && <LogsPanel agentId={agent.id} />}
           {panel === "config" && <ConfigEditor agentId={agent.id} />}
+          {panel === "capabilities" && <CapabilityWeightsEditor agentId={agent.id} />}
         </div>
       )}
     </div>
