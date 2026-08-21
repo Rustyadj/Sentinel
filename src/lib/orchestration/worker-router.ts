@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getCapabilityWeights, type AgentCapabilityKey } from "./capabilities";
-import { listActiveLocks } from "./execution-lock";
+import { findConflictingLock } from "./execution-lock";
 
 const ACTIVE_TASK_STATUSES = ["QUEUED", "CLAIMED", "RUNNING", "WAITING_REVIEW", "CHANGES_REQUESTED"];
 
@@ -8,21 +8,8 @@ export async function currentWorkload(chatRoomId: string, agentId: string): Prom
   return db.task.count({ where: { chatRoomId, agentId, status: { in: ACTIVE_TASK_STATUSES } } });
 }
 
-/** Strips the glob suffix so two patterns can be compared by their root path. */
-function patternRoot(pattern: string): string {
-  return pattern.replace(/[*].*$/, "");
-}
-
-function patternsOverlap(a: string, b: string): boolean {
-  const rootA = patternRoot(a);
-  const rootB = patternRoot(b);
-  return rootA.startsWith(rootB) || rootB.startsWith(rootA);
-}
-
 async function hasFileConflict(chatRoomId: string, agentId: string, fileScope: string[]): Promise<boolean> {
-  if (!fileScope.length) return false;
-  const locks = await listActiveLocks(chatRoomId);
-  return locks.some((lock) => lock.agentId !== agentId && fileScope.some((pattern) => patternsOverlap(lock.resourcePattern, pattern)));
+  return Boolean(await findConflictingLock(chatRoomId, agentId, fileScope));
 }
 
 export interface SelectWorkerInput {

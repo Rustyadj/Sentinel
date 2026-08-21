@@ -53,3 +53,27 @@ export async function removeTaskWorktree(runtime: RuntimeInstance, worktreePath:
     .run("git", ["worktree", "remove", "--force", worktreePath], { cwd: root, timeoutMs: 30_000 })
     .catch(() => undefined);
 }
+
+export interface MergeResult {
+  merged: boolean;
+  conflict?: string;
+}
+
+/**
+ * Merges a task's worktree branch back into whatever is currently checked
+ * out in the runtime's own root (real `git merge`, not a status flag) —
+ * this is what "Lisa reconciles parallel work" actually does on disk. On
+ * conflict, aborts the merge so the root is left clean for the next
+ * attempt rather than stuck mid-merge, and returns the conflict text for
+ * Lisa to reason about (retry a narrower fix, hand off, or ask the user).
+ */
+export async function mergeTaskBranch(runtime: RuntimeInstance, branch: string): Promise<MergeResult> {
+  const root = runtime.workingDirectoryRoot;
+  if (!root) throw new RuntimeError("Runtime has no allowlisted project root", "configuration_invalid", 503);
+  const result = await nodeRuntimeProcessRunner.run("git", ["merge", "--no-ff", branch, "-m", `Merge ${branch}`], { cwd: root, timeoutMs: 30_000 });
+  if (result.exitCode !== 0) {
+    await nodeRuntimeProcessRunner.run("git", ["merge", "--abort"], { cwd: root, timeoutMs: 30_000 }).catch(() => undefined);
+    return { merged: false, conflict: (result.stderr || result.stdout).slice(0, 2_000) };
+  }
+  return { merged: true };
+}
