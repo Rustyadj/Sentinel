@@ -76,13 +76,25 @@ export async function getRoomSnapshot(chatRoomId: string): Promise<RoomSnapshot>
     const vpsAgent = getVpsAgent(agentId);
     const session = sessionByAgent.get(agentId);
     const activeTask = tasks.find((task) => task.agentId === agentId && ACTIVE_TASK_STATUSES.has(task.status));
+    // Status must reflect real, current work — never a decorative label
+    // left over from an agent's last (possibly long-finished) session.
+    // A worker with no active task is "available" regardless of whether
+    // its last session ended completed/failed/cancelled. Lisa never owns
+    // a task directly (she's the orchestrator, not a worker), so her
+    // status instead reflects whether her loop session is actually
+    // running right now.
+    const displayStatus = activeTask
+      ? activeTask.status.toLowerCase()
+      : vpsAgent?.kind === "hermes" && session?.status === "running"
+        ? "coordinating"
+        : "available";
     return {
       agentId,
       name: vpsAgent?.name ?? agentId,
       runtime: vpsAgent?.kind ?? "unknown",
       model: vpsAgent?.model ?? "unknown",
       role: resolveDisplayRole(vpsAgent?.kind ?? "custom"),
-      status: session?.status ?? "idle",
+      status: displayStatus,
       activeTaskId: activeTask?.id,
       health: participantHealth(session?.status),
       lastActivityAt: (session?.lastActivityAt ?? room.createdAt).toISOString(),

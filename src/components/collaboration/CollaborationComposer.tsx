@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AtSign, Bot, Check, ChevronDown, Paperclip, Send, Slash, Users, X } from "lucide-react";
+import { AtSign, Bot, Check, ChevronDown, Paperclip, Send, ShieldAlert, Slash, Users, X } from "lucide-react";
 import type { CollaborationMode } from "@/types/collaboration";
 import type { CollaborationRoomController } from "./useCollaborationRoom";
 
@@ -89,6 +89,14 @@ export function CollaborationComposer({ room }: { room: CollaborationRoomControl
   }, [mentionMatch, room.participants]);
   const commandOptions = slashQuery === null ? [] : SLASH_COMMANDS.filter((command) => command.slice(1).startsWith(slashQuery));
   const effectiveRecipientIds = room.mode === "solo" ? [room.soloAgentId] : recipientIds.length > 0 ? recipientIds : room.participants.map((participant) => participant.agentId);
+  // True whenever this message would bypass Lisa's orchestration: solo mode,
+  // or an explicit @mention override while in collaborative mode. Shown to
+  // the user so bypassing Lisa is never silent.
+  const directOverrideActive = room.mode === "solo" || recipientIds.length > 0;
+  const leadName = room.participants.find((participant) => participant.role === "lead")?.name ?? "Lisa";
+  const directTargetName = room.mode === "solo"
+    ? room.participants.find((participant) => participant.agentId === room.soloAgentId)?.name ?? "the selected agent"
+    : recipientIds.map((id) => room.participants.find((participant) => participant.agentId === id)?.name ?? id).join(", ");
 
   function addMention(agentId: string, name: string) {
     const at = input.lastIndexOf("@");
@@ -120,6 +128,12 @@ export function CollaborationComposer({ room }: { room: CollaborationRoomControl
         </SuggestionMenu>
       ) : null}
 
+      {directOverrideActive ? (
+        <div className="mb-2 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-amber-300/85" role="status">
+          <ShieldAlert className="h-3 w-3" /> Direct worker mode — bypassing Lisa · {directTargetName}
+        </div>
+      ) : null}
+
       {recipientIds.length > 0 || room.mode === "solo" ? (
         <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[9.5px] text-[#8293a8]">
           <span>Sent to:</span>
@@ -140,7 +154,7 @@ export function CollaborationComposer({ room }: { room: CollaborationRoomControl
             if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
           }}
           rows={2}
-          placeholder={room.paused ? "Room is paused — resume to send" : `Message ${room.roomName}…`}
+          placeholder={room.paused ? "Room is paused — resume to send" : directOverrideActive ? `Message ${directTargetName} directly…` : `Message ${leadName}…`}
           disabled={room.paused}
           aria-label="Collaboration message"
           className="max-h-32 min-h-12 w-full resize-none bg-transparent px-1.5 py-1 text-[12px] leading-relaxed text-[#e2eaf2] outline-none placeholder:text-[#516177] disabled:opacity-50"

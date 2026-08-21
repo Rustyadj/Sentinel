@@ -15,7 +15,23 @@ import type {
 const currentUser = vi.hoisted(() => ({ requireUser: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ requireUser: currentUser.requireUser }));
 
-// Import after the mock so the loop (via requireRuntimeAccess -> requireWorkspacePermission -> requireUser) resolves to the mocked user.
+// Real `ensureTaskWorktree` shells out to `git worktree add` against the
+// runtime's configured project root (AGENT_PROJECT_ROOT), which isn't a
+// real git repo in this test environment. Task-managed execution already
+// tolerated that failure silently (see lisa-loop.ts's runImplementation);
+// the direct-reply path (agent-turn.ts's runDirectAgentReply) now enforces
+// it strictly instead, so it needs a working fake here rather than a
+// failing real one. mergeTaskBranch/removeTaskWorktree keep their real
+// implementations since nothing in this suite exercises them.
+const worktreeMocks = vi.hoisted(() => ({
+  ensureTaskWorktree: vi.fn().mockResolvedValue({ path: "/tmp/lisa-loop-test-worktree", branch: "agent/test/direct" }),
+}));
+vi.mock("@/lib/orchestration/worktree-manager", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/orchestration/worktree-manager")>()),
+  ensureTaskWorktree: worktreeMocks.ensureTaskWorktree,
+}));
+
+// Import after the mocks so the loop (via requireRuntimeAccess -> requireWorkspacePermission -> requireUser) resolves to the mocked user.
 const { runCollaborationTurn, resumeAfterApproval } = await import("@/lib/orchestration/orchestrator");
 
 afterAll(async () => db.$disconnect());
@@ -281,6 +297,7 @@ describe("Lisa's tool-calling execution loop", () => {
   it("routes a single @mention to a direct reply instead of entering the tool-calling loop", async () => {
     const { user, room } = await setUpRoom();
     setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies(["Reviewed the locking approach — it's sound."])));
+    worktreeMocks.ensureTaskWorktree.mockClear();
 
     await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "@codex what do you think of the locking approach?", recipientAgentIds: ["codex"] });
 
@@ -288,5 +305,33 @@ describe("Lisa's tool-calling execution loop", () => {
     const reply = await db.message.findFirstOrThrow({ where: { chatRoomId: room.id, messageType: "ANSWER" } });
     expect(reply.agentId).toBe("codex");
     expect(reply.content).toContain("locking approach");
+    // A direct message to a coding-runtime worker still never executes
+    // against the shared primary tree — it gets a worktree just like a
+    // Lisa-managed task would, keyed by room rather than task id.
+    expect(worktreeMocks.ensureTaskWorktree).toHaveBeenCalledWith(expect.objectContaining({ agentId: "codex", taskId: `direct-${room.id}` }));
+  });
+
+  it("ignores a @mention that isn't actually a participant of this room, falling through to Lisa instead", async () => {
+    const { user, room } = await setUpRoom();
+    setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", () => "DONE: nothing to do."));
+
+    // "openclaw" is a real registered agent id, but not a member of this
+    // room's agentIds — the server-side routing guard must not treat it as
+    // a valid direct-worker override just because it resolves via getVpsAgent.
+    await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "openclaw, what do you think?", recipientAgentIds: ["openclaw"] });
+
+    expect(await db.message.count({ where: { chatRoomId: room.id, messageType: "ANSWER", agentId: "openclaw" } })).toBe(0);
+  });
+
+  it("blocks direct-reply execution rather than falling back to the shared working tree when worktree setup fails", async () => {
+    const { user, room } = await setUpRoom();
+    setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies(["should never run"])));
+    worktreeMocks.ensureTaskWorktree.mockRejectedValueOnce(new Error("git worktree add failed: no such repository"));
+
+    await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "@codex please refactor this", recipientAgentIds: ["codex"] });
+
+    expect(await db.message.count({ where: { chatRoomId: room.id, messageType: "ANSWER", agentId: "codex" } })).toBe(0);
+    const event = await db.collaborationEvent.findFirstOrThrow({ where: { chatRoomId: room.id, type: "agent.failed" }, orderBy: { sequence: "desc" } });
+    expect(JSON.stringify(event.payload)).toContain("git worktree add failed");
   });
 });

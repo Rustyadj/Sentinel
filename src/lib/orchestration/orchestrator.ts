@@ -40,8 +40,18 @@ export async function runCollaborationTurn(input: RunCollaborationInput): Promis
     return;
   }
 
-  if (input.recipientAgentIds?.length === 1 && getVpsAgent(input.recipientAgentIds[0])) {
-    await runDirectAgentReply(room.id, input.recipientAgentIds[0], input.userId, input.userContent);
+  // Exactly one explicit, room-member target is a direct worker override —
+  // solo mode's selected agent, or an explicit @mention in collaborative
+  // mode. This is a deliberate server-side guard, not just array-length
+  // inference: the target must actually be a registered agent AND a
+  // participant of this room, so a stray or stale client payload can't
+  // reach a worker outside Lisa's orchestration. Anything else (zero
+  // targets, or more than one — e.g. collaborative mode's default
+  // broadcast-to-all-participants) always goes through Lisa below,
+  // regardless of the room's persisted mode.
+  const directTargetId = input.recipientAgentIds?.length === 1 ? input.recipientAgentIds[0] : undefined;
+  if (directTargetId && room.agentIds.includes(directTargetId) && getVpsAgent(directTargetId)) {
+    await runDirectAgentReply(room.id, directTargetId, input.userId, input.userContent);
     return;
   }
 

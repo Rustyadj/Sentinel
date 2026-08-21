@@ -4,6 +4,8 @@
  * Never imported in client components.
  */
 
+import { resolveWorkerModel } from "./model-policy";
+
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
 export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
 
@@ -75,7 +77,7 @@ const REGISTRY: VpsAgent[] = [
     kind: "claude-code",
     type: "coding-runtime",
     description: "Repository-aware Claude Code CLI runtime — process transport, no HTTP endpoint",
-    model: process.env.CLAUDE_CODE_MODEL ?? "provider-managed",
+    model: `${resolveWorkerModel("claude-code").displayName} · ${resolveWorkerModel("claude-code").effort}`,
     endpoint: "",
     containerName: null,
     configPath: `${AGENT_CONFIG_DIR}/claude-code`,
@@ -92,7 +94,7 @@ const REGISTRY: VpsAgent[] = [
     kind: "codex",
     type: "coding-runtime",
     description: "Sandboxed Codex CLI runtime — process transport, no HTTP endpoint",
-    model: process.env.CODEX_MODEL ?? "provider-managed",
+    model: `${resolveWorkerModel("codex").displayName} · ${resolveWorkerModel("codex").effort}`,
     endpoint: "",
     containerName: null,
     configPath: `${AGENT_CONFIG_DIR}/codex`,

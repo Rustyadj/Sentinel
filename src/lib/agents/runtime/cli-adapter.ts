@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import { isManagedWorkerKind, looksLikeModelUnavailable, resolveWorkerModel, type WorkerModelConfig } from "@/lib/agents/model-policy";
 import { RuntimeError, UnsupportedRuntimeCapabilityError } from "./errors";
 import { assertSafeOpaqueId, resolveAllowedWorkingDirectory } from "./path-security";
 import { nodeRuntimeProcessRunner, type RuntimeProcessRunner } from "./runner";
@@ -61,7 +62,7 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
   protected abstract readonly versionArgs: string[];
   protected abstract readonly authArgs: string[];
   protected abstract readonly supportsResume: boolean;
-  protected abstract buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string): string[];
+  protected abstract buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string, modelConfig?: WorkerModelConfig): string[];
   protected abstract parseStructuredLine(line: string, sessionId: string): { type: RuntimeEvent["type"]; data: Record<string, unknown>; externalSessionId?: string };
 
   private readonly active = new Map<string, ActiveProcess>();
@@ -176,13 +177,23 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     const runtime = await this.requireRuntime(session.runtimeInstanceId);
     if (!runtime.executable || !session.workingDirectory) throw new RuntimeError("Runtime is not configured", "configuration_invalid", 503);
 
-    const args = this.buildTaskArgs(runtime, input.prompt, session.externalSessionId);
+    // Resolve the model/effort this execution requests, centrally, once —
+    // never left to whatever the CLI's own ambient default happens to be.
+    const modelConfig = isManagedWorkerKind(this.kind) ? resolveWorkerModel(this.kind) : undefined;
+    const args = this.buildTaskArgs(runtime, input.prompt, session.externalSessionId, modelConfig);
     const child = this.runner.spawn(runtime.executable, args, { cwd: session.workingDirectory });
     const active: ActiveProcess = { child, cancelled: false, timedOut: false };
     this.active.set(session.id, active);
-    await this.store.update(session.id, { status: "running" });
+    await this.store.update(session.id, {
+      status: "running",
+      // Persist the requested model/effort on this execution's own record
+      // (never inferred later from current global settings) so "which
+      // model actually performed this?" has a real, auditable answer.
+      ...(modelConfig ? { metadata: { ...session.metadata, requestedModel: modelConfig } } : {}),
+    });
     const queue = new AsyncQueue<RuntimeEvent>();
     const emit = async (type: RuntimeEvent["type"], data: Record<string, unknown>) => queue.push(await this.store.append(session.id, type, data));
+    let stderrBuffer = "";
 
     const timeout = setTimeout(() => {
       active.timedOut = true;
@@ -205,7 +216,10 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
           }
         })();
         const readStderr = (async () => {
-          for await (const line of stderr) await emit("stderr", { text: line });
+          for await (const line of stderr) {
+            stderrBuffer += `${line}\n`;
+            await emit("stderr", { text: line });
+          }
         })();
         const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
           child.once("error", reject);
@@ -214,16 +228,31 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         const [{ code, signal }] = await Promise.all([exit, readStdout, readStderr]);
         clearTimeout(timeout);
         const status = active.cancelled ? "cancelled" : active.timedOut ? "timed_out" : code === 0 ? "completed" : "failed";
+        // A failed run gets one extra check: did the runtime itself reject
+        // the requested model, as opposed to an ordinary task failure? If
+        // so this must be distinguishable downstream (agent-turn.ts throws
+        // ModelUnavailableError from it) rather than treated like any other
+        // failure — and Sentinel never reacts by silently trying another
+        // model.
+        const modelUnavailable = status === "failed" && Boolean(modelConfig) && looksLikeModelUnavailable(stderrBuffer);
+        const latestSession = await this.store.get(session.id);
         await this.store.update(session.id, {
           status,
           exitCode: code ?? undefined,
           completedAt: new Date(),
           ...(active.cancelled ? { cancelledAt: new Date() } : {}),
+          ...(modelUnavailable ? { metadata: { ...(latestSession?.metadata ?? {}), requestedModel: modelConfig, modelUnavailable: true } } : {}),
         });
         await emit(status === "cancelled" ? "cancelled" : status === "completed" ? "completed" : "error", {
           exitCode: code,
           signal,
           ...(active.timedOut ? { reason: "timeout" } : {}),
+          ...(modelUnavailable ? {
+            modelUnavailable: true,
+            requestedModel: modelConfig?.runtimeModelId,
+            requestedEffort: modelConfig?.effort,
+            reason: stderrBuffer.slice(0, 2_000),
+          } : {}),
         });
         queue.close();
       } catch (error) {
