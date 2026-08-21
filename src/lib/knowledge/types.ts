@@ -46,6 +46,7 @@ export type KnowledgeEdgeType =
   | "belongs_to"
   | "created_by"
   | "assigned_to"
+  | "reviewed_by"
   | "generated_by"
   | "depends_on"
   | "remembers"

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { CollaborationEventType } from "@/types/collaboration";
+import { syncGraphForEvent } from "./graph-sync";
 
 function asJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -17,7 +18,7 @@ export async function emitCollaborationEvent(
   type: CollaborationEventType,
   payload: Record<string, unknown> = {},
 ) {
-  return db.$transaction(async (tx) => {
+  const event = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`collab-event:${chatRoomId}`}))`;
     const aggregate = await tx.collaborationEvent.aggregate({
       where: { chatRoomId },
@@ -32,6 +33,11 @@ export async function emitCollaborationEvent(
       },
     });
   });
+  // Fire-and-forget: keeps the knowledge graph in sync with orchestration
+  // state, but must never delay or fail the event-emission path itself.
+  // syncGraphForEvent already catches and logs internally.
+  void syncGraphForEvent(chatRoomId, type, payload);
+  return event;
 }
 
 export async function listCollaborationEventsSince(chatRoomId: string, afterSequence = 0, limit = 200) {

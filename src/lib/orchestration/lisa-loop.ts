@@ -286,10 +286,10 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
         await setTaskStatus(taskId, "COMPLETED");
         await emitCollaborationEvent(ctx.roomId, "task.completed", { taskId, agentId: task.agentId, reviewerAgentId });
         await recordExecutionOutcome({ chatRoomId: ctx.roomId, taskId, agentId: task.agentId, capabilities: task.capabilities, success: true, reviewCycles: cycles, durationMs: Date.now() - task.createdAt.getTime() });
-        await db.decision.create({
+        const decision = await db.decision.create({
           data: { title: `Completed: ${taskId}`, summary: `${task.agentId} implemented, ${reviewerAgentId} reviewed and approved.`, createdBy: reviewerAgentId, approvedBy: reviewerAgentId, chatRoomId: ctx.roomId, relatedTaskIds: [taskId] },
         });
-        await emitCollaborationEvent(ctx.roomId, "decision.created", { taskId });
+        await emitCollaborationEvent(ctx.roomId, "decision.created", { taskId, decisionId: decision.id });
         return { verdict: "APPROVE", status: "COMPLETED", comments: reviewResult.slice(0, 1_000) };
       }
 
