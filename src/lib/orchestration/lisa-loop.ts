@@ -1,5 +1,6 @@
 import type { Task } from "@prisma/client";
 import { db } from "@/lib/db";
+import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
 import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
 import { AGENT_CAPABILITY_KEYS, type AgentCapabilityKey } from "./capabilities";
@@ -22,7 +23,7 @@ export type LisaTool =
   | "createTask" | "assignTask" | "startTask" | "pauseTask" | "cancelTask"
   | "reassignTask" | "createDependency" | "requestReview" | "requestValidation"
   | "mergeTask" | "getTaskStatus" | "getAgentStatus" | "getWorktreeStatus"
-  | "getArtifact" | "DONE" | "ASK_USER";
+  | "getArtifact" | "getRoutingHistory" | "DONE" | "ASK_USER";
 
 interface Directive {
   tool: LisaTool;
@@ -50,6 +51,7 @@ const TOOL_MENU = `Available tools — respond with ONLY a fenced json code bloc
 - getAgentStatus {} -> workload and health for every implementation worker in the room
 - getWorktreeStatus {taskId}
 - getArtifact {artifactId}
+- getRoutingHistory {agentId} -> that worker's recent success rate, average duration, and average review cycles on past tasks, if any — useful before assignTask when it's a close call
 - DONE {summary} -> claim the objective is complete; Sentinel verifies completion criteria (all tasks resolved, no pending approvals/disagreements/locks) before accepting — if rejected, keep going
 - ASK_USER {question} -> pause and ask the human operator; the room resumes this objective on their next message`;
 
@@ -146,10 +148,12 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
     }
     await setTaskStatus(task.id, "COMPLETED");
     await emitCollaborationEvent(ctx.roomId, "task.completed", { taskId: task.id, agentId: ownerAgentId });
+    await recordExecutionOutcome({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, capabilities: task.capabilities, success: true, durationMs: Date.now() - task.createdAt.getTime() });
     return { status: "COMPLETED", artifactId: artifact.id, summary: output.slice(0, 1_000) };
   } catch (error) {
     await setTaskStatus(task.id, "FAILED");
     await emitCollaborationEvent(ctx.roomId, "agent.failed", { taskId: task.id, error: error instanceof Error ? error.message : "Unknown error" });
+    await recordExecutionOutcome({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, capabilities: task.capabilities, success: false, durationMs: Date.now() - task.createdAt.getTime() });
     return { status: "FAILED", error: error instanceof Error ? error.message : "Unknown error" };
   } finally {
     if (lock) await releaseAgentLocks(ctx.roomId, ownerAgentId, task.id);
@@ -281,6 +285,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
         await postCollaborationMessage({ chatRoomId: ctx.roomId, senderAgentId: reviewerAgentId, recipientAgentIds: [task.agentId], type: "RESULT", taskId, content: reviewResult.slice(0, 4_000) });
         await setTaskStatus(taskId, "COMPLETED");
         await emitCollaborationEvent(ctx.roomId, "task.completed", { taskId, agentId: task.agentId, reviewerAgentId });
+        await recordExecutionOutcome({ chatRoomId: ctx.roomId, taskId, agentId: task.agentId, capabilities: task.capabilities, success: true, reviewCycles: cycles, durationMs: Date.now() - task.createdAt.getTime() });
         await db.decision.create({
           data: { title: `Completed: ${taskId}`, summary: `${task.agentId} implemented, ${reviewerAgentId} reviewed and approved.`, createdBy: reviewerAgentId, approvedBy: reviewerAgentId, chatRoomId: ctx.roomId, relatedTaskIds: [taskId] },
         });
@@ -348,6 +353,12 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       if (!artifactId) return { error: "artifactId is required" };
       const artifact = await db.artifact.findUnique({ where: { id: artifactId } });
       return artifact ? { artifact: { id: artifact.id, title: artifact.title, content: artifact.content?.slice(0, 4_000) } } : { error: "artifact not found" };
+    }
+
+    case "getRoutingHistory": {
+      const agentId = typeof args.agentId === "string" ? args.agentId : undefined;
+      if (!agentId) return { error: "agentId is required" };
+      return { stats: await getAgentRoutingStats(agentId) };
     }
 
     default:

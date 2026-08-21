@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { historicalSuccessAdjustment } from "./adaptive-routing";
 import { getCapabilityWeights, type AgentCapabilityKey } from "./capabilities";
 import { findConflictingLock } from "./execution-lock";
 
@@ -32,8 +33,10 @@ export interface WorkerSelection {
  * replaces a fixed "Claude implements, Codex reviews" assignment. Every
  * candidate gets a score from its capability weights averaged over the
  * task's required capabilities; active workload and an existing file-scope
- * conflict both push the score down. The routing reason is returned
- * verbatim so callers can persist it for auditability.
+ * conflict both push the score down, and a small bounded adjustment from
+ * that candidate's actual track record on similar work (adaptive-routing.ts)
+ * nudges it further. The routing reason is returned verbatim so callers can
+ * persist it for auditability.
  */
 export async function selectWorker(input: SelectWorkerInput): Promise<WorkerSelection> {
   const candidates = input.candidates.filter((id) => !input.exclude?.includes(id));
@@ -52,8 +55,9 @@ export async function selectWorker(input: SelectWorkerInput): Promise<WorkerSele
     const workloadPenalty = workload * 0.12;
     const conflicted = await hasFileConflict(input.chatRoomId, agentId, input.fileScope ?? []);
     const conflictPenalty = conflicted ? 0.5 : 0;
-    scores[agentId] = Math.max(0, capabilityScore - workloadPenalty - conflictPenalty);
-    reasons.push(`${agentId}: capability=${capabilityScore.toFixed(2)} workload=${workload} (-${workloadPenalty.toFixed(2)}) conflict=${conflicted ? "yes" : "no"} (-${conflictPenalty.toFixed(2)})`);
+    const historyAdjustment = await historicalSuccessAdjustment(agentId, input.requiredCapabilities);
+    scores[agentId] = Math.max(0, capabilityScore - workloadPenalty - conflictPenalty + historyAdjustment);
+    reasons.push(`${agentId}: capability=${capabilityScore.toFixed(2)} workload=${workload} (-${workloadPenalty.toFixed(2)}) conflict=${conflicted ? "yes" : "no"} (-${conflictPenalty.toFixed(2)}) history=${historyAdjustment >= 0 ? "+" : ""}${historyAdjustment.toFixed(2)}`);
   }
 
   const [best] = Object.entries(scores).sort(([, a], [, b]) => b - a);

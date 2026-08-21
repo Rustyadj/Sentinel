@@ -151,6 +151,10 @@ describe("Lisa's tool-calling execution loop", () => {
     expect(completedEvent).not.toBeNull();
     const locks = await db.executionLock.findMany({ where: { chatRoomId: room.id, releasedAt: null } });
     expect(locks).toHaveLength(0); // released once each task's turn finished
+
+    const executionRecords = await db.taskExecutionRecord.findMany({ where: { chatRoomId: room.id } });
+    expect(executionRecords).toHaveLength(2); // one outcome recorded per completed task, feeding future adaptive routing
+    expect(executionRecords.every((r) => r.success)).toBe(true);
   });
 
   it("rejects a premature DONE claim when a task hasn't actually finished, forcing Lisa to keep going", async () => {
