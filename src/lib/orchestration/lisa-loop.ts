@@ -1,5 +1,6 @@
 import type { Task } from "@prisma/client";
 import { db } from "@/lib/db";
+import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
 import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
@@ -152,9 +153,20 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
     return { status: "COMPLETED", artifactId: artifact.id, summary: output.slice(0, 1_000) };
   } catch (error) {
     await setTaskStatus(task.id, "FAILED");
-    await emitCollaborationEvent(ctx.roomId, "agent.failed", { taskId: task.id, error: error instanceof Error ? error.message : "Unknown error" });
+    const modelUnavailable = error instanceof ModelUnavailableError;
+    await emitCollaborationEvent(ctx.roomId, "agent.failed", {
+      taskId: task.id, error: error instanceof Error ? error.message : "Unknown error",
+      ...(modelUnavailable ? { modelUnavailable: true, requestedModel: error.requestedModel, requestedEffort: error.requestedEffort, runtime: error.kind } : {}),
+    });
     await recordExecutionOutcome({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, capabilities: task.capabilities, success: false, durationMs: Date.now() - task.createdAt.getTime() });
-    return { status: "FAILED", error: error instanceof Error ? error.message : "Unknown error" };
+    return {
+      status: "FAILED", error: error instanceof Error ? error.message : "Unknown error",
+      // No silent model downgrade: this is surfaced as its own outcome so
+      // Lisa can recognize it and decide whether to ask the operator for a
+      // fallback, rather than treating it like an ordinary implementation
+      // failure to just retry.
+      ...(modelUnavailable ? { modelUnavailable: true, requestedModel: error.requestedModel, requestedEffort: error.requestedEffort, runtime: error.kind, recommendation: "Do not retry with a different model yourself — ASK_USER whether to approve a fallback model, or reassign to the other worker if the objective allows it." } : {}),
+    };
   } finally {
     if (lock) await releaseAgentLocks(ctx.roomId, ownerAgentId, task.id);
   }

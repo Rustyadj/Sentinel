@@ -1,3 +1,4 @@
+import type { WorkerModelConfig } from "@/lib/agents/model-policy";
 import { CliRuntimeAdapter } from "./cli-adapter";
 import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types";
 
@@ -6,6 +7,12 @@ import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types
  * `-p`, `--output-format stream-json`, `--resume`, and `--permission-mode`.
  * The real VPS binary/version/auth state is intentionally left unverified until
  * scripts/vps-acceptance-test.sh is run on srv1427612.hstgr.cloud.
+ *
+ * `--model`/`--effort` below request the model-policy resolved runtime id
+ * and effort explicitly, rather than letting the CLI fall back to whatever
+ * it happens to default to. Like the rest of this adapter's flags, the
+ * exact flag names are Sentinel's best-effort mapping and unverified
+ * against the real installed CLI until the VPS acceptance test runs.
  */
 export class ClaudeCodeRuntimeAdapter extends CliRuntimeAdapter {
   readonly kind = "claude-code" as const;
@@ -13,9 +20,10 @@ export class ClaudeCodeRuntimeAdapter extends CliRuntimeAdapter {
   protected readonly authArgs = ["auth", "status"];
   protected readonly supportsResume = true;
 
-  protected buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string) {
+  protected buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string, modelConfig?: WorkerModelConfig) {
     return [
       ...(runtime.args ?? []),
+      ...(modelConfig ? ["--model", modelConfig.runtimeModelId, "--effort", modelConfig.effort] : []),
       "-p", prompt,
       "--output-format", "stream-json",
       "--verbose",

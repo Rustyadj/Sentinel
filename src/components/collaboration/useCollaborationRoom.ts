@@ -57,8 +57,13 @@ export function useCollaborationRoom() {
       try {
         const res = await fetch("/api/rooms");
         if (!res.ok || cancelled) return;
-        const rooms = (await res.json()) as { id: string }[];
-        const activeRoom = rooms[0];
+        const rooms = (await res.json()) as { id: string; isPrimary?: boolean }[];
+        // The primary room is the normal Mission Control experience and
+        // always resets to collaborative/Lisa server-side on this fetch
+        // (see GET /api/rooms) — pick it explicitly rather than assuming
+        // rooms[0] is it, so an ad-hoc direct-worker room never becomes
+        // what a fresh session opens into.
+        const activeRoom = rooms.find((room) => room.isPrimary) ?? rooms[0];
         if (!activeRoom || cancelled) return;
         roomIdRef.current = activeRoom.id;
         await refresh();

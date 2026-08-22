@@ -1,3 +1,4 @@
+import type { WorkerModelConfig } from "@/lib/agents/model-policy";
 import { CliRuntimeAdapter } from "./cli-adapter";
 import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types";
 
@@ -5,6 +6,12 @@ import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types
  * Built against the documented Codex CLI contract: `codex exec --json` with
  * workspace-write sandboxing and on-request approval. Resume is reported as
  * unsupported instead of being emulated. The real VPS binary remains unverified.
+ *
+ * `--model`/`-c model_reasoning_effort=...` below request the model-policy
+ * resolved runtime id and effort explicitly. Like the rest of this
+ * adapter's flags, the exact syntax is Sentinel's best-effort mapping and
+ * unverified against the real installed CLI until the VPS acceptance test
+ * runs.
  */
 export class CodexRuntimeAdapter extends CliRuntimeAdapter {
   readonly kind = "codex" as const;
@@ -12,8 +19,13 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
   protected readonly authArgs = ["login", "status"];
   protected readonly supportsResume = false;
 
-  protected buildTaskArgs(runtime: RuntimeInstance, prompt: string) {
-    return ["exec", "--json", ...(runtime.args ?? []), prompt];
+  protected buildTaskArgs(runtime: RuntimeInstance, prompt: string, _externalSessionId?: string, modelConfig?: WorkerModelConfig) {
+    return [
+      "exec", "--json",
+      ...(runtime.args ?? []),
+      ...(modelConfig ? ["--model", modelConfig.runtimeModelId, "-c", `model_reasoning_effort="${modelConfig.effort}"`] : []),
+      prompt,
+    ];
   }
 
   protected parseStructuredLine(line: string, sessionId: string): { type: RuntimeEvent["type"]; data: Record<string, unknown>; externalSessionId?: string } {

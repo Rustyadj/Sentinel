@@ -117,6 +117,12 @@ model ChatRoom {
   autonomyLevel String  @default("assisted") // manual, assisted, autonomous
   paused        Boolean @default(false)
 
+  // --- Lisa-first routing (additive) — the one "Mission Control" room per
+  // user that always resets to collaborative/Lisa when resolved via
+  // GET /api/rooms, as opposed to an ad-hoc direct-worker room the user
+  // explicitly created (which may keep whatever mode it was left in).
+  isPrimary Boolean @default(false)
+
   project              Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user                 User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
   messages             Message[]
