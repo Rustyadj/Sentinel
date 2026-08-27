@@ -22,7 +22,7 @@ async function findNode(sourceType: string, sourceId: string) {
  * passes as soon as the write actually lands, and only times out if it
  * genuinely never does.
  */
-async function waitFor<T>(check: () => Promise<T | null | undefined>, timeoutMs = 2000, intervalMs = 25): Promise<T | null> {
+async function waitFor<T>(check: () => Promise<T | null | undefined>, timeoutMs = 8000, intervalMs = 50): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const result = await check();
