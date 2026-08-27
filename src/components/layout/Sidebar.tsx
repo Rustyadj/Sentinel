@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Settings,
   Shield,
   type LucideIcon,
@@ -38,6 +39,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Network,
   LayoutGrid,
   Activity,
+  Search,
   Settings,
   Shield,
 };
