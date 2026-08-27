@@ -5,27 +5,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
+  Activity,
   BookOpen,
   Bot,
-  Building2,
-  Code2,
-  DollarSign,
-  FlaskConical,
-  Folder,
-  GitBranch,
   Home,
-  Kanban,
-  Landmark,
-  Megaphone,
+  LayoutGrid,
+  ListChecks,
   MessageSquare,
-  Package,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Settings,
   Shield,
-  Sparkles,
-  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,22 +33,15 @@ import {
 const ICON_MAP: Record<string, LucideIcon> = {
   Home,
   MessageSquare,
-  Folder,
   BookOpen,
   Bot,
-  Building2,
-  GitBranch,
-  Kanban,
-  Package,
+  ListChecks,
+  Network,
+  LayoutGrid,
+  Activity,
+  Search,
   Settings,
   Shield,
-  Sparkles,
-  Wand2,
-  Megaphone,
-  Landmark,
-  Code2,
-  DollarSign,
-  FlaskConical,
 };
 
 function NavLink({ item, active, expanded }: { item: NavItem; active: boolean; expanded: boolean }) {
@@ -167,25 +153,27 @@ export function Sidebar() {
           ))}
         </ul>
 
-        <div className="mt-7 border-t border-[#13202f] pt-5">
-          <div className={cn("mb-2 items-center justify-between px-2.5", expanded ? "flex" : "hidden")}>
-            <span className="text-[10px] font-medium tracking-[0.08em] text-[#758195]">WORKSPACES</span>
-            <button
-              type="button"
-              aria-label="Create workspace"
-              className="flex h-5 w-5 items-center justify-center rounded text-[#8793a6] hover:bg-white/[0.06] hover:text-white"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
+        {WORKSPACE_NAV.length > 0 ? (
+          <div className="mt-7 border-t border-[#13202f] pt-5">
+            <div className={cn("mb-2 items-center justify-between px-2.5", expanded ? "flex" : "hidden")}>
+              <span className="text-[10px] font-medium tracking-[0.08em] text-[#758195]">WORKSPACES</span>
+              <button
+                type="button"
+                aria-label="Create workspace"
+                className="flex h-5 w-5 items-center justify-center rounded text-[#8793a6] hover:bg-white/[0.06] hover:text-white"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <ul className="space-y-0.5" role="list">
+              {WORKSPACE_NAV.map((workspace) => (
+                <li key={workspace.id}>
+                  <WorkspaceLink item={workspace} active={pathname.startsWith(workspace.href)} expanded={expanded} />
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="space-y-0.5" role="list">
-            {WORKSPACE_NAV.map((workspace) => (
-              <li key={workspace.id}>
-                <WorkspaceLink item={workspace} active={pathname.startsWith(workspace.href)} expanded={expanded} />
-              </li>
-            ))}
-          </ul>
-        </div>
+        ) : null}
       </div>
 
       <Link
