@@ -31,9 +31,19 @@ async function patchJson(url: string, body: unknown): Promise<void> {
  * environments (SSR, tests without a server) — the room simply keeps
  * running on local fixture/optimistic state in that case.
  */
-export function useCollaborationRoom() {
+export function useCollaborationRoom(initialAgentId?: string) {
   const room = useCollaborationStore();
   const roomIdRef = useRef<string | null>(null);
+  const pendingAgentPreselectionRef = useRef(initialAgentId);
+
+  useEffect(() => {
+    pendingAgentPreselectionRef.current = initialAgentId;
+    if (!initialAgentId) return;
+
+    const state = useCollaborationStore.getState();
+    state.setSoloAgentId(initialAgentId);
+    state.setMode("solo");
+  }, [initialAgentId]);
 
   const refresh = useCallback(async () => {
     const roomId = roomIdRef.current;
@@ -43,6 +53,13 @@ export function useCollaborationRoom() {
       if (!res.ok) return;
       const snapshot = (await res.json()) as ServerRoomSnapshot;
       useCollaborationStore.getState().hydrate(snapshot);
+      const agentId = pendingAgentPreselectionRef.current;
+      if (agentId) {
+        const state = useCollaborationStore.getState();
+        state.setSoloAgentId(agentId);
+        state.setMode("solo");
+        pendingAgentPreselectionRef.current = undefined;
+      }
     } catch (error) {
       console.error("[collaboration] failed to refresh room state", error);
     }

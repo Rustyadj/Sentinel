@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { ModuleTabs } from "./ModuleTabs";
 import { RightPanel } from "./RightPanel";
+import { CommandPalette } from "./CommandPalette";
 import { useAppStore } from "@/store/useAppStore";
 
 interface AppShellProps {
@@ -13,11 +14,12 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, rightPanel = true }: AppShellProps) {
-  const { rightPanelOpen } = useAppStore();
+  const { rightPanelOpen, commandBarOpen, setCommandBarOpen } = useAppStore();
 
   return (
     <div className="sentinel-app-shell flex h-full w-full flex-col overflow-hidden bg-[--background] text-[--foreground]">
       <TopBar />
+      <CommandPalette open={commandBarOpen} onOpenChange={setCommandBarOpen} />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* The rail begins below the brand bar and expands over module content. */}
