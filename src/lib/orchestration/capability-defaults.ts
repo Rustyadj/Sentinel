@@ -34,6 +34,7 @@ export const DEFAULT_CAPABILITY_WEIGHTS: Record<string, CapabilityWeights> = {
     database: 0.85, devops: 0.8, research: 0.75,
   },
   "hermes-lisa": { research: 0.9, architecture: 0.85 },
+  "hermes-nathan2": { research: 0.9, architecture: 0.85 },
   openclaw: { research: 0.85 },
 };
 

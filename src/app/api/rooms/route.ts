@@ -42,7 +42,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
         data: {
           name: "Mission Control",
           userId: user.id,
-          agentIds: ["hermes-lisa", "claude-code", "codex"],
+          agentIds: ["hermes-lisa", "hermes-nathan2", "claude-code", "codex"],
           isPrimary: true,
         },
         select: roomSelect,
