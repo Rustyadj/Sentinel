@@ -53,12 +53,16 @@ export function useCollaborationRoom(initialAgentId?: string) {
       if (!res.ok) return;
       const snapshot = (await res.json()) as ServerRoomSnapshot;
       useCollaborationStore.getState().hydrate(snapshot);
+      // Every collaboration-event replays this refresh, and the server
+      // snapshot always carries the room's persisted (usually collaborative)
+      // mode — so a one-shot preselection gets stomped by the very next SSE
+      // event. Keep reapplying on every refresh until the user explicitly
+      // changes mode themselves (see setMode below), not just the first time.
       const agentId = pendingAgentPreselectionRef.current;
       if (agentId) {
         const state = useCollaborationStore.getState();
         state.setSoloAgentId(agentId);
         state.setMode("solo");
-        pendingAgentPreselectionRef.current = undefined;
       }
     } catch (error) {
       console.error("[collaboration] failed to refresh room state", error);
@@ -130,6 +134,10 @@ export function useCollaborationRoom(initialAgentId?: string) {
   }, [room]);
 
   const setMode = useCallback((mode: CollaborationMode) => {
+    // A deliberate mode change (this callback — refresh()'s own internal
+    // re-application above bypasses it) means the URL preselection no
+    // longer applies; otherwise the next SSE refresh would force it back.
+    pendingAgentPreselectionRef.current = undefined;
     room.setMode(mode);
     if (roomIdRef.current) void postJson(`/api/collaboration/rooms/${roomIdRef.current}/actions`, { type: "setMode", mode });
   }, [room]);

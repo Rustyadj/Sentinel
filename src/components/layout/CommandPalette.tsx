@@ -103,7 +103,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [agents, setAgents] = useState<VpsAgentSummary[]>([]);
   const [agentsState, setAgentsState] = useState<"idle" | "ready" | "unavailable">("idle");
+  // Which agents a direct "Talk to X" command can actually reach: the
+  // registry (/api/vps/agents) lists every configured agent, but a direct
+  // chat only works for agents in the primary room's roster — anything
+  // else silently falls back to Lisa's collaborative loop instead of
+  // opening the requested conversation (see runCollaborationTurn).
+  const [roomAgentIds, setRoomAgentIds] = useState<Set<string> | null>(null);
   const hasQuery = query.trim().length > 0;
+  const reachableAgents = roomAgentIds ? agents.filter((agent) => roomAgentIds.has(agent.id)) : [];
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
@@ -152,6 +159,28 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     return () => controller.abort();
   }, [agentsState, open]);
+
+  useEffect(() => {
+    if (!open || roomAgentIds !== null) return;
+
+    const controller = new AbortController();
+    fetch("/api/rooms", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Room request returned ${response.status}`);
+        const rooms = (await response.json()) as { id: string; isPrimary?: boolean; agentIds?: string[] }[];
+        const primaryRoom = rooms.find((room) => room.isPrimary) ?? rooms[0];
+        setRoomAgentIds(new Set(primaryRoom?.agentIds ?? []));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRoomAgentIds(new Set());
+      });
+
+    return () => controller.abort();
+  }, [open, roomAgentIds]);
 
   const navigate = (href: string) => {
     handleOpenChange(false);
@@ -207,7 +236,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               heading="Agents"
               className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[9px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-[#627287]"
             >
-              {agents.map((agent) => (
+              {reachableAgents.map((agent) => (
                 <Command.Item
                   key={agent.id}
                   value={`Talk to ${agent.name}`}
