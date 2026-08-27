@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import { requireMemoryAccess } from "@/lib/knowledge/memoryAccess";
+import { removeEntityFromGraph, syncMemoryToGraph } from "@/lib/knowledge/entity-sync";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -66,10 +67,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         source: true,
         pinned: true,
         archived: true,
+        projectId: true,
         createdAt: true,
         updatedAt: true,
       },
     });
+    await syncMemoryToGraph(memory, user.id).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
 
     return NextResponse.json(memory);
   } catch (err) {
@@ -88,6 +91,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     if (!(await requireMemoryAccess(id, user.id, true))) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     await db.memory.delete({ where: { id } });
+    await removeEntityFromGraph("memory", id).catch((err) => console.error("[memories] graph removal failed (non-fatal):", err));
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {
