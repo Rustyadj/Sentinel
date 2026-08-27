@@ -27,6 +27,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { id: "workspaces", label: "Workspaces", icon: "LayoutGrid",    href: "/workspaces" },
   { id: "memory",     label: "Memory",     icon: "BookOpen",      href: "/memory" },
   { id: "graph",      label: "Graph",      icon: "Network",       href: "/chat?space=graph" },
+  { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
   { id: "settings",   label: "Settings",   icon: "Settings",      href: "/settings" },
 ];
 

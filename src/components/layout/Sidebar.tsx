@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
+  Activity,
   BookOpen,
   Bot,
   Home,
@@ -36,6 +37,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ListChecks,
   Network,
   LayoutGrid,
+  Activity,
   Settings,
   Shield,
 };
