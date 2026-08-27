@@ -114,6 +114,8 @@ function CollaborationCommandPalette({ room }: { room: CollaborationRoomControll
   const setCommandPaletteOpen = room.setCommandPaletteOpen;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const isTextEntry = event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.matches("input, textarea, select, [role='textbox']"));
+      if (event.defaultPrevented || (!commandPaletteOpen && isTextEntry)) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setCommandPaletteOpen(!commandPaletteOpen); }
     };
     window.addEventListener("keydown", onKeyDown);

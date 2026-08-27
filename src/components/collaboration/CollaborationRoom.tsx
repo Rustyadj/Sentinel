@@ -25,8 +25,8 @@ import { CollaborationParticipantBar } from "./CollaborationParticipantBar";
 import { useCollaborationGraphHighlights } from "./useCollaborationGraphHighlights";
 import { useCollaborationRoom } from "./useCollaborationRoom";
 
-export function CollaborationRoom() {
-  const room = useCollaborationRoom();
+export function CollaborationRoom({ initialAgentId }: { initialAgentId?: string }) {
+  const room = useCollaborationRoom(initialAgentId);
   const setLaneOpen = room.setLaneOpen;
   const highlightedTitles = useCollaborationGraphHighlights(room);
   const [inspectionApprovalId, setInspectionApprovalId] = useState<string | null>(null);
