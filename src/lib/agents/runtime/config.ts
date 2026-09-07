@@ -48,7 +48,10 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     agentId: "hermes-nathan2",
     kind: "hermes",
     transport: "docker",
-    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4861",
+    // Verified 2026-09-07 on the VPS: hermes-nathan2 (container a8a47ec85ac6, pid 119318)
+    // listens on 0.0.0.0:4864. Port 4861 answered nothing. Confirmed reachable from the
+    // app container as http://host.docker.internal:4864 -> HTTP 200.
+    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4864",
     containerName: process.env.HERMES_NATHAN2_CONTAINER ?? "hermes-nathan2",
     configPath: `${CONFIG_ROOT}/hermes-nathan2`,
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-nathan2.log` },
