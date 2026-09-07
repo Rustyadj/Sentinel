@@ -1,3 +1,4 @@
+import { resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, looksLikeModelUnavailable, ModelUnavailableError } from "@/lib/agents/model-policy";
 import { RuntimeError } from "./errors";
 import { HttpAgentRuntimeAdapter } from "./http-adapter";
 import { runtimeSessionStore, type RuntimeSessionStore } from "./store";
@@ -23,8 +24,19 @@ import type {
 
 interface QueueItem<T> { value?: T; error?: Error; done?: boolean }
 
-function hermesSessionToken(): string | undefined {
-  return process.env.HERMES_SESSION_TOKEN?.trim() || undefined;
+function hermesAuth(agentId: string) {
+  const prefix = agentId.replaceAll("-", "_").toUpperCase();
+  const token = process.env[`${prefix}_SESSION_TOKEN`]?.trim() || (agentId === "hermes-lisa" ? process.env.HERMES_SESSION_TOKEN?.trim() : undefined);
+  const username = process.env[`${prefix}_USERNAME`];
+  const password = process.env[`${prefix}_PASSWORD`];
+  return { token, credentials: username && password ? { username, password } : undefined };
+}
+async function assertNoHermesFallback(client: HermesWebSocketClient, model: string, effort: import("@/lib/agents/model-policy").EffortLevel | null) {
+  const { config } = await client.call<{ config: Record<string, unknown> }>("config.get", { key: "full" });
+  const enabled = (value: unknown) => Array.isArray(value) ? value.length > 0 : value != null && value !== false && value !== "";
+  if (!config || enabled(config.fallback_model) || enabled(config.fallback_providers)) {
+    throw new ModelUnavailableError("hermes", model, effort, "Hermes fallback configuration must be empty; Sentinel never permits automatic model substitution");
+  }
 }
 
 /** Bridges the WS client's event-callback model into an AsyncIterable for send(). */
@@ -79,8 +91,16 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   discover(): Promise<RuntimeDiscovery> { return this.fallback.discover(); }
-  health(runtime: RuntimeInstance): Promise<RuntimeHealth> { return this.fallback.health(runtime); }
-  readiness(runtime: RuntimeInstance): Promise<RuntimeReadiness> { return this.fallback.readiness(runtime); }
+  async health(runtime: RuntimeInstance): Promise<RuntimeHealth> {
+    const health = await this.fallback.health(runtime);
+    if (!runtime.endpoint) return health;
+    try {
+      const client = await HermesWebSocketClient.connect(runtime.endpoint, fetch, 5000, hermesAuth(runtime.agentId).token, hermesAuth(runtime.agentId).credentials);
+      client.close();
+      return { ...health, installed: true, reachable: true, authenticated: true, ready: true, degraded: false, failureCode: undefined, message: undefined };
+    } catch { return { ...health, authenticated: false, ready: false, degraded: true, failureCode: "hermes_auth_unavailable" }; }
+  }
+  async readiness(runtime: RuntimeInstance): Promise<RuntimeReadiness> { const health = await this.health(runtime); return { ready: health.ready, reason: health.failureCode }; }
   getLogs(query: RuntimeLogQuery): Promise<RuntimeLogPage> { return this.fallback.getLogs(query); }
   restart(runtimeId: string): Promise<RuntimeActionResult> { return this.fallback.restart(runtimeId); }
   reload(runtimeId: string): Promise<RuntimeActionResult> { return this.fallback.reload(runtimeId); }
@@ -104,19 +124,26 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async startSession(input: StartSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
+    const config = await resolveEffectiveAgentModel(runtime.agentId, "hermes", input.modelOverride);
     const client = await HermesWebSocketClient.connect(
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesSessionToken(),
+      hermesAuth(runtime.agentId).token,
+      hermesAuth(runtime.agentId).credentials,
     );
     try {
-      const result = await client.call<{ session_id: string }>("session.create", {
+      await assertNoHermesFallback(client, config.runtimeModelId, config.effort);
+      const result = await client.call<{ session_id: string; info?: { model?: string; provider?: string } }>("session.create", {
         cwd: input.workingDirectory,
         source: "sentinel",
+        model: config.runtimeModelId,
+        ...(config.effort ? { reasoning_effort: config.effort } : {}),
       });
-      return this.store.create(input, "hermes", runtime.agentId, input.workingDirectory, result.session_id);
+      const session = await this.store.create(input, "hermes", runtime.agentId, input.workingDirectory, result.session_id);
+      return this.store.update(session.id, { metadata: modelProvenance(runtime.agentId, "hermes", config) });
     } catch (err) {
+      if (looksLikeModelUnavailable(String(err))) throw new ModelUnavailableError("hermes", config.runtimeModelId, config.effort, String(err));
       throw wrapHermesError(err);
     } finally {
       client.close();
@@ -125,11 +152,15 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async resumeSession(input: ResumeSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
+    const existing = await this.store.list({ runtimeId: input.runtimeId, userId: input.userId });
+    const match = existing.find(s => s.userId === input.userId && s.externalSessionId === input.externalSessionId);
+    if (!match || !sessionModelConfiguration(match.metadata)) throw new RuntimeError("Session not found", "session_not_found", 404);
     const client = await HermesWebSocketClient.connect(
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesSessionToken(),
+      hermesAuth(runtime.agentId).token,
+      hermesAuth(runtime.agentId).credentials,
     );
     try {
       await client.call("session.resume", { session_id: input.externalSessionId });
@@ -138,15 +169,13 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     } finally {
       client.close();
     }
-    const existing = await this.store.list({ runtimeId: input.runtimeId, userId: input.userId });
-    const match = existing.find((s) => s.externalSessionId === input.externalSessionId);
-    if (!match) throw new RuntimeError("Session not found", "session_not_found", 404);
     return match;
   }
 
   async *send(input: SendTaskInput): AsyncIterable<RuntimeEvent> {
     const session = await this.store.get(input.sessionId);
-    if (!session) throw new RuntimeError("Session not found", "session_not_found", 404);
+    if (!session || session.userId !== input.userId) throw new RuntimeError("Session not found", "session_not_found", 404);
+    if (activeConnections.has(session.id)) throw new RuntimeError("Session already has an active task", "session_busy", 409);
     if (!session.externalSessionId) throw new RuntimeError("Session has no Hermes session id", "session_not_ready", 409);
     const runtime = await this.requireRuntime(session.runtimeInstanceId);
 
@@ -154,8 +183,13 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesSessionToken(),
+      hermesAuth(runtime.agentId).token,
+      hermesAuth(runtime.agentId).credentials,
     );
+    const pinned = sessionModelConfiguration(session.metadata);
+    if (!pinned) { client.close(); throw new RuntimeError("Session model provenance missing", "session_model_unknown", 409); }
+    try { await assertNoHermesFallback(client, pinned.runtimeModelId, pinned.effort); } catch (error) { client.close(); throw error; }
+    await this.store.update(session.id, { status: "running" });
     activeConnections.set(input.sessionId, client);
 
     // Hermes's own session dict is process-memory-bound and reaps sessions
@@ -167,6 +201,12 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     let externalSessionId = session.externalSessionId;
 
     const queue = new AsyncQueue<RuntimeEvent>();
+    activeQueues.set(session.id, queue);
+    const timeout = setTimeout(() => {
+      void client.call("session.interrupt", { session_id: externalSessionId }).catch(() => undefined);
+      void this.store.update(session.id, { status: "timed_out", completedAt: new Date() });
+      queue.fail(new RuntimeError("Hermes turn timed out", "runtime_timeout", 503));
+    }, 180_000);
     // handleFrame() does an async DB round-trip (store.append) to assign each
     // event's sequence number. Firing it unawaited per WS message let a later
     // frame's DB write occasionally resolve before an earlier one's, pushing
@@ -192,9 +232,13 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
           if (!(err instanceof HermesWsError) || err.code !== 4001) throw err;
           // Hermes reaped the old session — mint a fresh one transparently
           // and persist it so the next turn starts from a live session too.
+          const config = sessionModelConfiguration(session.metadata);
+          if (!config) throw new RuntimeError("Cannot recover session without model provenance", "session_model_unknown", 409);
           const created = await client.call<{ session_id: string }>("session.create", {
             cwd: session.workingDirectory,
             source: "sentinel",
+            model: config.runtimeModelId,
+            ...(config.effort ? { reasoning_effort: config.effort } : {}),
           });
           externalSessionId = created.session_id;
           await this.store.update(input.sessionId, { externalSessionId });
@@ -207,13 +251,16 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
           queue.fail(new RuntimeError(`Unexpected prompt.submit ack: ${ack.status}`, "hermes_protocol_error", 503));
         }
       } catch (err) {
-        queue.fail(wrapHermesError(err));
+        await this.store.update(session.id, { status: "failed", completedAt: new Date() });
+        queue.fail(looksLikeModelUnavailable(String(err)) ? new ModelUnavailableError("hermes", pinned.runtimeModelId, pinned.effort, String(err)) : wrapHermesError(err));
       }
     })();
 
     try {
       yield* queue;
     } finally {
+      clearTimeout(timeout);
+      activeQueues.delete(input.sessionId);
       unsubscribe();
       activeConnections.delete(input.sessionId);
       client.close();
@@ -232,10 +279,14 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       runtime.endpoint!,
       fetch,
       undefined,
-      hermesSessionToken(),
+      hermesAuth(runtime.agentId).token,
+      hermesAuth(runtime.agentId).credentials,
     );
     try {
       await client.call("session.interrupt", { session_id: session.externalSessionId });
+      await this.store.update(sessionId, { status: "cancelled", cancelledAt: new Date(), completedAt: new Date() });
+      const queue = activeQueues.get(sessionId);
+      if (queue) { queue.push(await this.store.append(sessionId, "cancelled", {})); queue.close(); }
       return { success: true };
     } catch (err) {
       return { success: false, message: err instanceof Error ? err.message : String(err) };
@@ -247,6 +298,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
 // Tracks the WS connection a live send() is using, so cancel() can interrupt
 // the same turn instead of racing a second connection against it.
+const activeQueues = new Map<string, AsyncQueue<RuntimeEvent>>();
 const activeConnections = new Map<string, HermesWebSocketClient>();
 
 function wrapHermesError(err: unknown): Error {
@@ -263,7 +315,17 @@ function wrapHermesError(err: unknown): Error {
  */
 async function handleFrame(store: RuntimeSessionStore, sessionId: string, frame: HermesEventFrame, queue: AsyncQueue<RuntimeEvent>) {
   try {
+    const current = await store.get(sessionId);
+    if (current?.status === "cancelled" || current?.status === "timed_out") return;
     const payload = frame.payload ?? {};
+    if (typeof payload.model === "string" || typeof payload.provider === "string") {
+      const session = await store.get(sessionId);
+      await store.update(sessionId, { metadata: { ...session?.metadata,
+        ...(typeof payload.model === "string" ? { actualModel: payload.model } : {}),
+        ...(typeof payload.provider === "string" ? { provider: payload.provider } : {}),
+        ...(typeof payload.reasoning_effort === "string" && payload.reasoning_effort !== "" ? { actualEffort: payload.reasoning_effort } : {}),
+      } });
+    }
     switch (frame.type) {
       case "message.start":
         queue.push(await store.append(sessionId, "status", { kind: "message_start", ...payload }));
@@ -292,10 +354,17 @@ async function handleFrame(store: RuntimeSessionStore, sessionId: string, frame:
         queue.push(await store.append(sessionId, "status", { kind: "session_info", ...payload }));
         return;
       case "error":
-        queue.push(await store.append(sessionId, "error", payload));
+        {
+          const session = await store.get(sessionId);
+          const config = sessionModelConfiguration(session?.metadata ?? {});
+          const unavailable = looksLikeModelUnavailable(JSON.stringify(payload));
+          await store.update(sessionId, { status: "failed", completedAt: new Date(), metadata: { ...session?.metadata, modelUnavailable: unavailable } });
+          queue.push(await store.append(sessionId, "error", { ...payload, ...(unavailable ? { code: "MODEL_UNAVAILABLE", runtime: "hermes", modelUnavailable: true, requestedModel: config?.runtimeModelId, requestedEffort: config?.effort, reason: JSON.stringify(payload) } : {}) }));
+        }
         queue.close();
         return;
       case "message.complete":
+        await store.update(sessionId, { status: "completed", completedAt: new Date() });
         queue.push(await store.append(sessionId, "completed", payload));
         queue.close();
         return;

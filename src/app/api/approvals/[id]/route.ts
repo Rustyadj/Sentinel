@@ -16,6 +16,10 @@ export async function PATCH(req: NextRequest, { params }: Context) {
       return NextResponse.json({ error: "status must be approved or rejected" }, { status: 400 });
     }
     const decided = await decideApproval(id, body.status, user.id, body.decisionNote);
+    if (body.status === "rejected") {
+      const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+      await recordProductionFailure("rejected_approval", { sourceId: id, workspaceId: approval.workspaceId, userId: user.id, context: { decisionNote: body.decisionNote, taskId: approval.taskId } }).catch(() => undefined);
+    }
     if (body.status === "approved" && approval.taskId) {
       // A collaboration-room approval gate resuming its task is a distinct
       // pipeline from this route's normal request/response cycle, so it

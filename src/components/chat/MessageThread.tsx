@@ -173,6 +173,8 @@ function ThreadMessage({
           )}
         </div>
 
+        {!isUser && !message.isStreaming && <MessageFeedback messageId={message.id} />}
+
         {/* Approved reasoning summary — never raw chain-of-thought */}
         {message.reasoning && <ReasoningSummary summary={message.reasoning} />}
 
@@ -374,4 +376,17 @@ function ThinkingRow({ agent }: { agent?: Agent }) {
       </div>
     </div>
   );
+}
+
+function MessageFeedback({ messageId }: { messageId: string }) {
+  const [status, setStatus] = useState("");
+  async function reject() {
+    setStatus("Recording…");
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating: "thumbs_down" }) });
+      if (!response.ok) throw new Error("Could not record feedback");
+      setStatus("Feedback recorded");
+    } catch { setStatus("Could not record feedback"); }
+  }
+  return <div className="mt-1 text-xs text-[--muted-foreground]"><button onClick={() => void reject()} disabled={status === "Feedback recorded" || status === "Recording…"} aria-label="Mark response unhelpful">Thumbs down</button>{status && <span role="status" className="ml-2">{status}</span>}</div>;
 }

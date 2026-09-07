@@ -75,6 +75,7 @@ model Agent {
   avatar           String
   color            String
   model            String
+  reasoningEffort  String?
   systemPrompt     String?
   description      String   @default("")
   skills           String[]

@@ -103,10 +103,10 @@ describe("ClaudeCodeRuntimeAdapter — model policy wiring", () => {
       [], [], 0,
     );
     expect(capturedArgs).toContain("--model");
-    expect(capturedArgs[capturedArgs.indexOf("--model") + 1]).toBe("claude-sonnet-5");
+    expect(capturedArgs[capturedArgs.indexOf("--model") + 1]).toBe("claude-opus-5");
     expect(capturedArgs).toContain("--effort");
-    expect(capturedArgs[capturedArgs.indexOf("--effort") + 1]).toBe("high");
-    expect(finalSession?.metadata.requestedModel).toMatchObject({ displayName: "Claude Sonnet 5", runtimeModelId: "claude-sonnet-5", effort: "high" });
+    expect(capturedArgs[capturedArgs.indexOf("--effort") + 1]).toBe("low");
+    expect(finalSession?.metadata).toMatchObject({ requestedModel: "claude-opus-5", requestedEffort: "low" });
   });
 
   it("honors an env override for the runtime model id", async () => {
@@ -121,11 +121,11 @@ describe("ClaudeCodeRuntimeAdapter — model policy wiring", () => {
   it("flags a rejected model as MODEL_UNAVAILABLE without falling back to a different one", async () => {
     const { events, finalSession } = await collectArgsAndRun(
       (resolveRuntime, store, runner) => new ClaudeCodeRuntimeAdapter(resolveRuntime, store, runner),
-      [], ["Error: model 'claude-sonnet-5' not found for this account"], 1,
+      [], ["Error: model 'claude-opus-5' not found for this account"], 1,
     );
     const errorEvent = events.find((e) => e.type === "error")!;
     expect(errorEvent.data.modelUnavailable).toBe(true);
-    expect(errorEvent.data.requestedModel).toBe("claude-sonnet-5");
+    expect(errorEvent.data.requestedModel).toBe("claude-opus-5");
     expect(finalSession?.status).toBe("failed");
     expect(finalSession?.metadata.modelUnavailable).toBe(true);
   });
@@ -147,7 +147,43 @@ describe("CodexRuntimeAdapter — model policy wiring", () => {
       [], [], 0,
     );
     expect(capturedArgs).toContain("--model");
-    expect(capturedArgs[capturedArgs.indexOf("--model") + 1]).toBe("gpt-5.6-sol");
-    expect(capturedArgs.some((a) => a.includes("model_reasoning_effort") && a.includes("high"))).toBe(true);
+    expect(capturedArgs[capturedArgs.indexOf("--model") + 1]).toBe("gpt-6-astra");
+    expect(capturedArgs.some((a) => a.includes("model_reasoning_effort") && a.includes("low"))).toBe(true);
+  });
+});
+
+describe.skipIf(!process.env.DATABASE_URL)("persisted model drives the next execution", () => {
+  it.each(["claude-code", "codex"] as const)("%s pins running/existing sessions and updates the next session's process arguments", async kind => {
+    const { db } = await import("@/lib/db");
+    const { randomUUID } = await import("node:crypto");
+    const initialModel = kind === "codex" ? "gpt-6-astra" : "claude-opus-5";
+    const nextModel = kind === "codex" ? "gpt-5.6-sol" : "claude-sonnet-5";
+    const agent = await db.agent.create({ data: { id: randomUUID(), name: "Model process test", role: "assistant", avatar: "x", color: "#000000", model: initialModel, reasoningEffort: "low" } });
+    try {
+      const calls: string[][] = [];
+      const runner: RuntimeProcessRunner = {
+        run: async () => ({ exitCode: 0, stdout: "", stderr: "" }), realpath: async path => path,
+        spawn: (_, args) => { calls.push(args); return fakeChild(['{"type":"status","model":"untrusted-init-label"}'], [], 0) as unknown as ReturnType<RuntimeProcessRunner["spawn"]>; },
+      };
+      const store = new InMemoryStore();
+      const resolve = async () => ({ ...runtimeAt(kind), agentId: agent.id });
+      const adapter = kind === "codex" ? new CodexRuntimeAdapter(resolve, store, runner) : new ClaudeCodeRuntimeAdapter(resolve, store, runner);
+      const first = await adapter.startSession({ runtimeId: "runtime-test", userId: "u1" });
+      for await (const event of adapter.send({ sessionId: first.id, userId: "u1", prompt: "first" })) {
+        if (event.type === "stdout") {
+          expect((await store.get(first.id))?.status).toBe("running");
+          await db.agent.update({ where: { id: agent.id }, data: { model: nextModel, reasoningEffort: "high" } });
+        }
+      }
+      for await (const _event of adapter.send({ sessionId: first.id, userId: "u1", prompt: "existing session" })) { /* drain */ }
+      const next = await adapter.startSession({ runtimeId: "runtime-test", userId: "u1" });
+      for await (const _event of adapter.send({ sessionId: next.id, userId: "u1", prompt: "new session" })) { /* drain */ }
+      expect(calls.map(args => args[args.indexOf("--model") + 1])).toEqual([initialModel, initialModel, nextModel]);
+      const efforts = calls.map(args => kind === "codex" ? args.find(arg => arg.startsWith("model_reasoning_effort=")) : args[args.indexOf("--effort") + 1]);
+      expect(efforts).toEqual(kind === "codex" ? ['model_reasoning_effort="low"', 'model_reasoning_effort="low"', 'model_reasoning_effort="high"'] : ["low", "low", "high"]);
+      expect((await store.get(first.id))?.metadata).toMatchObject({ requestedModel: initialModel, requestedEffort: "low", modelConfigSource: "agent" });
+      expect((await store.get(first.id))?.metadata.actualModel).toBeUndefined();
+      expect(calls).toHaveLength(3);
+    } finally { await db.agent.delete({ where: { id: agent.id } }); }
   });
 });

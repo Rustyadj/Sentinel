@@ -56,7 +56,7 @@ function Empty({ children }: { children: React.ReactNode }) {
  * Returning to Overview from another tab of the same lens leaves the
  * operator's camera exactly where they left it.
  */
-export function LensOverview({ lens, stats }: { lens: LensId; stats: LensOverviewStats | null }) {
+export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: LensId; stats: LensOverviewStats | null; initialDemoMode?: boolean }) {
   const config = LENS_CONFIG[lens];
   const apiRef = useRef<GlobeGraphApi | null>(null);
   const setLensCluster = useGraphStore((state) => state.setLensCluster);
@@ -99,7 +99,7 @@ export function LensOverview({ lens, stats }: { lens: LensId; stats: LensOvervie
     <div className="grid h-full min-h-[560px] grid-rows-[minmax(420px,1fr)_auto] gap-3 p-3">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="relative min-h-[420px] overflow-hidden rounded-xl border border-[--canvas-card-border] bg-[#01040a]">
-          <NeuralLens apiRef={apiRef} />
+          <NeuralLens apiRef={apiRef} initialDemoMode={initialDemoMode} />
           <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-md border border-white/10 bg-black/55 px-2.5 py-1 text-[9px] font-medium uppercase tracking-wide text-white/70 backdrop-blur-md">
             <span
               className={cn("h-1.5 w-1.5 rounded-full", connected ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-amber-400")}

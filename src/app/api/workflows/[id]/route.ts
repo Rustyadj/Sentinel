@@ -24,6 +24,11 @@ export async function PUT(req: Request, { params }: Params) {
   const workflow = await db.workflow.update({ where: { id }, data: {
     name: body.name, description: body.description, nodes: body.nodes, edges: body.edges, status: body.status,
   } });
+  if (workflow.status === "failed") {
+    const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+    const project = workflow.projectId ? await db.project.findUnique({ where: { id: workflow.projectId }, select: { workspaceId: true } }) : null;
+    await recordProductionFailure("failed_workflow", { sourceId: id, workspaceId: project?.workspaceId, userId: workflow.userId, context: { name: workflow.name, status: workflow.status } }).catch(() => undefined);
+  }
   await syncWorkflowToGraph(workflow).catch((err) => console.error("[workflows] graph sync failed (non-fatal):", err));
   return NextResponse.json(workflow);
 }

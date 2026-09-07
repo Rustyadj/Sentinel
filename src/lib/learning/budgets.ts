@@ -64,17 +64,19 @@ export async function resolveLearningBudget(scopes: LearningBudgetScope[]) {
   };
 }
 
-export async function checkLearningBudget(scopes: LearningBudgetScope[]): Promise<BudgetStatus> {
+export async function checkLearningBudget(scopes: LearningBudgetScope[], options: { excludeExperimentId?: string } = {}): Promise<BudgetStatus> {
   const limits = await resolveLearningBudget(scopes);
   const since = startOfDayUtc();
   const workspaceId = scopes.find((s) => s.scopeType === "workspace")?.scopeId;
 
+  const candidateScope = workspaceId ? { OR: [{ experience: { workspaceId } }, { approvalRequest: { workspaceId } }, { proposedPayload: { path: ["workspaceId"], equals: workspaceId } }] } : {};
+  const experimentScope = { ...(options.excludeExperimentId ? { id: { not: options.excludeExperimentId } } : {}), candidate: candidateScope };
   const [experimentsToday, adversarialRunsToday, runningExperiments] = await Promise.all([
-    db.experimentManifest.count({ where: { startedAt: { gte: since } } }),
+    db.experimentManifest.count({ where: { ...experimentScope, startedAt: { gte: since } } }),
     db.adversarialRun.count({
       where: { createdAt: { gte: since }, ...(workspaceId ? { workspaceId } : {}) },
     }),
-    db.experimentManifest.count({ where: { stage: { notIn: ["completed", "stopped"] } } }),
+    db.experimentManifest.count({ where: { ...experimentScope, stage: { notIn: ["completed", "stopped"] } } }),
   ]);
 
   const reasons: string[] = [];

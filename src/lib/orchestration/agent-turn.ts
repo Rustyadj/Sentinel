@@ -4,7 +4,7 @@ import { RUNTIME_AGENT_MAP, runtimeEventText } from "@/lib/agents/runtime/chat-r
 import { requireRuntimeAccess, RUNTIME_PERMISSIONS } from "@/lib/agents/runtime/authorization";
 import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { getRuntimeAdapter } from "@/lib/agents/runtime/service";
-import { ModelUnavailableError, isManagedWorkerKind } from "@/lib/agents/model-policy";
+import { ModelUnavailableError, type EffortLevel } from "@/lib/agents/model-policy";
 import { emitCollaborationEvent } from "./event-bus";
 import { postCollaborationMessage } from "./messages";
 import { ensureTaskWorktree } from "./worktree-manager";
@@ -57,11 +57,11 @@ export async function runAgentTurn(input: { roomId: string; agentId: string; use
     // The runtime rejected the requested model itself — surface this as a
     // distinguishable MODEL_UNAVAILABLE outcome, never as an ordinary
     // failure the caller might otherwise react to by quietly retrying.
-    if (event.type === "error" && event.data.modelUnavailable === true && isManagedWorkerKind(runtime.kind)) {
+    if (event.type === "error" && event.data.modelUnavailable === true) {
       throw new ModelUnavailableError(
         runtime.kind,
         typeof event.data.requestedModel === "string" ? event.data.requestedModel : "unknown",
-        (typeof event.data.requestedEffort === "string" ? event.data.requestedEffort : "high") as "low" | "medium" | "high",
+        (typeof event.data.requestedEffort === "string" ? event.data.requestedEffort : null) as EffortLevel | null,
         typeof event.data.reason === "string" ? event.data.reason : "Runtime rejected the requested model",
       );
     }

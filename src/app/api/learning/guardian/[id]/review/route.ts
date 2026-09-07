@@ -1,3 +1,5 @@
+import { db } from "@/lib/db";
+import { requireLearningWorkspaceAccess } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { resolveGuardianReview } from "@/lib/learning/guardian";
@@ -12,6 +14,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "approve (boolean) is required" }, { status: 400 });
   }
   try {
+    const row = await db.guardianDecision.findUnique({ where: { id } });
+    if (!row?.workspaceId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await requireLearningWorkspaceAccess(user.id, row.workspaceId, "workspace.update");
     const decision = await resolveGuardianReview({
       decisionId: id,
       reviewerId: user.id,

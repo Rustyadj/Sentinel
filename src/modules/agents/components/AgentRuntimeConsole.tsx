@@ -7,6 +7,7 @@ import {
   ScrollText, Send, Server, ShieldCheck, Square, Terminal, Timer, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AgentModelPanel } from "./AgentModelPanel";
 import { ConfigEditor } from "./AgentsPage";
 
 type RuntimeKind = "hermes" | "openclaw" | "claude-code" | "codex";
@@ -389,7 +390,7 @@ export function AgentRuntimeConsole() {
         {error ? <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-xs text-red-300"><AlertTriangle className="h-4 w-4" /><span className="min-w-0 flex-1">{error}</span><button type="button" onClick={() => void loadRuntimes()} className="rounded-md border border-red-400/25 px-2 py-1 text-[10px] hover:bg-red-400/10"><RefreshCw className="mr-1 inline h-3 w-3" />Retry</button></div> : null}
         {notice ? <div role="status" className="rounded-lg border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 text-xs text-emerald-300">{notice}</div> : null}
 
-        <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="space-y-2" aria-label="Runtime list">
             <div className="flex items-center justify-between pb-2"><h2 className="text-xs font-medium text-[--muted-foreground]">Runtime inventory</h2><button onClick={() => void loadRuntimes()} className="rounded p-1.5 text-[--muted-foreground] hover:bg-[--accent]" aria-label="Refresh runtimes"><RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /></button></div>
             {runtimes.map((runtime) => {
@@ -421,7 +422,7 @@ export function AgentRuntimeConsole() {
                 <div className="mt-4"><CoverageRail health={health} events={events} hasLogs={logs.length > 0} /></div>
               </section>
 
-              <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="rounded-xl border border-[--border] bg-[--card] p-4">
                   <div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-medium">{isCoding ? "Coding task" : "Runtime task"}</h3><span className="text-[9px] text-[--muted-foreground]">No silent model fallback</span></div>
                   {isCoding ? <label className="mb-3 block text-[10px] text-[--muted-foreground]">Repository<select value={repository} onChange={(event) => setRepository(event.target.value)} className="mt-1 w-full rounded-lg border border-[--border] bg-[--muted] px-2.5 py-2 text-xs text-[--foreground]"><option value="">Default allowlisted root</option>{repositories.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.branch ?? "branch unknown"}{item.dirty ? " · modified" : ""}</option>)}</select></label> : null}
@@ -433,6 +434,7 @@ export function AgentRuntimeConsole() {
               </section>
 
               <section className="rounded-xl border border-[--border] bg-[#060708] p-4"><div className="mb-3 flex items-center gap-2"><Terminal className="h-3.5 w-3.5 text-emerald-400" /><h3 className="text-xs font-medium">Live runtime events</h3>{prUrl ? <a href={prUrl} target="_blank" rel="noreferrer" className="ml-2 text-[10px] text-indigo-300 hover:text-indigo-200">Open PR <ExternalLink className="ml-1 inline h-3 w-3" /></a> : null}<span className="ml-auto text-[9px] text-[--muted-foreground]">Provider output only · no simulated terminal</span></div><div className="max-h-72 min-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-[#8f96aa]">{events.length ? events.map((event, index) => <div key={`${event.timestamp ?? "event"}-${index}`} className="border-b border-white/5 py-1"><span className="mr-2 text-indigo-400">{event.type}</span>{JSON.stringify(event.data ?? {})}</div>) : logs.length ? logs.map((line, index) => <div key={index} className="py-0.5">{line}</div>) : <div className="flex min-h-28 items-center justify-center text-[#414656]"><FileCode2 className="mr-2 h-4 w-4" />Events appear only after a real runtime task starts.</div>}</div></section>
+              {selected.kind !== "openclaw" && <AgentModelPanel key={selected.agentId} agentId={selected.agentId} />}
               {configOpen ? <section className="rounded-xl border border-[--border] bg-[--card] p-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-medium">Runtime configuration</h3><span className="text-[9px] text-[--muted-foreground]">Server-enforced configure permission</span></div><ConfigEditor agentId={selected.agentId} /></section> : null}
             </div>
           ) : <div className="flex min-h-80 items-center justify-center rounded-xl border border-dashed border-[--border] text-xs text-[--muted-foreground]">Select a runtime to inspect its control surface.</div>}

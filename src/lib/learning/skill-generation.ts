@@ -603,6 +603,12 @@ async function failPipeline(
     }),
     updatePipelineStage(candidateId, stage, { pipelineReasons: reasons }),
   ]);
+  const candidate = await db.learningCandidate.findUnique({ where: { id: candidateId }, include: { experience: true } });
+  const { recordProductionFailure } = await import("./production-failures");
+  await recordProductionFailure(stage === "tests_failed" ? "failing_test" : "malformed_code_change", {
+    sourceId: candidateId, workspaceId: candidate?.experience?.workspaceId,
+    context: { stage, reasons },
+  }).catch(() => undefined);
   return { passed: false, stage, needsApproval: false, reasons };
 }
 

@@ -17,8 +17,8 @@ afterEach(() => {
 
 describe("resolveWorkerModel", () => {
   it("returns Sentinel's built-in defaults with no env overrides set", () => {
-    expect(resolveWorkerModel("claude-code")).toEqual({ displayName: "Claude Sonnet 5", runtimeModelId: "claude-sonnet-5", effort: "high" });
-    expect(resolveWorkerModel("codex")).toEqual({ displayName: "GPT-5.6 Sol", runtimeModelId: "gpt-5.6-sol", effort: "high" });
+    expect(resolveWorkerModel("claude-code")).toMatchObject({ displayName: "claude-opus-5", runtimeModelId: "claude-opus-5", effort: "low" });
+    expect(resolveWorkerModel("codex")).toMatchObject({ displayName: "gpt-6-astra", runtimeModelId: "gpt-6-astra", effort: "low" });
   });
 
   it("lets an env override win for the runtime model id and effort, but never the display name", () => {
@@ -27,20 +27,20 @@ describe("resolveWorkerModel", () => {
     const resolved = resolveWorkerModel("claude-code");
     expect(resolved.runtimeModelId).toBe("claude-sonnet-4-6");
     expect(resolved.effort).toBe("medium");
-    expect(resolved.displayName).toBe("Claude Sonnet 5");
+    expect(resolved.displayName).toBe("claude-sonnet-4-6");
   });
 
   it("overrides codex independently of claude-code", () => {
     process.env.SENTINEL_CODEX_DEFAULT_MODEL = "gpt-5-codex";
     process.env.SENTINEL_CODEX_DEFAULT_EFFORT = "low";
-    expect(resolveWorkerModel("codex")).toEqual({ displayName: "GPT-5.6 Sol", runtimeModelId: "gpt-5-codex", effort: "low" });
+    expect(resolveWorkerModel("codex")).toMatchObject({ displayName: "gpt-5-codex", runtimeModelId: "gpt-5-codex", effort: "low" });
     // Unaffected
-    expect(resolveWorkerModel("claude-code").runtimeModelId).toBe("claude-sonnet-5");
+    expect(resolveWorkerModel("claude-code").runtimeModelId).toBe("claude-opus-5");
   });
 
   it("falls back to the built-in effort for an invalid override value rather than accepting anything", () => {
     process.env.SENTINEL_CLAUDE_DEFAULT_EFFORT = "maximum-overdrive";
-    expect(resolveWorkerModel("claude-code").effort).toBe("high");
+    expect(() => resolveWorkerModel("claude-code")).toThrow("INVALID_EFFORT");
   });
 });
 
@@ -55,9 +55,9 @@ describe("isManagedWorkerKind", () => {
 
 describe("looksLikeModelUnavailable", () => {
   it("recognizes common model-rejection phrasing", () => {
-    expect(looksLikeModelUnavailable("Error: model 'claude-sonnet-5' not found")).toBe(true);
+    expect(looksLikeModelUnavailable("Error: model 'claude-opus-5' not found")).toBe(true);
     expect(looksLikeModelUnavailable("model not supported by this account")).toBe(true);
-    expect(looksLikeModelUnavailable("unknown model: gpt-5.6-sol")).toBe(true);
+    expect(looksLikeModelUnavailable("unknown model: gpt-6-astra")).toBe(true);
   });
 
   it("does not flag an ordinary failure that happens to mention neither pattern", () => {
@@ -68,12 +68,12 @@ describe("looksLikeModelUnavailable", () => {
 
 describe("ModelUnavailableError", () => {
   it("carries the requested model/effort/runtime and a message naming MODEL_UNAVAILABLE", () => {
-    const error = new ModelUnavailableError("codex", "gpt-5.6-sol", "high", "model not found");
+    const error = new ModelUnavailableError("codex", "gpt-6-astra", "high", "model not found");
     expect(error.kind).toBe("codex");
-    expect(error.requestedModel).toBe("gpt-5.6-sol");
+    expect(error.requestedModel).toBe("gpt-6-astra");
     expect(error.requestedEffort).toBe("high");
     expect(error.message).toContain("MODEL_UNAVAILABLE");
-    expect(error.message).toContain("gpt-5.6-sol");
+    expect(error.message).toContain("gpt-6-astra");
     // Never fabricates an "available models" list — see the class doc comment.
     expect(error.message.toLowerCase()).not.toContain("available models");
   });

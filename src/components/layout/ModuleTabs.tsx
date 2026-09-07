@@ -109,6 +109,7 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
       // an explicit not-yet-built state, same convention as Learning Core's
       // unimplemented tabs, rather than a silent dead click.
       tabs: [
+        { id: "ai-security", label: "AI Security" },
         { id: "overview", label: "Overview" },
         { id: "operations", label: "Operations" },
         { id: "red-team", label: "Red Team" },
@@ -204,12 +205,13 @@ function StandardModuleTabs({ pathname }: { pathname: string }) {
     () => CONFIGS.find((entry) => entry.match(pathname))?.config ?? FALLBACK,
     [pathname]
   );
-  const requestedTab = config.id === "chat" && searchParams.get("space") === "graph" ? "graph" : config.defaultTab;
-  const [selection, setSelection] = useState({ moduleId: config.id, tabId: requestedTab });
-  const activeTab = selection.moduleId === config.id ? selection.tabId : requestedTab;
+  const linkedTab = searchParams.get("tab");
+  const requestedTab = config.id === "learning" && config.tabs.some(tab => tab.id === linkedTab) ? linkedTab! : config.id === "chat" && searchParams.get("space") === "graph" ? "graph" : config.defaultTab;
+  const [selection, setSelection] = useState({ moduleId: config.id, tabId: requestedTab, requestedTab });
+  const activeTab = selection.moduleId === config.id && selection.requestedTab === requestedTab ? selection.tabId : requestedTab;
 
   const selectTab = (tabId: string) => {
-    setSelection({ moduleId: config.id, tabId });
+    setSelection({ moduleId: config.id, tabId, requestedTab });
     window.dispatchEvent(
       new CustomEvent("sentinel:module-tab", {
         detail: { moduleId: config.id, tabId },

@@ -55,6 +55,7 @@ export interface StartSessionInput {
   projectId?: string;
   workingDirectory?: string;
   initialPrompt?: string;
+  modelOverride?: { model: string; effort?: import("../model-policy").EffortLevel | null; authorized: boolean };
 }
 
 export interface ResumeSessionInput {

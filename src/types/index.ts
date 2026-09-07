@@ -31,6 +31,7 @@ export interface Agent {
   color: string;
   description: string;
   skills: string[];
+  reasoningEffort?: string | null;
   model: string;
   status: AgentStatus;
   systemPrompt?: string;

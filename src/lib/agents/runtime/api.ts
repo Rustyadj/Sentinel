@@ -1,8 +1,10 @@
+import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { RuntimeError } from "./errors";
 import { WorkspaceAccessError } from "@/lib/workspaces/authorization";
 import type { RuntimeEvent, RuntimeView } from "./types";
 
 export function runtimeErrorResponse(error: unknown) {
+  if (error instanceof ModelUnavailableError) return Response.json({ error: error.message, ...error.toJSON() }, { status: 422 });
   if (error instanceof RuntimeError || error instanceof WorkspaceAccessError) {
     return Response.json({ error: error.message, code: error instanceof RuntimeError ? error.code : "access_denied" }, { status: error.status });
   }

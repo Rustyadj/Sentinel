@@ -138,50 +138,45 @@ is already a handled type in `applyLearningCandidate` (delegates to
 `promoteFromPayload("procedure", ...)` in `skill-service.ts`), so nothing in
 that audited switch changed.
 
-**Known limitation:** committing a promoted clarification-policy champion's
-threshold into production `LearningSettings.curiosityThreshold` is a manual
-human action in this pass, not auto-applied — extending
-`applyLearningCandidate`'s switch for a new canonical effect is real,
-scoped follow-up work, not something to bolt on without the same review
-rigor the rest of that function already has.
+## Governed completion (agent-model-control-and-learning-finish)
 
-## Known gaps this doesn't try to solve yet
+The remaining production signals now feed the existing `compileEvalCase()` through
+`src/lib/learning/production-failures.ts`: thumbs-down feedback, failed tool calls,
+failed workflow status, failed candidate deployment/application, denied runtime
+actions, rejected approvals, malformed generated code, failing tests, and failed
+delegation. Cases deduplicate within tenant/user scope and redact credential fields
+and tokens embedded in error text. Concurrent duplicate case inserts are reconciled.
+These hooks observe Sentinel's own operations; external CI/deployment systems that
+never report an event to Sentinel are not automatically monitored.
 
-- **Production call-site wiring for every `EvalCase` source is not
-  exhaustive.** `compileEvalCase` is the general entry point and four
-  concrete wrappers are built and tested (user correction, rejected
-  candidate, rollback, adversarial breach). Wiring the remaining sources the
-  spec lists (thumbs-down, failed tool call, failed workflow, failed
-  deployment, unauthorized action, rejected approval, malformed code
-  change, failing test, delegation failure) into their actual chat/tool/CI
-  call sites is real, separate work — each requires locating and safely
-  instrumenting an existing code path per source.
-- **Range Console's dedicated "AI Security" cluster is not built.** The
-  adversarial self-play engine, its models, and its API exist and are
-  tested; a Range Console UI panel surfacing them (vs. the Learning Core's
-  own Adversarial tab, which does exist) was not added this pass.
-- **Model diversity is schema-level only.** `generatorModel`/
-  `evaluatorModel` fields exist on `LearningCandidate`; no orchestration
-  layer actually calls out to multiple different model providers for
-  generation vs. evaluation yet — that requires real multi-provider
-  plumbing beyond this pass's scope.
-- **E2E (Playwright) verification of the new UI could not be executed in
-  this sandbox** — the pre-installed headless Chromium's outbound
-  connections to the local dev server are reset by this environment's
-  network policy (a sandbox constraint, not an application defect); the
-  route was verified instead via `curl` (200 from `/api/health` and the
-  Next.js production build compiling every new route, including `/learning`
-  and all new `/api/learning/*` endpoints) and via the Vitest integration
-  suite. Re-running `npm run test:e2e` in a normal CI environment should
-  work unmodified.
-- **API-route tenant-authorization parity is partial.** The new routes all
-  require authentication (`requireUser`) and use `requireLearning*Access`
-  where a resource resolves to a workspace/candidate; a few list endpoints
-  (e.g. `GET /api/learning/adversarial`, `GET /api/learning/guardian`)
-  accept an optional `workspaceId`/`candidateId` filter without the full
-  accessible-scope join every existing Learning Core list route uses. Real
-  gap, not a design choice — bringing these to the same tenant-isolation
-  rigor as `getAccessibleLearningScope` is follow-up work.
+Experiment Orchestrator can execute generator, evaluator, adversary and Guardian
+roles through configured canonical agent runtimes. The Evolution panel selects
+agents; each role snapshots that agent's persisted model/effort in a new AgentSession.
+Generator, evaluator and Guardian identities must be independent. Model findings
+cannot bypass canonical fitness, risk, Guardian or human approval gates. Generator
+and evaluator models, role session IDs, runtime-reported models and Guardian evidence
+are persisted. A model rejection stops the experiment without fallback.
+
+Guardian/adversarial list endpoints use `getAccessibleLearningScope()`. Evolution,
+lineage, eval-suite/case and principle reads also apply accessible scope; new
+experiment/application mutations require candidate and workspace authorization.
+
+Range Console has an AI Security tab over the same canonical NeuralLens graph,
+starting in scoped data mode, alongside adversarial runs, Guardian interventions
+and a working link to regression suites. No second security graph is created.
+
+Clarification policies remain `procedure` candidates. Human review approves the
+proposal without prematurely applying it. After champion promotion, Guardian review
+and feature-flag setup, `POST /api/learning/evolution/:id/apply` invokes the canonical
+`applyLearningCandidate()` path. It writes a checksummed, versioned
+`clarification_policy` artifact linked to that candidate and target agent; effective
+`LearningSettings.curiosityThreshold` reads it only within the flag's cohort.
+Outside a canary, the preceding approved champion remains effective. Rollback
+retires the new artifact and disables its flag, restoring the preceding policy.
+Raw LearningSettings are never mutated by a model's proposal.
+
+See [runtime and acceptance evidence](reviews/AGENT_MODEL_CONTROL_ACCEPTANCE.md)
+for installed CLI contracts, live checks and remaining acceptance blockers.
 
 ## Testing
 
@@ -199,3 +194,8 @@ the real `retrieveContext()` boundary; orchestrator stop conditions, budget
 enforcement, trust decay, weight-adaptation refusal. All 321 tests in the
 full suite (existing + new) pass; `tsc --noEmit`, `eslint`, and
 `next build` are clean.
+
+The completion branch adds model/session process-argument tests, Hermes selected-model
+and recovery tests, tenant-route tests, all nine signal compiler tests, clarification
+canary/rollback integration tests, and configured experiment-role tests. Current
+validation totals and VPS evidence are recorded in the acceptance report above.

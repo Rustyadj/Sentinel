@@ -1,3 +1,5 @@
+import { executeExperimentRole, validateExperimentModels, type ExperimentModels } from "./experiment-models";
+import { proposeEvolutionCandidate } from "./evolution";
 // Experiment Orchestrator.
 //
 // Coordinates the existing, already-built pieces — sandbox validation
@@ -55,6 +57,7 @@ export interface RunExperimentInput {
   runAdversarial?: boolean;
   fixtureExperienceIds?: string[];
   actorId?: string;
+  models?: ExperimentModels;
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue {
@@ -73,7 +76,7 @@ async function updateManifest(manifestId: string, data: Prisma.ExperimentManifes
  * unsafe/rejected candidate.
  */
 export async function runExperiment(input: RunExperimentInput) {
-  const candidate = await db.learningCandidate.findUniqueOrThrow({ where: { id: input.candidateId } });
+  let candidate = await db.learningCandidate.findUniqueOrThrow({ where: { id: input.candidateId } });
 
   const manifest = await db.experimentManifest.create({
     data: {
@@ -89,7 +92,7 @@ export async function runExperiment(input: RunExperimentInput) {
       stage: "stopped",
       stopReason: reason,
       completedAt: new Date(),
-      results: toJson({ stoppedAt: "static_validation", notes }),
+      results: toJson({ ...((await db.experimentManifest.findUniqueOrThrow({ where: { id: manifest.id } })).results as object), notes }),
     });
     await emitLearningEvent({
       eventType: "experiment_stopped",
@@ -103,7 +106,7 @@ export async function runExperiment(input: RunExperimentInput) {
   };
 
   // --- Stage: static validation (budget + safety gate) ---------------------
-  const budget = await checkLearningBudget(input.budgetScopes);
+  const budget = await checkLearningBudget(input.budgetScopes, { excludeExperimentId: manifest.id });
   if (!budget.withinBudget) {
     return stop("budget_exceeded", budget.reasons.join("; "));
   }
@@ -112,6 +115,44 @@ export async function runExperiment(input: RunExperimentInput) {
   }
 
   const results: Record<string, unknown> = {};
+  let modelGuardianReview: import("./guardian").EvaluateGuardianInput["modelReview"];
+  if (input.models) {
+    if (!input.actorId || !input.workspaceId) return stop("unsafe_candidate", "Model experiments require an authorized actor and workspace");
+    try {
+      validateExperimentModels(input.models);
+      const evidence: Record<string, unknown> = {};
+      for (const role of ["generator", "evaluator", "adversary", "guardian"] as const) {
+        const response = await executeExperimentRole({ role, agentId: input.models[role], userId: input.actorId,
+          workspaceId: input.workspaceId, candidateId: candidate.id, experimentId: manifest.id, budgetScopes: input.budgetScopes,
+          context: { type: candidate.type, artifact: candidate.proposedPayload, evidence },
+        });
+        evidence[role] = response;
+        results.models = evidence;
+        await updateManifest(manifest.id, { results: toJson(results) });
+        if (role === "generator") {
+          const proposedPayload = response.result.proposedPayload;
+          if (!proposedPayload || typeof proposedPayload !== "object" || Array.isArray(proposedPayload)) return stop("unsafe_candidate", "Generator returned no valid artifact");
+          const generated = await proposeEvolutionCandidate({ type: candidate.type as never, riskLevel: candidate.riskLevel as never,
+            proposedPayload: { ...(proposedPayload as Record<string, unknown>), workspaceId: input.workspaceId, agentId: (candidate.proposedPayload as Record<string, unknown>).agentId, projectId: (candidate.proposedPayload as Record<string, unknown>).projectId }, experienceId: candidate.experienceId ?? undefined,
+            parentCandidateId: candidate.id, workspaceId: input.workspaceId, createdFrom: `experiment:${manifest.id}`,
+            generatorModel: String(response.requestedModel), evidenceCount: 1, confidence: 0,
+          });
+          candidate = generated.candidate;
+          await updateManifest(manifest.id, { candidate: { connect: { id: candidate.id } } });
+        } else {
+          if (role === "guardian") {
+            modelGuardianReview = { sessionId: response.sessionId, agentId: response.agentId, requestedModel: String(response.requestedModel), requestedEffort: typeof response.requestedEffort === "string" ? response.requestedEffort : null, actualModel: typeof response.actualModel === "string" ? response.actualModel : null, allow: response.result.allow === true };
+            // Persist model evidence in the same Guardian system even when it denies.
+            await evaluateGuardian({ action: `Review generated candidate ${candidate.id}`, actor: response.agentId, candidateId: candidate.id, candidateType: candidate.type as never, riskLevel: candidate.riskLevel as never, workspaceId: input.workspaceId, modelReview: modelGuardianReview });
+          }
+          if (role === "evaluator") await db.learningCandidate.update({ where: { id: candidate.id }, data: { evaluatorModel: String(response.requestedModel) } });
+          if (response.result.allow !== true) return stop(role === "guardian" ? "guardian_block" : "hard_guardrail_failure", `${role} did not approve the candidate`);
+        }
+      }
+    } catch (error) {
+      return stop("infrastructure_unavailable", error instanceof Error ? error.message : "Model experiment failed");
+    }
+  }
 
   // --- Stage: sandbox --------------------------------------------------------
   await updateManifest(manifest.id, { stage: "sandbox" });
@@ -121,8 +162,8 @@ export async function runExperiment(input: RunExperimentInput) {
   // --- Stage: permanent eval suites ------------------------------------------
   await updateManifest(manifest.id, { stage: "eval_suites", evalSuiteIds: input.evalSuiteIds ?? [] });
   const suites = input.evalSuiteIds?.length
-    ? await db.evalSuite.findMany({ where: { id: { in: input.evalSuiteIds } } })
-    : await db.evalSuite.findMany({ where: { category: `${candidate.type}_regressions` } });
+    ? await db.evalSuite.findMany({ where: { id: { in: input.evalSuiteIds }, workspaceId: input.workspaceId ?? null } })
+    : await db.evalSuite.findMany({ where: { category: `${candidate.type}_regressions`, workspaceId: input.workspaceId ?? null } });
   const evalOutcomes = [];
   for (const suite of suites) {
     const outcome = await runEvalSuite({ suiteId: suite.id, candidateId: candidate.id, triggeredBy: "experiment_orchestrator" });
@@ -171,7 +212,7 @@ export async function runExperiment(input: RunExperimentInput) {
     input.fixtureExperienceIds ??
     (
       await db.experience.findMany({
-        where: { outcomeStatus: { in: ["success", "failure", "partial"] } },
+        where: { outcomeStatus: { in: ["success", "failure", "partial"] }, workspaceId: input.workspaceId ?? null },
         orderBy: { createdAt: "desc" },
         take: 10,
         select: { id: true },
@@ -206,6 +247,7 @@ export async function runExperiment(input: RunExperimentInput) {
   // --- Stage: guardian ----------------------------------------------------------
   await updateManifest(manifest.id, { stage: "guardian" });
   const guardianDecision = await evaluateGuardian({
+    modelReview: modelGuardianReview,
     action: `promote candidate ${candidate.id} (${candidate.type}) after experiment ${manifest.id}`,
     actor: input.actorId ?? "system:experiment-orchestrator",
     candidateId: candidate.id,

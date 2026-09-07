@@ -4,11 +4,11 @@ const CONFIG_ROOT = process.env.AGENT_CONFIG_DIR ?? "/opt/sentinel-os/agents";
 const LOG_ROOT = process.env.AGENT_LOG_DIR ?? "/opt/sentinel-os/logs";
 const PROJECT_ROOT = process.env.AGENT_PROJECT_ROOT ?? "/opt/sentinel-os/projects";
 
-const HTTP_CAPABILITIES: RuntimeCapabilities = {
-  streaming: false,
-  resume: false,
-  cancel: false,
-  toolEvents: false,
+const HERMES_CAPABILITIES: RuntimeCapabilities = {
+  streaming: true,
+  resume: true,
+  cancel: true,
+  toolEvents: true,
   fileChangeEvents: false,
   restart: { supported: true },
   reload: { supported: true },
@@ -38,10 +38,26 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-lisa.log` },
     workspaceId: process.env.HERMES_LISA_WORKSPACE_ID,
     enabled: true,
-    capabilities: HTTP_CAPABILITIES,
+    capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_LISA_NATIVE_URL ?? "/legacy/hermes",
-    model: process.env.HERMES_LISA_MODEL ?? "claude-sonnet-4-6",
+    model: process.env.HERMES_LISA_MODEL ?? "gpt-5.6-luna",
+  },
+  {
+    id: "runtime-hermes-nathan2",
+    agentId: "hermes-nathan2",
+    kind: "hermes",
+    transport: "docker",
+    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4861",
+    containerName: process.env.HERMES_NATHAN2_CONTAINER ?? "hermes-nathan2",
+    configPath: `${CONFIG_ROOT}/hermes-nathan2`,
+    logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-nathan2.log` },
+    workspaceId: process.env.HERMES_NATHAN2_WORKSPACE_ID,
+    enabled: true,
+    capabilities: HERMES_CAPABILITIES,
+    sentinelControl: "partial",
+    nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
+    model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
   },
   {
     id: "runtime-openclaw",

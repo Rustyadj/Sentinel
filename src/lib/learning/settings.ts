@@ -151,5 +151,17 @@ export async function getEffectiveLearningSettings(agentId: string) {
       merged[key] = value;
     }
   }
+  // A canary falls through to the preceding approved champion outside its cohort.
+  // Rollback retires only its artifact, so the preceding policy remains exact.
+  const artifacts = await db.learningArtifactVersion.findMany({ where: { artifactType: "clarification_policy", artifactKey: agentId, status: "active", candidate: { survivalStatus: { in: ["champion", "superseded"] }, status: "approved" } }, orderBy: { version: "desc" } });
+  for (const artifact of artifacts) {
+    const content = artifact.content as { curiosityThreshold?: number; featureFlagKey?: string };
+    const { createHash } = await import("node:crypto");
+    const { evaluateFlag } = await import("./feature-flags");
+    if (createHash("sha256").update(JSON.stringify({ curiosityThreshold: content.curiosityThreshold, featureFlagKey: content.featureFlagKey })).digest("hex") === artifact.checksum && typeof content.curiosityThreshold === "number" && content.featureFlagKey && await evaluateFlag(content.featureFlagKey, { agentId, workspaceId: workspaceId ?? undefined })) {
+      merged.curiosityThreshold = content.curiosityThreshold;
+      break;
+    }
+  }
   return merged as LearningSettingsFields;
 }

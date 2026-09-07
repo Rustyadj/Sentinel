@@ -98,7 +98,7 @@ export class PrismaRuntimeSessionStore implements RuntimeSessionStore {
   }
 
   async append(sessionId: string, type: RuntimeEventType, data: Record<string, unknown> = {}) {
-    return db.$transaction(async (tx) => {
+    const event = await db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`runtime-event:${sessionId}`}))`;
       const aggregate = await tx.agentRuntimeEvent.aggregate({ where: { sessionId }, _max: { sequence: true } });
       const sequence = (aggregate._max.sequence ?? 0) + 1;
@@ -114,6 +114,20 @@ export class PrismaRuntimeSessionStore implements RuntimeSessionStore {
         data: jsonRecord(row.payload),
       } as RuntimeEvent;
     });
+    const eventValue = data.event && typeof data.event === "object" ? data.event as Record<string, unknown> : data;
+    const failedTool = type === "tool_completed" && (eventValue.is_error === true || eventValue.success === false || eventValue.ok === false || eventValue.error);
+    const exitCode = data.exitCode ?? eventValue.exitCode;
+    const failedCommand = type === "command_completed" && typeof exitCode === "number" && exitCode !== 0;
+    const testCommand = /(?:\btest\b|vitest|jest|pytest|playwright|cargo test|go test)/i.test(String(data.command ?? eventValue.command ?? ""));
+    if (failedTool || failedCommand || type === "error") {
+      const session = await this.get(sessionId);
+      if (session) {
+        const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+        const signal = failedTool ? "failed_tool_call" : failedCommand ? (testCommand ? "failing_test" : "failed_tool_call") : session.parentSessionId ? "delegation_failure" : null;
+        if (signal) await recordProductionFailure(signal, { sourceId: sessionId, workspaceId: session.workspaceId, userId: session.userId, context: data }).catch(() => undefined);
+      }
+    }
+    return event;
   }
 
   async logs(sessionId: string, since?: string, limit = 200) {

@@ -157,7 +157,10 @@ describe("unified runtime discovery and readiness", () => {
   });
 
   it("supports Claude resume with a validated opaque provider session id", async () => {
-    const adapter = new ClaudeCodeRuntimeAdapter(async () => claudeRuntime, new MemoryStore(), new FakeRunner());
+    const store = new MemoryStore();
+    const original = await store.create({ runtimeId: claudeRuntime.id, userId: "user-1" }, "claude-code", "claude-code", "/tmp", "provider-session-1");
+    await store.update(original.id, { metadata: { requestedModel: "claude-opus-5", requestedEffort: "low" } });
+    const adapter = new ClaudeCodeRuntimeAdapter(async () => claudeRuntime, store, new FakeRunner());
     await expect(adapter.resumeSession({ runtimeId: claudeRuntime.id, externalSessionId: "provider-session-1", userId: "user-1" }))
       .resolves.toMatchObject({ externalSessionId: "provider-session-1", status: "ready" });
     await expect(adapter.resumeSession({ runtimeId: claudeRuntime.id, externalSessionId: "provider\n--unsafe", userId: "user-1" }))

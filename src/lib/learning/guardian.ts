@@ -78,6 +78,7 @@ export interface EvaluateGuardianInput {
   humanAuthorized?: boolean;
   /** Guardian must never approve its own privilege elevation — set true when `actor` IS the guardian/system automation itself proposing to expand its own authority. */
   isSelfElevation?: boolean;
+  modelReview?: { sessionId: string; agentId: string; requestedModel: string; requestedEffort: string | null; actualModel: string | null; allow: boolean };
 }
 
 export interface GuardianEvaluation {
@@ -143,6 +144,7 @@ export async function evaluateGuardian(input: EvaluateGuardianInput): Promise<Gu
     }
   }
 
+  if (input.modelReview?.allow === false) { verdict = "block"; reasonCodes.push("independent_model_review_denied"); }
   const decision = await db.guardianDecision.create({
     data: {
       action: input.action.slice(0, 2000),
@@ -159,6 +161,7 @@ export async function evaluateGuardian(input: EvaluateGuardianInput): Promise<Gu
       evidence: {
         classification: classification.riskLevel,
         autoApproveEligible: classification.autoApproveEligible,
+        ...(input.modelReview ? { modelReview: input.modelReview } : {}),
       } as Prisma.InputJsonValue,
       blocked: verdict === "block",
       workspaceId: input.workspaceId ?? null,
@@ -242,6 +245,7 @@ export async function resolveGuardianReview(input: ReviewGuardianDecisionInput) 
 }
 
 export async function listGuardianDecisions(params: {
+  accessibleWorkspaceIds?: string[];
   mode?: GuardianMode;
   candidateId?: string;
   blockedOnly?: boolean;
@@ -250,6 +254,7 @@ export async function listGuardianDecisions(params: {
 } = {}) {
   return db.guardianDecision.findMany({
     where: {
+      AND: params.accessibleWorkspaceIds ? [{ workspaceId: { in: params.accessibleWorkspaceIds } }] : [],
       ...(params.mode ? { mode: params.mode } : {}),
       ...(params.candidateId ? { candidateId: params.candidateId } : {}),
       ...(params.blockedOnly ? { blocked: true } : {}),

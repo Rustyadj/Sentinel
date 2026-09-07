@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { isManagedWorkerKind, looksLikeModelUnavailable, resolveWorkerModel, type WorkerModelConfig } from "@/lib/agents/model-policy";
+import { ModelUnavailableError, isManagedWorkerKind, looksLikeModelUnavailable, resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, type WorkerModelConfig } from "@/lib/agents/model-policy";
 import { RuntimeError, UnsupportedRuntimeCapabilityError } from "./errors";
 import { assertSafeOpaqueId, resolveAllowedWorkingDirectory } from "./path-security";
 import { nodeRuntimeProcessRunner, type RuntimeProcessRunner } from "./runner";
@@ -64,6 +64,8 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
   protected abstract readonly supportsResume: boolean;
   protected abstract buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string, modelConfig?: WorkerModelConfig): string[];
   protected abstract parseStructuredLine(line: string, sessionId: string): { type: RuntimeEvent["type"]; data: Record<string, unknown>; externalSessionId?: string };
+
+  protected async reportedSessionModel(_externalSessionId: string, _startedAt: string): Promise<Record<string, unknown> | null> { return null; }
 
   private readonly active = new Map<string, ActiveProcess>();
 
@@ -151,7 +153,9 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
   async startSession(input: StartSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
     const workingDirectory = await resolveAllowedWorkingDirectory(this.runner, runtime.workingDirectoryRoot, input.workingDirectory);
-    const session = await this.store.create(input, this.kind, runtime.agentId, workingDirectory);
+    const config = await resolveEffectiveAgentModel(runtime.agentId, this.kind, input.modelOverride);
+    const created = await this.store.create(input, this.kind, runtime.agentId, workingDirectory);
+    const session = await this.store.update(created.id, { metadata: modelProvenance(runtime.agentId, this.kind, config) });
     await this.store.append(session.id, "session_started", { runtimeId: runtime.id, workingDirectory });
     return session;
   }
@@ -161,7 +165,10 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     assertSafeOpaqueId(input.externalSessionId, "externalSessionId");
     const runtime = await this.requireRuntime(input.runtimeId);
     const workingDirectory = await resolveAllowedWorkingDirectory(this.runner, runtime.workingDirectoryRoot, undefined);
-    const session = await this.store.create(input, this.kind, runtime.agentId, workingDirectory, input.externalSessionId);
+    const previous = (await this.store.list({ runtimeId: runtime.id, userId: input.userId })).find(s => s.externalSessionId === input.externalSessionId);
+    if (!previous || !sessionModelConfiguration(previous.metadata)) throw new RuntimeError("Original session model provenance required for resume", "session_not_found", 404);
+    const created = await this.store.create(input, this.kind, runtime.agentId, workingDirectory, input.externalSessionId);
+    const session = await this.store.update(created.id, { metadata: previous.metadata });
     await this.store.append(session.id, "session_started", { runtimeId: runtime.id, resumedFrom: input.externalSessionId });
     return session;
   }
@@ -179,7 +186,8 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
 
     // Resolve the model/effort this execution requests, centrally, once —
     // never left to whatever the CLI's own ambient default happens to be.
-    const modelConfig = isManagedWorkerKind(this.kind) ? resolveWorkerModel(this.kind) : undefined;
+    const modelConfig = isManagedWorkerKind(this.kind) ? sessionModelConfiguration(session.metadata) ?? await resolveEffectiveAgentModel(runtime.agentId, this.kind) : undefined;
+    if (modelConfig && runtime.args?.some(arg => arg.startsWith("--fallback-model"))) throw new ModelUnavailableError(this.kind, modelConfig.runtimeModelId, modelConfig.effort, "Automatic fallback flags are forbidden; choose a model explicitly");
     const args = this.buildTaskArgs(runtime, input.prompt, session.externalSessionId, modelConfig);
     const child = this.runner.spawn(runtime.executable, args, { cwd: session.workingDirectory });
     const active: ActiveProcess = { child, cancelled: false, timedOut: false };
@@ -189,11 +197,12 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
       // Persist the requested model/effort on this execution's own record
       // (never inferred later from current global settings) so "which
       // model actually performed this?" has a real, auditable answer.
-      ...(modelConfig ? { metadata: { ...session.metadata, requestedModel: modelConfig } } : {}),
+      ...(modelConfig ? { metadata: { ...modelProvenance(runtime.agentId, this.kind, modelConfig), ...session.metadata } } : {}),
     });
     const queue = new AsyncQueue<RuntimeEvent>();
     const emit = async (type: RuntimeEvent["type"], data: Record<string, unknown>) => queue.push(await this.store.append(session.id, type, data));
     let stderrBuffer = "";
+    let structuredFailure = false;
 
     const timeout = setTimeout(() => {
       active.timedOut = true;
@@ -208,7 +217,16 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         const stderr = createInterface({ input: child.stderr, crlfDelay: Infinity });
         const readStdout = (async () => {
           for await (const line of stdout) {
+            if (looksLikeModelUnavailable(line)) stderrBuffer += `${line}\n`;
             const parsed = this.parseStructuredLine(line, session.id);
+            const event = parsed.data.event as Record<string, unknown> | undefined;
+            if (event?.is_error === true || event?.type === "turn.failed") structuredFailure = true;
+            const message = event?.message as Record<string, unknown> | undefined;
+            const actualModel = event?.type === "assistant" && typeof message?.model === "string" ? message.model : undefined;
+            if (actualModel && !actualModel.startsWith("<")) {
+              const latest = await this.store.get(session.id);
+              await this.store.update(session.id, { metadata: { ...latest?.metadata, actualModel } });
+            }
             if (parsed.externalSessionId && parsed.externalSessionId !== session.externalSessionId) {
               await this.store.update(session.id, { externalSessionId: parsed.externalSessionId });
             }
@@ -227,7 +245,7 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         });
         const [{ code, signal }] = await Promise.all([exit, readStdout, readStderr]);
         clearTimeout(timeout);
-        const status = active.cancelled ? "cancelled" : active.timedOut ? "timed_out" : code === 0 ? "completed" : "failed";
+        const status = active.cancelled ? "cancelled" : active.timedOut ? "timed_out" : code === 0 && !structuredFailure ? "completed" : "failed";
         // A failed run gets one extra check: did the runtime itself reject
         // the requested model, as opposed to an ordinary task failure? If
         // so this must be distinguishable downstream (agent-turn.ts throws
@@ -236,19 +254,21 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         // model.
         const modelUnavailable = status === "failed" && Boolean(modelConfig) && looksLikeModelUnavailable(stderrBuffer);
         const latestSession = await this.store.get(session.id);
+        const reported = status === "completed" && latestSession?.externalSessionId
+          ? await this.reportedSessionModel(latestSession.externalSessionId, session.startedAt).catch(() => null) : null;
         await this.store.update(session.id, {
           status,
           exitCode: code ?? undefined,
           completedAt: new Date(),
           ...(active.cancelled ? { cancelledAt: new Date() } : {}),
-          ...(modelUnavailable ? { metadata: { ...(latestSession?.metadata ?? {}), requestedModel: modelConfig, modelUnavailable: true } } : {}),
+          ...((modelUnavailable || reported) ? { metadata: { ...(latestSession?.metadata ?? {}), ...reported, ...(modelUnavailable ? { modelUnavailable: true } : {}) } } : {}),
         });
         await emit(status === "cancelled" ? "cancelled" : status === "completed" ? "completed" : "error", {
           exitCode: code,
           signal,
           ...(active.timedOut ? { reason: "timeout" } : {}),
           ...(modelUnavailable ? {
-            modelUnavailable: true,
+            code: "MODEL_UNAVAILABLE", runtime: this.kind, modelUnavailable: true,
             requestedModel: modelConfig?.runtimeModelId,
             requestedEffort: modelConfig?.effort,
             reason: stderrBuffer.slice(0, 2_000),

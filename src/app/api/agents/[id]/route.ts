@@ -1,3 +1,4 @@
+import { saveAgentModel } from "@/lib/agents/model-settings";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAgentRecordUser, unauthorized, forbidden } from "@/lib/agents/permissions";
@@ -19,6 +20,11 @@ export async function PUT(req: Request, { params }: Params) {
   if (!user) return forbidden("edit agents");
   const body = await req.json() as Record<string, unknown>;
 
+  if (body.model !== undefined || body.reasoningEffort !== undefined) {
+    try { await saveAgentModel(id, user, body); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid model configuration" }, { status: 400 }); }
+  }
+
   // Save old system prompt to history before updating
   const existing = await db.agent.findUnique({
     where: { id },
@@ -39,7 +45,6 @@ export async function PUT(req: Request, { params }: Params) {
       ...(body.role !== undefined && { role: body.role as string }),
       ...(body.avatar !== undefined && { avatar: body.avatar as string }),
       ...(body.color !== undefined && { color: body.color as string }),
-      ...(body.model !== undefined && { model: body.model as string }),
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt as string }),
       ...(body.toolPermissions !== undefined && { toolPermissions: body.toolPermissions as string[] }),
       ...(body.memoryScope !== undefined && { memoryScope: body.memoryScope as string }),

@@ -98,7 +98,9 @@ export async function getRuntimeOperationalStatus(runtime: RuntimeView): Promise
     "memory",
     "queueDepth",
   ];
-  if (!runtime.model) unavailableFields.push("model");
+  const configured = await db.agent.findUnique({ where: { id: runtime.agentId }, select: { model: true } }).catch(() => null);
+  const currentModel = typeof currentSession?.metadata.actualModel === "string" ? currentSession.metadata.actualModel : configured?.model ?? runtime.model;
+  if (!currentModel) unavailableFields.push("model");
   if (sessionsResult.status === "rejected") unavailableFields.push("sessions", "currentTask", "project");
   if (workspaceResult.status === "rejected" || !runtime.workspaceId) unavailableFields.push("workspace");
 
@@ -108,7 +110,7 @@ export async function getRuntimeOperationalStatus(runtime: RuntimeView): Promise
     kind: runtime.kind,
     state: deriveOperationalState({ health, currentSession, latestEventType }),
     provider: PROVIDER_NAMES[runtime.kind],
-    model: runtime.model ?? null,
+    model: currentModel ?? null,
     version: health.version ?? null,
     health,
     currentSession,

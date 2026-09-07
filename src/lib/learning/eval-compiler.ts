@@ -7,13 +7,7 @@
 // observable behavior and evaluation evidence, redacted the same way
 // LearningEvent payloads already are (see redaction.ts).
 //
-// This module intentionally does NOT try to wire every source the spec
-// lists (thumbs-down, failed-tool-call, ...) into every chat/tool call site
-// in one pass — compileEvalCase() is the general-purpose entry point any
-// call site can use; compileEvalCaseFrom*() below are the concrete wrappers
-// built and tested this pass, chosen because they tie directly to signals
-// that already exist in this codebase (Reflection, LearningCandidate
-// rejection/rollback, AdversarialRun).
+// Live failure sources are wired through production-failures.ts into this compiler.
 
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -96,7 +90,7 @@ export interface CompileEvalCaseResult {
 export async function compileEvalCase(input: CompileEvalCaseInput): Promise<CompileEvalCaseResult> {
   const { payload: sanitizedInput, redactedKeys } = redactPayload(input.rawContext);
   const dedupeKey = createHash("sha256")
-    .update(`${input.source}:${input.failureType}:${stableJson(sanitizedInput)}`)
+    .update(`${input.workspaceId ?? ""}:${input.userId ?? ""}:${input.source}:${input.failureType}:${stableJson(sanitizedInput)}`)
     .digest("hex");
 
   const existing = await db.evalCase.findUnique({ where: { dedupeKey } });
@@ -116,7 +110,9 @@ export async function compileEvalCase(input: CompileEvalCaseInput): Promise<Comp
     suiteId = await ensureEvalSuite(input.suiteCategory, input.suiteName ?? input.suiteCategory, input.workspaceId ?? null);
   }
 
-  const evalCase = await db.evalCase.create({
+  let evalCase;
+  try {
+    evalCase = await db.evalCase.create({
     data: {
       suiteId,
       source: input.source,
@@ -134,6 +130,12 @@ export async function compileEvalCase(input: CompileEvalCaseInput): Promise<Comp
       redactedKeys,
     },
   });
+
+  } catch (error) {
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    const concurrent = await db.evalCase.update({ where: { dedupeKey }, data: { occurrenceCount: { increment: 1 } } });
+    return { evalCase: concurrent, created: false };
+  }
 
   const caseNodeId = await syncEvalCaseNode(evalCase);
   if (suiteId) {
@@ -444,9 +446,10 @@ export async function runEvalSuite(input: RunEvalSuiteInput) {
   return { run: completedRun, results, summary };
 }
 
-export async function listEvalSuites(params: { category?: string; workspaceId?: string } = {}) {
+export async function listEvalSuites(params: { accessibleWorkspaceIds?: string[]; category?: string; workspaceId?: string } = {}) {
   return db.evalSuite.findMany({
     where: {
+      AND: params.accessibleWorkspaceIds ? [{ workspaceId: { in: params.accessibleWorkspaceIds } }] : [],
       ...(params.category ? { category: params.category } : {}),
       ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
     },
@@ -455,9 +458,10 @@ export async function listEvalSuites(params: { category?: string; workspaceId?: 
   });
 }
 
-export async function listEvalCases(params: { suiteId?: string; source?: string; workspaceId?: string; limit?: number } = {}) {
+export async function listEvalCases(params: { accessibleWorkspaceIds?: string[]; suiteId?: string; source?: string; workspaceId?: string; limit?: number } = {}) {
   return db.evalCase.findMany({
     where: {
+      AND: params.accessibleWorkspaceIds ? [{ workspaceId: { in: params.accessibleWorkspaceIds } }] : [],
       ...(params.suiteId ? { suiteId: params.suiteId } : {}),
       ...(params.source ? { source: params.source } : {}),
       ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),

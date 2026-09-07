@@ -102,15 +102,17 @@ const EMPTY_HIGHLIGHT_TITLES: string[] = [];
 
 export function NeuralLens({
   projectId,
+  initialDemoMode = true,
   apiRef: externalApiRef,
   highlightTitles = EMPTY_HIGHLIGHT_TITLES,
 }: {
   projectId?: string;
+  initialDemoMode?: boolean;
   apiRef?: RefObject<GlobeGraphApi | null>;
   /** Additive collaboration focus: these agent/task/file labels stay lit. */
   highlightTitles?: string[];
 } = {}) {
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode, setDemoMode] = useState(initialDemoMode);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
   // Search, type filters, the selected node, the lens, render settings, and

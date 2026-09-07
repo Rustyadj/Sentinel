@@ -15,13 +15,14 @@ import {
   Mail, Sparkles, Star, MonitorSmartphone, FileSignature,
   KeySquare, Bug, Fingerprint, ArrowRightLeft,
 } from "lucide-react";
+import { AiSecurityPanel } from "./AiSecurityPanel";
 import { cn } from "@/lib/utils";
 import { LensOverview } from "@/components/neural-lens/LensOverview";
 import type { LensOverviewStats } from "@/lib/workspaces/lensStats";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type Section = "overview" | "console" | "red" | "blue" | "purple" | "intel" | "chains" | "techniques" | "reports";
+type Section = "ai-security" | "overview" | "console" | "red" | "blue" | "purple" | "intel" | "chains" | "techniques" | "reports";
 
 // ─── Sub-navigation ────────────────────────────────────────────────────────────
 //
@@ -32,6 +33,7 @@ type Section = "overview" | "console" | "red" | "blue" | "purple" | "intel" | "c
 // it is the pre-existing stats dashboard, kept but demoted and relabeled.
 
 const NAV_ITEMS: { id: Section; label: string; icon: ElementType; color: string }[] = [
+  { id: "ai-security", label: "AI Security", icon: Shield, color: "#6366f1" },
   { id: "overview", label: "Overview", icon: Globe, color: "#6366f1" },
   { id: "console", label: "Summary", icon: Radar, color: "#6366f1" },
   { id: "red", label: "Red Team", icon: Sword, color: "#ef4444" },
@@ -919,11 +921,20 @@ function Reports() {
 
 export function CybersecurityPage({ stats = null }: { stats?: LensOverviewStats | null }) {
   const [section, setSection] = useState<Section>("overview");
+  useEffect(() => {
+    const onTab = (event: Event) => {
+      const detail = (event as CustomEvent<{ moduleId: string; tabId: string }>).detail;
+      if (detail?.moduleId === "cybersecurity" && (detail.tabId === "ai-security" || detail.tabId === "overview")) setSection(detail.tabId);
+    };
+    window.addEventListener("sentinel:module-tab", onTab);
+    return () => window.removeEventListener("sentinel:module-tab", onTab);
+  }, []);
 
   return (
     <div className="h-full flex overflow-hidden">
       <SubNav active={section} onSelect={setSection} />
       <div className="flex-1 overflow-hidden bg-[--background]">
+        {section === "ai-security" && <AiSecurityPanel />}
         {section === "overview" && <LensOverview lens="cybersecurity" stats={stats} />}
         {section === "console" && <RangeConsole />}
         {section === "red" && <RedTeam />}

@@ -1,3 +1,4 @@
+import { getAccessibleLearningScope } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { listEvalSuites, listEvalCases, compileEvalCase } from "@/lib/learning/eval-compiler";
@@ -7,11 +8,12 @@ export async function GET(req: Request) {
   const user = await requireUser().catch(() => null);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const accessibleWorkspaceIds = (await getAccessibleLearningScope(user.id)).workspaceIds;
   const { searchParams } = new URL(req.url);
   const suiteId = searchParams.get("suiteId") ?? undefined;
   const [suites, cases] = await Promise.all([
-    listEvalSuites({ category: searchParams.get("category") ?? undefined, workspaceId: searchParams.get("workspaceId") ?? undefined }),
-    suiteId ? listEvalCases({ suiteId }) : Promise.resolve([]),
+    listEvalSuites({ accessibleWorkspaceIds, category: searchParams.get("category") ?? undefined, workspaceId: searchParams.get("workspaceId") ?? undefined }),
+    suiteId ? listEvalCases({ accessibleWorkspaceIds, suiteId }) : Promise.resolve([]),
   ]);
   return NextResponse.json({ suites, cases });
 }

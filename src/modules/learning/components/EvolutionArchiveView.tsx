@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ExperimentModelPanel } from "./ExperimentModelPanel";
 import { Dna, Crown } from "lucide-react";
 
 interface Candidate {
@@ -88,6 +89,8 @@ export function EvolutionArchiveView() {
         candidates stay in the archive as training evidence, and structurally novel candidates are
         preserved even when they don&apos;t win on fitness alone.
       </p>
+
+      {loaded && !error && <ExperimentModelPanel candidates={[...new Map([...archive, ...groups.flatMap(group => [...(group.champion ? [group.champion] : []), ...group.challengers])].map(candidate => [candidate.id, candidate])).values()]} />}
 
       {!loaded ? (
         <div className="text-xs text-[--muted-foreground]">Loading…</div>

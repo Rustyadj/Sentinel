@@ -35,7 +35,7 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
   async discover(): Promise<RuntimeDiscovery> {
     const candidates = await Promise.all(
-      [`runtime-${this.kind}`, ...(this.kind === "hermes" ? ["runtime-hermes-lisa"] : [])]
+      [`runtime-${this.kind}`, ...(this.kind === "hermes" ? ["runtime-hermes-lisa", "runtime-hermes-nathan2"] : [])]
         .map((id) => this.resolveRuntime(id)),
     );
     const configured = candidates.filter((value): value is RuntimeInstance => Boolean(value && value.kind === this.kind));

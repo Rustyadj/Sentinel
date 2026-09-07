@@ -374,3 +374,15 @@ export function assertCanReadLearningResource(userId: string, resource: Learning
 export function assertCanMutateLearningResource(userId: string, resource: LearningResourceRef): Promise<void> {
   return dispatchLearningAccess(userId, resource, "workspace.update");
 }
+
+export function learningCandidateScopeWhere(scope: AccessibleLearningScope) {
+  return { OR: [
+    { experience: { workspaceId: { in: scope.workspaceIds } } },
+    { experience: { projectId: { in: scope.projectIds } } },
+    { experience: { agentId: { in: scope.agentIds } } },
+    { approvalRequest: { workspaceId: { in: scope.workspaceIds } } },
+    { knowledgeGap: { workspaceId: { in: scope.workspaceIds } } },
+    ...scope.workspaceIds.map(id => ({ proposedPayload: { path: ["workspaceId"], equals: id } })),
+    ...scope.agentIds.map(id => ({ proposedPayload: { path: ["agentId"], equals: id } })),
+  ] };
+}

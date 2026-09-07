@@ -1,3 +1,4 @@
+import { requireLearningWorkspaceAccess, LearningAccessError, learningAccessErrorResponse, requireExperienceAccess } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { getPrincipleHistory, evolvePrinciple } from "@/lib/learning/principles";
@@ -8,12 +9,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const [principle, history] = await Promise.all([
-    db.principle.findUnique({ where: { id } }),
-    getPrincipleHistory(id),
-  ]);
-  if (!principle) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ principle, history });
+  try {
+    const principle = await db.principle.findUnique({ where: { id } });
+    if (!principle?.workspaceId) throw new LearningAccessError();
+    await requireLearningWorkspaceAccess(user.id, principle.workspaceId, "workspace.read");
+    const history = await getPrincipleHistory(id);
+    return NextResponse.json({ principle, history });
+  } catch (error) { return learningAccessErrorResponse(error); }
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,10 +28,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "changeReason is required" }, { status: 400 });
   }
   try {
+    const principle = await db.principle.findUnique({ where: { id } });
+    if (!principle?.workspaceId) throw new LearningAccessError();
+    await requireLearningWorkspaceAccess(user.id, principle.workspaceId, "workspace.update");
+    for (const experienceId of [...(body.supportingExperienceIds ?? []), ...(body.contradictingExperienceIds ?? [])]) await requireExperienceAccess(user.id, experienceId, "workspace.read");
     const updated = await evolvePrinciple({ ...body, principleId: id, actorId: user.id });
     return NextResponse.json(updated);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return learningAccessErrorResponse(error);
   }
 }

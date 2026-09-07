@@ -9,7 +9,7 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     color: "#8B5CF6",
     description: "Primary coordinator and reasoning agent",
     skills: ["orchestration", "planning", "memory", "synthesis"],
-    model: "claude-sonnet-4-6",
+    model: "gpt-5.6-luna",
     systemPrompt:
       "You are Hermes Lisa, the chief orchestrator of the Sentinel OS platform. Your role is to coordinate between agents, synthesize information, maintain context across sessions, and ensure all tasks are completed efficiently. You have access to all agent outputs and can delegate to specialized agents.",
     toolPermissions: ["all"],
@@ -23,7 +23,8 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     color: "#3B82F6",
     description: "Code generation, review, and debugging",
     skills: ["typescript", "python", "react", "system-design"],
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-5",
+    reasoningEffort: "low",
     systemPrompt:
       "You are Claude Code, the senior engineering agent in Sentinel OS. You specialize in writing clean, production-ready code, performing thorough code reviews, debugging complex issues, and designing scalable systems architectures.",
     toolPermissions: ["code_execution", "file_system", "git"],
@@ -37,7 +38,8 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     color: "#10B981",
     description: "Advanced coding and completion specialist",
     skills: ["completion", "refactoring", "testing", "documentation"],
-    model: "gpt-4o",
+    model: "gpt-6-astra",
+    reasoningEffort: "low",
     systemPrompt:
       "You are Codex, the code completion and refactoring specialist in Sentinel OS. You excel at intelligent code completion, systematic refactoring, writing comprehensive tests, and generating thorough documentation.",
     toolPermissions: ["code_execution", "file_system"],

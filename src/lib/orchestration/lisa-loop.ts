@@ -165,7 +165,7 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
       // Lisa can recognize it and decide whether to ask the operator for a
       // fallback, rather than treating it like an ordinary implementation
       // failure to just retry.
-      ...(modelUnavailable ? { modelUnavailable: true, requestedModel: error.requestedModel, requestedEffort: error.requestedEffort, runtime: error.kind, recommendation: "Do not retry with a different model yourself — ASK_USER whether to approve a fallback model, or reassign to the other worker if the objective allows it." } : {}),
+      ...(modelUnavailable ? { modelUnavailable: true, requestedModel: error.requestedModel, requestedEffort: error.requestedEffort, runtime: error.kind, recommendation: "The operator must choose a fallback before another model or worker executes this task." } : {}),
     };
   } finally {
     if (lock) await releaseAgentLocks(ctx.roomId, ownerAgentId, task.id);
@@ -483,15 +483,22 @@ export async function runLisaLoop(input: RunLisaLoopInput): Promise<void> {
 
     const results: { tool: string; args: unknown; result: unknown }[] = [];
     for (const directive of otherDirectives) {
-      const result = await executeDirective(ctx, directive).catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+      const result = await executeDirective(ctx, directive).catch((error) => ({ error: error instanceof Error ? error.message : String(error), ...(error instanceof ModelUnavailableError ? { ...error.toJSON(), modelUnavailable: true } : {}) }));
       results.push({ tool: directive.tool, args: directive.args, result });
     }
     if (startDirectives.length) {
       const started = await Promise.all(startDirectives.map(async (directive) => ({
         tool: directive.tool, args: directive.args,
-        result: await executeDirective(ctx, directive).catch((error) => ({ error: error instanceof Error ? error.message : String(error) })),
+        result: await executeDirective(ctx, directive).catch((error) => ({ error: error instanceof Error ? error.message : String(error), ...(error instanceof ModelUnavailableError ? { ...error.toJSON(), modelUnavailable: true } : {}) })),
       })));
       results.push(...started);
+    }
+
+    const unavailable = results.map(entry => entry.result as Record<string, unknown>).find(result => result.modelUnavailable === true);
+    if (unavailable) {
+      await postCollaborationMessage({ chatRoomId: ctx.roomId, senderAgentId: ctx.lead, recipientAgentIds: ["user"], type: "BLOCKER", content: `MODEL_UNAVAILABLE: ${String(unavailable.requestedModel)} (${String(unavailable.requestedEffort ?? "default")}). Choose a fallback in Agent Model settings before continuing.` });
+      await emitCollaborationEvent(ctx.roomId, "agent.finished", { agentId: ctx.lead, awaitingUser: true, ...unavailable });
+      return;
     }
 
     if (askDirective) {

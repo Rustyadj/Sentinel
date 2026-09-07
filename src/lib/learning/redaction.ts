@@ -24,6 +24,12 @@ function redactValue(
   if (value !== null && typeof value === "object") {
     return redactObject(value as Record<string, unknown>, path, redactedKeys);
   }
+  if (typeof value === "string") {
+    const sanitized = value.replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [REDACTED]")
+      .replace(/\b(?:sk|ghp|github_pat|xoxb|xoxp)[-_][A-Za-z0-9_-]{16,}/g, "[REDACTED]");
+    if (sanitized !== value) redactedKeys.push(path);
+    return sanitized;
+  }
   return value;
 }
 

@@ -1,14 +1,16 @@
+import { getAccessibleLearningScope } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { listPrinciples, distillPrinciple } from "@/lib/learning/principles";
-import { learningAccessErrorResponse, requireLearningWorkspaceAccess } from "@/lib/learning/authorization";
+import { LearningAccessError, requireExperienceAccess, requireLearningAgentAccess, learningAccessErrorResponse, requireLearningWorkspaceAccess } from "@/lib/learning/authorization";
 
 export async function GET(req: Request) {
   const user = await requireUser().catch(() => null);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const accessibleWorkspaceIds = (await getAccessibleLearningScope(user.id)).workspaceIds;
   const { searchParams } = new URL(req.url);
-  const principles = await listPrinciples({
+  const principles = await listPrinciples({ accessibleWorkspaceIds,
     domain: searchParams.get("domain") ?? undefined,
     workspaceId: searchParams.get("workspaceId") ?? undefined,
     agentId: searchParams.get("agentId") ?? undefined,
@@ -29,7 +31,10 @@ export async function POST(req: Request) {
     );
   }
   try {
-    if (body.workspaceId) await requireLearningWorkspaceAccess(user.id, body.workspaceId, "workspace.update");
+    if (!body.workspaceId || body.scope === "global") throw new LearningAccessError();
+    await requireLearningWorkspaceAccess(user.id, body.workspaceId, "workspace.update");
+    if (body.agentId) await requireLearningAgentAccess(user.id, body.agentId, "workspace.update");
+    for (const experienceId of [...body.supportingExperienceIds, ...(body.contradictingExperienceIds ?? [])]) await requireExperienceAccess(user.id, experienceId, "workspace.read");
     const result = await distillPrinciple(body);
     return NextResponse.json(result);
   } catch (error) {

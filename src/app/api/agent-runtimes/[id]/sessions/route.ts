@@ -1,3 +1,4 @@
+import { validateModelConfiguration, type EffortLevel } from "@/lib/agents/model-policy";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { RUNTIME_PERMISSIONS, requireRuntimeAccess, validateSessionScope } from "@/lib/agents/runtime/authorization";
 import { parseLimit, readJsonObject, runtimeErrorResponse } from "@/lib/agents/runtime/api";
@@ -17,8 +18,15 @@ export async function POST(request: Request, { params }: Context) {
     if (body.initialPrompt !== undefined && typeof body.initialPrompt !== "string") {
       throw new RuntimeError("initialPrompt must be a string", "invalid_body", 400);
     }
+    let modelOverride;
+    if (body.model !== undefined) {
+      if (runtime.kind === "openclaw") throw new RuntimeError("Model overrides are not enabled for this runtime", "unsupported_override", 422);
+      validateModelConfiguration(runtime.kind, body.model, body.reasoningEffort);
+      modelOverride = { model: body.model as string, effort: body.reasoningEffort as EffortLevel | null | undefined, authorized: true };
+    }
     const session = await getRuntimeAdapter(runtime.kind).startSession({
       runtimeId: runtime.id,
+      modelOverride,
       userId: user.id,
       workspaceId,
       projectId,

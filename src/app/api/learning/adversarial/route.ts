@@ -1,3 +1,4 @@
+import { getAccessibleLearningScope } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { listAdversarialRuns } from "@/lib/learning/adversarial";
@@ -8,6 +9,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const runs = await listAdversarialRuns({
+    accessibleWorkspaceIds: (await getAccessibleLearningScope(user.id)).workspaceIds,
     candidateId: searchParams.get("candidateId") ?? undefined,
     outcome: searchParams.get("outcome") ?? undefined,
   });

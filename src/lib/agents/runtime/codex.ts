@@ -1,17 +1,13 @@
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import type { WorkerModelConfig } from "@/lib/agents/model-policy";
 import { CliRuntimeAdapter } from "./cli-adapter";
 import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types";
 
 /**
- * Built against the documented Codex CLI contract: `codex exec --json` with
- * workspace-write sandboxing and on-request approval. Resume is reported as
- * unsupported instead of being emulated. The real VPS binary remains unverified.
- *
- * `--model`/`-c model_reasoning_effort=...` below request the model-policy
- * resolved runtime id and effort explicitly. Like the rest of this
- * adapter's flags, the exact syntax is Sentinel's best-effort mapping and
- * unverified against the real installed CLI until the VPS acceptance test
- * runs.
+ * Verified on VPS Codex 0.147.0/0.153.4: global options precede exec;
+ * exec --json --model MODEL -c model_reasoning_effort="LEVEL".
+ * Model access is verified by execution, independently of flag support.
  */
 export class CodexRuntimeAdapter extends CliRuntimeAdapter {
   readonly kind = "codex" as const;
@@ -21,9 +17,9 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
 
   protected buildTaskArgs(runtime: RuntimeInstance, prompt: string, _externalSessionId?: string, modelConfig?: WorkerModelConfig) {
     return [
-      "exec", "--json",
       ...(runtime.args ?? []),
-      ...(modelConfig ? ["--model", modelConfig.runtimeModelId, "-c", `model_reasoning_effort="${modelConfig.effort}"`] : []),
+      "exec", "--json",
+      ...(modelConfig ? ["--model", modelConfig.runtimeModelId, ...(modelConfig.effort ? ["-c", `model_reasoning_effort="${modelConfig.effort}"`] : [])] : []),
       prompt,
     ];
   }
@@ -32,6 +28,9 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
     try {
       const value = JSON.parse(line) as Record<string, unknown>;
       const externalSessionId = typeof value.thread_id === "string" ? value.thread_id : undefined;
+      const item = value.item && typeof value.item === "object" ? value.item as Record<string, unknown> : undefined;
+      if (item?.type === "agent_message" && value.type === "item.completed") return { type: "assistant_delta", data: { text: item.text, event: value }, externalSessionId };
+      if (item?.type === "command_execution") return { type: value.type === "item.started" ? "command_started" : "command_completed", data: { command: item.command, exitCode: item.exit_code, event: value }, externalSessionId };
       const type = typeof value.type === "string" ? value.type : "";
       if (type.includes("message") || type.includes("assistant")) return { type: "assistant_delta", data: { event: value }, externalSessionId };
       if (type.includes("command") && type.includes("started")) return { type: "command_started", data: { event: value }, externalSessionId };
@@ -42,6 +41,35 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
     } catch {
       return { type: "stdout", data: { text: line, sessionId } };
     }
+  }
+
+  protected async reportedSessionModel(externalSessionId: string, startedAt: string) {
+    if (!/^[a-f0-9-]{36}$/.test(externalSessionId)) return null;
+    const home = process.env.CODEX_HOME ?? join(process.env.HOME ?? "/nonexistent", ".codex");
+    // Read only the runtime-created file for this owned session. Never import transcripts.
+    for (const dayOffset of [0, 1]) {
+      const date = new Date(new Date(startedAt).getTime() + dayOffset * 86400000).toISOString().slice(0, 10).replaceAll("-", "/");
+      const directory = join(home, "sessions", date);
+      const files = await readdir(directory).catch(() => [] as string[]);
+      for (const file of files.filter(name => name.endsWith(`${externalSessionId}.jsonl`))) {
+        const path = join(directory, file);
+        if ((await stat(path)).size > 16 * 1024 * 1024) continue;
+        const lines = (await readFile(path, "utf8")).split("\n");
+        let owned = false;
+        let reported: Record<string, unknown> | null = null;
+        for (const line of lines) {
+          try {
+            const frame = JSON.parse(line);
+            if (frame.type === "session_meta") owned = (frame.payload.id ?? frame.payload.session_id) === externalSessionId;
+            if (owned && frame.type === "turn_context" && typeof frame.payload.model === "string") {
+              reported = { actualModel: frame.payload.model, actualEffort: frame.payload.effort ?? null, actualModelSource: "runtime_turn_context" };
+            }
+          } catch { /* An incomplete last JSONL frame is not provenance. */ }
+        }
+        if (reported) return reported;
+      }
+    }
+    return null;
   }
 
   async capabilities(runtime: RuntimeInstance): Promise<RuntimeCapabilities> {

@@ -253,9 +253,10 @@ export async function retractPrinciple(principleId: string, actorId: string, rea
   return updated;
 }
 
-export async function listPrinciples(params: { domain?: string; workspaceId?: string; agentId?: string; status?: string } = {}) {
+export async function listPrinciples(params: { accessibleWorkspaceIds?: string[]; domain?: string; workspaceId?: string; agentId?: string; status?: string } = {}) {
   return db.principle.findMany({
     where: {
+      AND: params.accessibleWorkspaceIds ? [{ workspaceId: { in: params.accessibleWorkspaceIds } }] : [],
       ...(params.domain ? { domain: params.domain } : {}),
       ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
       ...(params.agentId ? { agentId: params.agentId } : {}),

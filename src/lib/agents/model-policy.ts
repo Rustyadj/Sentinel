@@ -1,105 +1,116 @@
-/**
- * Centralized model/effort policy for Sentinel-managed Claude Code and
- * Codex executions — the one authoritative source, so this never gets
- * duplicated in frontend components, API routes, runtime adapters, or task
- * creation code. Display name (what Sentinel shows an operator) is tracked
- * separately from runtime id (what's actually passed to the CLI), because a
- * friendly product name like "Claude Sonnet 5" is not guaranteed to be the
- * literal identifier an installed CLI/provider accepts — the runtime ids
- * below are Sentinel's best-effort mapping and, like the auth/version args
- * documented in runtime/claude-code.ts and runtime/codex.ts, are
- * intentionally left unverified until scripts/vps-acceptance-test.sh is run
- * against the real installed CLIs.
- */
+/** Canonical model policy. Persisted operator configuration wins over deployment defaults. */
+import type { AgentRuntimeKind } from "./runtime/types";
 
 export type ManagedWorkerKind = "claude-code" | "codex";
-export type EffortLevel = "low" | "medium" | "high";
-
+export type EffortLevel = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 export interface WorkerModelConfig {
   displayName: string;
   runtimeModelId: string;
-  effort: EffortLevel;
+  effort: EffortLevel | null;
 }
-
-const BUILT_IN_DEFAULTS: Record<ManagedWorkerKind, WorkerModelConfig> = {
-  "claude-code": { displayName: "Claude Sonnet 5", runtimeModelId: "claude-sonnet-5", effort: "high" },
-  codex: { displayName: "GPT-5.6 Sol", runtimeModelId: "gpt-5.6-sol", effort: "high" },
+export interface EffectiveAgentModel extends WorkerModelConfig {
+  source: "session" | "agent" | "environment" | "builtin";
+}
+export const MODEL_CHOICES: Record<AgentRuntimeKind, readonly string[]> = {
+  hermes: ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra"],
+  "claude-code": ["claude-sonnet-5", "claude-opus-5"],
+  codex: ["gpt-5.6-sol", "gpt-6-astra"],
+  openclaw: [], // populated from the Gateway, never invented
 };
-
-function isEffortLevel(value: string | undefined): value is EffortLevel {
-  return value === "low" || value === "medium" || value === "high";
-}
-
-function envEffort(name: string, fallback: EffortLevel): EffortLevel {
-  const value = process.env[name]?.toLowerCase();
-  return isEffortLevel(value) ? value : fallback;
-}
-
 export function isManagedWorkerKind(kind: string): kind is ManagedWorkerKind {
   return kind === "claude-code" || kind === "codex";
 }
-
-/**
- * Resolves the model/effort policy for one managed worker kind. Environment
- * overrides win over the built-in default; the display name is never
- * overridden by env (it's a label, not a runtime setting) — SENTINEL_CLAUDE_
- * DEFAULT_MODEL/_EFFORT and SENTINEL_CODEX_DEFAULT_MODEL/_EFFORT only ever
- * change the runtime id / effort actually requested.
- */
-export function resolveWorkerModel(kind: ManagedWorkerKind): WorkerModelConfig {
-  const defaults = BUILT_IN_DEFAULTS[kind];
-  if (kind === "claude-code") {
-    return {
-      displayName: defaults.displayName,
-      runtimeModelId: process.env.SENTINEL_CLAUDE_DEFAULT_MODEL ?? defaults.runtimeModelId,
-      effort: envEffort("SENTINEL_CLAUDE_DEFAULT_EFFORT", defaults.effort),
-    };
+export function sentinelModelDefault(kind: AgentRuntimeKind): WorkerModelConfig {
+  const model = kind === "claude-code" ? "claude-opus-5" : kind === "codex" ? "gpt-6-astra"
+    : kind === "hermes" ? "gpt-5.6-luna" : process.env.OPENCLAW_MODEL ?? "claude-opus-4-8";
+  return { displayName: model, runtimeModelId: model, effort: isManagedWorkerKind(kind) ? "low" : null };
+}
+export function validateModelConfiguration(kind: AgentRuntimeKind, model: unknown, effort: unknown): void {
+  if (typeof model !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(model)) {
+    throw new Error("INVALID_MODEL: use a provider model ID (1–128 characters)");
   }
-  return {
-    displayName: defaults.displayName,
-    runtimeModelId: process.env.SENTINEL_CODEX_DEFAULT_MODEL ?? defaults.runtimeModelId,
-    effort: envEffort("SENTINEL_CODEX_DEFAULT_EFFORT", defaults.effort),
-  };
+  if (effort !== null && effort !== undefined && (typeof effort !== "string" || !["none", "low", "medium", "high", "xhigh", "max"].includes(effort))) {
+    throw new Error("INVALID_EFFORT");
+  }
+  if (isManagedWorkerKind(kind) && effort != null && !["low", "medium", "high", "xhigh", "max"].includes(String(effort))) {
+    throw new Error("INVALID_EFFORT: this runtime does not support this level");
+  }
 }
-
-/**
- * Best-effort heuristic over a runtime process's stderr: distinguishes "the
- * requested model was rejected by the CLI/provider itself" from an ordinary
- * task failure, so Sentinel can surface a distinguishable MODEL_UNAVAILABLE
- * outcome instead of silently treating it like any other error. Sentinel
- * never substitutes a different model when this fires — a stuck/failed
- * execution is reported as unavailable and left for Lisa or the operator to
- * decide on a fallback, never auto-downgraded.
- */
-const REJECTION_WORDS = "(?:not found|not supported|unsupported|unavailable|unknown|invalid|does not exist)";
-const MODEL_UNAVAILABLE_PATTERN = new RegExp(
-  `\\bmodel\\b[^\\n]{0,80}\\b${REJECTION_WORDS}\\b|\\b${REJECTION_WORDS}\\b[^\\n]{0,80}\\bmodel\\b`,
-  "i",
-);
-
-export function looksLikeModelUnavailable(stderrText: string): boolean {
-  return MODEL_UNAVAILABLE_PATTERN.test(stderrText);
+function deploymentDefault(agentId: string, kind: AgentRuntimeKind): EffectiveAgentModel {
+  const defaults = sentinelModelDefault(kind);
+  const prefix = kind === "claude-code" ? "SENTINEL_CLAUDE_DEFAULT" : kind === "codex" ? "SENTINEL_CODEX_DEFAULT"
+    : kind === "hermes" ? agentId.replaceAll("-", "_").toUpperCase() : "OPENCLAW";
+  const model = process.env[`${prefix}_MODEL`];
+  const effort = process.env[`${prefix}_EFFORT`];
+  const result = { displayName: model ?? defaults.displayName, runtimeModelId: model ?? defaults.runtimeModelId,
+    effort: effort ? effort as EffortLevel : defaults.effort, source: model || effort ? "environment" as const : "builtin" as const };
+  validateModelConfiguration(kind, result.runtimeModelId, result.effort);
+  return result;
 }
+/** Compatibility for synchronous registry labels only. Execution uses the async resolver below. */
+export function resolveWorkerModel(kind: ManagedWorkerKind): WorkerModelConfig { return deploymentDefault(kind, kind); }
 
-/**
- * Thrown instead of a generic failure when the runtime rejected the
- * requested model/effort itself. Deliberately does not carry a list of
- * "available models" — Sentinel has no live way to enumerate a CLI's
- * supported models from here, and fabricating one would violate the same
- * "never substitute demo/fabricated data" rule this codebase already
- * applies elsewhere (see MissionControlPage's explicit source-status UI).
- * Carries enough for a caller (Lisa's loop, a direct reply) to surface a
- * real MODEL_UNAVAILABLE outcome and decide whether to ask the operator for
- * a fallback — never to silently substitute one itself.
- */
+export async function resolveEffectiveAgentModel(agentId: string, kind: AgentRuntimeKind,
+  override?: { model: string; effort?: EffortLevel | null; authorized: boolean }): Promise<EffectiveAgentModel> {
+  if (override) {
+    if (!override.authorized) throw new Error("UNAUTHORIZED_MODEL_OVERRIDE");
+    const effort = override.effort === undefined ? (await resolveEffectiveAgentModel(agentId, kind)).effort : override.effort;
+    validateModelConfiguration(kind, override.model, effort);
+    return { displayName: override.model, runtimeModelId: override.model, effort, source: "session" };
+  }
+  const { db } = await import("@/lib/db");
+  // A DB outage is an error, never permission to silently use a different model.
+  const agent = await db.agent.findUnique({ where: { id: agentId }, select: { model: true, reasoningEffort: true } });
+  if (agent?.model) {
+    validateModelConfiguration(kind, agent.model, agent.reasoningEffort);
+    return { displayName: agent.model, runtimeModelId: agent.model, effort: agent.reasoningEffort as EffortLevel | null, source: "agent" };
+  }
+  return deploymentDefault(agentId, kind);
+}
+export function modelProvenance(agentId: string, kind: AgentRuntimeKind, config: EffectiveAgentModel): Record<string, unknown> {
+  return { agentId, runtimeKind: kind, provider: kind === "claude-code" ? "anthropic" : kind === "codex" ? "openai" : null,
+    requestedModel: config.runtimeModelId, requestedEffort: config.effort, modelConfigSource: config.source,
+    configSource: config.source, startedAt: new Date().toISOString() };
+}
+/** Existing sessions are immutable snapshots, including recovery and resume. */
+export function sessionModelConfiguration(metadata: Record<string, unknown>): EffectiveAgentModel | null {
+  const legacy = metadata.requestedModel as Partial<WorkerModelConfig> | undefined;
+  const model = typeof metadata.requestedModel === "string" ? metadata.requestedModel : legacy?.runtimeModelId;
+  if (!model) return null;
+  return { runtimeModelId: model, displayName: model,
+    effort: (metadata.requestedEffort ?? legacy?.effort ?? null) as EffortLevel | null,
+    source: (metadata.modelConfigSource ?? "session") as EffectiveAgentModel["source"] };
+}
+export function looksLikeModelUnavailable(text: string): boolean {
+  return /(?:model|effort)[^\n]{0,160}(?:not found|not supported|unsupported|unavailable|unknown|invalid|does not exist|not available|access|requires a newer version)|(?:unsupported|unknown|invalid)[^\n]{0,80}(?:model|effort)/i.test(text);
+}
 export class ModelUnavailableError extends Error {
-  constructor(
-    public readonly kind: ManagedWorkerKind,
-    public readonly requestedModel: string,
-    public readonly requestedEffort: EffortLevel,
-    public readonly reason: string,
-  ) {
-    super(`MODEL_UNAVAILABLE: ${kind} rejected requested model "${requestedModel}" (effort: ${requestedEffort}) — ${reason.slice(0, 500)}`);
+  readonly code = "MODEL_UNAVAILABLE";
+  readonly runtime: AgentRuntimeKind;
+  constructor(public readonly kind: AgentRuntimeKind, public readonly requestedModel: string,
+    public readonly requestedEffort: EffortLevel | null, public readonly reason: string) {
+    super(`MODEL_UNAVAILABLE: ${kind} rejected "${requestedModel}" (effort: ${requestedEffort ?? "default"}) — ${reason.slice(0, 500)}`);
     this.name = "ModelUnavailableError";
+    this.runtime = kind;
   }
+  toJSON() { return { code: this.code, runtime: this.runtime, requestedModel: this.requestedModel, requestedEffort: this.requestedEffort, reason: this.reason }; }
+}
+
+/** Catalog evidence comes from the installed CLI, never a universal effort list. */
+export async function installedEffortOptions(runtime: { kind: AgentRuntimeKind; executable?: string }, model: string): Promise<EffortLevel[]> {
+  if (!runtime.executable || !isManagedWorkerKind(runtime.kind)) return [];
+  if (runtime.kind === "claude-code") {
+    const { nodeRuntimeProcessRunner } = await import("./runtime/runner");
+    const help = await nodeRuntimeProcessRunner.run(runtime.executable, ["--help"], { timeoutMs: 5000 }).catch(() => null);
+    const line = help?.stdout.split("\n").find(line => line.includes("--effort"));
+    return (["low", "medium", "high"] as EffortLevel[]).filter(level => line && new RegExp(`\\b${level}\\b`).test(line));
+  }
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  try {
+    const cache = JSON.parse(await readFile(join(process.env.CODEX_HOME ?? join(process.env.HOME ?? "/nonexistent", ".codex"), "models_cache.json"), "utf8"));
+    const entry = cache.models?.find((value: { slug?: string }) => value.slug === model);
+    const supported = entry?.supported_reasoning_levels?.map((value: { effort: string }) => value.effort) ?? [];
+    return (["low", "medium", "high", "xhigh", "max"] as EffortLevel[]).filter(level => supported.includes(level));
+  } catch { return []; }
 }

@@ -1,3 +1,4 @@
+import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { db } from "@/lib/db";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { appendSessionMemory } from "@/lib/knowledge/retrieval";
@@ -13,6 +14,7 @@ import type { RuntimeEvent } from "./types";
 export type ChatExecutionMode = "model_chat" | "persistent_agent_runtime" | "coding_runtime" | "workflow_runtime";
 
 export const RUNTIME_AGENT_MAP: Record<string, { runtimeId: string; mode: ChatExecutionMode; label: string }> = {
+  "hermes-nathan2": { runtimeId: "runtime-hermes-nathan2", mode: "persistent_agent_runtime", label: "Hermes runtime" },
   "hermes-lisa": { runtimeId: "runtime-hermes-lisa", mode: "persistent_agent_runtime", label: "Hermes runtime" },
   openclaw: { runtimeId: "runtime-openclaw", mode: "persistent_agent_runtime", label: "OpenClaw runtime" },
   "claude-code": { runtimeId: "runtime-claude-code", mode: "coding_runtime", label: "Claude Code runtime" },
@@ -121,6 +123,9 @@ export async function routeRuntimeChat(input: {
           enqueue({ type: "runtime_event", event });
         }
         if (room && fullContent) {
+          const completedSession = runtime.kind === "openclaw" ? null : await runtimeSessionStore.get(session.id);
+          const provenance = completedSession?.metadata ?? {};
+          const executedModel = typeof provenance.actualModel === "string" ? provenance.actualModel : typeof provenance.requestedModel === "string" ? provenance.requestedModel : runtime.kind === "openclaw" ? runtime.model : undefined;
           await persistChatExchange({
             roomId: room.id,
             userId: input.userId,
@@ -130,7 +135,7 @@ export async function routeRuntimeChat(input: {
             provenance: {
               runtimeKind: runtime.kind,
               provider: RUNTIME_PROVIDERS[runtime.kind],
-              model: runtime.model,
+              model: executedModel,
               agentRuntimeSessionId: session.id,
             },
           });
@@ -142,7 +147,7 @@ export async function routeRuntimeChat(input: {
             agentId: input.agentId,
             roomId: room.id,
             userContent: input.userContent,
-            model: runtime.model ?? runtime.kind,
+            model: executedModel ?? runtime.kind,
             startedAtMs: requestStartedAtMs,
             fullContent,
             knowledgeUsedIds: [],
@@ -150,7 +155,7 @@ export async function routeRuntimeChat(input: {
           enqueue({ type: "knowledge_update", roomId: room.id });
         }
       } catch (error) {
-        enqueue({ type: "error", error: error instanceof Error ? error.message : "Runtime execution failed" });
+        enqueue({ type: "error", ...(error instanceof ModelUnavailableError ? error.toJSON() : {}), error: error instanceof Error ? error.message : "Runtime execution failed" });
       } finally {
         enqueue({ type: "presence", agentId: input.agentId, status: "idle" });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));

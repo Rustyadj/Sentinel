@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { __test__ } from "@/lib/agents/runtime/hermes";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HermesWebSocketClient, HermesWsError, type HermesEventFrame } from "@/lib/agents/runtime/transports/hermes-websocket";
+import { HermesRuntimeAdapter, __test__ } from "@/lib/agents/runtime/hermes";
 import type { RuntimeSessionStore } from "@/lib/agents/runtime/store";
 import type { AgentSession, RuntimeEvent, RuntimeEventType, SessionQuery, StartSessionInput } from "@/lib/agents/runtime/types";
 
@@ -25,7 +26,7 @@ class MemoryStore implements RuntimeSessionStore {
     return [...this.sessions.values()].filter((s) => !query.runtimeId || s.runtimeInstanceId === query.runtimeId);
   }
   async update(id: string, data: Partial<Pick<AgentSession, "status" | "externalSessionId" | "exitCode">> & { completedAt?: Date; cancelledAt?: Date; metadata?: Record<string, unknown> }) {
-    const current = this.sessions.get(id)!;
+    const current = this.sessions.get(id) ?? { metadata: {} } as AgentSession;
     const next: AgentSession = {
       ...current, ...data,
       completedAt: data.completedAt ? data.completedAt.toISOString() : current.completedAt,
@@ -137,5 +138,43 @@ describe("AsyncQueue", () => {
     queue.fail(new Error("nope"));
     const it = queue[Symbol.asyncIterator]();
     await expect(it.next()).rejects.toThrow("nope");
+  });
+});
+
+
+describe("Hermes per-session model routing", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each(["hermes-lisa", "hermes-nathan2"])("%s sends the selected model and preserves it after reaping", async agentId => {
+    const store = new MemoryStore();
+    const creates: Record<string, unknown>[] = [];
+    let listener: (frame: HermesEventFrame) => void = () => {};
+    let submissions = 0;
+    const client = {
+      close: () => {}, onEvent: (fn: typeof listener) => { listener = fn; return () => {}; },
+      call: async (method: string, params: Record<string, unknown>) => {
+        if (method === "config.get") return { config: { fallback_model: null, fallback_providers: [] } };
+        if (method === "session.create") { creates.push(params); return { session_id: `external-${creates.length}` }; }
+        if (method === "prompt.submit") {
+          if (++submissions === 1) throw new HermesWsError("session not found", 4001);
+          setTimeout(() => listener({ type: "message.complete", session_id: "external-2", payload: {} }), 5);
+          return { status: "streaming" };
+        }
+        throw new Error(`Unexpected method ${method}`);
+      },
+    };
+    vi.spyOn(HermesWebSocketClient, "connect").mockResolvedValue(client as unknown as HermesWebSocketClient);
+    const adapter = new HermesRuntimeAdapter(async () => ({ id: `runtime-${agentId}`, agentId, kind: "hermes", transport: "docker", endpoint: "http://localhost:4861" }), store);
+    const session = await adapter.startSession({ runtimeId: `runtime-${agentId}`, userId: "u1", modelOverride: { model: "gpt-5.6-terra", effort: "low", authorized: true } });
+    for await (const _event of adapter.send({ sessionId: session.id, userId: "u1", prompt: "test" })) { /* drain */ }
+    expect(creates).toHaveLength(2);
+    for (const call of creates) expect(call).toMatchObject({ model: "gpt-5.6-terra", reasoning_effort: "low" });
+    expect((await store.get(session.id))?.metadata).toMatchObject({ requestedModel: "gpt-5.6-terra", requestedEffort: "low" });
+  });
+  it("refuses runtime automatic fallback without creating a session", async () => {
+    const call = vi.fn(async () => ({ config: { fallback_model: { model: "another-model" } } }));
+    vi.spyOn(HermesWebSocketClient, "connect").mockResolvedValue({ call, close: () => {} } as unknown as HermesWebSocketClient);
+    const adapter = new HermesRuntimeAdapter(async () => ({ id: "runtime-hermes-nathan2", agentId: "hermes-nathan2", kind: "hermes", transport: "docker", endpoint: "http://localhost" }), new MemoryStore());
+    await expect(adapter.startSession({ runtimeId: "runtime-hermes-nathan2", userId: "u1", modelOverride: { model: "gpt-5.6-luna", authorized: true } })).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE", requestedModel: "gpt-5.6-luna" });
+    expect(call).toHaveBeenCalledTimes(1);
   });
 });

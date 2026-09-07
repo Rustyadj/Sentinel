@@ -62,13 +62,22 @@ export class HermesWebSocketClient {
     fetcher: typeof fetch = fetch,
     timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
     sessionToken?: string,
+    credentials?: { username: string; password: string },
   ): Promise<HermesWebSocketClient> {
     let authQuery: string;
     if (sessionToken) {
       authQuery = `token=${encodeURIComponent(sessionToken)}`;
     } else {
+      let cookie: string | undefined;
+      if (credentials) {
+        const login = await fetcher(`${endpoint}/auth/password-login`, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: "basic", ...credentials, next: "/" }), signal: AbortSignal.timeout(timeoutMs), redirect: "manual" });
+        if (!login.ok) throw new HermesWsError(`Dashboard login failed (${login.status})`);
+        cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+      }
       const ticketRes = await fetcher(`${endpoint}/api/auth/ws-ticket`, {
         method: "POST",
+        ...(cookie ? { headers: { Cookie: cookie } } : {}),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (!ticketRes.ok) throw new HermesWsError(`ws-ticket request failed (${ticketRes.status})`);

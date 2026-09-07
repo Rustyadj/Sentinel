@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { OverviewView } from "./OverviewView";
 import { CuriosityView } from "./CuriosityView";
@@ -49,17 +50,20 @@ const TAB_LABELS: Record<string, string> = {
 };
 
 export default function LearningCorePage() {
-  const [activeTab, setActiveTab] = useState("overview");
+  const queryTab = useSearchParams().get("tab");
+  const requestedTab = queryTab && TAB_LABELS[queryTab] ? queryTab : "overview";
+  const [selection, setSelection] = useState({ requestedTab, tab: requestedTab });
+  const activeTab = selection.requestedTab === requestedTab ? selection.tab : requestedTab;
 
   useEffect(() => {
     const onModuleTab = (event: Event) => {
       const detail = (event as CustomEvent<{ moduleId: string; tabId: string }>).detail;
       if (detail?.moduleId !== "learning") return;
-      setActiveTab(detail.tabId);
+      setSelection({ requestedTab, tab: detail.tabId });
     };
     window.addEventListener("sentinel:module-tab", onModuleTab);
     return () => window.removeEventListener("sentinel:module-tab", onModuleTab);
-  }, []);
+  }, [requestedTab]);
 
   if (activeTab === "overview") return <OverviewView />;
   if (activeTab === "curiosity") return <CuriosityView />;

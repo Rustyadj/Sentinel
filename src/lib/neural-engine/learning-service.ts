@@ -322,6 +322,8 @@ export async function reviewCandidate(
     payload: { candidateId, reviewerId, reason: reason ?? null },
   });
 
+  // Clarification policies activate only after promotion, Guardian, and canary setup.
+  if (candidate.type === "procedure" && candidatePayload.strategy && (candidatePayload.curiosityThreshold !== undefined || candidatePayload.threshold !== undefined)) return reviewed;
   return applyLearningCandidate(candidateId);
 }
 
@@ -342,6 +344,17 @@ export async function reviewCandidate(
  * pattern in skill-service.ts / contradiction-service.ts for why.
  */
 export async function applyLearningCandidate(candidateId: string) {
+  try { return await applyLearningCandidateGoverned(candidateId); }
+  catch (error) {
+    const candidate = await db.learningCandidate.findUnique({ where: { id: candidateId }, include: { experience: true } }).catch(() => null);
+    const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+    await recordProductionFailure("failed_deployment", { sourceId: candidateId, workspaceId: candidate?.experience?.workspaceId,
+      context: { operation: "apply_learning_candidate", reason: error instanceof Error ? error.message : "Application failed" },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+async function applyLearningCandidateGoverned(candidateId: string) {
   type PostCommitEvent = () => Promise<void>;
   const postCommitEvents: PostCommitEvent[] = [];
 
@@ -544,6 +557,11 @@ export async function applyLearningCandidate(candidateId: string) {
       }
 
       case "procedure": {
+        if (payload.strategy && (payload.curiosityThreshold !== undefined || payload.threshold !== undefined)) {
+          const { applyClarificationPolicy } = await import("@/lib/learning/clarification-policy");
+          appliedTargetId = await applyClarificationPolicy(tx, candidate);
+          break;
+        }
         // Delegates to skill-service, which enforces promotion thresholds
         // independently — a LearningCandidate approval is necessary but not
         // sufficient; skill-service still checks evidence/success-rate.
@@ -868,6 +886,13 @@ async function rollbackCandidateInTransaction(
         where: { id: priorVersion.id },
         data: { status: "active", activatedAt: new Date(), retiredAt: null },
       });
+      break;
+    }
+    case "procedure": {
+      if (candidate.appliedTargetId) {
+        await tx.learningArtifactVersion.updateMany({ where: { id: candidate.appliedTargetId, candidateId: candidate.id, artifactType: "clarification_policy" }, data: { status: "retired", retiredAt: new Date() } });
+        await tx.featureFlag.updateMany({ where: { learningCandidateId: candidate.id }, data: { enabled: false } });
+      }
       break;
     }
     default:

@@ -39,7 +39,12 @@ export async function requireRuntimeAccess(runtimeId: string, permission: Runtim
   if (!runtime.workspaceId) {
     throw new WorkspaceAccessError("Runtime is not assigned to an authorized workspace", 403);
   }
-  const user = await requireWorkspacePermission(runtime.workspaceId, permission);
+  const user = await requireWorkspacePermission(runtime.workspaceId, permission).catch(async error => {
+    const actor = await requireUser();
+    const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+    await recordProductionFailure("unauthorized_action", { sourceId: runtime.id, userId: actor.id, workspaceId: runtime.workspaceId, context: { permission, runtimeId: runtime.id } }).catch(() => undefined);
+    throw error;
+  });
   return { user, runtime };
 }
 

@@ -385,7 +385,7 @@ export async function promoteChallenger(
 ): Promise<PromotionDecision> {
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`evolution-promote:${challengerId}`})) IS NULL AS locked`;
-    const challenger = await tx.learningCandidate.findUniqueOrThrow({ where: { id: challengerId } });
+    const challenger = await tx.learningCandidate.findUniqueOrThrow({ where: { id: challengerId }, include: { approvalRequest: true, experience: true, knowledgeGap: true } });
 
     const reasons: string[] = [];
     if (challenger.status !== "approved" && challenger.status !== "auto_approved") {
@@ -402,9 +402,15 @@ export async function promoteChallenger(
     }
 
     const championGroup = challenger.championGroup!;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`evolution-group:${championGroup}`})) IS NULL AS locked`;
     const currentChampion = await tx.learningCandidate.findFirst({
       where: { championGroup, survivalStatus: "champion" },
+      include: { approvalRequest: true, experience: true, knowledgeGap: true },
     });
+    const workspaceOf = (candidate: typeof challenger) => candidate.approvalRequest?.workspaceId ?? candidate.experience?.workspaceId ?? candidate.knowledgeGap?.workspaceId ?? (candidate.proposedPayload as Record<string, unknown>).workspaceId ?? null;
+    if (currentChampion && workspaceOf(currentChampion) !== workspaceOf(challenger)) {
+      return { promoted: false, reasons: ["Champion group belongs to a different workspace"], championId: null, challengerId };
+    }
 
     if (currentChampion) {
       const championVector = (currentChampion.fitnessVector as FitnessVector | null) ?? {};
@@ -477,13 +483,12 @@ export async function promoteChallenger(
  * (nothing is deleted) — this only controls what a UI highlights first.
  */
 export async function getEvolutionArchive(params: {
+  scopeWhere?: Prisma.LearningCandidateWhereInput;
   championGroup?: string;
   limit?: number;
 } = {}) {
   const limit = Math.min(Math.max(params.limit ?? 25, 1), 100);
-  const where: Prisma.LearningCandidateWhereInput = params.championGroup
-    ? { championGroup: params.championGroup }
-    : {};
+  const where: Prisma.LearningCandidateWhereInput = { AND: [params.scopeWhere ?? {}, params.championGroup ? { championGroup: params.championGroup } : {}] };
 
   const [byFitness, byNovelty] = await Promise.all([
     db.learningCandidate.findMany({
@@ -503,11 +508,11 @@ export async function getEvolutionArchive(params: {
   return [...byId.values()];
 }
 
-export async function getCandidateLineage(candidateId: string) {
+export async function getCandidateLineage(candidateId: string, scopeWhere?: Prisma.LearningCandidateWhereInput) {
   const candidate = await db.learningCandidate.findUniqueOrThrow({ where: { id: candidateId } });
   const rootId = candidate.rootCandidateId ?? candidate.id;
   const lineage = await db.learningCandidate.findMany({
-    where: { OR: [{ id: rootId }, { rootCandidateId: rootId }] },
+    where: { AND: [scopeWhere ?? {}, { OR: [{ id: rootId }, { rootCandidateId: rootId }] }] },
     orderBy: [{ generation: "asc" }, { createdAt: "asc" }],
   });
   return lineage;

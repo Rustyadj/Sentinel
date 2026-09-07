@@ -337,9 +337,10 @@ export async function runAdversarialSelfPlay(input: RunAdversarialSelfPlayInput 
   return { runs, blockedCount, breachedCount, inconclusiveCount, regressionEvalCaseIds };
 }
 
-export async function listAdversarialRuns(params: { candidateId?: string; outcome?: string; limit?: number } = {}) {
+export async function listAdversarialRuns(params: { accessibleWorkspaceIds?: string[]; candidateId?: string; outcome?: string; limit?: number } = {}) {
   return db.adversarialRun.findMany({
     where: {
+      AND: params.accessibleWorkspaceIds ? [{ workspaceId: { in: params.accessibleWorkspaceIds } }] : [],
       ...(params.candidateId ? { candidateId: params.candidateId } : {}),
       ...(params.outcome ? { outcome: params.outcome } : {}),
     },

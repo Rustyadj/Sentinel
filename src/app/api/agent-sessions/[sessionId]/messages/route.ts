@@ -1,3 +1,4 @@
+import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { RUNTIME_PERMISSIONS, requireSessionAccess } from "@/lib/agents/runtime/authorization";
 import { readJsonObject, runtimeErrorResponse, SSE_HEADERS, sseEvent } from "@/lib/agents/runtime/api";
@@ -32,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
             controller.enqueue(encoder.encode(sseEvent(event)));
           }
         } catch (error) {
-          controller.enqueue(encoder.encode(sseEvent({ type: "error", data: { message: error instanceof Error ? error.message : "Runtime stream failed" } })));
+          controller.enqueue(encoder.encode(sseEvent({ type: "error", data: error instanceof ModelUnavailableError ? { ...error.toJSON(), modelUnavailable: true } : { message: error instanceof Error ? error.message : "Runtime stream failed" } })));
         } finally {
           controller.close();
         }

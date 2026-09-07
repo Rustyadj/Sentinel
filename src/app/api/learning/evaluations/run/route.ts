@@ -1,3 +1,5 @@
+import { db } from "@/lib/db";
+import { requireLearningCandidateAccess, requireLearningWorkspaceAccess } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { runEvalSuite } from "@/lib/learning/eval-compiler";
@@ -11,6 +13,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "suiteId and candidateId are required" }, { status: 400 });
   }
   try {
+    await requireLearningCandidateAccess(user.id, body.candidateId, "workspace.update");
+    const suite = await db.evalSuite.findUnique({ where: { id: body.suiteId } });
+    if (!suite?.workspaceId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await requireLearningWorkspaceAccess(user.id, suite.workspaceId, "workspace.update");
     const result = await runEvalSuite({ suiteId: body.suiteId, candidateId: body.candidateId, triggeredBy: `user:${user.id}` });
     return NextResponse.json(result);
   } catch (error) {
