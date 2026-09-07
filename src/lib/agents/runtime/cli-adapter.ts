@@ -222,7 +222,12 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
             const event = parsed.data.event as Record<string, unknown> | undefined;
             if (event?.is_error === true || event?.type === "turn.failed") structuredFailure = true;
             const message = event?.message as Record<string, unknown> | undefined;
-            const actualModel = event?.type === "assistant" && typeof message?.model === "string" ? message.model : undefined;
+            // `parsed.data.actualModel` is the runtime-agnostic channel: an adapter that
+            // knows where its runtime reports the model it really used sets it directly.
+            // The `assistant`/`message.model` shape below is Claude Code's specific form.
+            const actualModel = typeof parsed.data.actualModel === "string"
+              ? parsed.data.actualModel
+              : event?.type === "assistant" && typeof message?.model === "string" ? message.model : undefined;
             if (actualModel && !actualModel.startsWith("<")) {
               const latest = await this.store.get(session.id);
               await this.store.update(session.id, { metadata: { ...latest?.metadata, actualModel } });

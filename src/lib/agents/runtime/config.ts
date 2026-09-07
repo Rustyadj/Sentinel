@@ -124,6 +124,33 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     },
     sentinelControl: "partial",
   },
+  {
+    id: "runtime-gemini",
+    agentId: "gemini",
+    kind: "gemini",
+    transport: "process",
+    executable: process.env.GEMINI_EXECUTABLE ?? "gemini",
+    // Verified on Gemini CLI 0.58.0: without --skip-trust the CLI aborts outside a
+    // trusted directory and emits nothing. --approval-mode yolo is the non-interactive
+    // equivalent of Codex's sandbox policy; Sentinel gates dangerous work upstream.
+    args: ["--approval-mode", "yolo"],
+    workingDirectoryRoot: process.env.GEMINI_PROJECT_ROOT ?? PROJECT_ROOT,
+    logSource: { kind: "file", ref: `${LOG_ROOT}/gemini.log` },
+    workspaceId: process.env.GEMINI_WORKSPACE_ID,
+    enabled: true,
+    capabilities: {
+      streaming: true,
+      // `--resume <session-id>` and `--list-sessions` are present in 0.58.0.
+      resume: true,
+      cancel: true,
+      toolEvents: true,
+      fileChangeEvents: false,
+      restart: { supported: false, reason: "runtime_does_not_expose_capability" },
+      reload: { supported: false, reason: "runtime_does_not_expose_capability" },
+      nativeUi: { supported: false, reason: "runtime_does_not_expose_capability" },
+    },
+    sentinelControl: "partial",
+  },
 ];
 
 export function compatibilityRuntime(id: string): RuntimeView | undefined {

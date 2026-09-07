@@ -15,6 +15,20 @@ export const MODEL_CHOICES: Record<AgentRuntimeKind, readonly string[]> = {
   hermes: ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra"],
   "claude-code": ["claude-sonnet-5", "claude-opus-5"],
   codex: ["gpt-5.6-sol", "gpt-6-astra"],
+  // Verified against the installed Gemini CLI 0.58.0 on this VPS by executing each id.
+  // status:"success": gemini-3.8-flash, gemini-3.5-flash, gemini-3.1-flash-lite,
+  // gemini-3-flash, and "auto" (the CLI's own router).
+  // status:"error" ("not found for API version v1beta") on this API key, so deliberately
+  // absent: every *-pro variant, and gemini-3.8-flash-lite. An unavailable model must
+  // surface as MODEL_UNAVAILABLE, never sit in a menu the runtime cannot honor.
+  //
+  // IMPORTANT (verified 2026-09-07): the provider currently SUBSTITUTES on this key —
+  // requesting gemini-3.8-flash, gemini-3-flash or "auto" all report
+  // stats.models = {"gemini-3.5-flash"}. The request is accepted, not rejected, so this
+  // is not a MODEL_UNAVAILABLE condition and Sentinel cannot prevent it. It is exactly
+  // why the adapter reports actualModel from the result frame: the UI must show that
+  // requested and actual differ rather than implying the request was honored.
+  gemini: ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3-flash", "auto"],
   openclaw: [], // populated from the Gateway, never invented
 };
 export function isManagedWorkerKind(kind: string): kind is ManagedWorkerKind {
@@ -22,7 +36,11 @@ export function isManagedWorkerKind(kind: string): kind is ManagedWorkerKind {
 }
 export function sentinelModelDefault(kind: AgentRuntimeKind): WorkerModelConfig {
   const model = kind === "claude-code" ? "claude-opus-5" : kind === "codex" ? "gpt-6-astra"
-    : kind === "hermes" ? "gpt-5.6-luna" : process.env.OPENCLAW_MODEL ?? "claude-opus-4-8";
+    : kind === "hermes" ? "gpt-5.6-luna"
+    // Operator-selected default. Verified available on this API key; the Gemini CLI has
+    // no reasoning-effort control, so effort stays null for this kind.
+    : kind === "gemini" ? "gemini-3.8-flash"
+    : process.env.OPENCLAW_MODEL ?? "claude-opus-4-8";
   return { displayName: model, runtimeModelId: model, effort: isManagedWorkerKind(kind) ? "low" : null };
 }
 export function validateModelConfiguration(kind: AgentRuntimeKind, model: unknown, effort: unknown): void {
@@ -31,6 +49,12 @@ export function validateModelConfiguration(kind: AgentRuntimeKind, model: unknow
   }
   if (effort !== null && effort !== undefined && (typeof effort !== "string" || !["none", "low", "medium", "high", "xhigh", "max"].includes(effort))) {
     throw new Error("INVALID_EFFORT");
+  }
+  // Gemini CLI 0.58.0 exposes no reasoning-effort control (verified: no such flag in
+  // `gemini --help`). Accepting one would let the UI offer a setting the runtime cannot
+  // honor, so it is rejected rather than silently dropped.
+  if (kind === "gemini" && effort != null && effort !== "none") {
+    throw new Error("INVALID_EFFORT: the Gemini runtime does not support reasoning effort");
   }
   if (isManagedWorkerKind(kind) && effort != null && !["low", "medium", "high", "xhigh", "max"].includes(String(effort))) {
     throw new Error("INVALID_EFFORT: this runtime does not support this level");
