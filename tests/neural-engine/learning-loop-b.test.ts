@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { startExperience, completeExperience } from "@/lib/neural-engine/experience-service";
 import { autoEvaluateExperience } from "@/lib/neural-engine/evaluator";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
+import { claudeResultTokenUsage } from "@/lib/agents/runtime/claude-code";
+import { codexTokenUsage } from "@/lib/agents/runtime/codex";
 import { makeAgent, makeKnowledgeObject } from "./db-setup";
 
 afterAll(async () => {
@@ -109,6 +111,83 @@ describe("Phase B — auto-evaluator + learning loop (integration)", () => {
     expect(exp?.outcome?.status).toBe("success");
     expect(exp?.evaluations.length).toBeGreaterThanOrEqual(1);
     expect(exp?.latencyMs).toBeGreaterThan(0);
+  });
+
+  it("records Claude Code stream-json result usage as a non-null Experience cost", async () => {
+    const agent = await makeAgent("B Claude Cost Agent");
+    const tokenUsage = claudeResultTokenUsage({
+      type: "result",
+      usage: {
+        input_tokens: 1_000,
+        output_tokens: 200,
+        cache_read_input_tokens: 500,
+        cache_creation_input_tokens: 150,
+        cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 50 },
+      },
+    });
+    expect(tokenUsage).not.toBeNull();
+
+    const experienceId = await captureAgentTurn({
+      agentId: agent.id,
+      userContent: "Implement the requested Claude change",
+      model: "claude-opus-5",
+      startedAtMs: Date.now() - 500,
+      fullContent: "Implemented and tested.",
+      tokenUsage: tokenUsage!,
+    });
+
+    const experience = await db.experience.findUniqueOrThrow({ where: { id: experienceId! } });
+    expect(experience.cost).toBeCloseTo(0.011375, 8);
+  });
+
+  it("records Codex transcript usage as a non-null Experience cost", async () => {
+    const agent = await makeAgent("B Codex Cost Agent");
+    const tokenUsage = codexTokenUsage({
+      input_tokens: 1_400,
+      cached_input_tokens: 400,
+      cache_write_input_tokens: 100,
+      output_tokens: 200,
+      reasoning_output_tokens: 50,
+      total_tokens: 1_600,
+    });
+    expect(tokenUsage).not.toBeNull();
+
+    const experienceId = await captureAgentTurn({
+      agentId: agent.id,
+      userContent: "Implement the requested Codex change",
+      model: "gpt-6-astra",
+      startedAtMs: Date.now() - 500,
+      fullContent: "Implemented and tested.",
+      tokenUsage: tokenUsage!,
+    });
+
+    const experience = await db.experience.findUniqueOrThrow({ where: { id: experienceId! } });
+    expect(experience.cost).toBeCloseTo(0.02065, 8);
+  });
+
+  it.each([
+    ["Hermes usage is absent", "gpt-5.6-luna", undefined],
+    ["the reported model is not priced", "future-unlisted-model", {
+      inputTokens: 1_000,
+      outputTokens: 200,
+      cachedInputTokens: 500,
+      cacheWrite5mInputTokens: 100,
+      cacheWrite1hInputTokens: 50,
+    }],
+  ])("keeps Experience.cost null (not zero) when %s", async (_reason, model, tokenUsage) => {
+    const agent = await makeAgent("B Unknown Cost Agent");
+    const experienceId = await captureAgentTurn({
+      agentId: agent.id,
+      userContent: "Run a turn with unknown cost",
+      model,
+      startedAtMs: Date.now() - 100,
+      fullContent: "Completed without billable telemetry.",
+      ...(tokenUsage ? { tokenUsage } : {}),
+    });
+
+    const experience = await db.experience.findUniqueOrThrow({ where: { id: experienceId! } });
+    expect(experience.cost).toBeNull();
+    expect(experience.cost).not.toBe(0);
   });
 
   it("captureAgentTurn records a failed turn (empty response) as a failure outcome", async () => {

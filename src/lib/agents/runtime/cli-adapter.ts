@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import { ModelUnavailableError, isManagedWorkerKind, looksLikeModelUnavailable, resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, type WorkerModelConfig } from "@/lib/agents/model-policy";
+import { isReportedTokenUsage } from "@/lib/agents/pricing";
 import { RuntimeError, UnsupportedRuntimeCapabilityError } from "./errors";
 import { assertSafeOpaqueId, resolveAllowedWorkingDirectory } from "./path-security";
 import { nodeRuntimeProcessRunner, type RuntimeProcessRunner } from "./runner";
@@ -231,6 +232,10 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
             if (actualModel && !actualModel.startsWith("<")) {
               const latest = await this.store.get(session.id);
               await this.store.update(session.id, { metadata: { ...latest?.metadata, actualModel } });
+            }
+            if (isReportedTokenUsage(parsed.data.tokenUsage)) {
+              const latest = await this.store.get(session.id);
+              await this.store.update(session.id, { metadata: { ...latest?.metadata, tokenUsage: parsed.data.tokenUsage } });
             }
             if (parsed.externalSessionId && parsed.externalSessionId !== session.externalSessionId) {
               await this.store.update(session.id, { externalSessionId: parsed.externalSessionId });
