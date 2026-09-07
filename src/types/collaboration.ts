@@ -90,7 +90,8 @@ export type CollaborationEventType =
   | "task.review_failed" | "task.approved" | "artifact.created"
   | "artifact.modified" | "decision.created" | "execution.started"
   | "execution.output" | "execution.finished" | "approval.requested"
-  | "approval.granted" | "approval.denied" | "objective.completed";
+  | "approval.granted" | "approval.denied" | "objective.completed"
+  | "mission.approval_requested" | "mission.blocked";
 
 export interface CollaborationEvent {
   type: CollaborationEventType;

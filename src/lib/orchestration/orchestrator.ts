@@ -63,6 +63,41 @@ export async function runCollaborationTurn(input: RunCollaborationInput): Promis
   await runLisaLoop({ roomId: room.id, userId: input.userId, lead, pool, objective: room.objective, seed: `User request: ${input.userContent}` });
 }
 
+/**
+ * Resumes a mission-bridge launch after a human decides a Guardian-gated
+ * mission-level approval (see mission-bridge.ts — a mission launch has no
+ * Task row yet, so it can't reuse resumeAfterApproval's taskId lookup). The
+ * human's decision on this exact ApprovalRequest — already authenticated
+ * and permission-checked by the approvals route — is the authorization;
+ * this does not re-run Guardian, matching resumeAfterApproval's own
+ * "the approval decision itself is the resumption trigger" pattern for
+ * Tier 3. A Tier 2 hold's underlying GuardianDecision is resolved
+ * separately by the approvals route before this runs (resolveGuardianReview).
+ */
+export async function resumeMissionAfterApproval(approvalId: string): Promise<void> {
+  const approval = await db.approvalRequest.findUniqueOrThrow({ where: { id: approvalId } });
+  const payload = approval.payload as Record<string, unknown> | null;
+  if (payload?.missionLaunch !== true || !approval.chatRoomId) return;
+
+  const room = await db.chatRoom.findUniqueOrThrow({ where: { id: approval.chatRoomId } });
+  if (!room.userId) return;
+
+  const leadAgentId = typeof payload.leadAgentId === "string" ? payload.leadAgentId : resolveLead(room.agentIds);
+  if (!leadAgentId) return;
+
+  const rawWorkers = payload.workers;
+  const workers = Array.isArray(rawWorkers) && rawWorkers.every((w): w is string => typeof w === "string") && rawWorkers.length > 0
+    ? rawWorkers
+    : resolveWorkerPool(room.agentIds);
+  const objective = typeof payload.objective === "string" ? payload.objective : room.objective ?? "";
+
+  await emitCollaborationEvent(room.id, "approval.granted", { approvalId });
+  await runLisaLoop({
+    roomId: room.id, userId: room.userId, lead: leadAgentId, pool: workers, objective: room.objective,
+    seed: `Mission approved by human operator: ${objective}`,
+  });
+}
+
 /** Resumes Lisa's loop after a human decides a gated approval — a fresh
  *  invocation rebuilds current state rather than assuming any in-memory
  *  continuation, so this works regardless of how long the approval took. */

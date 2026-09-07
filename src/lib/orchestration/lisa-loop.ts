@@ -27,8 +27,11 @@ export type LisaTool =
   | "mergeTask" | "getTaskStatus" | "getAgentStatus" | "getWorktreeStatus"
   | "getArtifact" | "getRoutingHistory" | "DONE" | "ASK_USER";
 
-interface Directive {
-  tool: LisaTool;
+// `tool` is kept as `string`, not `LisaTool`, so this same parser and shape
+// can be reused outside the loop's own dispatch (see mission-bridge.ts) for
+// directives that aren't part of LisaTool's closed menu at all.
+export interface Directive {
+  tool: string;
   args: Record<string, unknown>;
 }
 
@@ -57,7 +60,14 @@ const TOOL_MENU = `Available tools — respond with ONLY a fenced json code bloc
 - DONE {summary} -> claim the objective is complete; Sentinel verifies completion criteria (all tasks resolved, no pending approvals/disagreements/locks) before accepting — if rejected, keep going
 - ASK_USER {question} -> pause and ask the human operator; the room resumes this objective on their next message`;
 
-function parseDirectives(text: string): Directive[] | null {
+/**
+ * Parses Sentinel's one structured directive grammar: a fenced ```json code
+ * block (or, failing that, a bare top-level array) containing
+ * `{"tool": "...", "args": {...}}` objects. Shared by the in-loop dispatcher
+ * (TOOL_MENU above) and mission-bridge.ts's pre-loop directive — there is
+ * deliberately only one directive/tool-call protocol in this codebase.
+ */
+export function parseDirectives(text: string): Directive[] | null {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i);
   const bare = fenced ? null : text.match(/(\[[\s\S]*\])/);
   const source = fenced?.[1] ?? bare?.[1];
@@ -69,7 +79,7 @@ function parseDirectives(text: string): Directive[] | null {
       .map((item: unknown): Directive | null => {
         const record = (item ?? {}) as Record<string, unknown>;
         if (typeof record.tool !== "string") return null;
-        return { tool: record.tool as LisaTool, args: (record.args ?? {}) as Record<string, unknown> };
+        return { tool: record.tool, args: (record.args ?? {}) as Record<string, unknown> };
       })
       .filter((d): d is Directive => d !== null);
   } catch {
