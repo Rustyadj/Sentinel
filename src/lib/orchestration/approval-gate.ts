@@ -51,6 +51,10 @@ export interface RequestApprovalInput {
   description?: string;
   command: string;
   environment?: string;
+  /** Extra fields merged into the ApprovalRequest's payload — e.g. Guardian
+   *  stashes `guardianDecisionId` here so the approvals route can resolve
+   *  the originating GuardianDecision when a human decides this request. */
+  extraPayload?: Record<string, unknown>;
 }
 
 export async function requestApprovalGate(input: RequestApprovalInput) {
@@ -66,7 +70,11 @@ export async function requestApprovalGate(input: RequestApprovalInput) {
       chatRoomId: input.chatRoomId,
       taskId: input.taskId,
       risk,
-      payload: { command: input.command, environment: input.environment ?? "workspace" } as Prisma.InputJsonValue,
+      payload: {
+        command: input.command,
+        environment: input.environment ?? "workspace",
+        ...input.extraPayload,
+      } as Prisma.InputJsonValue,
     },
   });
 }
