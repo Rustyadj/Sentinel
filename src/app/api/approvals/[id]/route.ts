@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decideApproval } from "@/lib/workspaces";
 import { accessErrorResponse, requireWorkspacePermission } from "@/lib/workspaces/authorization";
-import { resumeAfterApproval } from "@/lib/orchestration/orchestrator";
+import { resumeAfterApproval, resumeMissionAfterApproval } from "@/lib/orchestration/orchestrator";
 import { resolveGuardianReview } from "@/lib/learning/guardian";
 
 type Context = { params: Promise<{ id: string }> };
@@ -38,6 +38,12 @@ export async function PATCH(req: NextRequest, { params }: Context) {
       // runs detached rather than holding this response open on it.
       void resumeAfterApproval(approval.taskId).catch((error) =>
         console.error("[approvals] resumeAfterApproval failed", error),
+      );
+    } else if (body.status === "approved" && !approval.taskId && payload?.missionLaunch === true) {
+      // Same detached-resume pattern as above, for a mission-bridge launch
+      // that was gated before any Task existed (see mission-bridge.ts).
+      void resumeMissionAfterApproval(id).catch((error) =>
+        console.error("[approvals] resumeMissionAfterApproval failed", error),
       );
     }
     return NextResponse.json(decided);
