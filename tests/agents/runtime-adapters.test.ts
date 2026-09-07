@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { ClaudeCodeRuntimeAdapter } from "@/lib/agents/runtime/claude-code";
@@ -192,6 +195,95 @@ describe("CLI runtime execution and process cleanup", () => {
     expect(events.at(-1)?.type).toBe("completed");
     expect((await adapter.getSession(session.id))?.externalSessionId).toBe("provider-1");
     expect(runner.spawned[0]).toMatchObject({ executable: "claude", cwd: "/allowed/repo" });
+  });
+
+  it("persists real Claude Code result-event token usage on the completed session", async () => {
+    const runner = new FakeRunner(); const store = new MemoryStore();
+    runner.onSpawn = (process) => setTimeout(() => {
+      process.stdout.write(`${JSON.stringify({ type: "assistant", session_id: "provider-usage", message: { model: "claude-opus-5", content: [{ text: "done" }] } })}\n`);
+      process.stdout.write(`${JSON.stringify({
+        type: "result",
+        session_id: "provider-usage",
+        usage: {
+          input_tokens: 1_000,
+          output_tokens: 200,
+          cache_read_input_tokens: 500,
+          cache_creation_input_tokens: 150,
+          cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 50 },
+        },
+      })}\n`);
+      process.stdout.end(); process.stderr.end(); process.emit("close", 0, null);
+    }, 0);
+    const adapter = new ClaudeCodeRuntimeAdapter(async () => claudeRuntime, store, runner);
+    const session = await store.create({ runtimeId: claudeRuntime.id, userId: "user-1", workingDirectory: "/allowed/repo" }, "claude-code", "claude-code", "/allowed/repo");
+    await store.update(session.id, { metadata: { requestedModel: "claude-opus-5", requestedEffort: "low", modelConfigSource: "test" } });
+    await collect(adapter.send({ sessionId: session.id, prompt: "review this", userId: "user-1" }));
+
+    expect((await adapter.getSession(session.id))?.metadata.tokenUsage).toEqual({
+      inputTokens: 1_000,
+      outputTokens: 200,
+      cachedInputTokens: 500,
+      cacheWrite5mInputTokens: 100,
+      cacheWrite1hInputTokens: 50,
+    });
+  });
+
+  it("reads Codex usage only from the bounded transcript owned by its UUID thread", async () => {
+    const codexHome = await mkdtemp(join(tmpdir(), "sentinel-codex-cost-"));
+    const previousCodexHome = process.env.CODEX_HOME;
+    const threadId = "019fc8dc-2fbe-79b3-a361-67a6e6e37935";
+    const startedAt = "2026-09-07T06:00:00.000Z";
+    const sessionDirectory = join(codexHome, "sessions", "2026", "09", "07");
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(join(sessionDirectory, `rollout-${threadId}.jsonl`), [
+      JSON.stringify({ type: "session_meta", payload: { id: threadId } }),
+      JSON.stringify({ type: "turn_context", payload: { model: "gpt-6-astra", effort: "low" } }),
+      JSON.stringify({
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: { total_token_usage: { input_tokens: 1_400, cached_input_tokens: 400, cache_write_input_tokens: 100, output_tokens: 200 } },
+        },
+      }),
+    ].join("\n"));
+
+    class TestCodexAdapter extends CodexRuntimeAdapter {
+      readReportedSession(thread: string, start: string) { return this.reportedSessionModel(thread, start); }
+    }
+
+    try {
+      process.env.CODEX_HOME = codexHome;
+      const adapter = new TestCodexAdapter(async () => codexRuntime, new MemoryStore(), new FakeRunner());
+      await expect(adapter.readReportedSession(threadId, startedAt)).resolves.toMatchObject({
+        actualModel: "gpt-6-astra",
+        actualEffort: "low",
+        tokenUsage: {
+          inputTokens: 900,
+          outputTokens: 200,
+          cachedInputTokens: 400,
+          cacheWrite5mInputTokens: 100,
+          cacheWrite1hInputTokens: 0,
+        },
+      });
+      await expect(adapter.readReportedSession("../../not-a-thread", startedAt)).resolves.toBeNull();
+
+      await writeFile(join(sessionDirectory, `rollout-${threadId}.jsonl`), [
+        JSON.stringify({ type: "session_meta", payload: { id: "11111111-1111-1111-1111-111111111111" } }),
+        JSON.stringify({ type: "turn_context", payload: { model: "gpt-6-astra", effort: "low" } }),
+        JSON.stringify({ type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 1, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 1 } } } }),
+      ].join("\n"));
+      await expect(adapter.readReportedSession(threadId, startedAt)).resolves.toBeNull();
+
+      const oversizedThreadId = "22222222-2222-2222-2222-222222222222";
+      const oversizedPath = join(sessionDirectory, `rollout-${oversizedThreadId}.jsonl`);
+      await writeFile(oversizedPath, JSON.stringify({ type: "session_meta", payload: { id: oversizedThreadId } }));
+      await truncate(oversizedPath, 16 * 1024 * 1024 + 1);
+      await expect(adapter.readReportedSession(oversizedThreadId, startedAt)).resolves.toBeNull();
+    } finally {
+      if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previousCodexHome;
+      await rm(codexHome, { recursive: true, force: true });
+    }
   });
 
   it("marks non-zero exit as failed and retains stderr", async () => {
