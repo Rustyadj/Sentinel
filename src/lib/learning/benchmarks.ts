@@ -298,5 +298,24 @@ export async function evaluatePromotion(params: {
     }
   }
 
+  if (reasons.length > 0) {
+    // A candidate that fails its benchmark guardrails is a failing regression
+    // suite — the canonical failing_test production signal. Compiled into an
+    // EvalCase so the failure becomes a future regression test. Never allowed
+    // to affect the promotion verdict itself.
+    const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+    await recordProductionFailure("failing_test", {
+      sourceId: `${params.benchmarkId}:${params.candidateId}`,
+      context: {
+        benchmarkId: params.benchmarkId,
+        candidateId: params.candidateId,
+        reasons,
+        baselineScore,
+        candidateScore,
+        sampleSize,
+      },
+    }).catch(() => undefined);
+  }
+
   return { passed: reasons.length === 0, reasons, baselineScore, candidateScore, sampleSize };
 }

@@ -18,7 +18,12 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
   protected buildTaskArgs(runtime: RuntimeInstance, prompt: string, _externalSessionId?: string, modelConfig?: WorkerModelConfig) {
     return [
       ...(runtime.args ?? []),
-      "exec", "--json",
+      // Codex refuses to run outside a git repo or an explicitly trusted project
+      // ("Not inside a trusted directory and --skip-git-repo-check was not
+      // specified", exit 1). Verified on the VPS: required whenever
+      // AGENT_PROJECT_ROOT is not itself a git repository. Sentinel owns and
+      // sandboxes the working directory, so Codex's git heuristic adds nothing.
+      "exec", "--json", "--skip-git-repo-check",
       ...(modelConfig ? ["--model", modelConfig.runtimeModelId, ...(modelConfig.effort ? ["-c", `model_reasoning_effort="${modelConfig.effort}"`] : [])] : []),
       prompt,
     ];

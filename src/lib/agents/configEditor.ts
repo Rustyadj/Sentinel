@@ -166,7 +166,17 @@ export async function writeConfigFile(
 
   const ext = path.extname(filePath).toLowerCase();
   const validationError = validateContent(ext, content);
-  if (validationError) return { ok: false, error: validationError };
+  if (validationError) {
+    // A rejected agent config edit is a real production failure signal: the
+    // author (human or agent) produced a change the system could not accept.
+    // Never let eval-case compilation affect the caller's result.
+    const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+    await recordProductionFailure("malformed_code_change", {
+      sourceId: `${agentId}:${fileId}`,
+      context: { agentId, fileId, extension: ext, error: validationError },
+    }).catch(() => undefined);
+    return { ok: false, error: validationError };
+  }
 
   const agentDir = path.dirname(filePath);
   await mkdir(agentDir, { recursive: true });
