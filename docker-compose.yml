@@ -83,7 +83,6 @@ services:
       SENTINEL_TELEMETRY_TOKEN: ${SENTINEL_TELEMETRY_TOKEN:-}
       HERMES_ENDPOINT: ${HERMES_ENDPOINT:-http://host.docker.internal:4860}
       HERMES_NATHAN2_ENDPOINT: ${HERMES_NATHAN2_ENDPOINT:-http://host.docker.internal:4864}
-      HERMES_NATHAN2_MODEL: ${HERMES_NATHAN2_MODEL:-gpt-5.6-luna}
       HERMES_LISA_USERNAME: ${HERMES_LISA_USERNAME:-}
       HERMES_LISA_PASSWORD: ${HERMES_LISA_PASSWORD:-}
       HERMES_NATHAN2_USERNAME: ${HERMES_NATHAN2_USERNAME:-}
@@ -127,13 +126,23 @@ services:
       HOME: /opt/runtime-home
       CLAUDE_CONFIG_DIR: /opt/runtime-home/.claude
       CODEX_HOME: /opt/runtime-home/.codex
+      # The provider passes this host-visible path to short-lived snapshot
+      # helpers through the Docker daemon. It is intentionally never mounted
+      # into an agent workspace.
+      AGENT_WORKSPACE_SNAPSHOT_DIR: /var/lib/sentinel/workspace-snapshots
     volumes:
       - agent_configs:/opt/sentinel-os/agents
       - agent_logs:/opt/sentinel-os/logs
       - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
       - ./runtime-agents/bin:/opt/runtime-bin:ro
       - ./runtime-agents/home:/opt/runtime-home:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/sentinel/workspace-snapshots:/var/lib/sentinel/workspace-snapshots:rw
       - ${OPENCLAW_DEVICE_IDENTITY_HOST:-/opt/sentinel-secrets/openclaw-device.json}:/run/secrets/openclaw-device.json:ro
+    # The non-root app user needs the Docker socket's host group. Set
+    # DOCKER_GID explicitly on hosts where the socket group differs.
+    group_add:
+      - "${DOCKER_GID:-988}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # gw_priority forces sentinel_net to stay the default-route network.

@@ -37,6 +37,11 @@ RUN npm run build
 
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
+# DockerWorkspaceProvider invokes the Docker client over the host daemon socket.
+# Keep the client in a tiny, daemon-free stage; the workspace containers never
+# receive this binary or the socket.
+FROM docker:29-cli AS docker-cli
+
 # Debian slim (real glibc), not Alpine, specifically so the bind-mounted
 # `claude` CLI binary (glibc-linked, embedded-V8 — see docker-compose.yml's
 # runtime-bin mount) can execute. Confirmed on Alpine: gcompat's shim can't
@@ -54,6 +59,8 @@ ARG SENTINEL_BUILT_AT=unknown
 # wget: the container healthcheck below uses it (Alpine ships it in busybox
 # by default; Debian slim doesn't include it at all).
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates wget && rm -rf /var/lib/apt/lists/*
+
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
