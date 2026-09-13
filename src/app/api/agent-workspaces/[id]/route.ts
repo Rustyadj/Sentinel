@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { accessErrorResponse } from "@/lib/workspaces/authorization";
 import { AGENT_WORKSPACE_PERMISSIONS, requireWorkspaceAccess } from "@/lib/agent-workspaces/authorization";
-import { workspaceErrorResponse } from "@/lib/agent-workspaces/errors";
+import { WorkspaceError, workspaceErrorResponse } from "@/lib/agent-workspaces/errors";
 import { readJson, optionalString, uiActor, serialize } from "@/lib/agent-workspaces/http";
 import { displayState, getStats, reconcileRuntime, setLocked, updateLimits, workspaceIdentity } from "@/lib/agent-workspaces/service";
+import { setDefaultAgentWorkspace } from "@/lib/agent-workspaces/defaults";
 import { parseLimits, parsePolicy } from "@/lib/agent-workspaces/policy";
 import { gitSummary } from "@/lib/agent-workspaces/git";
 import { browserRuntimeStatus } from "@/lib/agent-workspaces/browser";
@@ -48,6 +49,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const actor = uiActor(user.id);
 
     let current = workspace;
+    if (body.isDefault === true) current = await setDefaultAgentWorkspace({ agentId: workspace.agentId, agentWorkspaceId: workspace.id, actor });
+    if (body.isDefault === false && workspace.isDefault) {
+      throw new WorkspaceError("A default workspace must be changed by selecting a replacement.", "policy_violation");
+    }
     if (body.resourceLimits !== undefined) current = await updateLimits(current, body.resourceLimits, actor);
     if (typeof body.locked === "boolean") current = await setLocked(current, body.locked, actor);
 

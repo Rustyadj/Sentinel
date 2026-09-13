@@ -17,6 +17,7 @@ export interface WorkspaceSummary {
   volumeName: string | null;
   homePath: string;
   locked: boolean;
+  isDefault: boolean;
   projectId: string | null;
   lastActiveAt: string | null;
   createdAt: string;
@@ -86,6 +87,8 @@ const base = (id: string) => `/api/agent-workspaces/${encodeURIComponent(id)}`;
 export const workspaceApi = {
   list: (params: { agentId?: string } = {}) =>
     request<{ workspaces: WorkspaceSummary[] }>(`/api/agent-workspaces?${new URLSearchParams(params as Record<string, string>)}`),
+  defaultForAgent: (agentId: string) =>
+    request<{ workspace: WorkspaceSummary }>(`/api/agent-workspaces/default?${new URLSearchParams({ agentId })}`),
   create: (body: Record<string, unknown>) =>
     request<{ workspace: WorkspaceSummary }>("/api/agent-workspaces", { method: "POST", body: JSON.stringify(body) }),
   detail: (id: string) => request<WorkspaceDetail>(base(id)),

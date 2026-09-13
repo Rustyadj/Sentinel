@@ -77,6 +77,7 @@ export function WorkspaceListView({ agentId, tenantWorkspaces }: {
           >
             <span className="w-48 truncate font-medium">{workspace.name}</span>
             <span className="w-40 truncate font-mono text-[--muted-foreground]">{workspace.agentId}</span>
+            {workspace.isDefault ? <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">default computer</span> : null}
             <StateBadge state={workspace.state} />
             <span className="min-w-0 flex-1 truncate text-[--muted-foreground]">
               {workspace.runtime?.containerName ?? workspace.volumeName ?? "not provisioned"}

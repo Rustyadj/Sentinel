@@ -10,6 +10,8 @@ export type WorkspaceErrorCode =
   | "workspace_archived"
   | "workspace_locked"
   | "workspace_forbidden"
+  | "default_workspace_missing"
+  | "default_workspace_conflict"
   | "runtime_not_found"
   | "runtime_not_running"
   | "runtime_unavailable"
@@ -34,6 +36,8 @@ const STATUS_BY_CODE: Record<WorkspaceErrorCode, number> = {
   workspace_archived: 409,
   workspace_locked: 409,
   workspace_forbidden: 403,
+  default_workspace_missing: 409,
+  default_workspace_conflict: 409,
   runtime_not_found: 404,
   runtime_not_running: 409,
   runtime_unavailable: 503,

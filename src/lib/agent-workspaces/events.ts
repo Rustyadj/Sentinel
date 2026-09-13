@@ -8,6 +8,7 @@ export type WorkspaceEventType =
   | "workspace.resumed" | "workspace.restarted" | "workspace.archived" | "workspace.unarchived"
   | "workspace.locked" | "workspace.unlocked" | "workspace.cloned" | "workspace.transferred"
   | "workspace.limits_changed" | "workspace.data_deleted"
+  | "workspace.default_assigned"
   | "runtime.destroyed" | "runtime.error" | "runtime.reconciled" | "runtime.idle_paused"
   | "command.executed" | "process.started" | "process.stopped"
   | "file.modified" | "file.deleted" | "file.moved" | "file.copied"

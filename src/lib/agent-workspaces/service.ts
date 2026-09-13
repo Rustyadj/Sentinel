@@ -45,7 +45,7 @@ export async function currentRuntime(agentWorkspaceId: string) {
   });
 }
 
-function slugify(value: string) {
+export function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "workspace";
 }
 
@@ -104,6 +104,9 @@ export async function createAgentWorkspace(input: CreateAgentWorkspaceInput) {
       homePath: input.homePath?.trim() || "/workspace",
       resourceLimits: parseLimits(input.resourceLimits) as unknown as Prisma.InputJsonValue,
       policy: parsePolicy(input.policy) as unknown as Prisma.InputJsonValue,
+      // Creating an additional/special-purpose workspace is never an implicit
+      // default selection. Only defaults.ts may set this flag.
+      isDefault: false,
     },
   });
 
@@ -337,6 +340,9 @@ export async function destroyRuntime(workspace: AgentWorkspace, actor: ActorCont
 
 /** Separately authorised, irreversible destruction of the data volume. */
 export async function deleteWorkspaceData(workspace: AgentWorkspace, actor: ActorContext) {
+  if (workspace.isDefault) {
+    throw new WorkspaceError("The canonical persistent computer cannot be deleted. Assign another workspace as default first.", "policy_violation");
+  }
   const provider = getRuntimeProvider(workspace.runtimeType);
   await provider.destroyRuntime(workspace.id).catch(() => undefined);
   if (workspace.volumeName) await provider.destroyWorkspaceData(workspace.volumeName);

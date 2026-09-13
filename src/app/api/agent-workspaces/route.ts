@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     return Response.json({
       workspaces: serialize(workspaces.map((workspace) => ({
         ...workspace,
+        isDefault: workspace.isDefault,
         state: displayState(workspace, workspace.runtimes[0] ?? null),
         runtime: workspace.runtimes[0] ?? null,
         runtimes: undefined,

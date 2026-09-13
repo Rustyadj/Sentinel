@@ -2211,6 +2211,9 @@ model AgentWorkspace {
   policy         Json @default("{}")
 
   locked        Boolean   @default(false)
+  // The agent's canonical persistent computer. Additional workspaces are
+  // intentionally supported, but cannot shadow this identity.
+  isDefault     Boolean   @default(false)
   lastActiveAt  DateTime?
   archivedAt    DateTime?
   dataDeletedAt DateTime?

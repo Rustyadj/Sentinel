@@ -101,6 +101,9 @@ export async function transferWorkspace(input: {
   const { workspace, actor } = input;
   if (!input.reason.trim()) throw new WorkspaceError("A transfer reason is required.", "invalid_body");
   if (input.toAgentId === workspace.agentId) throw new WorkspaceError("The workspace already belongs to that agent.", "invalid_body");
+  if (workspace.isDefault) {
+    throw new WorkspaceError("The canonical persistent computer cannot be transferred. Assign another default first.", "policy_violation");
+  }
   const target = await db.agent.findUnique({ where: { id: input.toAgentId }, select: { id: true } });
   if (!target) throw new WorkspaceError("Target agent not found.", "invalid_body");
 
