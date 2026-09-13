@@ -41,7 +41,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_LISA_NATIVE_URL ?? "/legacy/hermes",
-    model: process.env.HERMES_LISA_MODEL ?? "gpt-5.6-luna",
+    model: process.env.HERMES_LISA_MODEL ?? "deepseek/deepseek-v4.1-flash",
   },
   {
     id: "runtime-hermes-nathan2",
@@ -60,7 +60,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
-    model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
+    model: process.env.HERMES_NATHAN2_MODEL ?? "deepseek/deepseek-v4.1-flash",
   },
   {
     id: "runtime-openclaw",
@@ -107,7 +107,11 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     kind: "codex",
     transport: "process",
     executable: process.env.CODEX_EXECUTABLE ?? "codex",
-    args: ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"],
+    // `codex exec` (non-interactive) has no --ask-for-approval flag — that's
+    // an interactive-mode-only option and the installed CLI rejects it here.
+    // Approval behavior for exec is controlled by config.toml's
+    // approval_mode plus the --sandbox policy passed below.
+    args: ["--sandbox", "workspace-write"],
     workingDirectoryRoot: process.env.CODEX_PROJECT_ROOT ?? PROJECT_ROOT,
     logSource: { kind: "file", ref: `${LOG_ROOT}/codex.log` },
     workspaceId: process.env.CODEX_WORKSPACE_ID,

@@ -15,7 +15,7 @@ export interface VoiceTranscript {
 export interface VoiceProviderConfig {
   agentId?: string;
   language?: string;
-  /** The Sentinel chat room this voice session belongs to — required by LiveKitVoiceProvider to scope the token/room. */
+  /** The Sentinel chat room this voice session belongs to — used to scope server-minted voice sessions. */
   roomId?: string;
   workspaceId?: string;
   onTranscript?: (t: VoiceTranscript) => void;

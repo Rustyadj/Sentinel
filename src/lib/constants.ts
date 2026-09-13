@@ -9,7 +9,7 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     color: "#8B5CF6",
     description: "Primary coordinator and reasoning agent",
     skills: ["orchestration", "planning", "memory", "synthesis"],
-    model: "gpt-5.6-luna",
+    model: "deepseek/deepseek-v4.1-flash",
     systemPrompt:
       "You are Hermes Lisa, the chief orchestrator of the Sentinel OS platform. Your role is to coordinate between agents, synthesize information, maintain context across sessions, and ensure all tasks are completed efficiently. You have access to all agent outputs and can delegate to specialized agents.",
     toolPermissions: ["all"],

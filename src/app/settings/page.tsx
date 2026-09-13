@@ -204,6 +204,7 @@ function AgentSettings() {
     >
       <FieldRow label="Default model" description="Used when creating new agents">
         <select className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]">
+          <option>deepseek/deepseek-v4.1-flash</option>
           <option>claude-sonnet-4-6</option>
           <option>claude-opus-4-8</option>
           <option>gpt-4o</option>
@@ -273,9 +274,9 @@ const VOICE_PROVIDER_OPTIONS: VoiceProviderOption[] = ["browser_stt", "mock", "o
 
 function VoiceSettings() {
   const [provider, setProvider] = useState<VoiceProviderOption>(() => {
-    if (typeof window === "undefined") return "browser_stt";
+    if (typeof window === "undefined") return "openai_realtime";
     const stored = window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY);
-    return (VOICE_PROVIDER_OPTIONS as string[]).includes(stored ?? "") ? (stored as VoiceProviderOption) : "browser_stt";
+    return (VOICE_PROVIDER_OPTIONS as string[]).includes(stored ?? "") ? (stored as VoiceProviderOption) : "openai_realtime";
   });
 
   const handleChange = (next: VoiceProviderOption) => {
@@ -286,20 +287,20 @@ function VoiceSettings() {
   return (
     <SettingsSection
       title="Voice Input"
-      description="Choose how the microphone button transcribes speech"
+      description="Choose the live speech provider used by the microphone button"
     >
       <FieldRow
         label="Speech provider"
-        description="Browser Speech uses your browser's built-in recognition (no server key needed). Mock is for environments without mic access. LiveKit requires a deployed voice worker — see docs/voice/LIVEKIT_ARCHITECTURE.md."
+        description="OpenAI Realtime uses GPT-Realtime-2.1 Mini by default, GPT Live for captions, and escalates complex turns to the full 2.1 model. Browser Speech uses built-in recognition only."
       >
         <select
           value={provider}
           onChange={(e) => handleChange(e.target.value as VoiceProviderOption)}
           className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"
         >
-          <option value="browser_stt">Browser Speech (default)</option>
+          <option value="browser_stt">Browser Speech</option>
           <option value="mock">Mock (no mic)</option>
-          <option value="openai_realtime">OpenAI Realtime (server setup required)</option>
+          <option value="openai_realtime">OpenAI Realtime 2.1 (adaptive Mini → Full)</option>
           <option value="livekit">LiveKit (WebRTC + Deepgram + Cartesia, worker required)</option>
         </select>
       </FieldRow>

@@ -16,6 +16,12 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Snapshots/restores the static agent_runtimes rows (runtime-codex,
+    // runtime-claude-code, ...) around the whole run — several suites
+    // repoint them at throwaway per-test workspaces, and with no separate
+    // test database that otherwise permanently breaks those runtimes for
+    // real users. See tests/global-setup.ts.
+    globalSetup: ["./tests/global-setup.ts"],
     css: true,
     // runtime-agents/ (bind-mounted claude/codex binaries + copied host
     // credentials — see docker-compose.yml) and runtime-projects/ (CLI job

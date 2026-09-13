@@ -315,6 +315,7 @@ model Workspace {
   auditLogs       AuditLog[]
   orgCharts       OrgChart[]
   agents          Agent[]
+  agentWorkspaces AgentWorkspace[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -2168,4 +2169,240 @@ model AgentRuntimeEvent {
   @@unique([sessionId, sequence])
   @@index([sessionId, occurredAt])
   @@map("agent_runtime_events")
+}
+
+// ---------------------------------------------------------------------------
+// Agent Workspaces
+//
+// A durable, isolated "computer" that belongs to one Hermes agent. Deliberately
+// separate from `Workspace` (the tenant/organisation container): an
+// AgentWorkspace lives *inside* a tenant Workspace and models persistent
+// compute + storage, not org structure.
+//
+// Two lifecycles are modelled separately and must never be collapsed:
+//   * workspace data lifecycle -> AgentWorkspace.status / dataDeletedAt
+//   * runtime lifecycle        -> AgentWorkspaceRuntime.state
+// Destroying a runtime never destroys the volume that backs the workspace.
+// ---------------------------------------------------------------------------
+
+model AgentWorkspace {
+  id             String  @id @default(cuid())
+  agentId        String
+  ownerUserId    String
+  workspaceId    String
+  organizationId String?
+  projectId      String?
+
+  name        String
+  slug        String
+  description String?
+
+  // ACTIVE | ARCHIVED | DELETED — data lifecycle only. Runtime state lives on
+  // AgentWorkspaceRuntime and is reconciled against the container runtime.
+  status      String  @default("ACTIVE")
+  runtimeType String  @default("docker")
+  image       String  @default("sentinel/agent-workspace:base")
+  volumeName  String?
+  homePath    String  @default("/workspace")
+
+  // { cpus, memoryMb, diskGb, pidsLimit, commandTimeoutMs, idleTimeoutMs, network }
+  resourceLimits Json @default("{}")
+  // { crossAgentDelegation: "explicit-only", allowedRuntimeClients: [...] }
+  policy         Json @default("{}")
+
+  locked        Boolean   @default(false)
+  lastActiveAt  DateTime?
+  archivedAt    DateTime?
+  dataDeletedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenantWorkspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  runtimes    AgentWorkspaceRuntime[]
+  commands    WorkspaceCommand[]
+  processes   WorkspaceProcess[]
+  snapshots   WorkspaceSnapshot[]
+  permissions WorkspacePermission[]
+  artifacts   WorkspaceArtifact[]
+  events      WorkspaceEvent[]
+
+  @@unique([workspaceId, slug])
+  @@index([agentId])
+  @@index([workspaceId, status])
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("agent_workspaces")
+}
+
+model AgentWorkspaceRuntime {
+  id               String @id @default(cuid())
+  agentWorkspaceId String
+  provider         String @default("docker")
+
+  // STOPPED | STARTING | RUNNING | PAUSED | STOPPING | ERROR
+  state         String    @default("STOPPED")
+  containerId   String?
+  containerName String?
+  image         String
+  startedAt     DateTime?
+  stoppedAt     DateTime?
+  destroyedAt   DateTime?
+  lastSeenAt    DateTime?
+  reconciledAt  DateTime?
+  errorCode     String?
+  errorMessage  String?
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, destroyedAt])
+  @@index([state])
+  @@map("agent_workspace_runtimes")
+}
+
+model WorkspaceCommand {
+  id               String  @id @default(cuid())
+  agentWorkspaceId String
+  runtimeId        String?
+  agentId          String
+  actorUserId      String?
+  // hermes | claude-code | codex | sentinel-ui | system
+  origin           String  @default("sentinel-ui")
+
+  command    String
+  cwd        String?
+  status     String    @default("running") // running | succeeded | failed | timed_out | cancelled
+  exitCode   Int?
+  stdout     String    @default("")
+  stderr     String    @default("")
+  truncated  Boolean   @default(false)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  metadata   Json      @default("{}")
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, startedAt])
+  @@index([status])
+  @@map("workspace_commands")
+}
+
+model WorkspaceProcess {
+  id               String    @id @default(cuid())
+  agentWorkspaceId String
+  runtimeId        String?
+  agentId          String
+  label            String
+  command          String
+  cwd              String?
+  pid              Int?
+  status           String    @default("running") // running | exited | killed | unknown
+  ports            Int[]     @default([])
+  logPath          String?
+  exitCode         Int?
+  startedAt        DateTime  @default(now())
+  lastSeenAt       DateTime?
+  stoppedAt        DateTime?
+  metadata         Json      @default("{}")
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, status])
+  @@map("workspace_processes")
+}
+
+model WorkspaceSnapshot {
+  id               String    @id @default(cuid())
+  agentWorkspaceId String
+  agentId          String
+  createdByUserId  String?
+  name             String
+  reason           String
+  status           String    @default("creating") // creating | ready | failed | deleted
+  storageRef       String?
+  sizeBytes        BigInt?
+  gitState         Json      @default("{}")
+  fileState        Json      @default("{}")
+  runtimeMetadata  Json      @default("{}")
+  errorMessage     String?
+  createdAt        DateTime  @default(now())
+  completedAt      DateTime?
+  restoredAt       DateTime?
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, createdAt])
+  @@map("workspace_snapshots")
+}
+
+model WorkspacePermission {
+  id               String    @id @default(cuid())
+  agentWorkspaceId String
+  // Exactly one grantee kind is set; enforced in the service layer.
+  granteeAgentId   String?
+  granteeUserId    String?
+  // read | write | admin
+  level            String    @default("read")
+  grantedByUserId  String?
+  reason           String?
+  expiresAt        DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([agentWorkspaceId, granteeAgentId, granteeUserId])
+  @@index([granteeAgentId])
+  @@index([granteeUserId])
+  @@map("workspace_permissions")
+}
+
+model WorkspaceArtifact {
+  id               String   @id @default(cuid())
+  agentWorkspaceId String
+  agentId          String
+  createdByUserId  String?
+  name             String
+  description      String?
+  path             String
+  contentType      String   @default("application/octet-stream")
+  sizeBytes        BigInt?
+  checksum         String?
+  pinned           Boolean  @default(false)
+  projectId        String?
+  chatRoomId       String?
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, createdAt])
+  @@index([pinned])
+  @@map("workspace_artifacts")
+}
+
+model WorkspaceEvent {
+  id               String   @id @default(cuid())
+  agentWorkspaceId String
+  // workspace.created, runtime.started, command.executed, snapshot.restored, ...
+  type             String
+  severity         String   @default("info") // info | warn | error
+  actorUserId      String?
+  actorAgentId     String?
+  // sentinel-ui | hermes | claude-code | codex | system
+  source           String   @default("system")
+  message          String
+  metadata         Json     @default("{}")
+  occurredAt       DateTime @default(now())
+
+  agentWorkspace AgentWorkspace @relation(fields: [agentWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentWorkspaceId, occurredAt])
+  @@index([type])
+  @@map("workspace_events")
 }

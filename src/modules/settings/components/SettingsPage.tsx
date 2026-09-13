@@ -209,6 +209,7 @@ function AgentSettings() {
     >
       <FieldRow label="Default model" description="Used when creating new agents">
         <select className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]">
+          <option>deepseek/deepseek-v4.1-flash</option>
           <option>claude-sonnet-4-6</option>
           <option>claude-opus-4-8</option>
           <option>gpt-4o</option>

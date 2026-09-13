@@ -28,6 +28,24 @@ export const PERMISSION_CATALOG = [
   { key: "document.read", resource: "document", action: "read", description: "View documents" },
   { key: "document.create", resource: "document", action: "create", description: "Create documents" },
   { key: "document.update", resource: "document", action: "update", description: "Edit documents" },
+  { key: "agent_workspace.view", resource: "agent_workspace", action: "view", description: "View agent workspaces, files, and activity" },
+  { key: "agent_workspace.create", resource: "agent_workspace", action: "create", description: "Create agent workspaces" },
+  { key: "agent_workspace.operate", resource: "agent_workspace", action: "operate", description: "Start, stop, pause, and restart workspace runtimes" },
+  { key: "agent_workspace.execute", resource: "agent_workspace", action: "execute", description: "Run commands and processes inside agent workspaces" },
+  { key: "agent_workspace.write", resource: "agent_workspace", action: "write", description: "Modify workspace files and artifacts" },
+  { key: "agent_workspace.snapshot", resource: "agent_workspace", action: "snapshot", description: "Create and delete workspace snapshots" },
+  { key: "agent_workspace.restore", resource: "agent_workspace", action: "restore", description: "Restore a workspace from a snapshot" },
+  { key: "agent_workspace.manage", resource: "agent_workspace", action: "manage", description: "Change limits, permissions, ownership, and archival" },
+  { key: "agent_workspace.destroy", resource: "agent_workspace", action: "destroy", description: "Destroy workspace runtimes (data is retained)" },
+  { key: "agent_workspace.delete_data", resource: "agent_workspace", action: "delete_data", description: "Permanently delete workspace data volumes" },
+  { key: "agents.runtime.view", resource: "agents.runtime", action: "view", description: "View agent runtimes" },
+  { key: "agents.runtime.execute", resource: "agents.runtime", action: "execute", description: "Chat with and run jobs on agent runtimes" },
+  { key: "agents.runtime.cancel", resource: "agents.runtime", action: "cancel", description: "Cancel a running agent session" },
+  { key: "agents.runtime.view_logs", resource: "agents.runtime", action: "view_logs", description: "View agent runtime logs" },
+  { key: "agents.runtime.restart", resource: "agents.runtime", action: "restart", description: "Restart an agent runtime" },
+  { key: "agents.runtime.configure", resource: "agents.runtime", action: "configure", description: "Change agent runtime configuration" },
+  { key: "agents.runtime.elevate", resource: "agents.runtime", action: "elevate", description: "Grant an agent runtime elevated privileges" },
+  { key: "agents.runtime.approve_tool", resource: "agents.runtime", action: "approve_tool", description: "Approve a tool-use request from an agent" },
 ] as const;
 
 const MEMBER_PERMISSION_KEYS = [
@@ -42,6 +60,7 @@ const MEMBER_PERMISSION_KEYS = [
   "task.update",
   "meeting.read",
   "document.read",
+  "agent_workspace.view",
 ] as const;
 
 export async function seedWorkspacePermissions(workspaceId: string) {

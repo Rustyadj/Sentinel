@@ -118,7 +118,7 @@ export const collaborationFixtures: CollaborationState = {
       agentId: "hermes",
       name: "Hermes",
       runtime: "persistent-agent-runtime",
-      model: "claude-sonnet-4-6",
+      model: "deepseek/deepseek-v4.1-flash",
       role: "lead",
       status: "Coordinating",
       activeTaskId: "TASK-104",

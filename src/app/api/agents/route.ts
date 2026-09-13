@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       role: body.role.trim(),
       avatar: body.avatar ?? "AI",
       color: body.color ?? "#6366f1",
-      model: body.model ?? "claude-sonnet-4-6",
+      model: body.model ?? "deepseek/deepseek-v4.1-flash",
       systemPrompt: body.systemPrompt ?? "",
       toolPermissions: body.toolPermissions ?? [],
       memoryScope: body.memoryScope ?? "session",

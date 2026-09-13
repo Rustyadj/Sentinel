@@ -372,7 +372,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     return sseError("Workflow runtime is not configured; choose a runtime or direct model explicitly", 503);
   }
   const agentTemplate = AGENT_TEMPLATES.find((a) => a.id === agentId);
-  const model = dbAgent?.model ?? agentTemplate?.model ?? "claude-sonnet-4-6";
+  const model = dbAgent?.model ?? agentTemplate?.model ?? "deepseek/deepseek-v4.1-flash";
   const basePrompt =
     dbAgent?.systemPrompt ||
     agentTemplate?.systemPrompt ||

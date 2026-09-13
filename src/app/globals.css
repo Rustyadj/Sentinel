@@ -122,7 +122,70 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Sentinel theme tokens.
+
+   Light is the source of truth for the new product shell: a warm neutral
+   canvas, white surfaces, few borders. The legacy dark values are kept intact
+   but scoped to `.sentinel-app-shell` — the old shell's root element — so every
+   screen that has not been migrated yet keeps rendering exactly as before.
+   --------------------------------------------------------------------------- */
+
 :root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --background: #faf9f7;
+  --foreground: #1b1b1f;
+  --card: #ffffff;
+  --card-foreground: #1b1b1f;
+  --border: #e7e4df;
+  --muted: #f2f0ec;
+  --muted-foreground: #6b6862;
+  --accent: #f2f0ec;
+  --accent-foreground: #1b1b1f;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --destructive: #b3261e;
+  --ring: #4f46e5;
+  --sidebar: #f5f3f0;
+  --sidebar-border: #e7e4df;
+  --panel: #ffffff;
+
+  --canvas: #faf9f7;
+  --canvas-foreground: #1b1b1f;
+  --canvas-muted: #6b6862;
+  --canvas-card: #ffffff;
+  --canvas-card-foreground: #1b1b1f;
+  --canvas-card-border: #e7e4df;
+
+  /* Elevation — soft shadows instead of borders wherever possible. */
+  --shadow-sm: 0 1px 2px rgba(24, 22, 18, 0.05);
+  --shadow-md: 0 2px 8px rgba(24, 22, 18, 0.07);
+  --shadow-lg: 0 12px 32px rgba(24, 22, 18, 0.12);
+
+  /* Semantic entity colors — the single source for graph clusters, entity
+     chips and status. Components read these tokens, never literals. */
+  --entity-agent: #7c5cf5;
+  --entity-project: #2563eb;
+  --entity-workspace: #16a34a;
+  --entity-knowledge: #d97706;
+  --entity-memory: #db2777;
+  --entity-tool: #ea580c;
+  --entity-source: #0891b2;
+  --entity-external: #6b6862;
+  --entity-conversation: #4f46e5;
+
+  /* Status */
+  --status-online: #16a34a;
+  --status-busy: #d97706;
+  --status-error: #b3261e;
+  --status-idle: #9a968e;
+}
+
+/* Legacy dark shell — every screen still rendered by components/layout/AppShell. */
+.sentinel-app-shell {
+  color-scheme: dark;
   /* Dark shell tokens (rail, topbar, panels) */
   --background: #040811;
   --foreground: #e9edf5;
@@ -140,7 +203,6 @@
   --sidebar: #050d17;
   --sidebar-border: #172438;
   --panel: #09131f;
-
   /* Canvas tokens (workspace main areas) — dark to match the shell */
   --canvas: #010409;
   --canvas-foreground: #e8eaed;

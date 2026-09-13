@@ -25,6 +25,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
   { id: "tasks",      label: "Tasks",      icon: "ListChecks",    href: "/tasks" },
   { id: "workspaces", label: "Workspaces", icon: "LayoutGrid",    href: "/workspaces" },
+  { id: "agent-workspaces", label: "Agent Computers", icon: "HardDrive", href: "/agent-workspaces" },
   { id: "memory",     label: "Memory",     icon: "BookOpen",      href: "/memory" },
   { id: "graph",      label: "Graph",      icon: "Network",       href: "/chat?space=graph" },
   { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
@@ -35,6 +36,26 @@ export const PRIMARY_NAV: NavItem[] = [
 // Domain-specific workspace shortcuts have been removed from the shell rail
 // per the core-shell rebuild — they remain reachable from /workspaces.
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [];
+
+/**
+ * The rebuilt product shell. Five surfaces, nothing else: Chat is interaction,
+ * Graph is understanding, Workspaces is execution, Agents is management,
+ * Activity is accountability. Projects, files, memories, tools, tasks and
+ * artifacts are objects that appear contextually inside these — they are
+ * deliberately not top-level destinations.
+ */
+export const SHELL_NAV: NavItem[] = [
+  { id: "chat",       label: "Chat",       icon: "MessageSquare", href: "/chat" },
+  { id: "graph",      label: "Graph",      icon: "Network",       href: "/graph" },
+  { id: "workspaces", label: "Workspaces", icon: "HardDrive",     href: "/agent-workspaces" },
+  { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
+  { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
+];
+
+/** Global, always-available, never a primary destination. */
+export const SHELL_SECONDARY_NAV: NavItem[] = [
+  { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
+];
 
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return item.exact ? pathname === item.href : pathname.startsWith(item.href);
