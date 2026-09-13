@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const tx = {
-    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     agent: { findUnique: vi.fn() },
     agentWorkspace: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   };
@@ -38,7 +38,7 @@ function defaultFinds(...responses: unknown[]) {
 describe("canonical agent workspace resolver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.tx.$queryRaw.mockResolvedValue([]);
+    mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.provider.isAvailable.mockResolvedValue({ available: true });
     mocks.provider.createWorkspace.mockResolvedValue({ volumeName: "created-volume" });
     mocks.tx.agentWorkspace.update.mockImplementation(({ data }: { data: object }) => Promise.resolve({ ...lisa, ...data }));
@@ -57,7 +57,7 @@ describe("canonical agent workspace resolver", () => {
 
     expect(workspace.id).toBe("lisa-default");
     expect(mocks.tx.agentWorkspace.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ isDefault: true }) }));
-    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it("returns the same default repeatedly across chats, sessions, restarts, and runtime recreation", async () => {

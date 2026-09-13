@@ -38,7 +38,7 @@ async function withAgentDefaultLock<T>(agentId: string, work: (tx: Prisma.Transa
   return db.$transaction(async (tx) => {
     // Serializes default resolution/switches per agent even before the partial
     // unique index gets a chance to reject a concurrent writer.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${agentId}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${agentId}))`;
     return work(tx);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
