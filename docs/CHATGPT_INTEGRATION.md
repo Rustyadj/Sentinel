@@ -38,4 +38,4 @@ The server is packaged in `plugins/sentinel-chatgpt/` for local Codex/plugin tes
 
 Claude Code and Codex are always dispatched as exactly one selected worker per orchestration run. Sentinel never creates a Claude Code/Codex split plan unless a future explicit task-splitting request is modeled and approved.
 
-Hermes Lisa, Hermes Clint, and OpenClaw are discoverable today. They are not dispatch targets until each has a verified, explicitly configured task execution contract; their current registry endpoints are health-only and are not treated as an execution API.
+Sentinel dispatches only through the canonical runtime adapter layer: Hermes Lisa and Hermes Nathan2 use the Hermes WebSocket JSON-RPC adapter, OpenClaw uses its gateway adapter, and Codex/Claude Code use their runtime adapters. Nathan2 remains registered and reachable but is not execution-verified until its gateway authentication succeeds. OpenClaw's raw terminal passthrough is never an MCP execution path.

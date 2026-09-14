@@ -318,6 +318,7 @@ model Workspace {
   tasks           Task[]
   documents       Document[]
   auditLogs       AuditLog[]
+  orchestrationRuns OrchestrationRun[]
   orgCharts       OrgChart[]
   agents          Agent[]
 
@@ -1918,6 +1919,7 @@ model ExecutionAttempt {
   input              Json     @default("{}")
   output             Json     @default("{}")
   validation         Json     @default("{}")
+  runtimeJobId       String?
   error              String?
   cost               Float?
   latencyMs          Int?

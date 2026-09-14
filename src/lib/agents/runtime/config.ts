@@ -32,7 +32,9 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     agentId: "hermes-lisa",
     kind: "hermes",
     transport: "docker",
-    endpoint: process.env.HERMES_ENDPOINT ?? "http://127.0.0.1:4860",
+    // Verified runtime listener is 4862; an explicit deployment override
+    // remains authoritative for installations that use another binding.
+    endpoint: process.env.HERMES_ENDPOINT ?? "http://127.0.0.1:4862",
     containerName: process.env.HERMES_LISA_CONTAINER ?? "hermes-lisa",
     configPath: `${CONFIG_ROOT}/hermes-lisa`,
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-lisa.log` },

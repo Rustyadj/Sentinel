@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getAllAgents } from "@/lib/agents/registry";
+import { listRuntimeViews, getRuntimeView } from "@/lib/agents/runtime/service";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
@@ -47,7 +47,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async () => {
     requireScope(principal, "sentinel.read");
-    const agents = getAllAgents().map((agent) => ({ id: agent.id, name: agent.name, model: agent.model, kind: agent.kind, capabilities: agent.capabilities }));
+    const agents = (await listRuntimeViews()).map((agent) => ({ id: agent.agentId, model: agent.model, kind: agent.kind, endpoint: agent.endpoint, capabilities: agent.capabilities, executable: Boolean(agent.executable || agent.endpoint), executionVerified: false }));
     return toolResult({ agents }, `Found ${agents.length} configured Sentinel agents.`);
   });
 
@@ -58,9 +58,9 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ agentId }) => {
     requireScope(principal, "sentinel.read");
-    const agent = getAllAgents().find((item) => item.id === agentId);
+    const agent = await getRuntimeView(agentId);
     if (!agent) throw new Error("Agent not found.");
-    return toolResult({ agent: { id: agent.id, name: agent.name, enabled: agent.enabled, executionAdapter: agent.agentType === "cli-tool" ? "cli" : "not-configured" } }, `${agent.name} is ${agent.enabled ? "enabled" : "disabled"}.`);
+    return toolResult({ agent: { id: agent.agentId, enabled: agent.enabled, kind: agent.kind, endpoint: agent.endpoint, executionAdapter: agent.kind, executionVerified: false } }, `${agent.agentId} is ${agent.enabled ? "enabled" : "disabled"}.`);
   });
 
   server.registerTool("sentinel.memory_search", {

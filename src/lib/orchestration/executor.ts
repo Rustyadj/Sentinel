@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAdapterForRuntime } from "@/lib/agents/runtime/service";
 import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { writeAuditLog } from "@/lib/workspaces/audit";
+import { assertConcurrentDispatchAllowed } from "@/lib/agents/coexecution-policy";
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
@@ -15,6 +16,7 @@ export async function executeOrchestrationRun(runId: string): Promise<void> {
   if (run.status === "cancelled") return;
   const task = (run.request as { task?: string }).task;
   if (!task || !run.resolvedAgentId) throw new Error("Orchestration run has no routable task.");
+  assertConcurrentDispatchAllowed([run.resolvedAgentId], Boolean((run.request as { explicitUserOverride?: boolean }).explicitUserOverride));
   const { runtime, adapter } = await getAdapterForRuntime(run.resolvedAgentId);
   const readiness = await adapter.readiness(asRuntimeInstance(runtime));
   if (!readiness.ready) throw new Error(`Runtime unavailable: ${readiness.reason ?? "not_ready"}`);

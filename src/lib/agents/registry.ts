@@ -61,7 +61,7 @@ const REGISTRY: VpsAgent[] = [
     type: "claude-code-agent",
     description: "Secondary Hermes assistant",
     model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
-    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4861",
+    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4864",
     containerName: process.env.HERMES_NATHAN2_CONTAINER ?? "hermes-nathan2",
     configPath: `${AGENT_CONFIG_DIR}/hermes-nathan2`,
     logPath: `${AGENT_LOG_DIR}/hermes-nathan2.log`,
@@ -69,7 +69,7 @@ const REGISTRY: VpsAgent[] = [
     workspaceId: "default",
     enabled: envFlag("HERMES_NATHAN2_ENABLED", true),
     legacyPath: null,
-    dashboardPort: 4861,
+    dashboardPort: 4864,
   },
   {
     id: "openclaw",
