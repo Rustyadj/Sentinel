@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { emitNeuralEvent } from "./event-service";
 import { recordCompetencyEvidence } from "./agent-profile-service";
+import { resolveRetrievalOutcomes } from "./reconsolidation-service";
 import type { EvaluationInput } from "./types";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
@@ -48,9 +49,19 @@ export async function createEvaluation(input: EvaluationInput) {
     );
   }
 
+  // Close the retrieval -> outcome loop. Every memory that was put in front of
+  // this work now learns whether the work succeeded. Idempotent: only
+  // unresolved retrievals are touched, so re-evaluating the same experience
+  // cannot count the same retrieval as further evidence.
+  const reconsolidation = await resolveRetrievalOutcomes({
+    experienceId: input.experienceId,
+    successScore: input.successScore ?? null,
+    outcomeStatus: experience.outcomeStatus,
+  }).catch(() => null);
+
   await emitNeuralEvent({
     type: "evaluation.completed",
-    payload: { evaluationId: evaluation.id, experienceId: input.experienceId },
+    payload: { evaluationId: evaluation.id, experienceId: input.experienceId, reconsolidation },
     projectId: experience.projectId,
     workspaceId: experience.workspaceId,
   });

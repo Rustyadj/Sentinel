@@ -227,6 +227,10 @@ model Memory {
   // excluded from production retrieval until explicitly promoted.
   shadowOnly Boolean @default(false)
 
+  // Experiences this memory was derived from. An experience listed here can
+  // never later count as independent evidence confirming it.
+  derivedFromExperienceIds String[] @default([])
+
   // Bitemporal history, mirroring KnowledgeObject/KnowledgeEdge/Decision.
   version         Int       @default(1)
   validFrom       DateTime  @default(now())
