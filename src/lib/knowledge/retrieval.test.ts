@@ -7,6 +7,11 @@ describe("project memory isolation", () => {
     expect(filters.memory).toEqual({
       owner: "user-a", archived: false, scope: "project", projectId: "project-a",
       state: { notIn: ["quarantined", "forgotten"] },
+      // Continual memory adds two exclusions at this same choke point:
+      // shadow-generated abstractions never reach production retrieval, and a
+      // superseded version never appears beside the belief that replaced it.
+      shadowOnly: false,
+      validTo: null,
     });
     expect(filters.note).toEqual({ projectId: "project-a" });
     expect(filters.decision).toEqual({
