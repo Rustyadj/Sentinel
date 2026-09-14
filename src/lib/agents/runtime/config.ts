@@ -40,7 +40,9 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-lisa.log` },
     workspaceId: process.env.HERMES_LISA_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified: WS JSON-RPC session.create/prompt.submit/session.interrupt,
+    // audited live from container source (HERMES_OPENCLAW_CHAT_TRANSPORT.md).
+    executionVerified: true,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_LISA_NATIVE_URL ?? "/legacy/hermes",
@@ -77,7 +79,9 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/openclaw.log` },
     workspaceId: process.env.OPENCLAW_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified: native :18789 gateway adapter (openclaw-gateway.ts). The legacy
+    // /chat stub and /terminal/run passthrough remain deliberately unused.
+    executionVerified: true,
     capabilities: OPENCLAW_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.OPENCLAW_NATIVE_URL ?? "/legacy/openclaw",
@@ -94,7 +98,8 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/claude-code.log` },
     workspaceId: process.env.CLAUDE_CODE_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified: CLI 2.1.226 stream-json execution through CliRuntimeAdapter.
+    executionVerified: true,
     capabilities: {
       streaming: true,
       resume: true,
@@ -118,7 +123,8 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/codex.log` },
     workspaceId: process.env.CODEX_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified: Codex 0.147.0/0.153.4 `exec --json` through CliRuntimeAdapter.
+    executionVerified: true,
     capabilities: {
       streaming: true,
       resume: false,
@@ -145,7 +151,8 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/gemini.log` },
     workspaceId: process.env.GEMINI_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified: Gemini CLI 0.58.0 through CliRuntimeAdapter.
+    executionVerified: true,
     capabilities: {
       streaming: true,
       // `--resume <session-id>` and `--list-sessions` are present in 0.58.0.

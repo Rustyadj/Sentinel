@@ -61,7 +61,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     requireScope(principal, "sentinel.read");
     const agent = await getRuntimeView(agentId);
     if (!agent) throw new Error("Agent not found.");
-    return toolResult({ agent: { id: agent.agentId, enabled: agent.enabled, kind: agent.kind, endpoint: agent.endpoint, executionAdapter: agent.kind, executionVerified: false } }, `${agent.agentId} is ${agent.enabled ? "enabled" : "disabled"}.`);
+    return toolResult({ agent: { id: agent.agentId, enabled: agent.enabled, kind: agent.kind, endpoint: agent.endpoint, executionAdapter: agent.kind, executionVerified: agent.executionVerified } }, `${agent.agentId} is ${agent.enabled ? "enabled" : "disabled"}${agent.executionVerified ? "" : " and has no verified execution contract"}.`);
   });
 
   server.registerTool("sentinel.memory_search", {

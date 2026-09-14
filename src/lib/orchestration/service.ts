@@ -30,8 +30,11 @@ export async function createOrchestrationRun(input: RouteTaskInput, caller: { us
   if (input.projectHint && !scope.projectId) throw new Error("Project could not be resolved within your permitted scope.");
   if (input.workspaceHint && !scope.workspaceId) throw new Error("Workspace could not be resolved within your permitted scope.");
   const runtimes = await listRuntimeViews();
-  const eligible = runtimes.filter((runtime) => runtime.enabled && (input.preferredAgentId ? runtime.agentId === input.preferredAgentId : true));
-  if (!eligible.length) throw new Error("Requested agent is unavailable.");
+  // executionVerified is an operator assertion that this runtime has a proven
+  // task-execution contract. It gates dispatch, never reachability: an agent
+  // that merely answers a health check is not dispatchable.
+  const eligible = runtimes.filter((runtime) => runtime.enabled && runtime.executionVerified && (input.preferredAgentId ? runtime.agentId === input.preferredAgentId : true));
+  if (!eligible.length) throw new Error("Requested agent is unavailable or has no verified execution contract.");
   // selectWorker is the sole worker-selection authority. A run is a single
   // dispatch, so this never creates a Claude/Codex split implicitly.
   const routing = await selectWorker({

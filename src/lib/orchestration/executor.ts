@@ -41,6 +41,11 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   if (priorSession) throw new UnrecoverableError("Run already started an external runtime session; retry is forbidden to prevent duplicate side effects.");
   const { runtime, adapter } = await getAdapterForRuntime(run.resolvedAgentId);
   adapterForLease = adapter;
+  // Verification is checked before readiness so a reachable-but-unverified
+  // runtime can never be executed against on the strength of its health alone.
+  if (!runtime.executionVerified) {
+    throw new UnrecoverableError(`Runtime ${runtime.agentId} has no verified execution contract; execution is blocked until an operator verifies it.`);
+  }
   const readiness = await adapter.readiness(asRuntimeInstance(runtime));
   if (!readiness.ready) throw new Error(`Runtime unavailable: ${readiness.reason ?? "not_ready"}`);
 
