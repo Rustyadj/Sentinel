@@ -33,6 +33,10 @@ model User {
   notes                    ObsidianNote[]
   workflows                Workflow[]
   ownedBrands              Brand[]           @relation("BrandOwner")
+  externalClients          ExternalClient[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthAccessTokens        OAuthAccessToken[]
+  orchestrationRuns        OrchestrationRun[]
 
   @@map("users")
 }
@@ -62,6 +66,7 @@ model Project {
   meetings     Meeting[]
   approvals    ApprovalRequest[]
   auditLogs    AuditLog[]
+  orchestrationRuns OrchestrationRun[]
 
   @@index([workspaceId])
   @@index([teamId])
@@ -1794,6 +1799,155 @@ model ScheduledJobRun {
 
   @@index([jobKey, startedAt])
   @@map("learning_scheduled_job_runs")
+}
+
+// External integration identity and durable orchestration records. MCP clients
+// are untrusted callers; runs are durable work units independent of browser
+// sessions and the runtime control plane.
+model ExternalClient {
+  id               String   @id @default(cuid())
+  clientId         String   @unique
+  name             String
+  clientSecretHash String?
+  redirectUris     String[]
+  allowedScopes    String[] @default([])
+  enabled          Boolean  @default(true)
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdBy          User                     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  authorizationCodes OAuthAuthorizationCode[]
+  accessTokens       OAuthAccessToken[]
+  orchestrationRuns  OrchestrationRun[]
+
+  @@index([createdByUserId])
+  @@map("external_clients")
+}
+
+model OAuthAuthorizationCode {
+  id                  String   @id @default(cuid())
+  codeHash            String   @unique
+  externalClientId    String
+  userId              String
+  redirectUri         String
+  scopes              String[] @default([])
+  codeChallenge       String
+  codeChallengeMethod String   @default("S256")
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime @default(now())
+
+  externalClient ExternalClient @relation(fields: [externalClientId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([externalClientId, expiresAt])
+  @@index([userId, expiresAt])
+  @@map("oauth_authorization_codes")
+}
+
+model OAuthAccessToken {
+  id               String   @id @default(cuid())
+  tokenHash        String   @unique
+  externalClientId String
+  userId           String
+  scopes           String[] @default([])
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  lastUsedAt       DateTime?
+
+  externalClient ExternalClient @relation(fields: [externalClientId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([externalClientId, expiresAt])
+  @@index([userId, expiresAt])
+  @@map("oauth_access_tokens")
+}
+
+model OrchestrationRun {
+  id                 String   @id @default(cuid())
+  externalClientId   String?
+  userId             String
+  workspaceId        String?
+  projectId          String?
+  parentRunId        String?
+  idempotencyKey     String?
+  request            Json
+  status             String   @default("queued")
+  requestedAgentId   String?
+  resolvedAgentId    String?
+  routingDecision    Json     @default("{}")
+  contextSnapshot    Json     @default("{}")
+  retrievedObjectIds String[] @default([])
+  result             Json     @default("{}")
+  error              String?
+  validation         Json     @default("{}")
+  queuedAt           DateTime @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  externalClient ExternalClient?   @relation(fields: [externalClientId], references: [id], onDelete: SetNull)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentRun      OrchestrationRun? @relation("OrchestrationRunHierarchy", fields: [parentRunId], references: [id], onDelete: SetNull)
+  childRuns      OrchestrationRun[] @relation("OrchestrationRunHierarchy")
+  attempts       ExecutionAttempt[]
+  artifacts      ExecutionArtifact[]
+
+  @@unique([externalClientId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([status, queuedAt])
+  @@map("orchestration_runs")
+}
+
+model ExecutionAttempt {
+  id                 String   @id @default(cuid())
+  orchestrationRunId String
+  attemptNumber      Int
+  agentId            String
+  adapterType        String
+  model              String?
+  status             String   @default("queued")
+  routingReason      Json     @default("{}")
+  input              Json     @default("{}")
+  output             Json     @default("{}")
+  validation         Json     @default("{}")
+  error              String?
+  cost               Float?
+  latencyMs          Int?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+
+  orchestrationRun OrchestrationRun @relation(fields: [orchestrationRunId], references: [id], onDelete: Cascade)
+
+  @@unique([orchestrationRunId, attemptNumber])
+  @@index([agentId, createdAt])
+  @@index([status, createdAt])
+  @@map("execution_attempts")
+}
+
+model ExecutionArtifact {
+  id                 String   @id @default(cuid())
+  orchestrationRunId String
+  type               String
+  title              String
+  content            String?
+  storageUrl         String?
+  mimeType           String?
+  metadata           Json     @default("{}")
+  createdAt          DateTime @default(now())
+
+  orchestrationRun OrchestrationRun @relation(fields: [orchestrationRunId], references: [id], onDelete: Cascade)
+
+  @@index([orchestrationRunId])
+  @@map("execution_artifacts")
 }
 
 // Real persisted Learning Core settings — the "learning-settings" tab was
