@@ -4,6 +4,7 @@ import { getAdapterForRuntime } from "@/lib/agents/runtime/service";
 import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { assertConcurrentDispatchAllowed } from "@/lib/agents/coexecution-policy";
+import { acquireExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
@@ -11,7 +12,10 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
  * OpenClaw adapter is recreated here. `runtimeJobId` records the durable
  * AgentSession id; it is deliberately not treated as proof that a remote
  * process was cancelled. */
-export async function executeOrchestrationRun(runId: string): Promise<void> {
+export async function executeOrchestrationRun(runId: string, workerId = orchestrationWorkerId()): Promise<void> {
+  if (!await acquireExecutionOwnership(runId, workerId)) throw new Error("Execution ownership is held by another worker or Redis is unavailable.");
+  const renewal = setInterval(() => { void renewExecutionOwnership(runId, workerId); }, 30_000);
+  try {
   const run = await db.orchestrationRun.findUniqueOrThrow({ where: { id: runId } });
   if (run.status === "cancelled") return;
   const task = (run.request as { task?: string }).task;
@@ -37,10 +41,13 @@ export async function executeOrchestrationRun(runId: string): Promise<void> {
       const current = await db.orchestrationRun.findUnique({ where: { id: run.id }, select: { status: true } });
       // The local worker is the process owner. Adapter cancellation is only
       // requested here; success is reported only after the adapter confirms it.
-      if (current?.status === "cancelled") {
+      if (current?.status === "cancelling") {
         const cancelled = await adapter.cancel(session.id);
         if (!cancelled.success) throw new Error(`Cancellation not confirmed: ${cancelled.message}`);
-        await db.executionAttempt.update({ where: { id: attempt.id }, data: { status: "cancelled", completedAt: new Date(), latencyMs: Date.now() - started } });
+        await db.$transaction([
+          db.executionAttempt.update({ where: { id: attempt.id }, data: { status: "cancelled", completedAt: new Date(), latencyMs: Date.now() - started } }),
+          db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date() } }),
+        ]);
         return;
       }
     }
@@ -57,14 +64,21 @@ export async function executeOrchestrationRun(runId: string): Promise<void> {
   ]);
   await writeAuditLog({ workspaceId: run.workspaceId, projectId: run.projectId, userId: run.userId, agentId: runtime.agentId, action: validation.passed ? "orchestration.run.succeeded" : "orchestration.run.failed", entityType: "orchestration_run", entityId: run.id, details: { attemptId: attempt.id, latencyMs: Date.now() - started } });
   if (!validation.passed) throw new Error(validation.reason);
+  } finally {
+    clearInterval(renewal);
+    await releaseExecutionOwnership(runId, workerId);
+  }
 }
 
-export async function cancelOrchestrationRun(runId: string, userId: string): Promise<boolean> {
+export interface CancellationRequest { accepted: boolean; status: "cancelled" | "cancelling"; }
+
+export async function cancelOrchestrationRun(runId: string, userId: string): Promise<CancellationRequest | null> {
   const run = await db.orchestrationRun.findFirst({ where: { id: runId, userId } });
-  if (!run || ["succeeded", "failed", "cancelled"].includes(run.status)) return false;
-  // A queued job can be cancelled durably. A running job is marked as a
-  // cancellation request; the owning worker must confirm the adapter signal.
-  await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: run.status === "queued" ? new Date() : undefined } });
+  if (!run || ["succeeded", "failed", "cancelled", "cancelling"].includes(run.status)) return null;
+  // A queued job has no process to signal. A running job remains cancelling
+  // until its Redis lease owner confirms the adapter-level signal.
+  const status = run.status === "queued" ? "cancelled" : "cancelling";
+  await db.orchestrationRun.update({ where: { id: run.id }, data: { status, completedAt: status === "cancelled" ? new Date() : undefined } });
   await writeAuditLog({ workspaceId: run.workspaceId, projectId: run.projectId, userId, action: "orchestration.run.cancel_requested", entityType: "orchestration_run", entityId: run.id, details: { priorStatus: run.status } });
-  return true;
+  return { accepted: true, status };
 }

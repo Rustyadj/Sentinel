@@ -56,6 +56,35 @@ export async function redisDel(key: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function redisAcquireLease(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const client = getRedis();
+    if (!client) return false;
+    if (client.status === "wait") await client.connect();
+    return (await client.set(key, owner, "EX", ttlSeconds, "NX")) === "OK";
+  } catch { return false; }
+}
+
+/** Extend/release only when this worker owns the lease. The Lua comparison
+ * prevents one worker from accidentally revoking another worker's lease. */
+export async function redisRenewLease(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const client = getRedis();
+    if (!client) return false;
+    if (client.status === "wait") await client.connect();
+    return (await client.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end", 1, key, owner, String(ttlSeconds))) === 1;
+  } catch { return false; }
+}
+
+export async function redisReleaseLease(key: string, owner: string): Promise<void> {
+  try {
+    const client = getRedis();
+    if (!client) return;
+    if (client.status === "wait") await client.connect();
+    await client.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, key, owner);
+  } catch { /* release is best effort; lease expiry is the fallback */ }
+}
+
 export async function redisKeys(pattern: string): Promise<string[]> {
   try {
     const client = getRedis();

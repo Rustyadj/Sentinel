@@ -137,9 +137,10 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   }, async ({ taskId }) => {
     requireScope(principal, "sentinel.tasks.write");
-    const cancelled = await cancelOrchestrationRun(taskId, principal.userId);
-    if (!cancelled) throw new Error("Task cannot be cancelled or was not found.");
-    return toolResult({ taskId, status: "cancelled" }, `Cancelled task ${taskId}.`);
+    const cancellation = await cancelOrchestrationRun(taskId, principal.userId);
+    if (!cancellation) throw new Error("Task cannot be cancelled or was not found.");
+    const message = cancellation.status === "cancelled" ? `Cancelled queued task ${taskId}.` : `Cancellation requested for task ${taskId}; Sentinel will confirm once the executing runtime acknowledges it.`;
+    return toolResult({ taskId, status: cancellation.status, acknowledged: cancellation.status === "cancelled" }, message);
   });
   return server;
 }

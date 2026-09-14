@@ -1,12 +1,14 @@
 import { Worker } from "bullmq";
 import { db } from "@/lib/db";
 import { executeOrchestrationRun } from "@/lib/orchestration/executor";
+import { orchestrationWorkerId } from "@/lib/orchestration/execution-ownership";
 import { ORCHESTRATION_QUEUE_NAME, ORCHESTRATION_JOB_OPTIONS, type OrchestrationJobPayload } from "@/lib/orchestration/queue";
 
 const redisUrl = process.env.REDIS_URL;
 if (!redisUrl) throw new Error("REDIS_URL is required for the orchestration worker.");
 
-const worker = new Worker<OrchestrationJobPayload>(ORCHESTRATION_QUEUE_NAME, async (job) => executeOrchestrationRun(job.data.runId), {
+const workerId = orchestrationWorkerId();
+const worker = new Worker<OrchestrationJobPayload>(ORCHESTRATION_QUEUE_NAME, async (job) => executeOrchestrationRun(job.data.runId, workerId), {
   connection: { url: redisUrl, maxRetriesPerRequest: null },
   concurrency: Number(process.env.ORCHESTRATION_WORKER_CONCURRENCY ?? "1"),
 });
