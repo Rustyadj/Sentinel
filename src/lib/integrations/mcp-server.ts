@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { listRuntimeViews, getRuntimeView } from "@/lib/agents/runtime/service";
+import { getRuntimeView } from "@/lib/agents/runtime/service";
+import { listAgentCapabilityDescriptors } from "@/lib/agents/capability-descriptor";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
@@ -47,7 +48,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async () => {
     requireScope(principal, "sentinel.read");
-    const agents = (await listRuntimeViews()).map((agent) => ({ id: agent.agentId, model: agent.model, kind: agent.kind, endpoint: agent.endpoint, capabilities: agent.capabilities, executable: Boolean(agent.executable || agent.endpoint), executionVerified: false }));
+    const agents = await listAgentCapabilityDescriptors();
     return toolResult({ agents }, `Found ${agents.length} configured Sentinel agents.`);
   });
 
