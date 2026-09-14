@@ -62,7 +62,14 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-nathan2.log` },
     workspaceId: process.env.HERMES_NATHAN2_WORKSPACE_ID,
     enabled: true,
-    executionVerified: false,
+    // Verified 2026-09-14 against the live container through this adapter:
+    // basic password-login -> session cookie -> /api/auth/ws-ticket (200) ->
+    // session.create -> prompt.submit, normalizing to assistant_delta +
+    // completed with a terminal session status. Requires
+    // HERMES_NATHAN2_USERNAME/_PASSWORD to match the container's
+    // HERMES_DASHBOARD_BASIC_AUTH_* pair; hermesAuth() now refuses a
+    // half-configured pair rather than silently falling back.
+    executionVerified: true,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",

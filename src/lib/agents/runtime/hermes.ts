@@ -24,11 +24,23 @@ import type {
 
 interface QueueItem<T> { value?: T; error?: Error; done?: boolean }
 
-function hermesAuth(agentId: string) {
+export function hermesAuth(agentId: string) {
   const prefix = agentId.replaceAll("-", "_").toUpperCase();
   const token = process.env[`${prefix}_SESSION_TOKEN`]?.trim() || (agentId === "hermes-lisa" ? process.env.HERMES_SESSION_TOKEN?.trim() : undefined);
-  const username = process.env[`${prefix}_USERNAME`];
-  const password = process.env[`${prefix}_PASSWORD`];
+  const username = process.env[`${prefix}_USERNAME`]?.trim();
+  const password = process.env[`${prefix}_PASSWORD`]?.trim();
+  // A half-configured credential pair is the failure that kept Nathan2 dark:
+  // the password was set, the username was empty, so this silently produced no
+  // credentials and fell through to a session token the gateway rejects with
+  // 401 no_cookie. Refuse to start rather than degrade to an auth path the
+  // operator did not choose.
+  if (Boolean(username) !== Boolean(password)) {
+    throw new RuntimeError(
+      `${prefix}_USERNAME and ${prefix}_PASSWORD must both be set or both be empty; a half-configured credential pair cannot authenticate.`,
+      "configuration_invalid",
+      503,
+    );
+  }
   return { token, credentials: username && password ? { username, password } : undefined };
 }
 async function assertNoHermesFallback(client: HermesWebSocketClient, model: string, effort: import("@/lib/agents/model-policy").EffortLevel | null) {

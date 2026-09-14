@@ -193,6 +193,45 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Durable external orchestration worker — consumes the BullMQ "orchestration"
+  # queue that /api/mcp's route_task enqueues. Without this service a run is
+  # queued and never executed, so ChatGPT-initiated work would sit at "queued"
+  # forever.
+  #
+  # It is the instance capable of dispatching work, so it waits on the same
+  # `migrate` completion gate as app: dispatch filters candidates on
+  # agent_runtimes.executionVerified, which defaults to false. Starting ahead of
+  # the seed migration would reject every run with "no verified execution
+  # contract".
+  orchestration-worker:
+    build:
+      context: .
+      target: builder
+    command: node_modules/.bin/tsx src/workers/orchestration-worker.ts
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      REDIS_URL: redis://redis:6379
+      ORCHESTRATION_WORKER_CONCURRENCY: ${ORCHESTRATION_WORKER_CONCURRENCY:-1}
+      AGENT_PROJECT_ROOT: ${AGENT_PROJECT_ROOT:-/opt/sentinel-os/projects}
+      CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-claude}
+      CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-codex}
+      HERMES_ENDPOINT: ${HERMES_ENDPOINT:-}
+      HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
+      HERMES_NATHAN2_ENDPOINT: ${HERMES_NATHAN2_ENDPOINT:-}
+      HERMES_NATHAN2_USERNAME: ${HERMES_NATHAN2_USERNAME:-}
+      HERMES_NATHAN2_PASSWORD: ${HERMES_NATHAN2_PASSWORD:-}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-}
+    networks:
+      - sentinel_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   # SentinelVoiceGateway worker — LiveKit Agents (Silero VAD + turn detector +
   # Deepgram Flux STT + Cartesia Sonic 3.5 TTS), routed through this app's own
   # /api/chat. Behind a profile since it needs LiveKit/Deepgram/Cartesia
