@@ -35,7 +35,6 @@ export const DEFAULT_CAPABILITY_WEIGHTS: Record<string, CapabilityWeights> = {
   },
   "hermes-lisa": { research: 0.9, architecture: 0.85 },
   "hermes-nathan2": { research: 0.9, architecture: 0.85 },
-  openclaw: { research: 0.85 },
 };
 
 export function defaultCapabilityWeights(agentId: string): CapabilityWeights {

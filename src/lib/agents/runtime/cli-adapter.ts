@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { ModelUnavailableError, isManagedWorkerKind, looksLikeModelUnavailable, resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, type WorkerModelConfig } from "@/lib/agents/model-policy";
+import { ModelUnavailableError, isManagedWorkerKind, looksLikeAuthenticationRequired, looksLikeModelUnavailable, resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, type WorkerModelConfig } from "@/lib/agents/model-policy";
 import { RuntimeError, UnsupportedRuntimeCapabilityError } from "./errors";
 import { assertSafeOpaqueId, resolveAllowedWorkingDirectory } from "./path-security";
 import { nodeRuntimeProcessRunner, type RuntimeProcessRunner } from "./runner";
@@ -258,6 +258,13 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         // failure — and Sentinel never reacts by silently trying another
         // model.
         const modelUnavailable = status === "failed" && Boolean(modelConfig) && looksLikeModelUnavailable(stderrBuffer);
+        // An auth failure is not an ordinary task failure and is not fixed by
+        // retrying or by picking another model: the operator must re-authenticate
+        // the runtime. Classify it here so the surface above reports a clean
+        // AUTH_REQUIRED state instead of leaking the provider's raw message
+        // (e.g. "OAuth session expired and could not be refreshed"), which can
+        // carry account identifiers or token fragments, into a chat transcript.
+        const authRequired = status === "failed" && !modelUnavailable && looksLikeAuthenticationRequired(stderrBuffer);
         const latestSession = await this.store.get(session.id);
         const reported = status === "completed" && latestSession?.externalSessionId
           ? await this.reportedSessionModel(latestSession.externalSessionId, session.startedAt).catch(() => null) : null;
@@ -266,7 +273,7 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
           exitCode: code ?? undefined,
           completedAt: new Date(),
           ...(active.cancelled ? { cancelledAt: new Date() } : {}),
-          ...((modelUnavailable || reported) ? { metadata: { ...(latestSession?.metadata ?? {}), ...reported, ...(modelUnavailable ? { modelUnavailable: true } : {}) } } : {}),
+          ...((modelUnavailable || authRequired || reported) ? { metadata: { ...(latestSession?.metadata ?? {}), ...reported, ...(modelUnavailable ? { modelUnavailable: true } : {}), ...(authRequired ? { authRequired: true } : {}) } } : {}),
         });
         await emit(status === "cancelled" ? "cancelled" : status === "completed" ? "completed" : "error", {
           exitCode: code,
@@ -277,6 +284,11 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
             requestedModel: modelConfig?.runtimeModelId,
             requestedEffort: modelConfig?.effort,
             reason: stderrBuffer.slice(0, 2_000),
+          } : {}),
+          ...(authRequired ? {
+            code: "AUTH_REQUIRED", runtime: this.kind, authRequired: true,
+            // Deliberately a fixed operator-facing sentence, not provider stderr.
+            message: `The ${this.kind} runtime is not authenticated. Re-authenticate it on the host, then retry.`,
           } : {}),
         });
         queue.close();

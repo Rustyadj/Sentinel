@@ -24,7 +24,6 @@ const THINKING_EVENTS = new Set<RuntimeEventType>([
 
 const PROVIDER_NAMES: Record<RuntimeView["kind"], string> = {
   hermes: "Hermes",
-  openclaw: "OpenClaw",
   "claude-code": "Anthropic",
   codex: "OpenAI",
   gemini: "Google",

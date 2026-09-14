@@ -1,6 +1,6 @@
 # VPS Deployment Guide
 
-Sentinel OS runs on the VPS as the default web UI. Hermes and OpenClaw are managed backend agent services accessible from Sentinel's Agent Registry.
+Sentinel OS runs on the VPS as the default web UI. Hermes Lisa and Hermes Nathan2 are managed backend agent services accessible from Sentinel's Agent Registry; Claude Code and Codex run as process-transport coding runtimes.
 
 ## Architecture
 
@@ -10,8 +10,8 @@ Internet (443)
     ▼
 Nginx / Caddy (TLS termination)
     ├── /                 →  Sentinel OS (port 3000, Docker)
-    ├── /legacy/hermes    →  Hermes Lisa legacy UI (port 4860)
-    └── /legacy/openclaw  →  OpenClaw legacy UI (port 3001)
+    ├── /api/mcp          →  MCP control plane for external clients
+    └── /legacy/hermes    →  Hermes Lisa legacy UI (port 4862)
 
 Sentinel OS (Next.js, Docker)
     ├── /api/health         →  DB liveness check
@@ -39,7 +39,6 @@ nano .env.local   # fill in AUTH_SECRET, AUTH_URL, CONTROL_PLANE_OWNERS
 ```bash
 mkdir -p /opt/sentinel-os/agents/hermes-lisa
 mkdir -p /opt/sentinel-os/agents/hermes-clint
-mkdir -p /opt/sentinel-os/agents/openclaw
 mkdir -p /opt/sentinel-os/logs
 
 # Seed initial CLAUDE.md configs
@@ -93,9 +92,8 @@ systemctl reload caddy
 | `REDIS_URL` | — | — | Redis for caching (optional) |
 | `SENTINEL_DEFAULT_UI` | — | `true` | Self-identification flag |
 | `CONTROL_PLANE_OWNERS` | — | `""` | Comma-separated owner emails |
-| `HERMES_ENDPOINT` | — | `http://127.0.0.1:4860` | Hermes Lisa health check |
-| `HERMES_CLINT_ENDPOINT` | — | `http://127.0.0.1:4861` | Hermes Clint health check |
-| `OPENCLAW_ENDPOINT` | — | `http://127.0.0.1:3001` | OpenClaw health check |
+| `HERMES_ENDPOINT` | — | `http://127.0.0.1:4862` | Hermes Lisa health check |
+| `HERMES_NATHAN2_ENDPOINT` | — | `http://127.0.0.1:4864` | Hermes Nathan2 health check |
 | `AGENT_CONFIG_DIR` | — | `/opt/sentinel-os/agents` | Root for agent config files |
 | `AGENT_LOG_DIR` | — | `/opt/sentinel-os/logs` | Root for agent log files |
 

@@ -16,14 +16,12 @@ export type ChatExecutionMode = "model_chat" | "persistent_agent_runtime" | "cod
 export const RUNTIME_AGENT_MAP: Record<string, { runtimeId: string; mode: ChatExecutionMode; label: string }> = {
   "hermes-nathan2": { runtimeId: "runtime-hermes-nathan2", mode: "persistent_agent_runtime", label: "Hermes runtime" },
   "hermes-lisa": { runtimeId: "runtime-hermes-lisa", mode: "persistent_agent_runtime", label: "Hermes runtime" },
-  openclaw: { runtimeId: "runtime-openclaw", mode: "persistent_agent_runtime", label: "OpenClaw runtime" },
   "claude-code": { runtimeId: "runtime-claude-code", mode: "coding_runtime", label: "Claude Code runtime" },
   codex: { runtimeId: "runtime-codex", mode: "coding_runtime", label: "Codex runtime" },
 };
 
 const RUNTIME_PROVIDERS: Record<string, string> = {
   hermes: "hermes",
-  openclaw: "openclaw",
   "claude-code": "anthropic",
   codex: "openai",
 };
@@ -123,9 +121,9 @@ export async function routeRuntimeChat(input: {
           enqueue({ type: "runtime_event", event });
         }
         if (room && fullContent) {
-          const completedSession = runtime.kind === "openclaw" ? null : await runtimeSessionStore.get(session.id);
+          const completedSession = await runtimeSessionStore.get(session.id);
           const provenance = completedSession?.metadata ?? {};
-          const executedModel = typeof provenance.actualModel === "string" ? provenance.actualModel : typeof provenance.requestedModel === "string" ? provenance.requestedModel : runtime.kind === "openclaw" ? runtime.model : undefined;
+          const executedModel = typeof provenance.actualModel === "string" ? provenance.actualModel : typeof provenance.requestedModel === "string" ? provenance.requestedModel : undefined;
           await persistChatExchange({
             roomId: room.id,
             userId: input.userId,

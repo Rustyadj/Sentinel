@@ -90,22 +90,15 @@ services:
       HERMES_NATHAN2_PASSWORD: ${HERMES_NATHAN2_PASSWORD:-}
       HERMES_NATHAN2_SESSION_TOKEN: ${HERMES_NATHAN2_SESSION_TOKEN:-}
       HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
-      OPENCLAW_ENDPOINT: ${OPENCLAW_ENDPOINT:-http://cash:18789/readyz}
-      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-ws://cash:18789}
-      OPENCLAW_DEVICE_IDENTITY_FILE: /run/secrets/openclaw-device.json
-      OPENCLAW_AGENT_ID: ${OPENCLAW_AGENT_ID:-main}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
-      OPENCLAW_CONTAINER: ${OPENCLAW_CONTAINER:-openclaw-cash-cash-1}
       HOST_CONTROL_URL: ${HOST_CONTROL_URL:-http://host.docker.internal:8977}
       HOST_CONTROL_TOKEN: ${HOST_CONTROL_TOKEN:-}
       HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
-      OPENCLAW_NATIVE_URL: ${OPENCLAW_NATIVE_URL:-/legacy/openclaw}
       HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-gpt-5.6-luna}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ALLOW_BROWSER_PROVIDER_KEYS: "false"
-      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-claude-opus-4-8}
       LIVEKIT_URL: ${LIVEKIT_URL:-}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
@@ -132,20 +125,10 @@ services:
       - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
       - ./runtime-agents/bin:/opt/runtime-bin:ro
       - ./runtime-agents/home:/opt/runtime-home:rw
-      - ${OPENCLAW_DEVICE_IDENTITY_HOST:-/opt/sentinel-secrets/openclaw-device.json}:/run/secrets/openclaw-device.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # gw_priority forces sentinel_net to stay the default-route network.
-    # Without it, Docker didn't honor this list's order — the container's
-    # default route ended up via openclaw-cash_default's gateway instead,
-    # which (confirmed against openclaw-cash-cash-1 itself) has no internet
-    # egress, breaking every outbound HTTPS call (Google/GitHub OAuth
-    # discovery, etc.) once this service joined that network.
     networks:
-      sentinel_net:
-        gw_priority: 100
-      openclaw-cash_default:
-        gw_priority: 0
+      - sentinel_net
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 15s
@@ -220,16 +203,6 @@ services:
 networks:
   sentinel_net:
     driver: bridge
-  # openclaw-cash's own compose-managed network. Reaching it via
-  # host.docker.internal:50348 times out for container->container traffic
-  # (NAT hairpin through the host gateway to a docker-proxy'd port on the
-  # default bridge is unreliable) even though the port answers instantly
-  # from the host and from hermes-lisa's host-bound process. Joining this
-  # network directly and addressing the container by its compose alias
-  # ("cash") sidesteps that path entirely. External: true because it's
-  # owned and created by the openclaw-cash compose project, not this one.
-  openclaw-cash_default:
-    external: true
 
 volumes:
   postgres_data:

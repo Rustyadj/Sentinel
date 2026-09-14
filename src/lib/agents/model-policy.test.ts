@@ -49,7 +49,7 @@ describe("isManagedWorkerKind", () => {
     expect(isManagedWorkerKind("claude-code")).toBe(true);
     expect(isManagedWorkerKind("codex")).toBe(true);
     expect(isManagedWorkerKind("hermes")).toBe(false);
-    expect(isManagedWorkerKind("openclaw")).toBe(false);
+    expect(isManagedWorkerKind("hermes")).toBe(false);
   });
 });
 

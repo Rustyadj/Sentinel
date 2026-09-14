@@ -29,7 +29,6 @@ export const MODEL_CHOICES: Record<AgentRuntimeKind, readonly string[]> = {
   // why the adapter reports actualModel from the result frame: the UI must show that
   // requested and actual differ rather than implying the request was honored.
   gemini: ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3-flash", "auto"],
-  openclaw: [], // populated from the Gateway, never invented
 };
 export function isManagedWorkerKind(kind: string): kind is ManagedWorkerKind {
   return kind === "claude-code" || kind === "codex";
@@ -39,8 +38,9 @@ export function sentinelModelDefault(kind: AgentRuntimeKind): WorkerModelConfig 
     : kind === "hermes" ? "gpt-5.6-luna"
     // Operator-selected default. Verified available on this API key; the Gemini CLI has
     // no reasoning-effort control, so effort stays null for this kind.
-    : kind === "gemini" ? "gemini-3.8-flash"
-    : process.env.OPENCLAW_MODEL ?? "claude-opus-4-8";
+    // Operator-selected default. Verified available on this API key; the Gemini CLI has
+    // no reasoning-effort control, so effort stays null for this kind.
+    : "gemini-3.8-flash";
   return { displayName: model, runtimeModelId: model, effort: isManagedWorkerKind(kind) ? "low" : null };
 }
 export function validateModelConfiguration(kind: AgentRuntimeKind, model: unknown, effort: unknown): void {
@@ -63,7 +63,7 @@ export function validateModelConfiguration(kind: AgentRuntimeKind, model: unknow
 function deploymentDefault(agentId: string, kind: AgentRuntimeKind): EffectiveAgentModel {
   const defaults = sentinelModelDefault(kind);
   const prefix = kind === "claude-code" ? "SENTINEL_CLAUDE_DEFAULT" : kind === "codex" ? "SENTINEL_CODEX_DEFAULT"
-    : kind === "hermes" ? agentId.replaceAll("-", "_").toUpperCase() : "OPENCLAW";
+    : kind === "hermes" ? agentId.replaceAll("-", "_").toUpperCase() : "SENTINEL_GEMINI_DEFAULT";
   const model = process.env[`${prefix}_MODEL`];
   const effort = process.env[`${prefix}_EFFORT`];
   const result = { displayName: model ?? defaults.displayName, runtimeModelId: model ?? defaults.runtimeModelId,
@@ -108,6 +108,32 @@ export function sessionModelConfiguration(metadata: Record<string, unknown>): Ef
 export function looksLikeModelUnavailable(text: string): boolean {
   return /(?:model|effort)[^\n]{0,160}(?:not found|not supported|unsupported|unavailable|unknown|invalid|does not exist|not available|access|requires a newer version)|(?:unsupported|unknown|invalid)[^\n]{0,80}(?:model|effort)/i.test(text);
 }
+/**
+ * Recognises a runtime refusing to work because its provider credentials are
+ * absent, expired, or unrefreshable — the class of failure that is fixed by
+ * re-authenticating, never by retrying or by choosing a different model.
+ *
+ * This exists so Sentinel reports AUTH_REQUIRED instead of surfacing a raw
+ * provider string such as "Failed to authenticate: OAuth session expired and
+ * could not be refreshed" into a chat transcript. The matched text is used
+ * only as a classifier; it is never echoed back to the client, because
+ * provider auth errors can carry account identifiers or token fragments.
+ */
+export function looksLikeAuthenticationRequired(text: string): boolean {
+  return /(?:oauth|session|token|credential)[^\n]{0,80}(?:expired|invalid|revoked|could not be refreshed|refresh failed)|failed to authenticate|not authenticated|authentication[_ ]required|unauthorized|invalid[_ ]api[_ ]key|please (?:run|sign in|log ?in)[^\n]{0,40}(?:login|auth)/i.test(text);
+}
+
+export class AuthenticationRequiredError extends Error {
+  readonly code = "AUTH_REQUIRED";
+  readonly runtime: AgentRuntimeKind;
+  constructor(public readonly kind: AgentRuntimeKind) {
+    super(`AUTH_REQUIRED: the ${kind} runtime needs provider re-authentication`);
+    this.name = "AuthenticationRequiredError";
+    this.runtime = kind;
+  }
+  toJSON() { return { code: this.code, runtime: this.runtime }; }
+}
+
 export class ModelUnavailableError extends Error {
   readonly code = "MODEL_UNAVAILABLE";
   readonly runtime: AgentRuntimeKind;

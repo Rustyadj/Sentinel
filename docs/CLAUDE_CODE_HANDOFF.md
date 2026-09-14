@@ -14,9 +14,9 @@ Read AGENTS.md, docs/LEARNING_CORE_EVOLUTION.md and
 [the checkpoint evidence](reviews/AGENT_MODEL_CONTROL_ACCEPTANCE.md).
 Use Context7 for current library/CLI documentation and verify installed contracts.
 
-**NO OPENCLAW.** The operator explicitly excluded it. Preserve existing behavior;
-do not add OpenClaw model control or spend time integrating its Gateway.
-Do not redesign Sentinel or introduce another agent system, runtime system,
+**NO OPENCLAW.** OpenClaw has been removed from the Sentinel architecture
+entirely — it is not a required, optional, fallback or legacy runtime. Do not
+reintroduce it in any form. Do not redesign Sentinel or introduce another agent system, runtime system,
 Learning Core, model registry, evaluator or security graph.
 
 Finish the original four objectives using canonical systems:
@@ -48,9 +48,9 @@ Lisa remains lead, Nathan2 peer; model changes must not alter permissions/tools/
 3. Complete implementation/security review, especially:
    - Model override authorization, runtime/model-specific effort validation, invalid
      request handling, unavailable error fields through SSE and orchestration.
-   - Generic Agent Registry edits and excluded OpenClaw: new saveAgentModel currently
-     requires a configured managed runtime and rejects OpenClaw. Ensure shared
-     legacy PUT routes do not regress ordinary/out-of-scope agent editing.
+   - Generic Agent Registry edits: new saveAgentModel requires a configured
+     managed runtime. Ensure shared legacy PUT routes do not regress ordinary/
+     out-of-scope agent editing.
    - Candidate scope helper currently ORs relation/payload scope. Check precedence
      against requireLearningCandidateAccess so a forged payload cannot expose a
      candidate with authoritative ownership in another workspace. Audit every new
@@ -166,6 +166,6 @@ and signed LOCAL TEST sessions; never use them against production.
 
 Report Nathan2 runtime/DB integration, stale Clint handling, canonical model architecture,
 Lisa/Nathan2/Claude/Codex defaults and actual execution, verified Claude/Codex syntax,
-OpenClaw exclusion, model UI, session provenance, Learning Core gaps fixed,
+model UI, session provenance, Learning Core gaps fixed,
 tenant-security result, tests, VPS acceptance evidence and every remaining blocker.
 Do not claim completion with mocks alone or hide unavailable models by changing defaults.

@@ -9,7 +9,7 @@
 - **STT**: Deepgram Flux (provider-agnostic — see below).
 - **TTS**: Cartesia Sonic 3.5 (production-ready, natural, sub-90ms; also
   provider-agnostic).
-- **Reasoning**: Sentinel's existing Hermes/OpenClaw adapter via `/api/chat` —
+- **Reasoning**: Sentinel's existing Hermes adapter via `/api/chat` —
   the same endpoint a typed chat message hits. There is no separate "voice
   brain." OpenAI Realtime is deliberately **not** used as the primary brain:
   its realtime path can bypass Sentinel's own tools, skills, and memory,
@@ -60,7 +60,7 @@ Browser                     Next.js app                  LiveKit room           
   |=== mic audio (WebRTC) ======================================================================|
   |                              |                              |          VAD -> turn -> STT   |
   |                              |<---- POST /api/chat {roomId, userContent} (Bearer VOICE_WORKER_SECRET) --|
-  |                              |---- SSE: Hermes/OpenClaw response (tools, memory, same as chat) -------->|
+  |                              |---- SSE: Hermes runtime response (tools, memory, same as chat) --------->|
   |                              |                              |          TTS -> room          |
   |<===================================== spoken response (WebRTC) ============================|
 ```

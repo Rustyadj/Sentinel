@@ -5,7 +5,6 @@ import { CodexRuntimeAdapter } from "./codex";
 import { GeminiRuntimeAdapter } from "./gemini";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
 import { HermesRuntimeAdapter } from "./hermes";
-import { OpenClawRuntimeAdapter } from "./openclaw";
 import { RuntimeError } from "./errors";
 import type {
   AgentRuntimeAdapter,
@@ -76,7 +75,6 @@ const adapters: Record<AgentRuntimeKind, AgentRuntimeAdapter> = {
   codex: new CodexRuntimeAdapter(resolveRuntimeInstance),
   gemini: new GeminiRuntimeAdapter(resolveRuntimeInstance),
   hermes: new HermesRuntimeAdapter(resolveRuntimeInstance),
-  openclaw: new OpenClawRuntimeAdapter(resolveRuntimeInstance),
 };
 
 export function getRuntimeAdapter(kind: AgentRuntimeKind): AgentRuntimeAdapter {

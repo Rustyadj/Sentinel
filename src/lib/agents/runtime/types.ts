@@ -1,4 +1,4 @@
-export type AgentRuntimeKind = "hermes" | "openclaw" | "claude-code" | "codex" | "gemini";
+export type AgentRuntimeKind = "hermes" | "claude-code" | "codex" | "gemini";
 export type RuntimeTransport = "http" | "process" | "docker" | "systemd";
 
 export interface RuntimeLogSource {
