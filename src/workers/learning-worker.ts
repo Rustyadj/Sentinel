@@ -23,11 +23,13 @@ import {
 import {
   runRecordedDegradationSweep,
   runRecordedScheduledJob,
+  runRecordedMemoryDecaySweep,
 } from "@/lib/neural-engine/scheduler-service";
 import { detectKnowledgeGaps } from "@/lib/learning/knowledge-gaps";
 import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
 import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay";
 import { runCoOccurrenceSelfImprovement } from "@/lib/learning/self-improvement";
+import { runConsolidationCycle } from "@/lib/neural-engine/consolidation-service";
 
 const requestedConcurrency = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
 const CONCURRENCY = Number.isFinite(requestedConcurrency)
@@ -56,6 +58,10 @@ async function processJob(job: Job<JobPayload>) {
     }
     case JOB_NAMES.coOccurrenceDiscovery:
       return runRecordedScheduledJob(job.name, runCoOccurrenceSelfImprovement);
+    case JOB_NAMES.memoryDecaySweep:
+      return runRecordedMemoryDecaySweep();
+    case JOB_NAMES.memoryConsolidation:
+      return runRecordedScheduledJob(job.name, () => runConsolidationCycle({ mode: "shadow" }));
     default:
       throw new Error(`No handler registered for job "${job.name}" — refusing to silently no-op it.`);
   }

@@ -37,6 +37,8 @@ export const JOB_NAMES = {
   knowledgeGapAnalysis: "knowledge-gap-analysis",
   experienceReplay: "experience-replay",
   coOccurrenceDiscovery: "co-occurrence-discovery",
+  memoryDecaySweep: "memory-decay-sweep",
+  memoryConsolidation: "memory-consolidation",
 } as const;
 
 export type LearningJobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -126,6 +128,20 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
     { pattern: CRON.weekly },
     { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
   );
+  // Governed forgetting's sweep already existed but was never scheduled — it
+  // was reachable only through an API route, so decay never actually ran.
+  await q.upsertJobScheduler(
+    JOB_NAMES.memoryDecaySweep,
+    { pattern: CRON.nightly },
+    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
+  );
+  // Shadow consolidation: bounded cycles whose output stays out of production
+  // retrieval until explicitly promoted.
+  await q.upsertJobScheduler(
+    JOB_NAMES.memoryConsolidation,
+    { pattern: CRON.nightly },
+    { data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS }
+  );
   await q.upsertJobScheduler(
     JOB_NAMES.coOccurrenceDiscovery,
     { pattern: CRON.weekly },
@@ -148,6 +164,8 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
       JOB_NAMES.degradationSweep,
       JOB_NAMES.knowledgeGapAnalysis,
       JOB_NAMES.coOccurrenceDiscovery,
+      JOB_NAMES.memoryDecaySweep,
+      JOB_NAMES.memoryConsolidation,
       `${JOB_NAMES.experienceReplay} (x6 categories)`,
     ],
     skipped: "trace-aggregation, preference-confidence-recalc, monthly-maintenance — no real handler exists yet",
