@@ -186,6 +186,7 @@
 /* Legacy dark shell — every screen still rendered by components/layout/AppShell. */
 .sentinel-app-shell {
   color-scheme: dark;
+  color: var(--foreground);
   /* Dark shell tokens (rail, topbar, panels) */
   --background: #040811;
   --foreground: #e9edf5;
