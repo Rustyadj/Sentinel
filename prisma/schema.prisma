@@ -985,6 +985,12 @@ model Policy {
 
 model Experience {
   id                String    @id @default(cuid())
+  /// |expected success from the agent's prior competency - observed success|.
+  /// Priority signal for consolidation only; never treated as truth.
+  predictionError   Float?
+  /// pending | consolidating | consolidated | skipped
+  consolidationState String   @default("pending")
+  consolidatedAt    DateTime?
   agentId           String
   projectId         String?
   workspaceId       String?
@@ -1156,6 +1162,25 @@ model AgentKnowledgeProfile {
   updatedAt         DateTime @updatedAt
 
   @@map("neural_agent_knowledge_profiles")
+}
+
+/// One bounded consolidation cycle. Mirrors ExperienceReplayRun: a durable,
+/// restartable record of what a cycle looked at and what it proposed. In shadow
+/// mode nothing it proposes reaches production retrieval.
+model ConsolidationRun {
+  id                  String    @id @default(cuid())
+  mode                String    @default("shadow") // shadow | active
+  startedAt           DateTime  @default(now())
+  completedAt         DateTime?
+  experiencesScanned  Int       @default(0)
+  candidatesFound     Int       @default(0)
+  memoriesGenerated   Int       @default(0)
+  memoriesStrengthened Int      @default(0)
+  compressionRatio    Float?
+  notes               Json      @default("{}")
+
+  @@index([mode, startedAt])
+  @@map("memory_consolidation_runs")
 }
 
 model AgentCompetency {
