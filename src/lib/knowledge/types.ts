@@ -115,6 +115,10 @@ export type KnowledgeEventType =
   | "edge.strengthened"
   | "edge.weakened"
   | "contradiction.detected"
+  // Continual memory — additive, same convention as the Phase A entries above.
+  | "memory.superseded"
+  | "memory.consolidated"
+  | "memory.decayed"
   | "contradiction.resolved"
   | "skill.promoted";
 

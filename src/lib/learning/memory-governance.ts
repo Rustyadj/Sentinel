@@ -282,7 +282,10 @@ export async function runMemoryDecaySweep(params: { workspaceId?: string; limit?
  * explicit act; it is never the default.
  */
 export function excludeFromRetrieval(): Prisma.MemoryWhereInput {
-  return { state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] }, shadowOnly: false };
+  // `validTo: null` keeps superseded versions out of retrieval while leaving
+  // them fully readable by the temporal queries. Without it a revised belief
+  // and the belief it replaced would both reach the same prompt.
+  return { state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] }, shadowOnly: false, validTo: null };
 }
 
 export async function recordMemoryUsed(memoryId: string) {
