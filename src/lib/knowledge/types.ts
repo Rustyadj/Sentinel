@@ -187,4 +187,6 @@ export interface RetrievalContext {
   roomId?: string;
   maxItems?: number;
   scopePolicy?: "isolated" | "user-context";
+  /** Links this retrieval to the work it fed, so usefulness can be resolved later. */
+  experienceId?: string;
 }

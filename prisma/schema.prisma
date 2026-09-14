@@ -210,11 +210,68 @@ model Memory {
   // deleting the row — see excludeFromRetrieval() in memory-governance.ts.
   state              String    @default("active")
 
+  // --- Continual memory (additive) ---
+  // How this memory came to exist. Observed/user-provided knowledge must stay
+  // distinguishable from inferred/generalized knowledge at retrieval time.
+  // OBSERVED | USER_PROVIDED | INFERRED | GENERALIZED | SYSTEM_DERIVED
+  provenanceClass String @default("OBSERVED")
+
+  // Retrieval is recorded separately from usefulness on purpose: being fetched
+  // is not evidence that a memory helped. lastUsefulAt is written only when a
+  // retrieval is later linked to a successful outcome (reconsolidation).
+  lastRetrievedAt     DateTime?
+  retrievalCount      Int       @default(0)
+  disconfirmationCount Int      @default(0)
+
+  // Shadow mode: generalized memories are generated, scored and linked, but
+  // excluded from production retrieval until explicitly promoted.
+  shadowOnly Boolean @default(false)
+
+  // Bitemporal history, mirroring KnowledgeObject/KnowledgeEdge/Decision.
+  version         Int       @default(1)
+  validFrom       DateTime  @default(now())
+  validTo         DateTime?
+  supersededById  String?
+  changeReason    String?
+
   preferenceEvidence UserPreferenceEvidence[]
+  retrievals         MemoryRetrieval[]
 
   @@index([projectId])
   @@index([state])
+  @@index([provenanceClass])
+  @@index([shadowOnly])
+  @@index([validTo])
   @@map("memories")
+}
+
+/// One recorded act of retrieval, and — once the surrounding work finishes —
+/// whether that retrieved memory was present for a successful or failed
+/// outcome. This is the join between retrieval and evaluation that lets
+/// usefulness be measured instead of assumed.
+model MemoryRetrieval {
+  id           String   @id @default(cuid())
+  memoryId     String
+  experienceId String?
+  runId        String?
+  userId       String?
+  projectId    String?
+  workspaceId  String?
+  retrievedAt  DateTime @default(now())
+
+  /// Set when the surrounding experience is evaluated. Null while unresolved.
+  outcomeStatus  String?
+  outcomeScore   Float?
+  /// True only when this retrieval was present for work that succeeded.
+  contributedToOutcome Boolean?
+  resolvedAt           DateTime?
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@index([memoryId])
+  @@index([experienceId])
+  @@index([resolvedAt])
+  @@map("memory_retrievals")
 }
 
 model KanbanBoard {
