@@ -2262,6 +2262,7 @@ model AgentRuntime {
   configPath           String?
   logPath              String?
   enabled              Boolean  @default(true)
+  executionVerified    Boolean  @default(false)
   capabilities         Json     @default("{}")
   healthConfig         Json     @default("{}")
   workspaceId          String?

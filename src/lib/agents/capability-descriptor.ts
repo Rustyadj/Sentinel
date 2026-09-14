@@ -18,7 +18,7 @@ export async function listAgentCapabilityDescriptors() {
       projectRoot: runtime.workingDirectoryRoot, capabilities: agent?.capabilityWeights ?? defaultCapabilityWeights(runtime.agentId),
       tools: agent?.toolPermissions ?? [], repositoryAccess: Boolean(runtime.workingDirectoryRoot), concurrency: runtime.capabilities,
       reachable: health?.reachable ?? false, authenticated: health?.authenticated ?? false,
-      executionVerified: health?.ready === true, executable: runtime.enabled && health?.ready === true,
+      executionVerified: runtime.executionVerified, executable: runtime.enabled && runtime.executionVerified && health?.ready === true,
       historicalPerformance: competencies.filter((item) => item.agentId === runtime.agentId),
       provenance: { runtime: "AgentRuntime/config", static: "registry", persistence: "Agent/AgentCompetency" },
     };

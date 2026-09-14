@@ -40,6 +40,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-lisa.log` },
     workspaceId: process.env.HERMES_LISA_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_LISA_NATIVE_URL ?? "/legacy/hermes",
@@ -59,6 +60,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-nathan2.log` },
     workspaceId: process.env.HERMES_NATHAN2_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
@@ -75,6 +77,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/openclaw.log` },
     workspaceId: process.env.OPENCLAW_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: OPENCLAW_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.OPENCLAW_NATIVE_URL ?? "/legacy/openclaw",
@@ -91,6 +94,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/claude-code.log` },
     workspaceId: process.env.CLAUDE_CODE_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: {
       streaming: true,
       resume: true,
@@ -114,6 +118,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/codex.log` },
     workspaceId: process.env.CODEX_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: {
       streaming: true,
       resume: false,
@@ -140,6 +145,7 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/gemini.log` },
     workspaceId: process.env.GEMINI_WORKSPACE_ID,
     enabled: true,
+    executionVerified: false,
     capabilities: {
       streaming: true,
       // `--resume <session-id>` and `--list-sessions` are present in 0.58.0.
