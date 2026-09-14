@@ -4,6 +4,7 @@ import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bri
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { resolveScope } from "./scope";
 import { selectWorker } from "./worker-router";
+import { enqueueOrchestrationRun } from "./queue";
 import { listRuntimeViews } from "@/lib/agents/runtime/service";
 import type { AgentCapabilityKey } from "./capabilities";
 import type { RouteTaskInput } from "./types";
@@ -73,5 +74,6 @@ export async function createOrchestrationRun(input: RouteTaskInput, caller: { us
     entityId: run.id,
     details: { resolvedAgentId: routing.agentId, requiredCapabilities: taskCapabilities(input), retrievedObjectCount: context.knowledgeObjectIds.length },
   });
+  await enqueueOrchestrationRun(run.id);
   return run;
 }
