@@ -36,6 +36,7 @@ function recordToView(row: AgentRuntimeRow): RuntimeView {
     ...(logPath ? { logSource: { kind: row.transport === "docker" && row.containerName ? "docker" : "file", ref: row.containerName ?? logPath } } : {}),
     ...(row.workspaceId ? { workspaceId: row.workspaceId } : fallback?.workspaceId ? { workspaceId: fallback.workspaceId } : {}),
     enabled: row.enabled,
+    executionVerified: row.executionVerified,
     capabilities,
     sentinelControl: "partial",
     ...(fallback?.nativeUiUrl ? { nativeUiUrl: fallback.nativeUiUrl } : {}),

@@ -56,10 +56,53 @@ export async function redisDel(key: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function redisAcquireLease(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const client = getRedis();
+    if (!client) return false;
+    if (client.status === "wait") await client.connect();
+    return (await client.set(key, owner, "EX", ttlSeconds, "NX")) === "OK";
+  } catch { return false; }
+}
+
+/** Extend/release only when this worker owns the lease. The Lua comparison
+ * prevents one worker from accidentally revoking another worker's lease. */
+export async function redisRenewLease(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const client = getRedis();
+    if (!client) return false;
+    if (client.status === "wait") await client.connect();
+    return (await client.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end", 1, key, owner, String(ttlSeconds))) === 1;
+  } catch { return false; }
+}
+
+export async function redisReleaseLease(key: string, owner: string): Promise<void> {
+  try {
+    const client = getRedis();
+    if (!client) return;
+    if (client.status === "wait") await client.connect();
+    await client.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, key, owner);
+  } catch { /* release is best effort; lease expiry is the fallback */ }
+}
+
 export async function redisKeys(pattern: string): Promise<string[]> {
   try {
     const client = getRedis();
     if (!client) return [];
     return await client.keys(pattern);
   } catch { return []; }
+}
+
+/** Atomic fixed-window counter for externally exposed interfaces. Unlike the
+ * optional cache helpers above, callers must fail closed when this returns
+ * null because a missing rate limiter is not a safe external posture. */
+export async function redisIncrementWithExpiry(key: string, ttlSeconds: number): Promise<number | null> {
+  try {
+    const client = getRedis();
+    if (!client) return null;
+    if (client.status === "wait") await client.connect();
+    const count = await client.incr(key);
+    if (count === 1) await client.expire(key, ttlSeconds);
+    return count;
+  } catch { return null; }
 }

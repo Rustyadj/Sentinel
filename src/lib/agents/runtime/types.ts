@@ -189,6 +189,8 @@ export type SentinelControlStatus = "verified" | "partial" | "unavailable";
 export interface RuntimeView extends RuntimeInstance {
   workspaceId?: string;
   enabled: boolean;
+  /** Operator-controlled verification, never inferred from reachability. */
+  executionVerified: boolean;
   capabilities: RuntimeCapabilities;
   sentinelControl: SentinelControlStatus;
   nativeUiUrl?: string;
