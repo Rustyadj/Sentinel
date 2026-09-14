@@ -219,7 +219,10 @@ export function useChatSession(): ChatSession {
 
   // Load messages when active room changes
   useEffect(() => {
-    if (!activeRoomId || loadedRoomsRef.current.has(activeRoomId)) return;
+    // The store starts with a presentation-only placeholder room. Wait for
+    // /api/rooms to replace it with the user's persisted room before asking
+    // the messages API to hydrate a transcript.
+    if (!hydrated || !activeRoomId || loadedRoomsRef.current.has(activeRoomId)) return;
     loadedRoomsRef.current.add(activeRoomId);
 
     void (async () => {
@@ -246,7 +249,7 @@ export function useChatSession(): ChatSession {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoomId]);
+  }, [activeRoomId, hydrated]);
 
   // Reset candidates panel when room changes
   useEffect(() => {

@@ -225,14 +225,11 @@ body {
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(124, 58, 237, 0.09), transparent 24%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.055), transparent 22%),
-    linear-gradient(180deg, #050a12 0%, #030710 100%);
+  background: var(--background);
 }
 
 ::-webkit-scrollbar {

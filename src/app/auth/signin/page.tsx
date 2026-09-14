@@ -29,7 +29,7 @@ export default function SignInPage({
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[--background]">
+    <div className="sentinel-app-shell relative min-h-screen overflow-hidden bg-[--background] text-[--foreground]">
       <div className="absolute inset-0 bg-grid opacity-25" />
       <div className="absolute left-[-10%] top-[-16%] h-[28rem] w-[28rem] rounded-full bg-[rgba(108,124,255,0.18)] blur-3xl" />
       <div className="absolute bottom-[-18%] right-[-12%] h-[24rem] w-[24rem] rounded-full bg-[rgba(16,185,129,0.10)] blur-3xl" />
