@@ -9,6 +9,7 @@ pnpm-workspace.yaml
 out/
 dist/
 build/
+backups/
 
 # Environment files — never bake secrets into the image
 .env
