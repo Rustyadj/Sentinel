@@ -63,3 +63,17 @@ export async function redisKeys(pattern: string): Promise<string[]> {
     return await client.keys(pattern);
   } catch { return []; }
 }
+
+/** Atomic fixed-window counter for externally exposed interfaces. Unlike the
+ * optional cache helpers above, callers must fail closed when this returns
+ * null because a missing rate limiter is not a safe external posture. */
+export async function redisIncrementWithExpiry(key: string, ttlSeconds: number): Promise<number | null> {
+  try {
+    const client = getRedis();
+    if (!client) return null;
+    if (client.status === "wait") await client.connect();
+    const count = await client.incr(key);
+    if (count === 1) await client.expire(key, ttlSeconds);
+    return count;
+  } catch { return null; }
+}

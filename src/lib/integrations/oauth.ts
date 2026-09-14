@@ -133,6 +133,7 @@ export async function authenticateAccessToken(authorization: string | null) {
   void db.oAuthAccessToken.update({ where: { id: token.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
   return {
     tokenId: token.id,
+    externalClientId: token.externalClientId,
     userId: token.userId,
     clientId: token.externalClient.clientId,
     scopes: token.scopes as McpScope[],
