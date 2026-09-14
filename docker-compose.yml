@@ -99,8 +99,8 @@ services:
       HOST_CONTROL_TOKEN: ${HOST_CONTROL_TOKEN:-}
       HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
       OPENCLAW_NATIVE_URL: ${OPENCLAW_NATIVE_URL:-/legacy/openclaw}
-      HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-deepseek/deepseek-v4.1-flash}
-      HERMES_NATHAN2_MODEL: ${HERMES_NATHAN2_MODEL:-deepseek/deepseek-v4.1-flash}
+      HERMES_LISA_MODEL: ${HERMES_LISA_MODEL:-gpt-5.6-luna}
+      HERMES_NATHAN2_MODEL: ${HERMES_NATHAN2_MODEL:-gpt-5.6-luna}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -193,6 +193,45 @@ services:
       REDIS_URL: redis://redis:6379
       LEARNING_WORKER_CONCURRENCY: ${LEARNING_WORKER_CONCURRENCY:-2}
       NEURAL_SWEEP_SECRET: ${NEURAL_SWEEP_SECRET:-}
+    networks:
+      - sentinel_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Durable external orchestration worker — consumes the BullMQ "orchestration"
+  # queue that /api/mcp's route_task enqueues. Without this service a run is
+  # queued and never executed, so ChatGPT-initiated work would sit at "queued"
+  # forever.
+  #
+  # It is the instance capable of dispatching work, so it waits on the same
+  # `migrate` completion gate as app: dispatch filters candidates on
+  # agent_runtimes.executionVerified, which defaults to false. Starting ahead of
+  # the seed migration would reject every run with "no verified execution
+  # contract".
+  orchestration-worker:
+    build:
+      context: .
+      target: builder
+    command: node_modules/.bin/tsx src/workers/orchestration-worker.ts
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      REDIS_URL: redis://redis:6379
+      ORCHESTRATION_WORKER_CONCURRENCY: ${ORCHESTRATION_WORKER_CONCURRENCY:-1}
+      AGENT_PROJECT_ROOT: ${AGENT_PROJECT_ROOT:-/opt/sentinel-os/projects}
+      CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-claude}
+      CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-codex}
+      HERMES_ENDPOINT: ${HERMES_ENDPOINT:-}
+      HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
+      HERMES_NATHAN2_ENDPOINT: ${HERMES_NATHAN2_ENDPOINT:-}
+      HERMES_NATHAN2_USERNAME: ${HERMES_NATHAN2_USERNAME:-}
+      HERMES_NATHAN2_PASSWORD: ${HERMES_NATHAN2_PASSWORD:-}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-}
     networks:
       - sentinel_net
     depends_on:

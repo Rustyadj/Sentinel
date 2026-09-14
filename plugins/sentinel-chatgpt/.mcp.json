@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sentinel": {
+      "url": "https://sentinel.srv1427612.hstgr.cloud/api/mcp",
+      "auth": "oauth"
+    }
+  }
+}

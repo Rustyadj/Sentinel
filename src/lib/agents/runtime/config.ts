@@ -32,16 +32,21 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     agentId: "hermes-lisa",
     kind: "hermes",
     transport: "docker",
-    endpoint: process.env.HERMES_ENDPOINT ?? "http://127.0.0.1:4860",
+    // Verified runtime listener is 4862; an explicit deployment override
+    // remains authoritative for installations that use another binding.
+    endpoint: process.env.HERMES_ENDPOINT ?? "http://127.0.0.1:4862",
     containerName: process.env.HERMES_LISA_CONTAINER ?? "hermes-lisa",
     configPath: `${CONFIG_ROOT}/hermes-lisa`,
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-lisa.log` },
     workspaceId: process.env.HERMES_LISA_WORKSPACE_ID,
     enabled: true,
+    // Verified: WS JSON-RPC session.create/prompt.submit/session.interrupt,
+    // audited live from container source (HERMES_OPENCLAW_CHAT_TRANSPORT.md).
+    executionVerified: true,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_LISA_NATIVE_URL ?? "/legacy/hermes",
-    model: process.env.HERMES_LISA_MODEL ?? "deepseek/deepseek-v4.1-flash",
+    model: process.env.HERMES_LISA_MODEL ?? "gpt-5.6-luna",
   },
   {
     id: "runtime-hermes-nathan2",
@@ -57,10 +62,18 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/hermes-nathan2.log` },
     workspaceId: process.env.HERMES_NATHAN2_WORKSPACE_ID,
     enabled: true,
+    // Verified 2026-09-14 against the live container through this adapter:
+    // basic password-login -> session cookie -> /api/auth/ws-ticket (200) ->
+    // session.create -> prompt.submit, normalizing to assistant_delta +
+    // completed with a terminal session status. Requires
+    // HERMES_NATHAN2_USERNAME/_PASSWORD to match the container's
+    // HERMES_DASHBOARD_BASIC_AUTH_* pair; hermesAuth() now refuses a
+    // half-configured pair rather than silently falling back.
+    executionVerified: true,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
-    model: process.env.HERMES_NATHAN2_MODEL ?? "deepseek/deepseek-v4.1-flash",
+    model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
   },
   {
     id: "runtime-openclaw",
@@ -73,6 +86,9 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/openclaw.log` },
     workspaceId: process.env.OPENCLAW_WORKSPACE_ID,
     enabled: true,
+    // Verified: native :18789 gateway adapter (openclaw-gateway.ts). The legacy
+    // /chat stub and /terminal/run passthrough remain deliberately unused.
+    executionVerified: true,
     capabilities: OPENCLAW_CAPABILITIES,
     sentinelControl: "partial",
     nativeUiUrl: process.env.OPENCLAW_NATIVE_URL ?? "/legacy/openclaw",
@@ -89,6 +105,8 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/claude-code.log` },
     workspaceId: process.env.CLAUDE_CODE_WORKSPACE_ID,
     enabled: true,
+    // Verified: CLI 2.1.226 stream-json execution through CliRuntimeAdapter.
+    executionVerified: true,
     capabilities: {
       streaming: true,
       resume: true,
@@ -116,12 +134,43 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     logSource: { kind: "file", ref: `${LOG_ROOT}/codex.log` },
     workspaceId: process.env.CODEX_WORKSPACE_ID,
     enabled: true,
+    // Verified: Codex 0.147.0/0.153.4 `exec --json` through CliRuntimeAdapter.
+    executionVerified: true,
     capabilities: {
       streaming: true,
       resume: false,
       cancel: true,
       toolEvents: true,
       fileChangeEvents: true,
+      restart: { supported: false, reason: "runtime_does_not_expose_capability" },
+      reload: { supported: false, reason: "runtime_does_not_expose_capability" },
+      nativeUi: { supported: false, reason: "runtime_does_not_expose_capability" },
+    },
+    sentinelControl: "partial",
+  },
+  {
+    id: "runtime-gemini",
+    agentId: "gemini",
+    kind: "gemini",
+    transport: "process",
+    executable: process.env.GEMINI_EXECUTABLE ?? "gemini",
+    // Verified on Gemini CLI 0.58.0: without --skip-trust the CLI aborts outside a
+    // trusted directory and emits nothing. --approval-mode yolo is the non-interactive
+    // equivalent of Codex's sandbox policy; Sentinel gates dangerous work upstream.
+    args: ["--approval-mode", "yolo"],
+    workingDirectoryRoot: process.env.GEMINI_PROJECT_ROOT ?? PROJECT_ROOT,
+    logSource: { kind: "file", ref: `${LOG_ROOT}/gemini.log` },
+    workspaceId: process.env.GEMINI_WORKSPACE_ID,
+    enabled: true,
+    // Verified: Gemini CLI 0.58.0 through CliRuntimeAdapter.
+    executionVerified: true,
+    capabilities: {
+      streaming: true,
+      // `--resume <session-id>` and `--list-sessions` are present in 0.58.0.
+      resume: true,
+      cancel: true,
+      toolEvents: true,
+      fileChangeEvents: false,
       restart: { supported: false, reason: "runtime_does_not_expose_capability" },
       reload: { supported: false, reason: "runtime_does_not_expose_capability" },
       nativeUi: { supported: false, reason: "runtime_does_not_expose_capability" },

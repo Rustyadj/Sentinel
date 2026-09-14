@@ -2,6 +2,7 @@ import type { AgentRuntime as AgentRuntimeRow } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
+import { GeminiRuntimeAdapter } from "./gemini";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
 import { HermesRuntimeAdapter } from "./hermes";
 import { OpenClawRuntimeAdapter } from "./openclaw";
@@ -35,6 +36,7 @@ function recordToView(row: AgentRuntimeRow): RuntimeView {
     ...(logPath ? { logSource: { kind: row.transport === "docker" && row.containerName ? "docker" : "file", ref: row.containerName ?? logPath } } : {}),
     ...(row.workspaceId ? { workspaceId: row.workspaceId } : fallback?.workspaceId ? { workspaceId: fallback.workspaceId } : {}),
     enabled: row.enabled,
+    executionVerified: row.executionVerified,
     capabilities,
     sentinelControl: "partial",
     ...(fallback?.nativeUiUrl ? { nativeUiUrl: fallback.nativeUiUrl } : {}),
@@ -72,6 +74,7 @@ export async function resolveRuntimeInstance(id: string): Promise<RuntimeInstanc
 const adapters: Record<AgentRuntimeKind, AgentRuntimeAdapter> = {
   "claude-code": new ClaudeCodeRuntimeAdapter(resolveRuntimeInstance),
   codex: new CodexRuntimeAdapter(resolveRuntimeInstance),
+  gemini: new GeminiRuntimeAdapter(resolveRuntimeInstance),
   hermes: new HermesRuntimeAdapter(resolveRuntimeInstance),
   openclaw: new OpenClawRuntimeAdapter(resolveRuntimeInstance),
 };

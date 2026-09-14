@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     // `__DEV__`) — linting it with the Next.js web config here produces
     // nothing but false positives.
     "mobile/**",
+    // Deployment-only runtime binaries, credentials, plugin caches, and
+    // agent workspaces are mounted below the checkout and are not app source.
+    "runtime-agents/**",
+    "runtime-projects/**",
   ]),
 ]);
 

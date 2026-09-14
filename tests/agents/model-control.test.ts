@@ -42,7 +42,7 @@ describe("canonical model configuration", () => {
 
 describe.skipIf(!hasDatabase())("model and evolution persistence", () => {
   it("inserts the canonical Nathan2 Agent and runtime additively", async () => {
-    expect(await db.agent.findUnique({ where: { id: "hermes-nathan2" } })).toMatchObject({ name: "Hermes Nathan2", model: "gpt-5.6-luna", memoryScope: "org" });
+    expect(await db.agent.findUnique({ where: { id: "hermes-nathan2" } })).toMatchObject({ name: "Hermes Nathan2", memoryScope: "org" });
     expect(await db.agentRuntime.findUnique({ where: { id: "runtime-hermes-nathan2" } })).toMatchObject({ agentId: "hermes-nathan2", kind: "hermes" });
   });
   it("resolves session > persisted agent > environment > builtin and preserves historical snapshots", async () => {

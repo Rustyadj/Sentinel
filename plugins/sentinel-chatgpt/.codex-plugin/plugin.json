@@ -1,0 +1,19 @@
+{
+  "name": "sentinel-chatgpt",
+  "version": "0.1.0",
+  "description": "Connect ChatGPT and Codex to Sentinel's authenticated orchestration service.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sentinel Chatgpt",
+    "shortDescription": "Route approved work through Sentinel.",
+    "longDescription": "Authenticated MCP tools for Sentinel project context, memory, agent status, and durable task execution.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use Sentinel to resolve the relevant project and route this work to an appropriate worker."
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -120,7 +120,18 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   const [memoriesRaw, notesRaw, decisionsRaw, sessionMemories] = await Promise.all([
     db.memory.findMany({
       where: filters.memory,
-      orderBy: [{ pinned: "desc" }, { importanceScore: "desc" }, { createdAt: "desc" }],
+      // valueScore is the decay policy's output. Ranking by it is what makes
+      // decay mean anything at retrieval time: without this, a memory could be
+      // scored down every night and still occupy the same slot in every prompt.
+      // Nulls sort last, so memories the sweep has not yet scored fall behind
+      // scored ones rather than jumping the queue. Pinned still wins outright —
+      // it is an explicit human override.
+      orderBy: [
+        { pinned: "desc" },
+        { valueScore: { sort: "desc", nulls: "last" } },
+        { importanceScore: "desc" },
+        { createdAt: "desc" },
+      ],
       take: maxItems,
     }),
     db.obsidianNote.findMany({

@@ -273,8 +273,19 @@ export async function runMemoryDecaySweep(params: { workspaceId?: string; limit?
   return { scanned: memories.length, markedStale, forgotten, survived };
 }
 
+/**
+ * The single choke point every retrieval branch passes through.
+ *
+ * `shadowOnly` is excluded here rather than at each call site so a generalized
+ * memory generated during shadow consolidation cannot reach a production prompt
+ * by way of some branch that forgot to filter it. Promotion out of shadow is an
+ * explicit act; it is never the default.
+ */
 export function excludeFromRetrieval(): Prisma.MemoryWhereInput {
-  return { state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] } };
+  // `validTo: null` keeps superseded versions out of retrieval while leaving
+  // them fully readable by the temporal queries. Without it a revised belief
+  // and the belief it replaced would both reach the same prompt.
+  return { state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] }, shadowOnly: false, validTo: null };
 }
 
 export async function recordMemoryUsed(memoryId: string) {

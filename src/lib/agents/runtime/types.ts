@@ -1,4 +1,4 @@
-export type AgentRuntimeKind = "hermes" | "openclaw" | "claude-code" | "codex";
+export type AgentRuntimeKind = "hermes" | "openclaw" | "claude-code" | "codex" | "gemini";
 export type RuntimeTransport = "http" | "process" | "docker" | "systemd";
 
 export interface RuntimeLogSource {
@@ -189,6 +189,8 @@ export type SentinelControlStatus = "verified" | "partial" | "unavailable";
 export interface RuntimeView extends RuntimeInstance {
   workspaceId?: string;
   enabled: boolean;
+  /** Operator-controlled verification, never inferred from reachability. */
+  executionVerified: boolean;
   capabilities: RuntimeCapabilities;
   sentinelControl: SentinelControlStatus;
   nativeUiUrl?: string;

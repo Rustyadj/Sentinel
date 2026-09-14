@@ -1,6 +1,7 @@
 import type { Task } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ModelUnavailableError } from "@/lib/agents/model-policy";
+import { MUTUALLY_EXCLUSIVE_CONCURRENT, wouldSplitAcrossCodingRuntimes } from "@/lib/agents/coexecution-policy";
 import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
 import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
@@ -92,6 +93,33 @@ async function unmetDependencies(dependsOnTaskIds: string[]): Promise<string[]> 
   return deps.filter((dep) => dep.status !== "COMPLETED").map((dep) => dep.id);
 }
 
+/** Resolve a task's owner once, so the agent a startTask directive will run as
+ *  is known before any concurrent dispatch decision is made. */
+async function ensureTaskAssigned(ctx: LoopContext, task: Task): Promise<Task> {
+  if (task.agentId) return task;
+  const selection = await selectWorker({ chatRoomId: ctx.roomId, requiredCapabilities: task.capabilities as AgentCapabilityKey[], candidates: ctx.pool, fileScope: task.fileScope });
+  const assigned = await db.task.update({ where: { id: task.id }, data: { agentId: selection.agentId, status: "QUEUED" } });
+  await emitCollaborationEvent(ctx.roomId, "task.claimed", { taskId: task.id, agentId: selection.agentId, reason: selection.reason });
+  return assigned;
+}
+
+/** Machine-enforced Claude Code / Codex boundary, scoped to a single task.
+ *  Distinct tasks may run on either runtime concurrently — they are
+ *  independently selected, which policy permits. What is forbidden is one task
+ *  being worked by both at the same time, so the check is the set of agents
+ *  holding an unreleased execution lock on *this* task. */
+export async function assertTaskNotSplitAcrossCodingRuntimes(taskId: string, owner: string): Promise<void> {
+  const concurrentOwners = (await db.executionLock.findMany({
+    where: { taskId, releasedAt: null, agentId: { not: owner } },
+    select: { agentId: true },
+  })).map((lock) => lock.agentId);
+
+  if (wouldSplitAcrossCodingRuntimes(concurrentOwners, owner)) {
+    const counterpart = concurrentOwners.find((id) => MUTUALLY_EXCLUSIVE_CONCURRENT.includes(id as (typeof MUTUALLY_EXCLUSIVE_CONCURRENT)[number]));
+    throw new Error(`Coexecution policy: ${owner} cannot work task ${taskId} while ${counterpart} is still executing it. Sequential review is permitted; simultaneous splitting is not.`);
+  }
+}
+
 async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolean> {
   const risk = assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`);
   if (!requiresApproval(risk)) return true;
@@ -113,6 +141,7 @@ async function reviewCycleCount(chatRoomId: string, taskId: string): Promise<num
 
 async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<string, unknown>> {
   const ownerAgentId = task.agentId!;
+  await assertTaskNotSplitAcrossCodingRuntimes(task.id, ownerAgentId);
   await setTaskStatus(task.id, "RUNNING");
   await emitCollaborationEvent(ctx.roomId, "task.started", { taskId: task.id, agentId: ownerAgentId });
 
@@ -210,11 +239,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       if (!task) return { error: "task not found" };
       if (task.status === "COMPLETED" || task.status === "CANCELLED") return { error: `task already ${task.status}` };
 
-      if (!task.agentId) {
-        const selection = await selectWorker({ chatRoomId: ctx.roomId, requiredCapabilities: task.capabilities as AgentCapabilityKey[], candidates: ctx.pool, fileScope: task.fileScope });
-        task = await db.task.update({ where: { id: taskId }, data: { agentId: selection.agentId, status: "QUEUED" } });
-        await emitCollaborationEvent(ctx.roomId, "task.claimed", { taskId, agentId: selection.agentId, reason: selection.reason });
-      }
+      task = await ensureTaskAssigned(ctx, task);
 
       const unmet = await unmetDependencies(task.dependsOnTaskIds);
       if (unmet.length) return { error: `Blocked on incomplete dependencies: ${unmet.join(", ")}` };

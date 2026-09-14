@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import type { KnowledgeObjectType, KnowledgeScope, RetrievalContext } from "@/lib/knowledge/types";
 import { retrieveContext } from "@/lib/knowledge/retrieval";
+import { recordMemoryRetrieval } from "./memory-usage-service";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -139,6 +140,22 @@ export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
       userId,
     })),
   ]);
+
+  // Record which memories were actually placed in front of a worker. This is
+  // the first half of the retrieval→outcome join; the second half runs when the
+  // surrounding experience is evaluated. Best-effort by design: usage logging
+  // must never fail a retrieval.
+  // Only durable Memory rows: retrieveContext prepends Redis-backed session
+  // turns carrying synthetic `session:<roomId>:<n>` ids with scope "session".
+  // Those have no Memory row, and letting one into the batch would fail the
+  // foreign key and roll back every retrieval record in the transaction.
+  await recordMemoryRetrieval({
+    memoryIds: result.memories.filter((m) => m.scope !== "session").map((m) => m.id),
+    userId,
+    projectId,
+    workspaceId: ctx.workspaceId ?? null,
+    experienceId: ctx.experienceId ?? null,
+  });
 
   return { ...result, knowledgeObjectIds };
 }

@@ -27,6 +27,7 @@ const PROVIDER_NAMES: Record<RuntimeView["kind"], string> = {
   openclaw: "OpenClaw",
   "claude-code": "Anthropic",
   codex: "OpenAI",
+  gemini: "Google",
 };
 
 export function deriveOperationalState(input: {
