@@ -27,6 +27,9 @@ export const proxy = auth;
 //     to begin the OAuth flow. A 307 tells it nothing.
 //   - /api/integrations/oauth/token  the code-for-token exchange is
 //     unauthenticated by design; gating it makes the flow unclosable.
+//   - /api/integrations/oauth/register  RFC 7591 dynamic client registration.
+//     A client registers precisely because it has no credentials yet; it
+//     confers no access, since consent still runs through /authorize.
 // Each of those enforces its own, stronger check — authenticateAccessToken()
 // for /api/mcp, client_id + PKCE code_verifier (+ optional secret) for the
 // token endpoint — so what is removed here is only the page-oriented
@@ -37,6 +40,6 @@ export const proxy = auth;
 // unauthenticated visitor to sign-in is exactly the correct behaviour there.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|\\.well-known|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };

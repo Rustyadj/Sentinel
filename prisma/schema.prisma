@@ -1900,11 +1900,15 @@ model ExternalClient {
   redirectUris     String[]
   allowedScopes    String[] @default([])
   enabled          Boolean  @default(true)
-  createdByUserId  String
+  // Null for a client created through RFC 7591 dynamic registration: that
+  // request is unauthenticated by design, so there is no creator until a human
+  // consents at /api/integrations/oauth/authorize. The user binding that
+  // matters lives on the authorization code and access token, not here.
+  createdByUserId  String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  createdBy          User                     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdBy          User?                    @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   authorizationCodes OAuthAuthorizationCode[]
   accessTokens       OAuthAccessToken[]
   orchestrationRuns  OrchestrationRun[]

@@ -7,6 +7,10 @@ export function GET(request: NextRequest) {
     issuer,
     authorization_endpoint: `${issuer}/api/integrations/oauth/authorize`,
     token_endpoint: `${issuer}/api/integrations/oauth/token`,
+    // Without this, an MCP client that holds no credentials has no way to
+    // obtain a client_id and aborts after discovery -- which is exactly how
+    // the ChatGPT/Codex connector failed before DCR existed.
+    registration_endpoint: `${issuer}/api/integrations/oauth/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
