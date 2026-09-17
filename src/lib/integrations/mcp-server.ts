@@ -7,6 +7,7 @@ import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
 import { resolveScope } from "@/lib/orchestration/scope";
+import { resolveMcpContext } from "@/lib/integrations/mcp-context";
 import type { McpScope } from "./oauth";
 
 export interface McpPrincipal {
@@ -67,12 +68,33 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
   server.registerTool("sentinel.memory_search", {
     title: "Search Sentinel memory",
     description: "Search only memory the authenticated Sentinel user may read. Use for prior decisions or project memory.",
-    inputSchema: z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(20).optional(), projectHint: z.string().max(120).optional() }),
+    inputSchema: z.object({
+      query: z.string().min(1).max(200),
+      limit: z.number().int().min(1).max(20).optional(),
+      projectHint: z.string().max(120).optional(),
+      projectId: z.string().max(100).optional(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ query, limit = 10, projectHint }) => {
+  }, async ({ query, limit = 10, projectHint, projectId }) => {
     requireScope(principal, "sentinel.memory.read");
-    const scope = await resolveScope(principal.userId, { task: query, projectHint });
-    if (projectHint && !scope.projectId) throw new Error("Project could not be resolved within your permitted scope.");
+    // Narrowing to a project is optional. Without one this searches everything
+    // the user may read, which is the common case and must not be blocked.
+    let scope = { projectId: null, projectName: null, workspaceId: null, workspaceName: null, resolution: "none" } as Awaited<ReturnType<typeof resolveScope>>;
+    if (projectHint || projectId) {
+      const resolved = await resolveMcpContext(principal.userId, { query, projectHint, projectId });
+      if (!resolved.scope.projectId) {
+        // Previously this threw "Project could not be resolved within your
+        // permitted scope", which told the model nothing it could act on.
+        // Hand back the permitted choices instead.
+        const choices = resolved.choices?.projects ?? [];
+        throw new Error(
+          `${resolved.reason} ${choices.length > 0
+            ? `Permitted projects: ${choices.map((project) => `${project.name} (${project.id})`).join(", ")}. Retry with projectId.`
+            : "Retry without projectHint/projectId to search all memory this user may read."}`,
+        );
+      }
+      scope = resolved.scope;
+    }
     const access = await memoryReadWhere(principal.userId);
     const memories = await db.memory.findMany({
       where: { AND: [access, ...(scope.projectId ? [{ projectId: scope.projectId, scope: "project" }] : []), { content: { contains: query, mode: "insensitive" } }] },
@@ -85,13 +107,26 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
 
   server.registerTool("sentinel.project_context", {
     title: "Resolve Sentinel project context",
-    description: "Resolve a project or workspace from natural language without exposing unrelated projects.",
-    inputSchema: z.object({ query: z.string().max(500).optional(), projectHint: z.string().max(120).optional(), workspaceHint: z.string().max(120).optional() }),
+    description:
+      "Resolve the Sentinel project or workspace to work in, without exposing anything the user cannot access. " +
+      "Call with no arguments to list every permitted project and workspace with their ids. " +
+      "Pass projectId or workspaceId to select one exactly; projectHint/workspaceHint/query match by name instead. " +
+      "When the result has no projectId or workspaceId, read `choices` and call again with an explicit id.",
+    inputSchema: z.object({
+      query: z.string().max(500).optional(),
+      projectHint: z.string().max(120).optional(),
+      workspaceHint: z.string().max(120).optional(),
+      projectId: z.string().max(100).optional(),
+      workspaceId: z.string().max(100).optional(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ query = "", projectHint, workspaceHint }) => {
+  }, async ({ query = "", projectHint, workspaceHint, projectId, workspaceId }) => {
     requireScope(principal, "sentinel.read");
-    const scope = await resolveScope(principal.userId, { task: query, projectHint, workspaceHint });
-    return toolResult({ scope }, scope.projectId || scope.workspaceId ? "Resolved permitted Sentinel context." : "No unambiguous permitted context was resolved.");
+    const resolved = await resolveMcpContext(principal.userId, { query, projectHint, workspaceHint, projectId, workspaceId });
+    return toolResult(
+      { scope: resolved.scope, ...(resolved.choices ? { choices: resolved.choices } : {}) },
+      resolved.reason,
+    );
   });
 
   server.registerTool("sentinel.route_task", {
