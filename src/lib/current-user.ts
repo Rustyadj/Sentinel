@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { verifyMobileToken } from "@/lib/mobile-auth";
+import { normalizeEmail } from "@/lib/auth/email";
 
 export async function requireUser() {
   const session = await auth();
@@ -9,15 +10,19 @@ export async function requireUser() {
     throw new Error("Unauthorized");
   }
 
+  const email = normalizeEmail(session.user.email);
+
   const userById = await db.user.findUnique({
     where: { id: session.user.id },
   });
-  if (userById?.email === session.user.email) return userById;
+  // Compared case-insensitively: an account stored with different casing is
+  // still the same account, and must not fall through to the upsert below.
+  if (userById && normalizeEmail(userById.email) === email) return userById;
 
   return db.user.upsert({
-    where: { email: session.user.email },
+    where: { email },
     update: { name: session.user.name ?? undefined },
-    create: { email: session.user.email, name: session.user.name ?? undefined },
+    create: { email, name: session.user.name ?? undefined },
   });
 }
 

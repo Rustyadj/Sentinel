@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeEmail } from "@/lib/auth/email";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signMobileToken } from "@/lib/mobile-auth";
@@ -35,7 +36,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
 
-  const user = await db.user.findUnique({ where: { email } });
+  const user = await db.user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user?.passwordHash) {
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { normalizeEmail } from "@/lib/auth/email";
 import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
@@ -13,7 +14,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
   }
 
-  const existing = await db.user.findUnique({ where: { email: body.email } });
+  // Stored canonically so the account can be found again regardless of how
+  // the address is typed, here or by a social provider.
+  const email = normalizeEmail(body.email);
+
+  const existing = await db.user.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json({ error: "An account with that email already exists" }, { status: 409 });
   }
@@ -22,8 +27,8 @@ export async function POST(req: Request) {
 
   const user = await db.user.create({
     data: {
-      email: body.email,
-      name: body.name ?? body.email.split("@")[0],
+      email,
+      name: body.name ?? email.split("@")[0],
       passwordHash,
     },
     select: { id: true, email: true, name: true },

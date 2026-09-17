@@ -1,0 +1,21 @@
+-- Case-insensitive email lookup support.
+--
+-- Two accounts exist for the same human because every email lookup was
+-- case-sensitive: an account registered as "Rustyadj@gmail.com" did not match
+-- the canonical lowercase address a social provider returned, so the NextAuth
+-- upsert created a second user. The application fix (src/lib/auth/email.ts,
+-- applied at all five lookup/upsert/create sites) is what prevents this
+-- recurring; this index is the database-side support for it.
+--
+-- Deliberately NOT UNIQUE yet. The existing duplicate pair makes a unique
+-- index impossible to create -- verified against production:
+--
+--   ERROR: could not create unique index "users_email_lower_unique"
+--   DETAIL: Key (lower(email))=(rustyadj@gmail.com) is duplicated.
+--
+-- Creating this as non-unique is safe with the duplicate present, makes
+-- lower(email) lookups indexed rather than sequential scans, and changes no
+-- data. The UNIQUE version is the follow-up once the duplicate identity is
+-- reconciled -- see docs/IDENTITY_RECONCILIATION.md. Until then the
+-- application-level normalization is the guarantee.
+CREATE INDEX IF NOT EXISTS "users_email_lower_idx" ON "users" (lower("email"));
