@@ -101,7 +101,12 @@ async function main() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ client_name: "probe", redirect_uris: [REDIRECT_URI] }),
   });
-  note(`POST /api/integrations/oauth/register -> ${dcr.status} (expected: not implemented)`);
+  note(`POST /api/integrations/oauth/register -> ${dcr.status} (RFC 7591 dynamic registration)`);
+  // A successful probe registration is a real row; delete it rather than
+  // leaking a client into external_clients on every run.
+  if (dcr.body?.client_id) {
+    cleanup.push(sql(`select id from external_clients where "clientId" = '${dcr.body.client_id}';`));
+  }
 
   // --- Authorize endpoint behaviour ChatGPT will trigger -------------------
   console.log("\nC. Authorization request handling");
