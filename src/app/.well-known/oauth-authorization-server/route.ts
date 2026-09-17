@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { publicOrigin } from "@/lib/integrations/public-origin";
 
 export function GET(request: NextRequest) {
-  const issuer = request.nextUrl.origin;
+  const issuer = publicOrigin(request);
   return NextResponse.json({
     issuer,
     authorization_endpoint: `${issuer}/api/integrations/oauth/authorize`,

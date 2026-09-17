@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateAccessToken } from "@/lib/integrations/oauth";
 import { enforceMcpRateLimit } from "@/lib/integrations/rate-limit";
 import { createSentinelMcpServer } from "@/lib/integrations/mcp-server";
+import { publicOrigin } from "@/lib/integrations/public-origin";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 
 export const runtime = "nodejs";
 
 function unauthorized(request: NextRequest) {
-  const resource = `${request.nextUrl.origin}/.well-known/oauth-protected-resource/mcp`;
+  const resource = `${publicOrigin(request)}/.well-known/oauth-protected-resource/mcp`;
   return new NextResponse("Unauthorized", { status: 401, headers: { "WWW-Authenticate": `Bearer resource_metadata="${resource}"` } });
 }
 
