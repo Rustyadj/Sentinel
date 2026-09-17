@@ -104,9 +104,39 @@ describe("dynamic client registration", () => {
     expect(prisma.create.mock.calls[0][0].data.allowedScopes).toEqual(["sentinel.read", "sentinel.memory.read"]);
   });
 
-  it("rejects grant types this server does not implement", async () => {
+  // RFC 7591 3.2.1: register with the supported subset and echo back what was
+  // actually granted. Rejecting over an unsupported optional grant is what
+  // broke the real Codex connector.
+  it("narrows unsupported grant types instead of rejecting the registration", async () => {
+    const result = await registerClientDynamically({
+      redirect_uris: [CHATGPT_REDIRECT],
+      grant_types: ["authorization_code", "refresh_token"],
+    });
+    expect(result.grant_types).toEqual(["authorization_code"]);
+  });
+
+  it("registers the exact request Codex sends", async () => {
+    const result = await registerClientDynamically({
+      client_name: "Codex",
+      redirect_uris: ["http://127.0.0.1:33115/callback/3epIrSh57yxr"],
+      grant_types: ["authorization_code", "refresh_token"],
+      token_endpoint_auth_method: "none",
+      response_types: ["code"],
+      scope: "sentinel.read sentinel.tasks.read sentinel.tasks.write sentinel.memory.read",
+      application_type: "native",
+    });
+    expect(result.client_id).toMatch(/^dcr-/);
+    expect(result.client_secret).toBeUndefined();
+    expect(result.token_endpoint_auth_method).toBe("none");
+    expect(result.grant_types).toEqual(["authorization_code"]);
+    expect(result.response_types).toEqual(["code"]);
+    expect(result.redirect_uris).toEqual(["http://127.0.0.1:33115/callback/3epIrSh57yxr"]);
+    expect(result.scope.split(" ").sort()).toEqual([...ALL].sort());
+  });
+
+  it("still errors when no requested grant or response type is available", async () => {
     await expect(
-      registerClientDynamically({ redirect_uris: [CHATGPT_REDIRECT], grant_types: ["authorization_code", "implicit"] }),
+      registerClientDynamically({ redirect_uris: [CHATGPT_REDIRECT], grant_types: ["client_credentials"] }),
     ).rejects.toBeInstanceOf(OAuthProtocolError);
     await expect(
       registerClientDynamically({ redirect_uris: [CHATGPT_REDIRECT], response_types: ["token"] }),

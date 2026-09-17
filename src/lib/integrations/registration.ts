@@ -112,23 +112,43 @@ export async function registerClientDynamically(body: unknown): Promise<ClientRe
   }
   redirectUris.forEach(assertUsableRedirectUri);
 
-  // Only the authorization_code grant exists on this server; a client asking
-  // for anything else is told plainly rather than silently downgraded.
+  // RFC 7591 3.2.1: the authorization server MAY register a client with
+  // metadata different from what was requested, and MUST return what was
+  // actually registered so the client can adapt. Rejecting a registration over
+  // an unsupported *optional* grant is wrong, and it is exactly what broke the
+  // Codex connector: it asks for ["authorization_code", "refresh_token"], and
+  // the MCP spec is explicit that clients "MUST NOT assume refresh tokens will
+  // be issued; the AS retains discretion". So narrow to what this server
+  // implements and echo that back.
+  //
+  // An error is still correct when nothing usable remains -- a client that
+  // asked only for grants this server does not have cannot proceed, and
+  // silently handing it an authorization_code registration it never asked for
+  // would be a guess.
+  const SUPPORTED_GRANT_TYPES = ["authorization_code"];
+  const SUPPORTED_RESPONSE_TYPES = ["code"];
+
+  let grantTypes = SUPPORTED_GRANT_TYPES;
   if (request.grant_types !== undefined) {
-    const grantTypes = readStringArray(request.grant_types, "grant_types");
-    const unsupported = grantTypes.filter((grant) => grant !== "authorization_code");
-    if (unsupported.length > 0) {
+    const requestedGrants = readStringArray(request.grant_types, "grant_types");
+    grantTypes = SUPPORTED_GRANT_TYPES.filter((grant) => requestedGrants.includes(grant));
+    if (grantTypes.length === 0) {
       throw new OAuthProtocolError(
         "invalid_request",
-        `Unsupported grant_types: ${unsupported.join(", ")}. Only authorization_code is available.`,
+        `None of the requested grant_types are available: ${requestedGrants.join(", ")}. This server supports authorization_code.`,
       );
     }
   }
+
+  let responseTypes = SUPPORTED_RESPONSE_TYPES;
   if (request.response_types !== undefined) {
-    const responseTypes = readStringArray(request.response_types, "response_types");
-    const unsupported = responseTypes.filter((type) => type !== "code");
-    if (unsupported.length > 0) {
-      throw new OAuthProtocolError("invalid_request", `Unsupported response_types: ${unsupported.join(", ")}.`);
+    const requestedResponses = readStringArray(request.response_types, "response_types");
+    responseTypes = SUPPORTED_RESPONSE_TYPES.filter((type) => requestedResponses.includes(type));
+    if (responseTypes.length === 0) {
+      throw new OAuthProtocolError(
+        "invalid_request",
+        `None of the requested response_types are available: ${requestedResponses.join(", ")}. This server supports code.`,
+      );
     }
   }
 
@@ -176,8 +196,10 @@ export async function registerClientDynamically(body: unknown): Promise<ClientRe
     ...(clientSecret ? { client_secret_expires_at: 0 } : {}),
     client_name: client.name,
     redirect_uris: client.redirectUris,
-    grant_types: ["authorization_code"],
-    response_types: ["code"],
+    // Echoed as registered, not as requested -- this is how the client learns
+    // that refresh_token was not granted.
+    grant_types: grantTypes,
+    response_types: responseTypes,
     token_endpoint_auth_method: authMethod,
     scope: allowedScopes.join(" "),
   };
