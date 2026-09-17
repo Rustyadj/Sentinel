@@ -107,10 +107,25 @@ describe("dynamic client registration", () => {
   // RFC 7591 3.2.1: register with the supported subset and echo back what was
   // actually granted. Rejecting over an unsupported optional grant is what
   // broke the real Codex connector.
-  it("narrows unsupported grant types instead of rejecting the registration", async () => {
+  it("grants the refresh_token grant when the client registers for it", async () => {
     const result = await registerClientDynamically({
       redirect_uris: [CHATGPT_REDIRECT],
       grant_types: ["authorization_code", "refresh_token"],
+    });
+    expect(result.grant_types).toEqual(["authorization_code", "refresh_token"]);
+    expect(prisma.create.mock.calls[0][0].data.grantTypes).toEqual(["authorization_code", "refresh_token"]);
+  });
+
+  it("does not grant refresh_token to a client that never asked for it", async () => {
+    const result = await registerClientDynamically({ redirect_uris: [CHATGPT_REDIRECT] });
+    expect(result.grant_types).toEqual(["authorization_code"]);
+    expect(prisma.create.mock.calls[0][0].data.grantTypes).toEqual(["authorization_code"]);
+  });
+
+  it("still narrows a genuinely unsupported grant type", async () => {
+    const result = await registerClientDynamically({
+      redirect_uris: [CHATGPT_REDIRECT],
+      grant_types: ["authorization_code", "implicit"],
     });
     expect(result.grant_types).toEqual(["authorization_code"]);
   });
@@ -128,7 +143,7 @@ describe("dynamic client registration", () => {
     expect(result.client_id).toMatch(/^dcr-/);
     expect(result.client_secret).toBeUndefined();
     expect(result.token_endpoint_auth_method).toBe("none");
-    expect(result.grant_types).toEqual(["authorization_code"]);
+    expect(result.grant_types).toEqual(["authorization_code", "refresh_token"]);
     expect(result.response_types).toEqual(["code"]);
     expect(result.redirect_uris).toEqual(["http://127.0.0.1:33115/callback/3epIrSh57yxr"]);
     expect(result.scope.split(" ").sort()).toEqual([...ALL].sort());

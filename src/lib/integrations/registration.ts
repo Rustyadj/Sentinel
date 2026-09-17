@@ -3,6 +3,7 @@ import { redisIncrementWithExpiry } from "@/lib/redis";
 import {
   MCP_SCOPES,
   OAuthProtocolError,
+  SUPPORTED_GRANT_TYPES,
   hashOpaqueSecret,
   randomOpaqueSecret,
   type McpScope,
@@ -125,13 +126,14 @@ export async function registerClientDynamically(body: unknown): Promise<ClientRe
   // asked only for grants this server does not have cannot proceed, and
   // silently handing it an authorization_code registration it never asked for
   // would be a guess.
-  const SUPPORTED_GRANT_TYPES = ["authorization_code"];
   const SUPPORTED_RESPONSE_TYPES = ["code"];
 
-  let grantTypes = SUPPORTED_GRANT_TYPES;
+  // authorization_code only by default: a client gets the refresh grant only
+  // by asking for it, so nothing acquires long-lived credentials implicitly.
+  let grantTypes: string[] = ["authorization_code"];
   if (request.grant_types !== undefined) {
     const requestedGrants = readStringArray(request.grant_types, "grant_types");
-    grantTypes = SUPPORTED_GRANT_TYPES.filter((grant) => requestedGrants.includes(grant));
+    grantTypes = [...SUPPORTED_GRANT_TYPES].filter((grant) => requestedGrants.includes(grant));
     if (grantTypes.length === 0) {
       throw new OAuthProtocolError(
         "invalid_request",
@@ -183,6 +185,7 @@ export async function registerClientDynamically(body: unknown): Promise<ClientRe
       clientSecretHash: clientSecret ? hashOpaqueSecret(clientSecret) : null,
       redirectUris,
       allowedScopes,
+      grantTypes,
       enabled: true,
       createdByUserId: null,
     },

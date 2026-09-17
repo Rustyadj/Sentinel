@@ -15,26 +15,27 @@ datasource db {
 }
 
 model User {
-  id                       String            @id @default(cuid())
-  email                    String            @unique
+  id                       String                   @id @default(cuid())
+  email                    String                   @unique
   name                     String?
   passwordHash             String?
-  createdAt                DateTime          @default(now())
+  createdAt                DateTime                 @default(now())
   projects                 Project[]
   chatRooms                ChatRoom[]
-  ownedWorkspaces          Workspace[]       @relation("WorkspaceOwner")
+  ownedWorkspaces          Workspace[]              @relation("WorkspaceOwner")
   roleAssignments          RoleAssignment[]
-  delegatedRoleAssignments RoleAssignment[]  @relation("RoleAssignmentDelegatedBy")
-  requestedApprovals       ApprovalRequest[] @relation("ApprovalRequesterUser")
-  reviewedApprovals        ApprovalRequest[] @relation("ApprovalReviewer")
-  meetingsCreated          Meeting[]         @relation("MeetingCreator")
+  delegatedRoleAssignments RoleAssignment[]         @relation("RoleAssignmentDelegatedBy")
+  requestedApprovals       ApprovalRequest[]        @relation("ApprovalRequesterUser")
+  reviewedApprovals        ApprovalRequest[]        @relation("ApprovalReviewer")
+  meetingsCreated          Meeting[]                @relation("MeetingCreator")
   auditLogs                AuditLog[]
   knowledgeObjects         KnowledgeObject[]
   notes                    ObsidianNote[]
   workflows                Workflow[]
-  ownedBrands              Brand[]           @relation("BrandOwner")
+  ownedBrands              Brand[]                  @relation("BrandOwner")
   externalClients          ExternalClient[]
-  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthRefreshTokens       OAuthRefreshToken[]
+  oauthAuthorizationCodes  OAuthAuthorizationCode[]
   oauthAccessTokens        OAuthAccessToken[]
   orchestrationRuns        OrchestrationRun[]
 
@@ -54,18 +55,18 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace    Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  team         Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  chatRooms    ChatRoom[]
-  workflows    Workflow[]
-  notes        ObsidianNote[]
-  kanbanBoards KanbanBoard[]
-  documents    Document[]
-  tasks        Task[]
-  meetings     Meeting[]
-  approvals    ApprovalRequest[]
-  auditLogs    AuditLog[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace         Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  team              Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  chatRooms         ChatRoom[]
+  workflows         Workflow[]
+  notes             ObsidianNote[]
+  kanbanBoards      KanbanBoard[]
+  documents         Document[]
+  tasks             Task[]
+  meetings          Meeting[]
+  approvals         ApprovalRequest[]
+  auditLogs         AuditLog[]
   orchestrationRuns OrchestrationRun[]
 
   @@index([workspaceId])
@@ -219,9 +220,9 @@ model Memory {
   // Retrieval is recorded separately from usefulness on purpose: being fetched
   // is not evidence that a memory helped. lastUsefulAt is written only when a
   // retrieval is later linked to a successful outcome (reconsolidation).
-  lastRetrievedAt     DateTime?
-  retrievalCount      Int       @default(0)
-  disconfirmationCount Int      @default(0)
+  lastRetrievedAt      DateTime?
+  retrievalCount       Int       @default(0)
+  disconfirmationCount Int       @default(0)
 
   // Shadow mode: generalized memories are generated, scored and linked, but
   // excluded from production retrieval until explicitly promoted.
@@ -232,11 +233,11 @@ model Memory {
   derivedFromExperienceIds String[] @default([])
 
   // Bitemporal history, mirroring KnowledgeObject/KnowledgeEdge/Decision.
-  version         Int       @default(1)
-  validFrom       DateTime  @default(now())
-  validTo         DateTime?
-  supersededById  String?
-  changeReason    String?
+  version        Int       @default(1)
+  validFrom      DateTime  @default(now())
+  validTo        DateTime?
+  supersededById String?
+  changeReason   String?
 
   preferenceEvidence UserPreferenceEvidence[]
   retrievals         MemoryRetrieval[]
@@ -264,8 +265,8 @@ model MemoryRetrieval {
   retrievedAt  DateTime @default(now())
 
   /// Set when the surrounding experience is evaluated. Null while unresolved.
-  outcomeStatus  String?
-  outcomeScore   Float?
+  outcomeStatus        String?
+  outcomeScore         Float?
   /// True only when this retrieval was present for work that succeeded.
   contributedToOutcome Boolean?
   resolvedAt           DateTime?
@@ -367,22 +368,22 @@ model Workspace {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  owner           User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  organization    Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  projects        Project[]
-  teams           Team[]
-  roles           Role[]
-  permissions     Permission[]
-  roleAssignments RoleAssignment[]
-  approvals       ApprovalRequest[]
-  meetings        Meeting[]
-  tasks           Task[]
-  documents       Document[]
-  auditLogs       AuditLog[]
+  owner             User               @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  organization      Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  projects          Project[]
+  teams             Team[]
+  roles             Role[]
+  permissions       Permission[]
+  roleAssignments   RoleAssignment[]
+  approvals         ApprovalRequest[]
+  meetings          Meeting[]
+  tasks             Task[]
+  documents         Document[]
+  auditLogs         AuditLog[]
   orchestrationRuns OrchestrationRun[]
-  orgCharts       OrgChart[]
-  agents          Agent[]
-  agentWorkspaces AgentWorkspace[]
+  orgCharts         OrgChart[]
+  agents            Agent[]
+  agentWorkspaces   AgentWorkspace[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -985,39 +986,39 @@ model Policy {
 // knowledge — only approved LearningCandidates do (via learning-service).
 
 model Experience {
-  id                String    @id @default(cuid())
+  id                 String    @id @default(cuid())
   /// |expected success from the agent's prior competency - observed success|.
   /// Priority signal for consolidation only; never treated as truth.
-  predictionError   Float?
+  predictionError    Float?
   /// pending | consolidating | consolidated | skipped
-  consolidationState String   @default("pending")
-  consolidatedAt    DateTime?
-  agentId           String
-  projectId         String?
-  workspaceId       String?
-  organizationId    String?
-  taskId            String?
-  conversationId    String?
-  objective         String
+  consolidationState String    @default("pending")
+  consolidatedAt     DateTime?
+  agentId            String
+  projectId          String?
+  workspaceId        String?
+  organizationId     String?
+  taskId             String?
+  conversationId     String?
+  objective          String
   // Learning Core — Intent Discovery (additive, nullable; see docs/LEARNING_CORE_ON_NEURAL_ENGINE.md)
-  underlyingGoal    String?
-  constraints       Json      @default("[]")
-  successCriteria   Json      @default("[]")
-  parentTraceId     String? // another Experience.id, for nested/sub-task traces
-  contextSnapshot   Json      @default("{}")
-  actionsTaken      Json      @default("[]")
-  toolsUsed         String[]  @default([])
-  knowledgeUsed     String[]  @default([]) // KnowledgeObject ids consulted
-  outputArtifactIds String[]  @default([])
-  startedAt         DateTime  @default(now())
-  completedAt       DateTime?
-  cost              Float?
-  latencyMs         Int?
-  outcomeStatus     String    @default("in_progress") // in_progress, success, partial, failure, cancelled
-  userFeedback      String?
-  evaluatorScore    Float?
-  evaluatorSummary  String?
-  createdAt         DateTime  @default(now())
+  underlyingGoal     String?
+  constraints        Json      @default("[]")
+  successCriteria    Json      @default("[]")
+  parentTraceId      String? // another Experience.id, for nested/sub-task traces
+  contextSnapshot    Json      @default("{}")
+  actionsTaken       Json      @default("[]")
+  toolsUsed          String[]  @default([])
+  knowledgeUsed      String[]  @default([]) // KnowledgeObject ids consulted
+  outputArtifactIds  String[]  @default([])
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  cost               Float?
+  latencyMs          Int?
+  outcomeStatus      String    @default("in_progress") // in_progress, success, partial, failure, cancelled
+  userFeedback       String?
+  evaluatorScore     Float?
+  evaluatorSummary   String?
+  createdAt          DateTime  @default(now())
 
   outcome            Outcome?
   evaluations        Evaluation[]
@@ -1169,16 +1170,16 @@ model AgentKnowledgeProfile {
 /// restartable record of what a cycle looked at and what it proposed. In shadow
 /// mode nothing it proposes reaches production retrieval.
 model ConsolidationRun {
-  id                  String    @id @default(cuid())
-  mode                String    @default("shadow") // shadow | active
-  startedAt           DateTime  @default(now())
-  completedAt         DateTime?
-  experiencesScanned  Int       @default(0)
-  candidatesFound     Int       @default(0)
-  memoriesGenerated   Int       @default(0)
-  memoriesStrengthened Int      @default(0)
-  compressionRatio    Float?
-  notes               Json      @default("{}")
+  id                   String    @id @default(cuid())
+  mode                 String    @default("shadow") // shadow | active
+  startedAt            DateTime  @default(now())
+  completedAt          DateTime?
+  experiencesScanned   Int       @default(0)
+  candidatesFound      Int       @default(0)
+  memoriesGenerated    Int       @default(0)
+  memoriesStrengthened Int       @default(0)
+  compressionRatio     Float?
+  notes                Json      @default("{}")
 
   @@index([mode, startedAt])
   @@map("memory_consolidation_runs")
@@ -1899,6 +1900,10 @@ model ExternalClient {
   clientSecretHash String?
   redirectUris     String[]
   allowedScopes    String[] @default([])
+  // Grants this client was registered for. A refresh token is only ever issued
+  // to a client that asked for the refresh_token grant at registration, so
+  // existing clients keep authorization_code-only behaviour by default.
+  grantTypes       String[] @default(["authorization_code"])
   enabled          Boolean  @default(true)
   // Null for a client created through RFC 7591 dynamic registration: that
   // request is unauthenticated by design, so there is no creator until a human
@@ -1911,6 +1916,7 @@ model ExternalClient {
   createdBy          User?                    @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   authorizationCodes OAuthAuthorizationCode[]
   accessTokens       OAuthAccessToken[]
+  refreshTokens      OAuthRefreshToken[]
   orchestrationRuns  OrchestrationRun[]
 
   @@index([createdByUserId])
@@ -1918,17 +1924,17 @@ model ExternalClient {
 }
 
 model OAuthAuthorizationCode {
-  id                  String   @id @default(cuid())
-  codeHash            String   @unique
+  id                  String    @id @default(cuid())
+  codeHash            String    @unique
   externalClientId    String
   userId              String
   redirectUri         String
-  scopes              String[] @default([])
+  scopes              String[]  @default([])
   codeChallenge       String
-  codeChallengeMethod String   @default("S256")
+  codeChallengeMethod String    @default("S256")
   expiresAt           DateTime
   usedAt              DateTime?
-  createdAt           DateTime @default(now())
+  createdAt           DateTime  @default(now())
 
   externalClient ExternalClient @relation(fields: [externalClientId], references: [id], onDelete: Cascade)
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1938,15 +1944,50 @@ model OAuthAuthorizationCode {
   @@map("oauth_authorization_codes")
 }
 
-model OAuthAccessToken {
-  id               String   @id @default(cuid())
-  tokenHash        String   @unique
+/// One row per issued refresh token. Rotation means a single consent produces a
+/// chain of these, all sharing familyId: rotating mints a new row and stamps
+/// rotatedAt on the old one. A token presented after it was rotated is a replay,
+/// which revokes the whole family rather than minting anything.
+model OAuthRefreshToken {
+  id               String    @id @default(cuid())
+  // SHA-256 of the token. The plaintext exists only in the response that
+  // issued it; it is never stored, logged or recoverable.
+  tokenHash        String    @unique
   externalClientId String
   userId           String
-  scopes           String[] @default([])
+  scopes           String[]  @default([])
+  // Shared by every token rotated from the same original consent.
+  familyId         String
+  // The token this one replaced, so a rotation chain can be walked.
+  previousTokenId  String?
+  // The access token minted alongside this refresh token, so revoking the
+  // family can revoke outstanding access too.
+  accessTokenId    String?
+  // Set the moment this token is exchanged. Non-null means "already used".
+  rotatedAt        DateTime?
+  revokedAt        DateTime?
+  expiresAt        DateTime
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  externalClient ExternalClient @relation(fields: [externalClientId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([externalClientId, expiresAt])
+  @@index([userId, expiresAt])
+  @@map("oauth_refresh_tokens")
+}
+
+model OAuthAccessToken {
+  id               String    @id @default(cuid())
+  tokenHash        String    @unique
+  externalClientId String
+  userId           String
+  scopes           String[]  @default([])
   expiresAt        DateTime
   revokedAt        DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
   lastUsedAt       DateTime?
 
   externalClient ExternalClient @relation(fields: [externalClientId], references: [id], onDelete: Cascade)
@@ -1958,7 +1999,7 @@ model OAuthAccessToken {
 }
 
 model OrchestrationRun {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   externalClientId   String?
   userId             String
   workspaceId        String?
@@ -1966,27 +2007,27 @@ model OrchestrationRun {
   parentRunId        String?
   idempotencyKey     String?
   request            Json
-  status             String   @default("queued")
+  status             String    @default("queued")
   requestedAgentId   String?
   resolvedAgentId    String?
-  routingDecision    Json     @default("{}")
-  contextSnapshot    Json     @default("{}")
-  retrievedObjectIds String[] @default([])
-  result             Json     @default("{}")
+  routingDecision    Json      @default("{}")
+  contextSnapshot    Json      @default("{}")
+  retrievedObjectIds String[]  @default([])
+  result             Json      @default("{}")
   error              String?
-  validation         Json     @default("{}")
-  queuedAt           DateTime @default(now())
+  validation         Json      @default("{}")
+  queuedAt           DateTime  @default(now())
   startedAt          DateTime?
   completedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  externalClient ExternalClient?   @relation(fields: [externalClientId], references: [id], onDelete: SetNull)
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace      Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parentRun      OrchestrationRun? @relation("OrchestrationRunHierarchy", fields: [parentRunId], references: [id], onDelete: SetNull)
-  childRuns      OrchestrationRun[] @relation("OrchestrationRunHierarchy")
+  externalClient ExternalClient?     @relation(fields: [externalClientId], references: [id], onDelete: SetNull)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentRun      OrchestrationRun?   @relation("OrchestrationRunHierarchy", fields: [parentRunId], references: [id], onDelete: SetNull)
+  childRuns      OrchestrationRun[]  @relation("OrchestrationRunHierarchy")
   attempts       ExecutionAttempt[]
   artifacts      ExecutionArtifact[]
 
@@ -1999,24 +2040,24 @@ model OrchestrationRun {
 }
 
 model ExecutionAttempt {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   orchestrationRunId String
   attemptNumber      Int
   agentId            String
   adapterType        String
   model              String?
-  status             String   @default("queued")
-  routingReason      Json     @default("{}")
-  input              Json     @default("{}")
-  output             Json     @default("{}")
-  validation         Json     @default("{}")
+  status             String    @default("queued")
+  routingReason      Json      @default("{}")
+  input              Json      @default("{}")
+  output             Json      @default("{}")
+  validation         Json      @default("{}")
   runtimeJobId       String?
   error              String?
   cost               Float?
   latencyMs          Int?
   startedAt          DateTime?
   completedAt        DateTime?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
 
   orchestrationRun OrchestrationRun @relation(fields: [orchestrationRunId], references: [id], onDelete: Cascade)
 
