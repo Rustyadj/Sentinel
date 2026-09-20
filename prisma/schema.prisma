@@ -241,6 +241,7 @@ model Memory {
 
   preferenceEvidence UserPreferenceEvidence[]
   retrievals         MemoryRetrieval[]
+  embeddings         MemoryEmbedding[]
 
   @@index([projectId])
   @@index([state])
@@ -248,6 +249,62 @@ model Memory {
   @@index([shadowOnly])
   @@index([validTo])
   @@map("memories")
+}
+
+/// Embeddings for a memory, one row per (provider, model, version).
+///
+/// `memories.embedding` is a single vector(1536) column, which silently made
+/// the column type the thing that chooses the embedding provider: voyage-3-lite
+/// emits 512 and voyage-3 emits 1024, so neither could be stored at all, and a
+/// provider comparison was impossible because there was nowhere to put a second
+/// opinion. Vectors from different models are not comparable, so mixing them in
+/// one column would be wrong even if the widths matched.
+///
+/// A memory may therefore carry several embeddings at once -- that is the point.
+/// Benchmarking Voyage against OpenAI means embedding the same corpus twice and
+/// querying each independently; re-embedding onto a new model means writing new
+/// rows and cutting over only once the benchmark says the new ones are better,
+/// with the old rows still present to roll back to.
+///
+/// Exactly one vector column is non-null, chosen by `dimensions`. Separate
+/// columns rather than one wide one because pgvector fixes dimensionality in the
+/// column type: a vector(1536) column cannot hold a 512-dimensional vector, and
+/// padding to fit would corrupt cosine distance.
+model MemoryEmbedding {
+  id       String @id @default(cuid())
+  memoryId String
+
+  /// openai | voyage | ... — kept as a string so adding a provider is config,
+  /// not a migration.
+  provider String
+  model    String
+  /// Denormalised from the model so a query can select the right vector column
+  /// without a lookup table, and so provenance survives a model being retired.
+  dimensions Int
+  /// Bumped when the same provider/model is re-run with different preparation
+  /// (chunking, prompt prefix, normalisation). Without it a re-embedding is
+  /// indistinguishable from the run it replaced.
+  version Int @default(1)
+
+  /// Exactly one of these is set, per `dimensions`. 3072 has no ivfflat/hnsw
+  /// index (pgvector caps indexed vectors at 2000 dimensions); it is stored for
+  /// completeness and scanned exactly.
+  vector512  Unsupported("vector(512)")?
+  vector1024 Unsupported("vector(1024)")?
+  vector1536 Unsupported("vector(1536)")?
+  vector3072 Unsupported("vector(3072)")?
+
+  /// How long the provider call took, so embedding latency is measurable per
+  /// provider rather than estimated.
+  embedMs   Int?
+  createdAt DateTime @default(now())
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@unique([memoryId, provider, model, version])
+  @@index([provider, model, version])
+  @@index([memoryId])
+  @@map("memory_embeddings")
 }
 
 /// One recorded act of retrieval, and — once the surrounding work finishes —

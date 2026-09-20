@@ -1,35 +1,58 @@
-// Sentinel — embedding provider.
+// Sentinel — embedding provider seam.
 //
-// Context for why this file exists at all: `memories.embedding` has been
-// declared `vector(1536)` since the initial migration, and until now nothing
-// ever wrote to it. There is no ivfflat/hnsw index on it either. The retrieval
-// planner's `semantic_similarity` factor is Jaccard token overlap, and its
-// file header says so honestly. `docs/MEMORY_ENGINE.md` meanwhile claimed
-// "pgvector cosine similarity against embeddings" — that claim was false.
+// `memories.embedding` has been declared `vector(1536)` since the initial
+// migration and nothing ever wrote to it. The first version of this file
+// treated that column width as a hard contract and rejected any model that
+// did not emit exactly 1536 dimensions — which quietly made a column type the
+// thing that chose Sentinel's embedding provider, ruling out voyage-3-lite
+// (512) and voyage-3 (1024) on a detail that has nothing to do with retrieval
+// quality.
 //
-// This module is the seam that makes the claim true, without pretending it is
-// true before a provider is actually configured and reachable.
+// Vectors now live in `memory_embeddings`, one row per (memory, provider,
+// model, version), with a vector column per dimension family. So:
 //
-// Three rules:
+//   1. Dimension is still never coerced. Padding or truncating a vector
+//      destroys cosine geometry, and a silently wrong distance is worse than
+//      no distance. But a model that does not fit one column is now stored in
+//      the column that does fit, rather than rejected.
+//   2. A memory may carry several embeddings at once. That is what makes
+//      "Voyage or OpenAI?" a measurable question instead of an opinion.
+//   3. Absence is a supported state. When no provider is configured or one is
+//      configured but unreachable, `embed()` returns null and callers fall
+//      back to lexical scoring. Retrieval must never fail because an
+//      embedding API is down.
+//   4. Provenance travels with the vector: provider, model, dimensions,
+//      version and creation time, so incomparable spaces can never be
+//      silently mixed and a re-embedding is distinguishable from the run it
+//      replaced.
 //
-//   1. Dimension is a hard contract, never coerced. The store is vector(1536).
-//      A provider whose output is not 1536-dimensional is rejected outright
-//      rather than padded or truncated — padding destroys cosine geometry, and
-//      a silently wrong distance is worse than no distance at all.
-//   2. Absence is a supported state, not an error. When no provider is
-//      configured (or one is configured but unreachable), `embed()` returns
-//      null and every caller falls back to the existing lexical signal. Memory
-//      retrieval must never fail because an embedding API is down.
-//   3. What produced a vector is recorded alongside it. Vectors from different
-//      models are not comparable; `EMBEDDING_MODEL_ID` is written with each
-//      batch so a future model change can be detected and re-indexed instead
-//      of silently mixing incomparable spaces.
+// Provider choice is settled by bench/memory (retrieval quality, latency,
+// cost), never by which number happens to be in a column type.
 
 import { logger } from "@/lib/logger";
 
-/** The dimension of `memories.embedding`. Not configurable at runtime — it is
- *  a column type. Changing it requires a migration and a full re-index. */
-export const EMBEDDING_DIMENSIONS = 1536;
+/** Dimension families `memory_embeddings` has a column for. A model whose
+ *  output is not one of these cannot be stored without a migration adding the
+ *  matching column — which is a deliberate, reviewable decision rather than a
+ *  silent rejection. */
+export const SUPPORTED_DIMENSIONS = [512, 1024, 1536, 3072] as const;
+export type SupportedDimension = (typeof SUPPORTED_DIMENSIONS)[number];
+
+/** Legacy width of the unused `memories.embedding` column. Retained only so
+ *  older callers keep compiling; it no longer constrains provider choice. */
+export const LEGACY_EMBEDDING_DIMENSIONS = 1536;
+
+export function isSupportedDimension(value: number): value is SupportedDimension {
+  return (SUPPORTED_DIMENSIONS as readonly number[]).includes(value);
+}
+
+/** The `memory_embeddings` column a vector of this width belongs in. */
+export function vectorColumnFor(dimensions: number): string {
+  if (!isSupportedDimension(dimensions)) {
+    throw new UnsupportedDimensionError(dimensions);
+  }
+  return `vector${dimensions}`;
+}
 
 export type EmbeddingProviderName = "openai" | "voyage" | "none";
 
@@ -84,13 +107,23 @@ export function readEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): Embed
 }
 
 export class EmbeddingDimensionError extends Error {
-  constructor(model: string, got: number) {
+  constructor(model: string, got: number, expected: number) {
     super(
-      `Embedding model "${model}" emits ${got} dimensions but memories.embedding is vector(${EMBEDDING_DIMENSIONS}). ` +
-        `Vectors are never padded or truncated to fit — that would corrupt cosine distance. ` +
-        `Either choose a ${EMBEDDING_DIMENSIONS}-dimensional model, or add a migration for a matching vector column and re-index.`,
+      `Embedding model "${model}" returned ${got} dimensions but ${expected} were expected. ` +
+        `Vectors are never padded or truncated to fit — that would corrupt cosine distance.`,
     );
     this.name = "EmbeddingDimensionError";
+  }
+}
+
+export class UnsupportedDimensionError extends Error {
+  constructor(dimensions: number) {
+    super(
+      `No vector column exists for ${dimensions}-dimensional embeddings. ` +
+        `memory_embeddings has columns for ${SUPPORTED_DIMENSIONS.join(", ")}. ` +
+        `Add a migration for a vector(${dimensions}) column to support this model.`,
+    );
+    this.name = "UnsupportedDimensionError";
   }
 }
 
@@ -124,7 +157,7 @@ function parseEmbeddingResponse(payload: unknown, expected: number): number[][] 
     if (!Array.isArray(vector) || vector.some((value) => typeof value !== "number")) {
       throw new Error("Embedding response contained a non-numeric vector.");
     }
-    if (vector.length !== expected) throw new EmbeddingDimensionError("(response)", vector.length);
+    if (vector.length !== expected) throw new EmbeddingDimensionError("(response)", vector.length, expected);
     return vector as number[];
   });
 }
@@ -139,11 +172,12 @@ function createProvider(config: EmbeddingConfig): EmbeddingProvider | null {
     logger.warn("embeddings: unknown model, refusing to guess its dimension", { model: config.model });
     return null;
   }
-  if (dimensions !== EMBEDDING_DIMENSIONS) {
-    logger.warn("embeddings: configured model does not fit the stored vector width", {
+  if (!isSupportedDimension(dimensions)) {
+    // Not "this model is wrong" — "this deployment has nowhere to put it yet".
+    logger.warn("embeddings: no vector column for this model's dimension", {
       model: config.model,
       modelDimensions: dimensions,
-      columnDimensions: EMBEDDING_DIMENSIONS,
+      supported: SUPPORTED_DIMENSIONS,
     });
     return null;
   }
