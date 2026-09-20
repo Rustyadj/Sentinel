@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import type { RetrievalContext } from "./types";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
 import { rankMemories, type RankedMemory } from "./retrieval-ranking";
+import { classifyTemporalIntent } from "./temporal-intent";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const SESSION_MEMORY_MAX_TURNS = 20;
@@ -72,7 +73,14 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
   // Quarantined/forgotten memories are governance states, not a retrieval
   // scope — excluded from every branch below regardless of project/user
   // context (see src/lib/learning/memory-governance.ts).
-  const notForgottenOrQuarantined = excludeFromRetrieval();
+  //
+  // Supersession is different, and is the one part of this that depends on the
+  // question. A corrected belief must not come back as current truth, but
+  // "what were we using before the switch?" is only answerable from exactly
+  // those rows. classifyTemporalIntent decides, conservatively: anything not
+  // explicitly asking about the past is treated as asking about now.
+  const temporal = classifyTemporalIntent(ctx.query);
+  const notForgottenOrQuarantined = excludeFromRetrieval({ temporalIntent: temporal.intent });
 
   if (ctx.projectId) {
     return {
@@ -140,6 +148,11 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   // With a query we score a wider pool and let ranking choose; without one we
   // keep the original value-ordered top-N exactly as it was.
   const query = (ctx.query ?? "").trim();
+  // Recomputed rather than threaded out of buildRetrievalFilters, which is a
+  // pure where-clause builder and is called on its own elsewhere.
+  // classifyTemporalIntent is a pure regex match over the same string, so the
+  // two cannot disagree.
+  const temporal = classifyTemporalIntent(ctx.query);
   const poolSize = query ? Math.max(maxItems, CANDIDATE_POOL_SIZE) : maxItems;
 
   const [memoriesRaw, notesRaw, decisionsRaw, sessionMemories] = await Promise.all([
@@ -173,7 +186,11 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   ]);
 
   const ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
-    ? rankMemories(query, memoriesRaw, { limit: maxItems })
+    ? rankMemories(query, memoriesRaw, {
+        limit: maxItems,
+        temporalIntent: temporal.intent,
+        asOf: temporal.asOf,
+      })
     : memoriesRaw.slice(0, maxItems).map((memory) => ({ memory, score: 0, factors: [] }));
 
   const memories = [

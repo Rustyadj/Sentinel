@@ -97,3 +97,61 @@ Still at zero and worth watching: `temporal_ordering` (retrieval does not order
 episodic memories by event time), `ambiguous_memories`, and
 `project_isolation` recall — the last is a recall miss, not a leak; leakage
 remains 0.000 across every isolation category.
+
+## Result after Phase 8 — contradiction / reconsolidation (commit pending)
+
+`results/phase8-contradiction.json`, same 32 cases:
+
+| Metric | Baseline | Query-aware | Phase 8 |
+|---|---|---|---|
+| Recall@5 | 0.189 | 0.867 | **0.900** |
+| Recall@10 | 0.200 | 0.900 | **0.933** |
+| Precision@10 | 0.032 | 0.363 | **0.381** |
+| MRR | 0.126 | 0.837 | **0.870** |
+| False retrieval | 0.031 | 0.063 | **0.000** |
+| Irrelevant retrieval | 0.957 | 0.559 | 0.589 |
+| Mean context tokens | 662 | 139.2 | 142.5 |
+| Scope leakage | 0.000 | 0.000 | 0.000 |
+| Temporal accuracy | 0.000 | 0.000 | 0.000 |
+
+The Phase 8 target was false retrieval below 0.063 without losing Recall@10
+0.900 or MRR 0.837. False retrieval is 0.000 and both protected metrics went
+up rather than holding.
+
+### Attribution
+
+Two changes landed together, so they were measured apart.
+`results/phase8-ablation-no-consolidation.json` is the same run with
+`SENTINEL_BENCH_NO_CONSOLIDATE=1`, which seeds the corpus without running the
+reconsolidation pass:
+
+| | tokenizer fix only | + contradiction handling |
+|---|---|---|
+| Recall@10 | 0.933 | 0.933 |
+| MRR | 0.870 | 0.870 |
+| Precision@10 | 0.366 | **0.381** |
+| False retrieval | 0.063 | **0.000** |
+| Mean context tokens | 146.3 | **142.5** |
+
+So the recall and MRR gain is entirely the tokenizer fix — `tokenize` kept the
+full stop that ends a sentence inside the token, so "stores embeddings." could
+never match a query's "embeddings". That also fixed `ambiguous_memories`
+(0.000 → 1.000). The false-retrieval elimination is entirely contradiction
+handling, and it *reduces* context tokens, because the stale belief it removes
+was occupying budget.
+
+Neither number comes from a benchmark-specific filter: the corpus is seeded as
+raw observations and `reconsolidateScope` — the production entry point — makes
+the supersession link the same way it would when a correction is ingested.
+
+### What is still at zero
+
+- `temporal_ordering` accuracy (0.000). Retrieval still does not order
+  episodic memories by event time. Recall for the category is 1.000; it is the
+  *ordering* that is unimplemented.
+- `project_isolation` recall (0.000) — a recall miss, not a leak. Leakage is
+  0.000 across every isolation category.
+- `stale_information` recall (0.000).
+- Irrelevant retrieval rose 0.559 → 0.589. The tokenizer fix matches more
+  tokens, so more low-scoring memories clear the coverage floor. It is a real
+  cost and is not being written off.

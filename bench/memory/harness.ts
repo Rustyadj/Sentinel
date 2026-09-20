@@ -13,6 +13,7 @@
 import { db } from "@/lib/db";
 import { buildMemoryContext } from "@/lib/neural-engine/memory-context";
 import { readEmbeddingConfig, MODEL_DIMENSIONS } from "@/lib/neural-engine/embeddings";
+import { reconsolidateScope } from "@/lib/neural-engine/reconsolidation-engine";
 import { scoreCase, DEFAULT_K_VALUES } from "./metrics";
 import { WORLD, CASES } from "./dataset";
 import type { BenchCase, BenchMemory, CaseResult } from "./types";
@@ -101,6 +102,7 @@ function memoryRow(memory: BenchMemory, now: number) {
 /** Remove only rows this benchmark created, in dependency order. */
 export async function teardown(): Promise<void> {
   const ids = WORLD.memories.map((memory) => memory.id);
+  await db.memoryReconsolidation.deleteMany({ where: { memoryId: { in: ids } } });
   await db.memoryRetrieval.deleteMany({ where: { memoryId: { in: ids } } });
   await db.memory.deleteMany({ where: { id: { in: ids } } });
   await db.project.deleteMany({ where: { id: { in: WORLD.projects.map((p) => p.id) } } });
@@ -135,6 +137,39 @@ export async function seed(): Promise<void> {
   for (const memory of WORLD.memories) {
     if (!memory.supersededById) continue;
     await db.memory.update({ where: { id: memory.id }, data: { supersededById: memory.supersededById } });
+  }
+
+  await consolidate();
+}
+
+/**
+ * Run the production reconsolidation pass over the seeded corpus.
+ *
+ * The fixtures above are raw observations: what a user actually said, in the
+ * order they said it. Only `mem-sentinel-port-old` carries a supersession link,
+ * because that fixture exists to test that a *recorded* supersession is
+ * honoured. `mem-sentinel-model-old` does not, because that one exists to test
+ * what happens when a correction arrives as an ordinary memory — which is how
+ * corrections actually arrive.
+ *
+ * Phase 7 had no answer for the second case and surfaced the stale belief
+ * alongside the correction. Phase 8's answer is not a retrieval filter; it is
+ * that the link should have been made when the correction was stored. So the
+ * benchmark seeds the raw corpus and then runs exactly the code production
+ * runs, rather than seeding a corpus that has been pre-resolved by hand.
+ *
+ * `apply` is explicit here. Production defaults to shadow (see
+ * defaultMode()); the benchmark is the evidence that decides whether that
+ * default should change.
+ */
+export async function consolidate(): Promise<void> {
+  // Ablation switch. The point of a benchmark is to attribute a change to the
+  // thing that caused it, and two things landed in Phase 8: contradiction
+  // handling and a tokenizer fix. Setting this seeds the corpus unconsolidated
+  // so the two can be measured apart.
+  if (process.env.SENTINEL_BENCH_NO_CONSOLIDATE === "1") return;
+  for (const user of WORLD.users) {
+    await reconsolidateScope({ owner: user.id }, { mode: "apply", origin: "benchmark" });
   }
 }
 

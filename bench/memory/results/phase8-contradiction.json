@@ -1,0 +1,2209 @@
+{
+  "meta": {
+    "label": "phase8-contradiction",
+    "commit": "5225a8a",
+    "branch": "feat/continual-memory",
+    "startedAt": "2026-09-20T13:41:38.275Z",
+    "finishedAt": "2026-09-20T13:41:41.189Z",
+    "nodeVersion": "v22.23.2",
+    "databaseUrlHost": "127.0.0.1:55439/sentinel_vitest",
+    "embeddingProvider": "voyage",
+    "embeddingModel": "voyage-3-lite",
+    "embeddingDimensions": 512,
+    "kValues": [
+      1,
+      3,
+      5,
+      10,
+      20
+    ],
+    "caseCount": 32,
+    "memoryCount": 63
+  },
+  "overall": {
+    "cases": 32,
+    "recallAtK": {
+      "@1": 0.7333333333333333,
+      "@3": 0.8666666666666667,
+      "@5": 0.9,
+      "@10": 0.9333333333333333,
+      "@20": 0.9333333333333333
+    },
+    "precisionAtK": {
+      "@1": 0.78125,
+      "@3": 0.4739583333333334,
+      "@5": 0.4130208333333333,
+      "@10": 0.3813244047619047,
+      "@20": 0.3801474567099567
+    },
+    "mrr": 0.8703703703703703,
+    "falseRetrievalRate": 0,
+    "scopeLeakageRate": 0,
+    "irrelevantRetrievalRate": 0.5886025432900434,
+    "temporalAccuracy": 0,
+    "meanContextTokens": 142.53125,
+    "meanRetrievalLatencyMs": 22.215942312500047,
+    "p95RetrievalLatencyMs": 79.05899999999974,
+    "meanEmbeddingLatencyMs": 0,
+    "meanRerankLatencyMs": 0,
+    "errors": 0
+  },
+  "byCategory": {
+    "ambiguous_memories": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0.5,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.4,
+        "@10": 0.4,
+        "@20": 0.4
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.6,
+      "temporalAccuracy": null,
+      "meanContextTokens": 135,
+      "meanRetrievalLatencyMs": 16.33790799999997,
+      "p95RetrievalLatencyMs": 16.33790799999997,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "conflicting_memories": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.9,
+      "temporalAccuracy": null,
+      "meanContextTokens": 236,
+      "meanRetrievalLatencyMs": 25.808993999999984,
+      "p95RetrievalLatencyMs": 25.808993999999984,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "contradictions": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0.5,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0,
+      "temporalAccuracy": null,
+      "meanContextTokens": 46,
+      "meanRetrievalLatencyMs": 17.01453300000003,
+      "p95RetrievalLatencyMs": 17.01453300000003,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "corrections": {
+      "cases": 2,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.55,
+        "@20": 0.55
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.45,
+      "temporalAccuracy": null,
+      "meanContextTokens": 140,
+      "meanRetrievalLatencyMs": 18.78401400000007,
+      "p95RetrievalLatencyMs": 25.808993999999984,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "cross_project_leakage": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": null,
+        "@3": null,
+        "@5": null,
+        "@10": null,
+        "@20": null
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "mrr": null,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 1,
+      "temporalAccuracy": null,
+      "meanContextTokens": 456,
+      "meanRetrievalLatencyMs": 95.7753029999999,
+      "p95RetrievalLatencyMs": 95.7753029999999,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "cross_session_recall": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.07142857142857142
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.9285714285714286,
+      "temporalAccuracy": null,
+      "meanContextTokens": 328,
+      "meanRetrievalLatencyMs": 33.2488699999999,
+      "p95RetrievalLatencyMs": 33.2488699999999,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "duplicate_memories": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0.6666666666666666,
+        "@5": 0.4,
+        "@10": 0.2,
+        "@20": 0.2
+      },
+      "mrr": 0.5,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.8,
+      "temporalAccuracy": null,
+      "meanContextTokens": 236,
+      "meanRetrievalLatencyMs": 31.047951999999896,
+      "p95RetrievalLatencyMs": 31.047951999999896,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "entity_relationships": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.75,
+        "@10": 0.75,
+        "@20": 0.75
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.25,
+      "temporalAccuracy": null,
+      "meanContextTokens": 95,
+      "meanRetrievalLatencyMs": 12.5208990000001,
+      "p95RetrievalLatencyMs": 12.5208990000001,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "episodic_recall": {
+      "cases": 2,
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.5,
+      "temporalAccuracy": 0,
+      "meanContextTokens": 161,
+      "meanRetrievalLatencyMs": 15.572101500000144,
+      "p95RetrievalLatencyMs": 16.018949000000248,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "factual_recall": {
+      "cases": 5,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.4666666666666666,
+        "@5": 0.36,
+        "@10": 0.2885714285714286,
+        "@20": 0.2810389610389611
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.718961038961039,
+      "temporalAccuracy": null,
+      "meanContextTokens": 210.2,
+      "meanRetrievalLatencyMs": 33.76411579999994,
+      "p95RetrievalLatencyMs": 79.05899999999974,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "false_memory_rejection": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "mrr": 0.1111111111111111,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.9,
+      "temporalAccuracy": null,
+      "meanContextTokens": 236,
+      "meanRetrievalLatencyMs": 21.294088999999985,
+      "p95RetrievalLatencyMs": 21.294088999999985,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "irrelevant_rejection": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.3333333333333333,
+        "@10": 0.3333333333333333,
+        "@20": 0.3333333333333333
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.6666666666666666,
+      "temporalAccuracy": null,
+      "meanContextTokens": 90,
+      "meanRetrievalLatencyMs": 15.72364000000016,
+      "p95RetrievalLatencyMs": 15.72364000000016,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "lexical_retrieval": {
+      "cases": 2,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.5714285714285714,
+        "@20": 0.5714285714285714
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.42857142857142855,
+      "temporalAccuracy": null,
+      "meanContextTokens": 118,
+      "meanRetrievalLatencyMs": 17.910282999999936,
+      "p95RetrievalLatencyMs": 21.192589999999655,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "long_running_accumulation": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.3333333333333333,
+        "@10": 0.3333333333333333,
+        "@20": 0.3333333333333333
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.6666666666666666,
+      "temporalAccuracy": null,
+      "meanContextTokens": 102,
+      "meanRetrievalLatencyMs": 15.731149999999616,
+      "p95RetrievalLatencyMs": 15.731149999999616,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "preference_recall": {
+      "cases": 2,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.625,
+        "@10": 0.625,
+        "@20": 0.625
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.375,
+      "temporalAccuracy": null,
+      "meanContextTokens": 66,
+      "meanRetrievalLatencyMs": 22.29250900000011,
+      "p95RetrievalLatencyMs": 26.49810000000025,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "procedural_memory": {
+      "cases": 3,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.21666666666666667,
+        "@10": 0.16428571428571428,
+        "@20": 0.16428571428571428
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.8357142857142857,
+      "temporalAccuracy": null,
+      "meanContextTokens": 179,
+      "meanRetrievalLatencyMs": 21.86130599999994,
+      "p95RetrievalLatencyMs": 30.03611899999987,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "project_isolation": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "mrr": 0,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 1,
+      "temporalAccuracy": null,
+      "meanContextTokens": 49,
+      "meanRetrievalLatencyMs": 12.59474900000032,
+      "p95RetrievalLatencyMs": 12.59474900000032,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "project_recall": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.5,
+        "@5": 0.5,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.5,
+      "temporalAccuracy": null,
+      "meanContextTokens": 63,
+      "meanRetrievalLatencyMs": 16.788064000000304,
+      "p95RetrievalLatencyMs": 16.788064000000304,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "semantic_similarity": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.2,
+        "@20": 0.2
+      },
+      "mrr": 0.5,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.8,
+      "temporalAccuracy": null,
+      "meanContextTokens": 152,
+      "meanRetrievalLatencyMs": 19.403960000000097,
+      "p95RetrievalLatencyMs": 19.403960000000097,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "stale_information": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "mrr": 0,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0,
+      "temporalAccuracy": null,
+      "meanContextTokens": 0,
+      "meanRetrievalLatencyMs": 5.884367000000111,
+      "p95RetrievalLatencyMs": 5.884367000000111,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "supersession": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.9,
+      "temporalAccuracy": null,
+      "meanContextTokens": 248,
+      "meanRetrievalLatencyMs": 25.333364999999958,
+      "p95RetrievalLatencyMs": 25.333364999999958,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "temporal_ordering": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.5,
+      "temporalAccuracy": 0,
+      "meanContextTokens": 161,
+      "meanRetrievalLatencyMs": 16.018949000000248,
+      "p95RetrievalLatencyMs": 16.018949000000248,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "user_isolation": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0,
+      "temporalAccuracy": null,
+      "meanContextTokens": 40,
+      "meanRetrievalLatencyMs": 7.24196800000027,
+      "p95RetrievalLatencyMs": 7.24196800000027,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "workspace_isolation": {
+      "cases": 1,
+      "recallAtK": {
+        "@1": null,
+        "@3": null,
+        "@5": null,
+        "@10": null,
+        "@20": null
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "mrr": null,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 1,
+      "temporalAccuracy": null,
+      "meanContextTokens": 102,
+      "meanRetrievalLatencyMs": 10.786538000000292,
+      "p95RetrievalLatencyMs": 10.786538000000292,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    },
+    "workspace_recall": {
+      "cases": 2,
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.5,
+        "@5": 0.5,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "mrr": 1,
+      "falseRetrievalRate": 0,
+      "scopeLeakageRate": 0,
+      "irrelevantRetrievalRate": 0.5,
+      "temporalAccuracy": null,
+      "meanContextTokens": 72,
+      "meanRetrievalLatencyMs": 12.550973500000055,
+      "p95RetrievalLatencyMs": 14.30328899999995,
+      "meanEmbeddingLatencyMs": 0,
+      "meanRerankLatencyMs": 0,
+      "errors": 0
+    }
+  },
+  "cases": [
+    {
+      "caseId": "factual-db",
+      "categories": [
+        "factual_recall"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-db",
+        "mem-sentinel-testdb",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-sentinel-db",
+        "mem-sentinel-testdb",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.09090909090909091
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 10,
+      "irrelevantRate": 0.9090909090909091,
+      "orderCorrect": null,
+      "contextTokens": 262,
+      "retrievalLatencyMs": 79.05899999999974,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "factual-queue",
+      "categories": [
+        "factual_recall"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-queue",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-sentinel-queue",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 9,
+      "irrelevantRate": 0.9,
+      "orderCorrect": null,
+      "contextTokens": 236,
+      "retrievalLatencyMs": 23.38571600000023,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "factual-auth",
+      "categories": [
+        "factual_recall",
+        "lexical_retrieval"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-auth",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-ep-1",
+        "mem-sentinel-ratelimit"
+      ],
+      "injectedIds": [
+        "mem-sentinel-auth",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-ep-1",
+        "mem-sentinel-ratelimit"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.14285714285714285,
+        "@20": 0.14285714285714285
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 6,
+      "irrelevantRate": 0.8571428571428571,
+      "orderCorrect": null,
+      "contextTokens": 191,
+      "retrievalLatencyMs": 21.192589999999655,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "cross-session-orm",
+      "categories": [
+        "cross_session_recall",
+        "factual_recall"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-orm",
+        "mem-sentinel-model-new",
+        "mem-sentinel-testdb",
+        "mem-ep-3",
+        "mem-proc-migrate",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-sentinel-orm",
+        "mem-sentinel-model-new",
+        "mem-sentinel-testdb",
+        "mem-ep-3",
+        "mem-proc-migrate",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.07142857142857142
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 13,
+      "irrelevantRate": 0.9285714285714286,
+      "orderCorrect": null,
+      "contextTokens": 328,
+      "retrievalLatencyMs": 33.2488699999999,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "project-mobileops-db",
+      "categories": [
+        "project_recall"
+      ],
+      "retrievedIds": [
+        "mem-mobileops-db",
+        "mem-ws-policy"
+      ],
+      "injectedIds": [
+        "mem-mobileops-db",
+        "mem-ws-policy"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.5,
+        "@5": 0.5,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 1,
+      "irrelevantRate": 0.5,
+      "orderCorrect": null,
+      "contextTokens": 63,
+      "retrievalLatencyMs": 16.788064000000304,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "workspace-policy",
+      "categories": [
+        "workspace_recall"
+      ],
+      "retrievedIds": [
+        "mem-ws-policy",
+        "mem-ws-standup"
+      ],
+      "injectedIds": [
+        "mem-ws-policy",
+        "mem-ws-standup"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.5,
+        "@5": 0.5,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 1,
+      "irrelevantRate": 0.5,
+      "orderCorrect": null,
+      "contextTokens": 72,
+      "retrievalLatencyMs": 14.30328899999995,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "workspace-standup",
+      "categories": [
+        "workspace_recall"
+      ],
+      "retrievedIds": [
+        "mem-ws-standup",
+        "mem-ws-policy"
+      ],
+      "injectedIds": [
+        "mem-ws-standup",
+        "mem-ws-policy"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.5,
+        "@5": 0.5,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 1,
+      "irrelevantRate": 0.5,
+      "orderCorrect": null,
+      "contextTokens": 72,
+      "retrievalLatencyMs": 10.79865800000016,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "pref-style",
+      "categories": [
+        "preference_recall"
+      ],
+      "retrievedIds": [
+        "mem-pref-concise",
+        "mem-ws-standup",
+        "mem-ent-freida",
+        "mem-ent-hughes"
+      ],
+      "injectedIds": [
+        "mem-pref-concise",
+        "mem-ws-standup",
+        "mem-ent-freida",
+        "mem-ent-hughes"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.25,
+        "@10": 0.25,
+        "@20": 0.25
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 0.75,
+      "orderCorrect": null,
+      "contextTokens": 97,
+      "retrievalLatencyMs": 26.49810000000025,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "pref-git",
+      "categories": [
+        "preference_recall"
+      ],
+      "retrievedIds": [
+        "mem-pref-commit"
+      ],
+      "injectedIds": [
+        "mem-pref-commit"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 35,
+      "retrievalLatencyMs": 18.08691799999997,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "episodic-incident",
+      "categories": [
+        "episodic_recall"
+      ],
+      "retrievedIds": [
+        "mem-ep-1",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth"
+      ],
+      "injectedIds": [
+        "mem-ep-1",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth"
+      ],
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 0.5,
+      "orderCorrect": null,
+      "contextTokens": 161,
+      "retrievalLatencyMs": 15.12525400000004,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "temporal-incident",
+      "categories": [
+        "temporal_ordering",
+        "episodic_recall"
+      ],
+      "retrievedIds": [
+        "mem-ep-1",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth"
+      ],
+      "injectedIds": [
+        "mem-ep-1",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-2",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth"
+      ],
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.6,
+        "@10": 0.5,
+        "@20": 0.5
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 0.5,
+      "orderCorrect": false,
+      "contextTokens": 161,
+      "retrievalLatencyMs": 16.018949000000248,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "entity-owners",
+      "categories": [
+        "entity_relationships"
+      ],
+      "retrievedIds": [
+        "mem-ent-lisa",
+        "mem-pref-concise",
+        "mem-ent-freida",
+        "mem-ent-hughes"
+      ],
+      "injectedIds": [
+        "mem-ent-lisa",
+        "mem-pref-concise",
+        "mem-ent-freida",
+        "mem-ent-hughes"
+      ],
+      "recallAtK": {
+        "@1": 0.3333333333333333,
+        "@3": 0.6666666666666666,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.75,
+        "@10": 0.75,
+        "@20": 0.75
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 1,
+      "irrelevantRate": 0.25,
+      "orderCorrect": null,
+      "contextTokens": 95,
+      "retrievalLatencyMs": 12.5208990000001,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "semantic-ratelimit",
+      "categories": [
+        "semantic_similarity"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-ratelimit",
+        "mem-ws-standup",
+        "mem-proc-deploy",
+        "mem-sentinel-auth"
+      ],
+      "injectedIds": [
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-ratelimit",
+        "mem-ws-standup",
+        "mem-proc-deploy",
+        "mem-sentinel-auth"
+      ],
+      "recallAtK": {
+        "@1": 0,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.2,
+        "@20": 0.2
+      },
+      "reciprocalRank": 0.5,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 4,
+      "irrelevantRate": 0.8,
+      "orderCorrect": null,
+      "contextTokens": 152,
+      "retrievalLatencyMs": 19.403960000000097,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "lexical-errcode",
+      "categories": [
+        "lexical_retrieval"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-errcode"
+      ],
+      "injectedIds": [
+        "mem-sentinel-errcode"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 45,
+      "retrievalLatencyMs": 14.627976000000217,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "correction-model",
+      "categories": [
+        "corrections"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-model-new"
+      ],
+      "injectedIds": [
+        "mem-sentinel-model-new"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 44,
+      "retrievalLatencyMs": 11.759034000000156,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "contradiction-cache",
+      "categories": [
+        "contradictions"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-cache-b",
+        "mem-sentinel-cache-a"
+      ],
+      "injectedIds": [
+        "mem-sentinel-cache-b",
+        "mem-sentinel-cache-a"
+      ],
+      "recallAtK": {
+        "@1": 0.5,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 46,
+      "retrievalLatencyMs": 17.01453300000003,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "supersession-port",
+      "categories": [
+        "supersession"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-port",
+        "mem-sentinel-testdb",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db"
+      ],
+      "injectedIds": [
+        "mem-sentinel-port",
+        "mem-sentinel-testdb",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 9,
+      "irrelevantRate": 0.9,
+      "orderCorrect": null,
+      "contextTokens": 248,
+      "retrievalLatencyMs": 25.333364999999958,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "stale-port",
+      "categories": [
+        "stale_information"
+      ],
+      "retrievedIds": [],
+      "injectedIds": [],
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "reciprocalRank": 0,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 0,
+      "retrievalLatencyMs": 5.884367000000111,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "irrelevant-noise",
+      "categories": [
+        "irrelevant_rejection"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-errcode",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue"
+      ],
+      "injectedIds": [
+        "mem-sentinel-errcode",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.3333333333333333,
+        "@10": 0.3333333333333333,
+        "@20": 0.3333333333333333
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 2,
+      "irrelevantRate": 0.6666666666666666,
+      "orderCorrect": null,
+      "contextTokens": 90,
+      "retrievalLatencyMs": 15.72364000000016,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "false-pinecone",
+      "categories": [
+        "false_memory_rejection"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "reciprocalRank": 0.1111111111111111,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 9,
+      "irrelevantRate": 0.9,
+      "orderCorrect": null,
+      "contextTokens": 236,
+      "retrievalLatencyMs": 21.294088999999985,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "isolation-project",
+      "categories": [
+        "project_isolation"
+      ],
+      "retrievedIds": [
+        "mem-ws-policy"
+      ],
+      "injectedIds": [
+        "mem-ws-policy"
+      ],
+      "recallAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "reciprocalRank": 0,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 1,
+      "irrelevantRate": 1,
+      "orderCorrect": null,
+      "contextTokens": 49,
+      "retrievalLatencyMs": 12.59474900000032,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "isolation-workspace",
+      "categories": [
+        "workspace_isolation"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-ratelimit"
+      ],
+      "injectedIds": [
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-ratelimit"
+      ],
+      "recallAtK": {
+        "@1": null,
+        "@3": null,
+        "@5": null,
+        "@10": null,
+        "@20": null
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "reciprocalRank": null,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 1,
+      "orderCorrect": null,
+      "contextTokens": 102,
+      "retrievalLatencyMs": 10.786538000000292,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "isolation-user",
+      "categories": [
+        "user_isolation"
+      ],
+      "retrievedIds": [
+        "mem-pref-concise"
+      ],
+      "injectedIds": [
+        "mem-pref-concise"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 40,
+      "retrievalLatencyMs": 7.24196800000027,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "leakage-cross-project",
+      "categories": [
+        "cross_project_leakage"
+      ],
+      "retrievedIds": [
+        "mem-noise-1",
+        "mem-noise-2",
+        "mem-noise-3",
+        "mem-noise-4",
+        "mem-noise-5",
+        "mem-noise-6",
+        "mem-noise-7",
+        "mem-noise-8",
+        "mem-noise-9",
+        "mem-noise-10",
+        "mem-noise-11",
+        "mem-noise-12",
+        "mem-noise-13",
+        "mem-noise-14",
+        "mem-noise-15",
+        "mem-noise-16",
+        "mem-noise-17",
+        "mem-noise-18",
+        "mem-proc-deploy",
+        "mem-noise-19",
+        "mem-noise-20",
+        "mem-noise-21",
+        "mem-noise-22",
+        "mem-noise-23",
+        "mem-noise-24",
+        "mem-noise-25"
+      ],
+      "injectedIds": [
+        "mem-noise-1",
+        "mem-noise-2",
+        "mem-noise-3",
+        "mem-noise-4",
+        "mem-noise-5",
+        "mem-noise-6",
+        "mem-noise-7",
+        "mem-noise-8",
+        "mem-noise-9",
+        "mem-noise-10",
+        "mem-noise-11",
+        "mem-noise-12",
+        "mem-noise-13",
+        "mem-noise-14",
+        "mem-noise-15",
+        "mem-noise-16",
+        "mem-noise-17",
+        "mem-noise-18",
+        "mem-proc-deploy",
+        "mem-noise-19",
+        "mem-noise-20",
+        "mem-noise-21",
+        "mem-noise-22",
+        "mem-noise-23",
+        "mem-noise-24",
+        "mem-noise-25"
+      ],
+      "recallAtK": {
+        "@1": null,
+        "@3": null,
+        "@5": null,
+        "@10": null,
+        "@20": null
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0,
+        "@5": 0,
+        "@10": 0,
+        "@20": 0
+      },
+      "reciprocalRank": null,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 26,
+      "irrelevantRate": 1,
+      "orderCorrect": null,
+      "contextTokens": 456,
+      "retrievalLatencyMs": 95.7753029999999,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "procedural-deploy",
+      "categories": [
+        "procedural_memory"
+      ],
+      "retrievedIds": [
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-port",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-port",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 9,
+      "irrelevantRate": 0.9,
+      "orderCorrect": null,
+      "contextTokens": 236,
+      "retrievalLatencyMs": 18.010757999999896,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "procedural-migrate",
+      "categories": [
+        "procedural_memory"
+      ],
+      "retrievedIds": [
+        "mem-proc-migrate",
+        "mem-sentinel-db",
+        "mem-sentinel-testdb",
+        "mem-sentinel-orm"
+      ],
+      "injectedIds": [
+        "mem-proc-migrate",
+        "mem-sentinel-db",
+        "mem-sentinel-testdb",
+        "mem-sentinel-orm"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.25,
+        "@10": 0.25,
+        "@20": 0.25
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 0.75,
+      "orderCorrect": null,
+      "contextTokens": 118,
+      "retrievalLatencyMs": 17.537041000000045,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "procedural-probe",
+      "categories": [
+        "procedural_memory"
+      ],
+      "retrievedIds": [
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-1",
+        "mem-sentinel-gw-mcp",
+        "mem-ep-2",
+        "mem-sentinel-gw-pay",
+        "mem-sentinel-auth"
+      ],
+      "injectedIds": [
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-1",
+        "mem-sentinel-gw-mcp",
+        "mem-ep-2",
+        "mem-sentinel-gw-pay",
+        "mem-sentinel-auth"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.14285714285714285,
+        "@20": 0.14285714285714285
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 6,
+      "irrelevantRate": 0.8571428571428571,
+      "orderCorrect": null,
+      "contextTokens": 183,
+      "retrievalLatencyMs": 30.03611899999987,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "accumulation-signal",
+      "categories": [
+        "long_running_accumulation"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-testdb",
+        "mem-proc-deploy",
+        "mem-sentinel-db"
+      ],
+      "injectedIds": [
+        "mem-sentinel-testdb",
+        "mem-proc-deploy",
+        "mem-sentinel-db"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.3333333333333333,
+        "@10": 0.3333333333333333,
+        "@20": 0.3333333333333333
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 2,
+      "irrelevantRate": 0.6666666666666666,
+      "orderCorrect": null,
+      "contextTokens": 102,
+      "retrievalLatencyMs": 15.731149999999616,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "duplicate-deploy",
+      "categories": [
+        "duplicate_memories"
+      ],
+      "retrievedIds": [
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-port",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-port",
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-sentinel-auth",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 0,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 0,
+        "@3": 0.6666666666666666,
+        "@5": 0.4,
+        "@10": 0.2,
+        "@20": 0.2
+      },
+      "reciprocalRank": 0.5,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 8,
+      "irrelevantRate": 0.8,
+      "orderCorrect": null,
+      "contextTokens": 236,
+      "retrievalLatencyMs": 31.047951999999896,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "ambiguous-gateway",
+      "categories": [
+        "ambiguous_memories"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-gw-pay",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-1"
+      ],
+      "injectedIds": [
+        "mem-sentinel-gw-pay",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-probe",
+        "mem-ep-3",
+        "mem-ep-1"
+      ],
+      "recallAtK": {
+        "@1": 0.5,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.6666666666666666,
+        "@5": 0.4,
+        "@10": 0.4,
+        "@20": 0.4
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 3,
+      "irrelevantRate": 0.6,
+      "orderCorrect": null,
+      "contextTokens": 135,
+      "retrievalLatencyMs": 16.33790799999997,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "conflicting-model",
+      "categories": [
+        "conflicting_memories",
+        "corrections"
+      ],
+      "retrievedIds": [
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-sentinel-model-new",
+        "mem-sentinel-gw-mcp",
+        "mem-proc-deploy",
+        "mem-sentinel-dup-b",
+        "mem-sentinel-dup-a",
+        "mem-sentinel-auth",
+        "mem-sentinel-port",
+        "mem-sentinel-queue",
+        "mem-sentinel-db",
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 0.3333333333333333,
+        "@5": 0.2,
+        "@10": 0.1,
+        "@20": 0.1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 9,
+      "irrelevantRate": 0.9,
+      "orderCorrect": null,
+      "contextTokens": 236,
+      "retrievalLatencyMs": 25.808993999999984,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    },
+    {
+      "caseId": "global-timezone",
+      "categories": [
+        "factual_recall"
+      ],
+      "retrievedIds": [
+        "mem-global-tz"
+      ],
+      "injectedIds": [
+        "mem-global-tz"
+      ],
+      "recallAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "precisionAtK": {
+        "@1": 1,
+        "@3": 1,
+        "@5": 1,
+        "@10": 1,
+        "@20": 1
+      },
+      "reciprocalRank": 1,
+      "forbiddenRetrieved": [],
+      "forbiddenReason": null,
+      "irrelevantRetrieved": 0,
+      "irrelevantRate": 0,
+      "orderCorrect": null,
+      "contextTokens": 34,
+      "retrievalLatencyMs": 11.934403000000202,
+      "embeddingLatencyMs": 0,
+      "rerankLatencyMs": 0
+    }
+  ]
+}

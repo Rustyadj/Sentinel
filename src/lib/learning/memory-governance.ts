@@ -9,6 +9,7 @@
 
 import { db } from "@/lib/db";
 import type { Memory, Prisma } from "@prisma/client";
+import { includesSupersededMemories, type TemporalIntent } from "@/lib/knowledge/temporal-intent";
 import { emitLearningEvent } from "./event-service";
 
 export type MemoryState =
@@ -281,11 +282,34 @@ export async function runMemoryDecaySweep(params: { workspaceId?: string; limit?
  * by way of some branch that forgot to filter it. Promotion out of shadow is an
  * explicit act; it is never the default.
  */
-export function excludeFromRetrieval(): Prisma.MemoryWhereInput {
-  // `validTo: null` keeps superseded versions out of retrieval while leaving
-  // them fully readable by the temporal queries. Without it a revised belief
-  // and the belief it replaced would both reach the same prompt.
-  return { state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] }, shadowOnly: false, validTo: null };
+export interface RetrievalExclusionOptions {
+  /**
+   * What the question is asking about in time. Defaults to "current".
+   *
+   * `validTo` marks a belief that has been superseded. Excluding it
+   * unconditionally -- which is what this function used to do -- is right for a
+   * current-truth question and makes a historical one unanswerable: the only
+   * memory that could say what we used *before* the switch was invisible to
+   * every caller. So the exclusion is now a function of the query rather than a
+   * global rule, and the default stays the strict one.
+   *
+   * `state` and `shadowOnly` are NOT query-aware and never will be. Quarantined,
+   * forgotten and shadow memories are governance decisions about whether a
+   * memory may be shown at all; no phrasing of a question should reach them.
+   */
+  temporalIntent?: TemporalIntent;
+}
+
+export function excludeFromRetrieval(options: RetrievalExclusionOptions = {}): Prisma.MemoryWhereInput {
+  const base: Prisma.MemoryWhereInput = {
+    state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] },
+    shadowOnly: false,
+  };
+  const intent = options.temporalIntent ?? "current";
+  if (!includesSupersededMemories(intent)) {
+    return { ...base, validTo: null };
+  }
+  return base;
 }
 
 export async function recordMemoryUsed(memoryId: string) {

@@ -1,3 +1,4 @@
+import type { TemporalIntent } from "./temporal-intent";
 // Sentinel — query-aware ranking for scoped memory retrieval.
 //
 // Why this exists: until now `retrieveContext` never saw the query. It
@@ -26,6 +27,9 @@ export interface RankableMemory {
   importanceScore: number | null;
   valueScore: number | null;
   createdAt: Date;
+  /** Set when this memory has been superseded. Only ever populated for
+   *  historical queries — a current-truth query never fetches these rows. */
+  validTo?: Date | null;
 }
 
 export interface RankingFactor {
@@ -46,6 +50,7 @@ export const RANKING_WEIGHTS = {
   rare_term: 2.0,
   tag_match: 1.0,
   value: 0.8,
+  historical_fit: 1.2,
   importance: 0.5,
   confidence: 0.4,
   recency: 0.6,
@@ -83,6 +88,14 @@ export function normalizeToken(token: string): string {
 
 export function tokenize(text: string): string[] {
   return (text.toLowerCase().match(/[a-z0-9][a-z0-9._-]*/g) ?? [])
+    // "." and "-" are kept inside a token so identifiers survive whole
+    // ("icfops.example", "claude-3-opus", "text-embedding-3-small"). The cost
+    // is that the match also swallows the punctuation that ends a sentence, so
+    // "stores embeddings." tokenised to "embeddings." and could never match a
+    // query's "embeddings". Trailing punctuation is therefore trimmed; an
+    // identifier mid-sentence is untouched, and one at the end of a sentence
+    // now tokenises the same way it does anywhere else.
+    .map((token) => token.replace(/[._-]+$/, ""))
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token))
     .map(normalizeToken)
     .filter((token) => !STOP_WORDS.has(token));
@@ -124,6 +137,20 @@ export interface RankOptions {
    *  because there was room. */
   relativeFloor?: number;
   now?: number;
+  /**
+   * What the question asks about in time.
+   *
+   * Only "historical" / "as_of" change anything here, and only then because
+   * the candidate set is different: scope filtering has already let superseded
+   * rows through, and without this they would be ranked *below* the belief
+   * that replaced them by recency and value — so the question "what did we use
+   * before?" would still be answered with the current value. On a current
+   * query no superseded row is present, so this factor is inert rather than
+   * merely unused.
+   */
+  temporalIntent?: TemporalIntent;
+  /** For "as_of": the point the world is being asked about. */
+  asOf?: Date | null;
 }
 
 /**
@@ -134,6 +161,31 @@ export interface RankOptions {
  * value-ordered behaviour rather than be silently re-sorted by a lexical
  * signal computed from nothing.
  */
+/**
+ * How well this memory answers a question about the past.
+ *
+ * Zero for a current-truth question, so ranking behaves exactly as it did.
+ * For a look-back, a superseded belief is what was asked for and the belief
+ * that replaced it is not; for an as-of question, the memory must actually
+ * have been valid at that point.
+ */
+function historicalFit(
+  memory: { validFrom?: Date; validTo?: Date | null; createdAt: Date },
+  options: RankOptions,
+): number {
+  const intent = options.temporalIntent ?? "current";
+  if (intent === "current") return 0;
+  const superseded = memory.validTo != null;
+  if (intent === "historical") return superseded ? 1 : 0;
+
+  // as_of: valid at the stated point, superseded-or-not.
+  const asOf = options.asOf;
+  if (!asOf) return superseded ? 0.5 : 0;
+  const startedBefore = (memory.validFrom ?? memory.createdAt) <= asOf;
+  const stillValid = memory.validTo == null || memory.validTo > asOf;
+  return startedBefore && stillValid ? 1 : 0;
+}
+
 export function rankMemories<T extends RankableMemory>(
   query: string,
   candidates: T[],
@@ -186,6 +238,14 @@ export function rankMemories<T extends RankableMemory>(
       { name: "recency", weight: RANKING_WEIGHTS.recency, score: recencyScore(memory.createdAt, now) },
       { name: "scope_specificity", weight: RANKING_WEIGHTS.scope_specificity, score: scopeSpecificity(memory.scope) },
       { name: "pinned", weight: RANKING_WEIGHTS.pinned, score: memory.pinned ? 1 : 0 },
+      {
+        name: "historical_fit",
+        weight: RANKING_WEIGHTS.historical_fit,
+        score: historicalFit(memory, options),
+        detail: options.temporalIntent && options.temporalIntent !== "current"
+          ? `temporal intent ${options.temporalIntent}`
+          : undefined,
+      },
     ];
 
     return { memory, score: factors.reduce((sum, factor) => sum + factor.weight * factor.score, 0), factors };

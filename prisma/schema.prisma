@@ -239,9 +239,11 @@ model Memory {
   supersededById String?
   changeReason   String?
 
-  preferenceEvidence UserPreferenceEvidence[]
-  retrievals         MemoryRetrieval[]
-  embeddings         MemoryEmbedding[]
+  preferenceEvidence      UserPreferenceEvidence[]
+  retrievals              MemoryRetrieval[]
+  embeddings              MemoryEmbedding[]
+  reconsolidations        MemoryReconsolidation[]  @relation("ReconsolidationSubject")
+  reconsolidationsCausing MemoryReconsolidation[]  @relation("ReconsolidationCause")
 
   @@index([projectId])
   @@index([state])
@@ -249,6 +251,49 @@ model Memory {
   @@index([shadowOnly])
   @@index([validTo])
   @@map("memories")
+}
+
+/// Why a belief changed, what replaced it, and on what evidence.
+///
+/// The bitemporal columns on Memory record *that* a belief was closed
+/// (validTo) and *what* replaced it (supersededById). They cannot record why,
+/// or on what basis, or that a decision was considered and deliberately not
+/// taken. Without that, an archived memory and a wrongly-archived one look
+/// identical, and shadow mode -- recording what Sentinel would do without
+/// doing it -- has nowhere to write.
+///
+/// `evidence` holds named, weighted observations (see
+/// src/lib/neural-engine/contradiction-detection.ts), never model reasoning.
+model MemoryReconsolidation {
+  id              String  @id @default(cuid())
+  memoryId        String
+  relatedMemoryId String?
+
+  /// REINFORCE | REVISE | SUPERSEDE | MERGE | QUARANTINE | ARCHIVE | NO_CHANGE
+  action     String
+  confidence Float  @default(0)
+  reason     String
+  evidence   Json   @default("[]")
+
+  /// A real conflict that no evidence resolves. Both memories stay retrievable
+  /// and the disagreement is recorded rather than silently decided.
+  opensContradiction Boolean @default(false)
+
+  /// Recorded but deliberately not enacted.
+  shadow    Boolean   @default(true)
+  applied   Boolean   @default(false)
+  appliedAt DateTime?
+  origin    String    @default("sweep")
+  createdAt DateTime  @default(now())
+
+  memory        Memory  @relation("ReconsolidationSubject", fields: [memoryId], references: [id], onDelete: Cascade)
+  relatedMemory Memory? @relation("ReconsolidationCause", fields: [relatedMemoryId], references: [id], onDelete: SetNull)
+
+  @@index([memoryId])
+  @@index([relatedMemoryId])
+  @@index([action])
+  @@index([shadow, applied])
+  @@map("memory_reconsolidations")
 }
 
 /// Embeddings for a memory, one row per (provider, model, version).
@@ -276,15 +321,15 @@ model MemoryEmbedding {
 
   /// openai | voyage | ... — kept as a string so adding a provider is config,
   /// not a migration.
-  provider String
-  model    String
+  provider   String
+  model      String
   /// Denormalised from the model so a query can select the right vector column
   /// without a lookup table, and so provenance survives a model being retired.
   dimensions Int
   /// Bumped when the same provider/model is re-run with different preparation
   /// (chunking, prompt prefix, normalisation). Without it a re-embedding is
   /// indistinguishable from the run it replaced.
-  version Int @default(1)
+  version    Int    @default(1)
 
   /// Exactly one of these is set, per `dimensions`. 3072 has no ivfflat/hnsw
   /// index (pgvector caps indexed vectors at 2000 dimensions); it is stored for
