@@ -38,7 +38,7 @@ const has = (name) => args.includes(`--${name}`);
 
 const redirectUri = flag("redirect-uri");
 const name = flag("name", "ChatGPT");
-const userId = flag("user", "cmqyvtod10000jv013gcp11n5");
+const userId = flag("user");
 const scopes = (flag("scopes") ?? ALL_SCOPES.join(" ")).split(/\s+/).filter(Boolean);
 // A public client authenticates with PKCE alone. ChatGPT supports both; a
 // confidential client (the default here) is stronger, so secrets stay the norm.
@@ -50,6 +50,7 @@ function fail(message) {
 }
 
 if (!redirectUri) fail("--redirect-uri is required (copy the exact value ChatGPT shows you).");
+if (!userId) fail("--user is required; Sentinel never guesses or hardcodes an OAuth owner identity.");
 
 let parsed;
 try {

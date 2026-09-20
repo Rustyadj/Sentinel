@@ -1,360 +1,288 @@
 #!/usr/bin/env node
 /**
- * Live production probe for the Sentinel external MCP gateway.
+ * Canonical external-client probe for Sentinel MCP.
  *
- * Exercises the deployed public origin end to end: discovery, the OAuth
- * authorization-code + PKCE exchange, an authenticated MCP session, scope
- * enforcement, a real orchestration round trip, and the negative cases
- * (invalid token, revoked token, replayed code).
- *
- * The one step that cannot be automated is the human consent click at
- * /api/integrations/oauth/authorize, which requires an interactive session.
- * The probe instead mints the authorization code exactly as that route does
- * after requireUser() -- same table, same SHA-256/base64url code hash, same
- * five-minute TTL -- and then drives the real HTTP token endpoint with it, so
- * every server-side check (client auth, PKCE, single-use, expiry) is genuinely
- * exercised against production.
- *
- * Usage: node scripts/mcp-live-probe.mjs [--base https://host] [--user <id>]
+ * Full mode uses only public DCR, OAuth, and MCP interfaces and pauses for the
+ * real human consent screen. It never seeds codes/users through the database,
+ * mocks an execution, or logs credentials. Discovery-only mode performs no
+ * writes and is safe for deployment drift checks.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { createServer } from "node:http";
 
-const args = process.argv.slice(2);
+const argv = process.argv.slice(2);
 const flag = (name, fallback = null) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : fallback;
+  const at = argv.indexOf(`--${name}`);
+  return at >= 0 ? argv[at + 1] : fallback;
 };
+const has = (name) => argv.includes(`--${name}`);
+const base = (flag("base", "http://127.0.0.1:3000") ?? "").replace(/\/+$/, "");
+const callbackPort = Number(flag("callback-port", "43117"));
+const callbackUri = `http://127.0.0.1:${callbackPort}/callback`;
+const discoveryOnly = has("discovery-only");
+const requireNegativeFixtures = has("require-negative-fixtures");
+const preferredAgentId = flag("agent");
+const memoryQuery = flag("memory-query", "Sentinel");
+const taskPrompt = flag("task", "Return a concise Sentinel MCP readiness report. Do not modify files or external systems.");
+const foreignTaskId = flag("foreign-task-id");
+const foreignToken = process.env.MCP_PROBE_FOREIGN_TOKEN;
+const expiredToken = process.env.MCP_PROBE_EXPIRED_TOKEN;
+const revokedToken = process.env.MCP_PROBE_REVOKED_TOKEN;
+const allScopes = ["sentinel.read", "sentinel.memory.read", "sentinel.tasks.read", "sentinel.tasks.write"];
+const resource = `${base}/api/mcp`;
+const localBase = ["localhost", "127.0.0.1", "::1"].includes(new URL(base).hostname);
+const verifier = randomBytes(48).toString("base64url");
+const challenge = createHash("sha256").update(verifier).digest("base64url");
+const state = randomBytes(24).toString("base64url");
+let rpcId = 0;
+let failures = 0;
+let skips = 0;
 
-const BASE = (flag("base", "https://sentinel.srv1427612.hstgr.cloud")).replace(/\/+$/, "");
-const USER_ID = flag("user", "cmqyvtod10000jv013gcp11n5");
-const PG = "sentinel-os-postgres-1";
-const REDIRECT_URI = "https://chatgpt.com/connector_platform_oauth_redirect";
-
-const b64url = (buf) => Buffer.from(buf).toString("base64url");
-const sha256b64url = (value) => createHash("sha256").update(value).digest("base64url");
-const opaque = (bytes = 32) => randomBytes(bytes).toString("base64url");
-
-function sql(statement) {
-  const out = execFileSync(
-    "docker",
-    // -q suppresses the command tag ("INSERT 0 1"), which otherwise lands in
-    // the same stream as a RETURNING value and corrupts every id read back.
-    ["exec", PG, "psql", "-q", "-U", "hermes", "-d", "hermesos", "-tAc", statement],
-    { encoding: "utf8" },
-  );
-  return out.split("\n").map((line) => line.trim()).filter(Boolean)[0] ?? "";
+function report(label, ok, detail = "") {
+  if (!ok) failures += 1;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+}
+function skip(label, reason) {
+  skips += 1;
+  console.log(`SKIP  ${label} — ${reason}`);
+}
+function note(label, detail) {
+  console.log(`NOTE  ${label} — ${detail}`);
 }
 
-let pass = 0;
-let fail = 0;
-const failures = [];
-function check(label, condition, detail = "") {
-  if (condition) {
-    pass += 1;
-    console.log(`  PASS  ${label}${detail ? ` -- ${detail}` : ""}`);
-  } else {
-    fail += 1;
-    failures.push(label);
-    console.log(`  FAIL  ${label}${detail ? ` -- ${detail}` : ""}`);
-  }
-}
-
-async function http(path, init = {}) {
-  const response = await fetch(`${BASE}${path}`, { redirect: "manual", ...init });
+async function request(url, init = {}) {
+  const response = await fetch(url.startsWith("http") ? url : `${base}${url}`, { redirect: "manual", ...init });
   const text = await response.text();
   let body = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (typeof body === "string" && body.includes("data:")) {
+    const data = body.split("\n").find((line) => line.startsWith("data:"));
+    if (data) try { body = JSON.parse(data.slice(5).trim()); } catch { /* preserve raw body */ }
   }
-  return { status: response.status, headers: response.headers, body, text };
+  return { response, body, text };
 }
-
-/** One JSON-RPC call over the deployed MCP endpoint. */
+async function form(url, fields) {
+  return request(url, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields) });
+}
 async function rpc(token, method, params) {
-  const response = await http("/api/mcp", {
+  return request(resource, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-      authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, ...(params ? { params } : {}) }),
+    headers: { authorization: `Bearer ${token}`, accept: "application/json, text/event-stream", "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, ...(params ? { params } : {}) }),
   });
-  // The MCP SDK transport may answer as SSE; unwrap the data frame if so.
-  if (typeof response.body === "string" && response.body.includes("data:")) {
-    const line = response.body.split("\n").find((l) => l.startsWith("data:"));
-    if (line) {
-      try {
-        response.body = JSON.parse(line.slice(5).trim());
-      } catch {
-        /* leave as text */
-      }
+}
+const structured = (result) => result.body?.result?.structuredContent;
+const toolFailed = (result) => result.response.status !== 200 || result.body?.result?.isError === true || Boolean(result.body?.error);
+const callTool = (token, name, args = {}) => rpc(token, "tools/call", { name, arguments: args });
+
+function waitForAuthorizationCallback() {
+  return new Promise((resolve, reject) => {
+    let server;
+    const timeout = setTimeout(() => {
+      server?.close();
+      reject(new Error("Timed out waiting for OAuth callback (5 minutes)."));
+    }, 5 * 60_000);
+    server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", callbackUri);
+      if (url.pathname !== "/callback") return void res.writeHead(404).end("Not found");
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Sentinel authorization received. Return to the terminal.");
+      clearTimeout(timeout);
+      server.close();
+      resolve(url);
+    });
+    server.on("error", reject);
+    server.listen(callbackPort, "127.0.0.1");
+  });
+}
+
+async function discovery() {
+  console.log(`\nSentinel MCP probe: ${base}\n`);
+  const unauthenticated = await request(resource);
+  const challengeHeader = unauthenticated.response.headers.get("www-authenticate") ?? "";
+  const metadataUrl = challengeHeader.match(/resource_metadata="([^"]+)"/)?.[1];
+  report("GET /api/mcp returns 401", unauthenticated.response.status === 401, `HTTP ${unauthenticated.response.status}`);
+  report("WWW-Authenticate points to public resource metadata", Boolean(metadataUrl?.startsWith(base)), metadataUrl ?? "missing");
+  const protectedMetadata = metadataUrl ? await request(metadataUrl) : null;
+  report("protected-resource metadata resolves", protectedMetadata?.response.status === 200);
+  report("protected resource is the exact public MCP URL", protectedMetadata?.body?.resource === resource, protectedMetadata?.body?.resource);
+  const authorizationServer = protectedMetadata?.body?.authorization_servers?.[0];
+  report("authorization server uses the public origin", authorizationServer === base, authorizationServer);
+  const authorizationMetadata = await request(`${base}/.well-known/oauth-authorization-server`);
+  report("authorization-server metadata resolves", authorizationMetadata.response.status === 200);
+  report("DCR is advertised", typeof authorizationMetadata.body?.registration_endpoint === "string");
+  report("PKCE S256 is advertised", authorizationMetadata.body?.code_challenge_methods_supported?.includes("S256"));
+  report("authorization code and refresh grants are advertised", ["authorization_code", "refresh_token"].every((grant) => authorizationMetadata.body?.grant_types_supported?.includes(grant)));
+  report("least-privilege Sentinel scopes are advertised", allScopes.every((scope) => authorizationMetadata.body?.scopes_supported?.includes(scope)));
+  if (localBase) note("public-origin URL inspection", "the probe target is intentionally loopback");
+  else for (const value of [metadataUrl, protectedMetadata?.body?.resource, authorizationServer,
+    authorizationMetadata.body?.authorization_endpoint, authorizationMetadata.body?.token_endpoint,
+    authorizationMetadata.body?.registration_endpoint]) {
+      report("discovery URL contains no internal host or port",
+        typeof value === "string" && !/localhost|0\.0\.0\.0|host\.docker\.internal|:\d{4,5}(?:\/|$)/i.test(value), String(value));
     }
-  }
-  return response;
+  return authorizationMetadata.body;
 }
 
-/** Registers a throwaway ExternalClient and returns its ids/secret. */
-function createClient(name, scopes) {
-  const clientId = `probe-${randomBytes(6).toString("hex")}`;
-  const secret = opaque();
-  const scopeLiteral = `{${scopes.join(",")}}`;
-  const id = sql(
-    `insert into external_clients ("id","clientId","name","clientSecretHash","redirectUris","allowedScopes","enabled","createdByUserId","createdAt","updatedAt")
-     values (gen_random_uuid()::text, '${clientId}', '${name}', '${sha256b64url(secret)}', '{"${REDIRECT_URI}"}', '${scopeLiteral}', true, '${USER_ID}', now(), now())
-     returning id;`,
-  );
-  return { id, clientId, secret, scopes };
+async function assertRejectedToken(token, label) {
+  const result = await rpc(token, "tools/list");
+  report(label, result.response.status === 401, `HTTP ${result.response.status}`);
 }
-
-/** Mints an authorization code exactly as the consent route does post-requireUser(). */
-function issueCode(client, scopes, codeChallenge) {
-  const code = opaque();
-  sql(
-    `insert into oauth_authorization_codes ("id","codeHash","externalClientId","userId","redirectUri","scopes","codeChallenge","codeChallengeMethod","expiresAt","createdAt")
-     values (gen_random_uuid()::text, '${sha256b64url(code)}', '${client.id}', '${USER_ID}', '${REDIRECT_URI}', '{${scopes.join(",")}}', '${codeChallenge}', 'S256', now() + interval '5 minutes', now());`,
-  );
-  return code;
-}
-
-async function exchange(client, code, verifier) {
-  return http("/api/integrations/oauth/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: client.clientId,
-      client_secret: client.secret,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier,
-    }),
-  });
-}
-
-/** Full consent-equivalent handshake: client -> code -> token. */
-async function connect(name, scopes) {
-  const client = createClient(name, scopes);
-  const verifier = opaque();
-  const code = issueCode(client, scopes, sha256b64url(verifier));
-  const token = await exchange(client, code, verifier);
-  return { client, verifier, code, token };
-}
-
-const cleanup = [];
 
 async function main() {
-  console.log(`\nSentinel MCP live probe -- ${BASE}\n`);
+  const metadata = await discovery();
+  if (discoveryOnly) return;
 
-  // ---- 1. Discovery -------------------------------------------------------
-  console.log("1. Discovery");
-  const prm = await http("/.well-known/oauth-protected-resource/mcp");
-  check("protected-resource returns 200 JSON, not sign-in HTML", prm.status === 200 && typeof prm.body === "object");
-  check("resource is the public origin", prm.body?.resource === `${BASE}/api/mcp`, prm.body?.resource);
-  check("no /auth/signin anywhere in the response", !prm.text.includes("/auth/signin"));
-
-  const asm = await http("/.well-known/oauth-authorization-server");
-  check("authorization-server returns 200 JSON", asm.status === 200 && typeof asm.body === "object");
-  check("issuer is the public origin", asm.body?.issuer === BASE, asm.body?.issuer);
-  check(
-    "authorization_endpoint is publicly reachable",
-    asm.body?.authorization_endpoint === `${BASE}/api/integrations/oauth/authorize`,
-  );
-  check("token_endpoint is publicly reachable", asm.body?.token_endpoint === `${BASE}/api/integrations/oauth/token`);
-  check("advertises S256 PKCE", JSON.stringify(asm.body?.code_challenge_methods_supported) === '["S256"]');
-
-  // ---- 2. Unauthenticated MCP --------------------------------------------
-  console.log("\n2. Unauthenticated access");
-  const anon = await http("/api/mcp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  const registration = await request(metadata.registration_endpoint, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "Sentinel canonical MCP probe", redirect_uris: [callbackUri],
+      grant_types: ["authorization_code", "refresh_token"], response_types: ["code"],
+      token_endpoint_auth_method: "none", scope: allScopes.join(" ") }),
   });
-  check("POST /api/mcp is 401, not 307", anon.status === 401, `got ${anon.status}`);
-  const challenge = anon.headers.get("www-authenticate") ?? "";
-  check("401 carries WWW-Authenticate: Bearer", challenge.startsWith("Bearer "));
-  check("challenge points at the public resource metadata", challenge.includes(`${BASE}/.well-known/`), challenge);
+  report("dynamic client registration succeeds", registration.response.status === 201, `HTTP ${registration.response.status}`);
+  const clientId = registration.body?.client_id;
+  if (!clientId) throw new Error("DCR returned no client_id.");
 
-  // ---- 3. Session boundary intact ----------------------------------------
-  console.log("\n3. Session boundary (must NOT be weakened)");
-  const authorize = await http("/api/integrations/oauth/authorize?client_id=x&redirect_uri=https://example.com/cb");
-  check(
-    "consent screen still requires interactive sign-in",
-    authorize.status === 307 || authorize.status === 302,
-    `status ${authorize.status}`,
-  );
-  const page = await http("/dashboard");
-  check("web pages still redirect anonymous visitors to sign-in", page.status === 307 || page.status === 302);
-  const apiPage = await http("/api/agents");
-  check("other API routes still reject anonymous callers", apiPage.status === 401 || apiPage.status === 307);
-
-  // ---- 4. OAuth token exchange -------------------------------------------
-  console.log("\n4. OAuth authorization-code + PKCE exchange");
-  const allScopes = ["sentinel.read", "sentinel.tasks.read", "sentinel.tasks.write", "sentinel.memory.read"];
-  const full = await connect("mcp-live-probe-full", allScopes);
-  cleanup.push(full.client.id);
-  check("token exchange succeeds", full.token.status === 200, JSON.stringify(full.token.body).slice(0, 160));
-  const accessToken = full.token.body?.access_token;
-  check("access_token issued", Boolean(accessToken));
-  check("token_type is Bearer", full.token.body?.token_type === "Bearer");
-  check("granted scopes echoed", (full.token.body?.scope ?? "").split(" ").sort().join() === allScopes.slice().sort().join());
-
-  const replay = await exchange(full.client, full.code, full.verifier);
-  check("replaying the authorization code is rejected", replay.status === 400 && replay.body?.error === "invalid_grant");
-
-  const badPkce = await connect("mcp-live-probe-pkce", allScopes);
-  cleanup.push(badPkce.client.id);
-  const wrongVerifier = await exchange(badPkce.client, badPkce.code, opaque());
-  check("wrong PKCE verifier is rejected", wrongVerifier.status === 400 && wrongVerifier.body?.error === "invalid_grant");
-
-  const wrongSecret = await connect("mcp-live-probe-secret", allScopes);
-  cleanup.push(wrongSecret.client.id);
-  const badSecret = await exchange({ ...wrongSecret.client, secret: opaque() }, wrongSecret.code, wrongSecret.verifier);
-  check("wrong client secret is rejected", badSecret.status === 400 && badSecret.body?.error === "invalid_client");
-
-  if (!accessToken) {
-    console.log("\nCannot continue without an access token.\n");
-    return;
+  const authorize = new URL(metadata.authorization_endpoint);
+  for (const [key, value] of Object.entries({ client_id: clientId, redirect_uri: callbackUri, response_type: "code",
+    code_challenge: challenge, code_challenge_method: "S256", state, scope: allScopes.join(" "), resource })) {
+    authorize.searchParams.set(key, value);
   }
+  const callback = waitForAuthorizationCallback();
+  console.log(`\nACTION REQUIRED: open this URL, sign in as the intended Sentinel owner, review the scopes, and approve:\n\n${authorize}\n`);
+  const callbackUrl = await callback;
+  report("OAuth state round-trips", callbackUrl.searchParams.get("state") === state);
+  if (callbackUrl.searchParams.get("error")) throw new Error(`Authorization failed: ${callbackUrl.searchParams.get("error")}`);
+  const code = callbackUrl.searchParams.get("code");
+  if (!code) throw new Error("OAuth callback returned no code.");
 
-  // ---- 5. MCP session -----------------------------------------------------
-  console.log("\n5. MCP session");
-  const init = await rpc(accessToken, "initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: { name: "sentinel-live-probe", version: "1.0.0" },
-  });
-  check("initialize succeeds", init.status === 200 && Boolean(init.body?.result), JSON.stringify(init.body).slice(0, 200));
-  check("server identifies itself", init.body?.result?.serverInfo?.name === "sentinel", init.body?.result?.serverInfo?.name);
-  check("protocol version negotiated", Boolean(init.body?.result?.protocolVersion), init.body?.result?.protocolVersion);
+  const common = { grant_type: "authorization_code", code, client_id: clientId, redirect_uri: callbackUri, resource };
+  const wrongClient = await form(metadata.token_endpoint, { ...common, client_id: `wrong-${clientId}`, code_verifier: verifier });
+  report("wrong client cannot exchange the code", wrongClient.response.status === 400 && wrongClient.body?.error === "invalid_client");
+  const wrongPkce = await form(metadata.token_endpoint, { ...common, code_verifier: `${verifier}wrong` });
+  report("wrong PKCE verifier is rejected", wrongPkce.response.status === 400 && wrongPkce.body?.error === "invalid_grant");
+  const token = await form(metadata.token_endpoint, { ...common, code_verifier: verifier });
+  report("authorization code exchanges for tokens", token.response.status === 200);
+  const accessToken = token.body?.access_token;
+  const refreshToken = token.body?.refresh_token;
+  if (!accessToken || !refreshToken) throw new Error("Token response did not include access and refresh tokens.");
+  const codeReplay = await form(metadata.token_endpoint, { ...common, code_verifier: verifier });
+  report("authorization code is single-use", codeReplay.response.status === 400 && codeReplay.body?.error === "invalid_grant");
 
-  const list = await rpc(accessToken, "tools/list");
-  const tools = (list.body?.result?.tools ?? []).map((t) => t.name).sort();
-  check("tools/list succeeds", list.status === 200 && tools.length > 0, tools.join(", "));
-  const expected = [
-    "sentinel.agent_status",
-    "sentinel.cancel_task",
-    "sentinel.get_result",
-    "sentinel.get_task",
-    "sentinel.list_agents",
-    "sentinel.memory_search",
-    "sentinel.project_context",
-    "sentinel.route_task",
-  ];
-  check("all 8 orchestration tools exposed at full scope", expected.every((t) => tools.includes(t)), `${tools.length} tools`);
+  const initialized = await rpc(accessToken, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "sentinel-e2e-probe", version: "1.0.0" } });
+  report("MCP initialize succeeds", initialized.response.status === 200 && Boolean(initialized.body?.result?.serverInfo));
+  const listed = await rpc(accessToken, "tools/list");
+  const names = listed.body?.result?.tools?.map((tool) => tool.name) ?? [];
+  const requiredTools = ["sentinel.profile", "sentinel.capabilities", "sentinel.project_context", "sentinel.memory_search",
+    "sentinel.route_task", "sentinel.get_task", "sentinel.get_result", "sentinel.cancel_task"];
+  report("tools/list exposes the control-plane workflow", requiredTools.every((name) => names.includes(name)), `${names.length} tools`);
 
-  // ---- 6. Authorized read -------------------------------------------------
-  console.log("\n6. Authorized read operations");
-  const agents = await rpc(accessToken, "tools/call", { name: "sentinel.list_agents", arguments: {} });
-  check("tools/call sentinel.list_agents succeeds", agents.status === 200 && agents.body?.result?.isError !== true,
-    JSON.stringify(agents.body?.result?.content?.[0]?.text ?? agents.body).slice(0, 160));
+  const profile = await callTool(accessToken, "sentinel.profile");
+  report("stable authenticated Sentinel identity resolves", !toolFailed(profile) && Boolean(structured(profile)?.id), structured(profile)?.id);
+  const capabilities = await callTool(accessToken, "sentinel.capabilities");
+  report("agent capabilities/status resolve from the registry", !toolFailed(capabilities) && (structured(capabilities)?.agents?.length ?? 0) > 0);
+  const discoveredAgentId = preferredAgentId ?? structured(capabilities)?.agents?.find((agent) => agent.executable === true)?.id;
+  report("a registry-discovered agent is ready for execution", typeof discoveredAgentId === "string", discoveredAgentId ?? "none");
+  const context = await callTool(accessToken, "sentinel.project_context");
+  report("permitted project/workspace context resolves", !toolFailed(context));
+  const contextData = structured(context) ?? {};
+  const selectedProjectId = contextData.scope?.projectId ?? contextData.choices?.projects?.[0]?.id ?? null;
+  const selectedWorkspaceId = selectedProjectId ? null : contextData.scope?.workspaceId ?? contextData.choices?.workspaces?.[0]?.id ?? null;
+  report("context returns a usable permitted id", Boolean(selectedProjectId || selectedWorkspaceId));
+  if (!selectedProjectId && !selectedWorkspaceId) throw new Error("The authenticated identity has no usable permitted project/workspace.");
+  const explicitContext = selectedProjectId ? { projectId: selectedProjectId } : { workspaceId: selectedWorkspaceId };
+  if ((contextData.choices?.projects?.length ?? 0) > 1) report("ambiguous context returns choices instead of guessing", !contextData.scope?.projectId);
+  else skip("ambiguous project context", "identity does not currently have multiple permitted projects");
 
-  const memory = await rpc(accessToken, "tools/call", { name: "sentinel.memory_search", arguments: { query: "sentinel" } });
-  check("tools/call sentinel.memory_search succeeds", memory.status === 200 && memory.body?.result?.isError !== true,
-    JSON.stringify(memory.body?.result?.content?.[0]?.text ?? memory.body).slice(0, 160));
+  const forbiddenProject = await callTool(accessToken, "sentinel.project_context", { projectId: `unauthorized-${randomBytes(8).toString("hex")}` });
+  report("unauthorized project id does not leak existence", !toolFailed(forbiddenProject) && !structured(forbiddenProject)?.scope?.projectId);
+  const memory = await callTool(accessToken, "sentinel.memory_search", { query: memoryQuery, ...explicitContext });
+  const memories = structured(memory)?.memories ?? [];
+  report("governed memory search returns useful provenance-bearing rows", !toolFailed(memory) && memories.length > 0 && memories.every((item) => item.source && item.updatedAt), `${memories.length} result(s)`);
+  const unavailable = await callTool(accessToken, "sentinel.route_task", { task: "This must not execute.", ...explicitContext, preferredAgentId: `unavailable-${randomBytes(6).toString("hex")}` });
+  report("unavailable agent fails without fake work", toolFailed(unavailable));
 
-  // ---- 7. Scope enforcement ----------------------------------------------
-  console.log("\n7. Scope enforcement");
-  const readOnly = await connect("mcp-live-probe-readonly", ["sentinel.read"]);
-  cleanup.push(readOnly.client.id);
-  const readOnlyToken = readOnly.token.body?.access_token;
-  check("read-only token issued", Boolean(readOnlyToken));
+  const routed = await callTool(accessToken, "sentinel.route_task", { task: taskPrompt, mode: "async", ...explicitContext,
+    idempotencyKey: `probe-auto-${randomBytes(16).toString("hex")}` });
+  const taskId = structured(routed)?.task?.id;
+  report("route_task creates a real durable execution", !toolFailed(routed) && Boolean(taskId), taskId);
+  if (!taskId) throw new Error("route_task returned no execution id.");
 
-  if (readOnlyToken) {
-    // The server registers the full catalogue for every principal and enforces
-    // scope inside each handler (requireScope), so tools/list is deliberately
-    // NOT filtered. The security contract to verify is therefore that an
-    // under-scoped token cannot *execute* a privileged tool -- listing it is
-    // not a capability. Recorded below rather than asserted as a failure.
-    const scopedList = await rpc(readOnlyToken, "tools/list");
-    const scopedTools = (scopedList.body?.result?.tools ?? []).map((t) => t.name);
-    console.log(`  NOTE  tools/list is unfiltered by design: ${scopedTools.length} tools advertised at read-only scope`);
+  let task;
+  const deadline = Date.now() + 3 * 60_000;
+  while (Date.now() < deadline) {
+    task = await callTool(accessToken, "sentinel.get_task", { taskId });
+    if (["succeeded", "failed", "cancelled"].includes(structured(task)?.task?.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  report("get_task reaches terminal durable state", !toolFailed(task) && ["succeeded", "failed", "cancelled"].includes(structured(task)?.task?.status), structured(task)?.task?.status);
+  const result = await callTool(accessToken, "sentinel.get_result", { taskId });
+  report("get_result returns a validated real result", !toolFailed(result) && structured(result)?.task?.status === "succeeded" && structured(result)?.task?.validation?.passed === true);
 
-    const privileged = [
-      ["sentinel.route_task", { task: "probe must never execute this" }, "sentinel.tasks.write"],
-      ["sentinel.memory_search", { query: "probe" }, "sentinel.memory.read"],
-      ["sentinel.get_task", { taskId: "probe" }, "sentinel.tasks.read"],
-      ["sentinel.cancel_task", { taskId: "probe" }, "sentinel.tasks.write"],
-    ];
-    for (const [name, argumentsValue, needed] of privileged) {
-      const denied = await rpc(readOnlyToken, "tools/call", { name, arguments: argumentsValue });
-      const text = JSON.stringify(denied.body).toLowerCase();
-      check(
-        `${name} is denied without ${needed}`,
-        text.includes("missing required scope") && text.includes(needed),
-        text.slice(0, 120),
-      );
+  const explicitlyRouted = discoveredAgentId ? await callTool(accessToken, "sentinel.route_task", { task: taskPrompt, mode: "async", ...explicitContext,
+    preferredAgentId: discoveredAgentId, idempotencyKey: `probe-explicit-${randomBytes(16).toString("hex")}` }) : null;
+  const explicitTaskId = structured(explicitlyRouted)?.task?.id;
+  report("explicit requested agent is honored without splitting work", Boolean(explicitTaskId && !toolFailed(explicitlyRouted) && structured(explicitlyRouted)?.task?.resolvedAgentId === discoveredAgentId), explicitTaskId);
+  let explicitTask;
+  if (explicitTaskId) {
+    const explicitDeadline = Date.now() + 3 * 60_000;
+    while (Date.now() < explicitDeadline) {
+      explicitTask = await callTool(accessToken, "sentinel.get_task", { taskId: explicitTaskId });
+      if (["succeeded", "failed", "cancelled"].includes(structured(explicitTask)?.task?.status)) break;
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
-
-    const allowed = await rpc(readOnlyToken, "tools/call", { name: "sentinel.list_agents", arguments: {} });
-    check("read-only token can still call its in-scope tool", allowed.status === 200 && allowed.body?.result?.isError !== true);
   }
+  report("explicit selected agent reaches a durable terminal state", Boolean(explicitTask && !toolFailed(explicitTask) && structured(explicitTask)?.task?.status === "succeeded"), structured(explicitTask)?.task?.status);
 
-  // ---- 8. Orchestration round trip ---------------------------------------
-  console.log("\n8. Orchestration round trip");
-  const routed = await rpc(accessToken, "tools/call", {
-    name: "sentinel.route_task",
-    arguments: { task: "Sentinel MCP live probe: report readiness. No side effects required." },
-  });
-  const routedText = routed.body?.result?.content?.[0]?.text ?? "";
-  check("sentinel.route_task returns a response", routed.status === 200, JSON.stringify(routed.body).slice(0, 200));
-  let runId = null;
-  try {
-    const structured = routed.body?.result?.structuredContent ?? JSON.parse(routedText);
-    // route_task answers { task: { id, status, resolvedAgentId, ... } }.
-    runId = structured?.task?.id ?? structured?.runId ?? structured?.run?.id ?? structured?.id ?? null;
-  } catch {
-    const match = String(routedText).match(/\b[a-z0-9]{24,}\b/i);
-    runId = match ? match[0] : null;
+  const cancellable = await callTool(accessToken, "sentinel.route_task", { task: "For this harmless cancellation check, wait 45 seconds before returning a one-line status. Do not modify files or external systems.", mode: "async", ...explicitContext,
+    ...(discoveredAgentId ? { preferredAgentId: discoveredAgentId } : {}), idempotencyKey: `cancel-${randomBytes(16).toString("hex")}` });
+  const cancellableId = structured(cancellable)?.task?.id;
+  const cancelled = cancellableId ? await callTool(accessToken, "sentinel.cancel_task", { taskId: cancellableId }) : null;
+  let cancelledState = structured(cancelled)?.status;
+  if (cancellableId && cancelledState === "cancelling") {
+    const cancellationDeadline = Date.now() + 30_000;
+    while (Date.now() < cancellationDeadline) {
+      const status = await callTool(accessToken, "sentinel.get_task", { taskId: cancellableId });
+      cancelledState = structured(status)?.task?.status;
+      if (cancelledState === "cancelled") break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
   }
-  check("route_task yielded a task id", Boolean(runId), String(runId));
+  report("cancel_task targets and cancels the owned execution", Boolean(cancelled && !toolFailed(cancelled) && cancelledState === "cancelled"), cancellableId);
 
-  if (runId) {
-    const got = await rpc(accessToken, "tools/call", { name: "sentinel.get_task", arguments: { taskId: runId } });
-    check("sentinel.get_task resolves the run", got.status === 200 && got.body?.result?.isError !== true,
-      JSON.stringify(got.body?.result?.content?.[0]?.text ?? "").slice(0, 160));
-    const result = await rpc(accessToken, "tools/call", { name: "sentinel.get_result", arguments: { taskId: runId } });
-    check("sentinel.get_result responds", result.status === 200,
-      JSON.stringify(result.body?.result?.content?.[0]?.text ?? "").slice(0, 160));
-    const cancelled = await rpc(accessToken, "tools/call", { name: "sentinel.cancel_task", arguments: { taskId: runId } });
-    check("sentinel.cancel_task responds (probe run cleaned up)", cancelled.status === 200,
-      JSON.stringify(cancelled.body?.result?.content?.[0]?.text ?? "").slice(0, 160));
-  }
+  const unknownOwner = await callTool(accessToken, "sentinel.get_task", { taskId: foreignTaskId ?? `other-${randomBytes(12).toString("hex")}` });
+  report("unknown/cross-owner execution is indistinguishable from not found", toolFailed(unknownOwner) && JSON.stringify(unknownOwner.body).includes("Task not found"));
+  if (foreignToken) {
+    const crossUser = await callTool(foreignToken, "sentinel.get_task", { taskId });
+    report("second authenticated user cannot read this execution", toolFailed(crossUser));
+  } else skip("authenticated cross-user access", "set MCP_PROBE_FOREIGN_TOKEN for another user");
 
-  // ---- 9. Negative token cases -------------------------------------------
-  console.log("\n9. Invalid and revoked tokens");
-  const garbage = await rpc("not-a-real-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "tools/list");
-  check("garbage bearer token is rejected with 401", garbage.status === 401, `got ${garbage.status}`);
+  const refreshed = await form(metadata.token_endpoint, { grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, resource });
+  const accessV2 = refreshed.body?.access_token;
+  const refreshV2 = refreshed.body?.refresh_token;
+  report("refresh token rotates", refreshed.response.status === 200 && accessV2 && refreshV2 && refreshV2 !== refreshToken);
+  const continued = accessV2 ? await rpc(accessV2, "tools/list") : null;
+  report("MCP continues without another consent", continued?.response.status === 200 && Boolean(continued.body?.result?.tools));
+  const narrowed = await form(metadata.token_endpoint, { grant_type: "refresh_token", refresh_token: refreshV2, client_id: clientId, resource, scope: "sentinel.read" });
+  const readOnlyToken = narrowed.body?.access_token;
+  const insufficient = readOnlyToken ? await callTool(readOnlyToken, "sentinel.route_task", { task: "must not execute", ...explicitContext }) : null;
+  report("insufficient scope blocks write tools", Boolean(insufficient && toolFailed(insufficient) && JSON.stringify(insufficient.body).includes("sentinel.tasks.write")));
+  const replay = await form(metadata.token_endpoint, { grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, resource });
+  report("refresh replay is detected", replay.response.status === 400 && replay.body?.error === "invalid_grant");
+  const invalidatedAfterReplay = accessV2 ? await rpc(accessV2, "tools/list") : null;
+  report("refresh replay prevents continued access for that token family", invalidatedAfterReplay?.response.status === 401, `HTTP ${invalidatedAfterReplay?.response.status ?? "n/a"}`);
 
-  sql(`update oauth_access_tokens set "revokedAt" = now() where "externalClientId" = '${full.client.id}';`);
-  const revoked = await rpc(accessToken, "tools/list");
-  check("revoked token stops working immediately", revoked.status === 401, `got ${revoked.status}`);
-
-  // ---- 10. Audit trail ----------------------------------------------------
-  console.log("\n10. Auditing still records MCP use");
-  const audited = sql(`select count(*) from audit_logs where action = 'mcp.invocation' and "createdAt" > now() - interval '10 minutes';`);
-  check("mcp.invocation audit rows written during this probe", Number(audited) > 0, `${audited} rows`);
-
-  console.log(`\n${fail === 0 ? "ALL LIVE CHECKS PASSED" : `${fail} CHECK(S) FAILED`}  (${pass} passed, ${fail} failed)`);
-  if (fail) console.log(`Failed: ${failures.join("; ")}`);
+  await assertRejectedToken(`invalid-${randomBytes(32).toString("base64url")}`, "invalid access token is rejected");
+  if (expiredToken) await assertRejectedToken(expiredToken, "expired access token is rejected");
+  else skip("expired access token", "set MCP_PROBE_EXPIRED_TOKEN to an expired fixture");
+  if (revokedToken) await assertRejectedToken(revokedToken, "revoked access token is rejected");
+  else skip("revoked access token", "set MCP_PROBE_REVOKED_TOKEN to a revoked fixture");
 }
 
-main()
-  .catch((error) => {
-    console.error("\nProbe aborted:", error);
-    fail += 1;
-  })
-  .finally(() => {
-    for (const id of cleanup) {
-      try {
-        sql(`delete from external_clients where id = '${id}';`);
-      } catch {
-        /* best effort */
-      }
-    }
-    console.log(`\nCleaned up ${cleanup.length} probe client(s).\n`);
-    process.exit(fail === 0 ? 0 : 1);
-  });
+main().catch((error) => {
+  failures += 1;
+  console.error(`FAIL  probe aborted — ${error instanceof Error ? error.message : String(error)}`);
+}).finally(() => {
+  console.log(`\n${failures === 0 ? "PROBE PASSED" : "PROBE FAILED"}: ${failures} failure(s), ${skips} skipped fixture-dependent check(s).\n`);
+  process.exitCode = failures > 0 || (requireNegativeFixtures && skips > 0) ? 1 : 0;
+});
