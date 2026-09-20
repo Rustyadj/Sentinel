@@ -16,6 +16,7 @@ process.env.DATABASE_URL = TEST_DATABASE_URL;
 const TEST_REDIS_URL = process.env.SENTINEL_TEST_REDIS_URL ?? "redis://127.0.0.1:55480";
 process.env.REDIS_URL = TEST_REDIS_URL;
 
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -40,7 +41,7 @@ export default defineConfig({
       REDIS_URL: TEST_REDIS_URL,
     },
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ["./tests/env-isolation.ts", "./src/test/setup.ts"],
     // Snapshots/restores the static agent_runtimes rows (runtime-codex,
     // runtime-claude-code, ...) around the whole run — several suites
     // repoint them at throwaway per-test workspaces, and with no separate
