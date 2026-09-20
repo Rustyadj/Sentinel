@@ -89,6 +89,7 @@ function memoryRow(memory: BenchMemory, now: number) {
     pinned: memory.pinned ?? false,
     archived: memory.archived ?? false,
     projectId: memory.projectId ?? null,
+    workspaceId: memory.workspaceId ?? null,
     state: memory.state ?? "active",
     provenanceClass: memory.provenanceClass ?? "OBSERVED",
     createdAt,

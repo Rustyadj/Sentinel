@@ -50,6 +50,10 @@ export interface BenchMemory {
   source: string;
   tags?: string[];
   projectId?: string | null;
+  /** Memory.workspaceId. Required for scope = "workspace": since migration
+   *  20260920160000 a workspace-scoped memory without one is unresolved, and
+   *  unresolved is unreachable. */
+  workspaceId?: string | null;
   confidence?: number;
   importanceScore?: number;
   valueScore?: number | null;

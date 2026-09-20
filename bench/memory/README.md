@@ -189,3 +189,22 @@ else — which is the one thing this benchmark must never be used for.
 
 Isolation itself is unaffected: scope leakage is 0.000 in every category,
 including these.
+
+## Result after workspace isolation (phase9-workspace-isolation.json)
+
+Every metric identical to Phase 8 — Recall@10 0.933, MRR 0.870, false
+retrieval 0.000, scope leakage 0.000, 142.5 context tokens. That is the
+intended result: Memory gained a real `workspaceId` and workspace-scoped
+retrieval stopped being an owner-isolation approximation, at no measurable
+retrieval cost.
+
+The benchmark cannot show the part that actually changed, because it has one
+user per workspace and therefore no colleague to share with. That guarantee is
+covered by `tests/memory/workspace-isolation.test.ts`, which adds a second
+authorised member of workspace A and asserts they see workspace memory they do
+not own — something the previous implementation could not do — while still
+seeing nothing of workspace B's.
+
+The only fixture change was adding `workspaceId: WS_PRIMARY` to the two
+workspace-scoped memories, because a workspace-scoped row without one is now
+unresolved by definition. No case, query, relevant set or forbidden set moved.

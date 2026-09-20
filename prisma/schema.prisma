@@ -189,8 +189,16 @@ model Memory {
   pinned          Boolean                      @default(false)
   archived        Boolean                      @default(false)
   projectId       String?
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
+
+  /// The workspace this memory belongs to.
+  ///
+  /// Nullable because most memories are not workspace-scoped, and because a
+  /// scope = "workspace" row whose workspace cannot be derived from stored
+  /// data is left unresolved rather than guessed. Retrieval treats unresolved
+  /// as unreachable, never as global.
+  workspaceId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // --- Governed forgetting (additive; see docs/LEARNING_CORE_EVOLUTION.md) ---
   // Net memory value is a configurable/versioned policy computed over these,
@@ -244,8 +252,11 @@ model Memory {
   embeddings              MemoryEmbedding[]
   reconsolidations        MemoryReconsolidation[]  @relation("ReconsolidationSubject")
   reconsolidationsCausing MemoryReconsolidation[]  @relation("ReconsolidationCause")
+  workspace               Workspace?               @relation(fields: [workspaceId], references: [id])
 
   @@index([projectId])
+  @@index([workspaceId])
+  @@index([scope, workspaceId])
   @@index([state])
   @@index([provenanceClass])
   @@index([shadowOnly])
@@ -503,6 +514,7 @@ model Workspace {
   orgCharts         OrgChart[]
   agents            Agent[]
   agentWorkspaces   AgentWorkspace[]
+  memories          Memory[]
 
   @@index([ownerId])
   @@index([organizationId])

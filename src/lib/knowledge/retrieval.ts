@@ -7,6 +7,7 @@ import type { RetrievalContext } from "./types";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
 import { rankMemories, type RankedMemory } from "./retrieval-ranking";
 import { classifyTemporalIntent } from "./temporal-intent";
+import { resolveMemoryScopeAccess, type MemoryScopeAccess } from "./memory-scope";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const SESSION_MEMORY_MAX_TURNS = 20;
@@ -63,7 +64,19 @@ async function retrieveSessionMemory(
   }
 }
 
-export function buildRetrievalFilters(ctx: RetrievalContext): {
+export function buildRetrievalFilters(
+  ctx: RetrievalContext,
+  /**
+   * Workspaces this user is authorised to read memory from, already resolved
+   * against the permission system (see memory-scope.ts). Passed in rather than
+   * looked up here so this stays a pure where-clause builder.
+   *
+   * Omitted means "no workspace access resolved", and the workspace branch
+   * then matches nothing. That is the safe default: a caller that forgets to
+   * resolve access gets less, never more.
+   */
+  access?: MemoryScopeAccess,
+): {
   memory: Prisma.MemoryWhereInput;
   note: Prisma.ObsidianNoteWhereInput;
   decision: Prisma.DecisionWhereInput;
@@ -82,23 +95,40 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
   const temporal = classifyTemporalIntent(ctx.query);
   const notForgottenOrQuarantined = excludeFromRetrieval({ temporalIntent: temporal.intent });
 
+  // Workspace-scoped memory is the one branch that is NOT owner-isolated, and
+  // that is the whole point of giving Memory a workspaceId: a workspace its
+  // members share is meant to be shared. Access comes from the resolved
+  // permission set, never from an id the caller supplied — and an empty set
+  // matches nothing rather than everything, so a caller that failed to resolve
+  // access, or asked about a workspace it may not read, sees no workspace
+  // memory at all.
+  //
+  // `workspaceId: { in: [...] }` also excludes the legacy rows whose workspace
+  // could not be derived (null). Unresolved is unreachable, not global.
+  const workspaceIds = access?.workspaceIds ?? [];
+  const workspaceBranch: Prisma.MemoryWhereInput[] = workspaceIds.length
+    ? [{ scope: "workspace", workspaceId: { in: workspaceIds } }]
+    : [];
+
+  // Project, organization, user and global memory stay owner-isolated, exactly
+  // as before. Widening those is a separate decision with its own blast
+  // radius, and nothing here needs it.
+  const ownedScopes = (scopes: string[], projectId: string | null): Prisma.MemoryWhereInput => ({
+    owner: ctx.userId,
+    scope: { in: scopes },
+    projectId,
+  });
+
   if (ctx.projectId) {
     return {
       memory: includeUserContext
         ? {
-            owner: ctx.userId,
             archived: false,
             ...notForgottenOrQuarantined,
             OR: [
-              { scope: "project", projectId: ctx.projectId },
-              // "workspace" was missing here, so workspace-scoped memories
-              // were unreachable from every surface -- the benchmark scored
-              // workspace recall at 0.000 for exactly this reason. Memory has
-              // no workspaceId column, so a workspace-scoped row is isolated
-              // by `owner` like user/global rows are; it is no broader than
-              // what this branch already returns. Genuine per-workspace
-              // isolation needs a column and is tracked separately.
-              { scope: { in: ["workspace", "organization", "user", "global"] }, projectId: null },
+              { owner: ctx.userId, scope: "project", projectId: ctx.projectId },
+              ownedScopes(["organization", "user", "global"], null),
+              ...workspaceBranch,
             ],
           }
         : {
@@ -115,11 +145,9 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
 
   return {
     memory: {
-      owner: ctx.userId,
       archived: false,
-      projectId: null,
-      scope: { in: ["workspace", "organization", "user", "global"] },
       ...notForgottenOrQuarantined,
+      OR: [ownedScopes(["organization", "user", "global"], null), ...workspaceBranch],
     },
     note: { projectId: null, userId: ctx.userId },
     decision: {
@@ -144,7 +172,11 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   totalItems: number;
 }> {
   const maxItems = Math.min(Math.max(ctx.maxItems ?? 40, 1), 100);
-  const filters = buildRetrievalFilters(ctx);
+  // Resolved before the query, against the permission system — never inferred
+  // from the workspaceId the caller handed us. Knowing a workspace id confers
+  // no access; an unauthorised one narrows the result to nothing.
+  const access = await resolveMemoryScopeAccess(ctx.userId, ctx.workspaceId ?? null);
+  const filters = buildRetrievalFilters(ctx, access);
   // With a query we score a wider pool and let ranking choose; without one we
   // keep the original value-ordered top-N exactly as it was.
   const query = (ctx.query ?? "").trim();

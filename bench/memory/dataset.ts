@@ -136,9 +136,9 @@ export const MEMORIES: BenchMemory[] = [
       content: "MobileOps uses a separate Expo build pipeline from the Sentinel web app.", tags: ["build"] }),
 
   // --- Workspace scope ----------------------------------------------------
-  m({ id: "mem-ws-policy", owner: USER_ALICE, scope: "workspace", projectId: null, ageDays: 33,
+  m({ id: "mem-ws-policy", owner: USER_ALICE, scope: "workspace", projectId: null, workspaceId: WS_PRIMARY, ageDays: 33,
       content: "Every AvraxeAi workspace project must keep production and staging credentials in separate vaults.", tags: ["policy"] }),
-  m({ id: "mem-ws-standup", owner: USER_ALICE, scope: "workspace", projectId: null, ageDays: 32,
+  m({ id: "mem-ws-standup", owner: USER_ALICE, scope: "workspace", projectId: null, workspaceId: WS_PRIMARY, ageDays: 32,
       content: "The AvraxeAi workspace runs an async written standup instead of a daily call.", tags: ["process"] }),
 
   // --- Global -------------------------------------------------------------
