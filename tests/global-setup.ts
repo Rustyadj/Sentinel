@@ -13,7 +13,26 @@ import { db } from "../src/lib/db";
 // restores them once after, independent of which test files touch them.
 const STATIC_RUNTIME_IDS = ["runtime-codex", "runtime-claude-code", "runtime-openclaw", "runtime-hermes-lisa"];
 
+/**
+ * Refuse to run the suite against a database that is not a declared test
+ * database. The snapshot/restore below limits the blast radius of the static
+ * runtime rows, but it cannot protect every other table a test writes to, and
+ * the comment above records what happened when that was the only safeguard.
+ * Set SENTINEL_ALLOW_PROD_TESTS=1 to deliberately override.
+ */
+function assertTestDatabase(): void {
+  if (process.env.SENTINEL_ALLOW_PROD_TESTS === "1") return;
+  const url = process.env.DATABASE_URL ?? "";
+  const database = url.split("/").pop()?.split("?")[0] ?? "";
+  if (/test|vitest/i.test(database)) return;
+  throw new Error(
+    `Refusing to run tests against database "${database || "<unset>"}": the name does not look like a test database. ` +
+      `Point SENTINEL_TEST_DATABASE_URL at a throwaway database, or set SENTINEL_ALLOW_PROD_TESTS=1 to override deliberately.`,
+  );
+}
+
 export default async function setup() {
+  assertTestDatabase();
   const rows = await db.agentRuntime.findMany({
     where: { id: { in: STATIC_RUNTIME_IDS } },
     select: { id: true, workspaceId: true },

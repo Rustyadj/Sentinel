@@ -1,6 +1,21 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
+// Set before anything imports @/lib/db (or tests/global-setup.ts, which vitest
+// loads in *this* process and which therefore never sees `test.env` below).
+// Without this the suite silently resolves DATABASE_URL from .env — the live
+// application database.
+const TEST_DATABASE_URL =
+  process.env.SENTINEL_TEST_DATABASE_URL ??
+  "postgresql://postgres:sentinel_test@127.0.0.1:55439/sentinel_vitest";
+process.env.DATABASE_URL = TEST_DATABASE_URL;
+
+// Likewise a throwaway Redis, never the application's. Several suites enqueue
+// real BullMQ jobs; pointing them at the live instance would inject test jobs
+// into the running learning/orchestration workers.
+const TEST_REDIS_URL = process.env.SENTINEL_TEST_REDIS_URL ?? "redis://127.0.0.1:55480";
+process.env.REDIS_URL = TEST_REDIS_URL;
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -14,6 +29,16 @@ export default defineConfig({
     },
   },
   test: {
+    // Tests run against a dedicated throwaway database, never the live one.
+    // Before this, vitest shared DATABASE_URL with the running app, and
+    // tests/global-setup.ts existed only to paper over the damage that
+    // caused (it documents runtime-codex/runtime-claude-code having been
+    // left pointing at deleted test workspaces *in production*).
+    // Override SENTINEL_TEST_DATABASE_URL to point elsewhere.
+    env: {
+      DATABASE_URL: TEST_DATABASE_URL,
+      REDIS_URL: TEST_REDIS_URL,
+    },
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     // Snapshots/restores the static agent_runtimes rows (runtime-codex,
