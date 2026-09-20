@@ -13,7 +13,7 @@ describe("retired active agents", () => {
   });
 
   it("excludes retired compatibility and persisted runtime lookups", async () => {
-    expect(COMPATIBILITY_RUNTIMES.some((runtime) => runtime.agentId === "openclaw")).toBe(true);
+    expect(COMPATIBILITY_RUNTIMES.some((runtime) => runtime.agentId === "openclaw")).toBe(false);
     expect(COMPATIBILITY_RUNTIMES.some((runtime) => runtime.agentId === "gemini")).toBe(true);
     expect((await listRuntimeViews()).map((runtime) => runtime.agentId)).not.toEqual(expect.arrayContaining(["openclaw", "gemini"]));
     await expect(getRuntimeView("openclaw")).resolves.toBeNull();

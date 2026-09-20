@@ -40,8 +40,6 @@ function envFlag(name: string, fallback = true): boolean {
 
 const NATHAN_RUNTIME = compatibilityRuntime("hermes-nathan2");
 
-const NATHAN_RUNTIME = compatibilityRuntime("hermes-nathan2");
-
 const REGISTRY: VpsAgent[] = [
   {
     id: "hermes-lisa",
