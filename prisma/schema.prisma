@@ -240,6 +240,13 @@ model Memory {
   // never later count as independent evidence confirming it.
   derivedFromExperienceIds String[] @default([])
 
+  /// Executions that later *used* this memory and succeeded or failed, as
+  /// distinct from the ones that produced it. Without it confirmationCount has
+  /// no provenance: a procedure retried three times inside one run would count
+  /// as three independent successes, and "one successful execution must not
+  /// become a universal rule" could not be enforced.
+  supportingExperienceIds String[] @default([])
+
   // Bitemporal history, mirroring KnowledgeObject/KnowledgeEdge/Decision.
   version Int @default(1)
 

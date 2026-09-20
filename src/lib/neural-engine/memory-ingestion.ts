@@ -109,6 +109,16 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
         confidence: verdict.signals.confidence,
         provenanceClass: input.speaker === "user" ? "USER_PROVIDED" : "OBSERVED",
         eventTime: input.eventTime ?? null,
+        // A procedure observed once starts in shadow: recorded, scored and
+        // linked, but excluded from production retrieval until independent
+        // executions justify it. As a row, a workflow that worked once is
+        // indistinguishable from one that has worked twenty times, so if the
+        // first can reach a prompt as established practice then a single lucky
+        // run becomes a universal rule. See procedural-memory.ts.
+        //
+        // A procedure the user states outright is not an observation and is
+        // not held back.
+        shadowOnly: verdict.lane === "PROCEDURAL" && input.speaker !== "user",
       },
     });
     memoryId = memory.id;

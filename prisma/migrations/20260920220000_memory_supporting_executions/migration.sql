@@ -1,0 +1,16 @@
+-- Which executions support a procedure, as distinct from which produced it.
+--
+-- Memory already carries derivedFromExperienceIds ("this memory was inferred
+-- from these runs"), and that set can never count as evidence for the memory
+-- it produced -- that is the self-reinforcing loop reconsolidation-service
+-- forbids. What was missing is the other set: the runs that later used the
+-- procedure and succeeded or failed.
+--
+-- Without it, confirmationCount is a number with no provenance. A procedure
+-- retried three times inside one run would count as three independent
+-- successes, and "one successful execution must not become a universal rule"
+-- could not be enforced, because there was no way to tell three executions
+-- from one execution counted three times.
+--
+-- Additive: one array column with a default, no column altered or dropped.
+ALTER TABLE "memories" ADD COLUMN IF NOT EXISTS "supportingExperienceIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

@@ -265,3 +265,24 @@ facts available from an authoritative source declined rather than copied,
 authorization checked before the gate so a duplicate rejection cannot be used
 to probe another tenant's corpus, and every decision — accepted or rejected —
 recorded with its reasons.
+
+## Result after procedural memory (phase12-procedural.json)
+
+Every metric unchanged again, for the same structural reason as selective
+persistence: the benchmark seeds its corpus directly, so its three procedural
+cases measure whether a procedural memory can be *retrieved*, not whether it
+earned the right to be there. Promotion decides the latter.
+
+What the procedural lane is worth is in `tests/memory/procedural-memory.test.ts`:
+a procedure observed once is held in shadow and is genuinely absent from
+retrieval; it becomes retrievable only after three *distinct* independent
+executions succeed; the execution that derived it can never confirm it; one
+execution reported twice counts once; and a promoted procedure that starts
+failing is demoted back to shadow rather than deleted, keeping the executions
+that disproved it.
+
+A note on the benchmark's own procedural fixtures: they are seeded with
+`shadowOnly` at its default of false, i.e. as already-established procedures.
+That is the right fixture for a retrieval benchmark and it does mean the
+benchmark cannot detect a regression in promotion policy. The unit tests are
+the coverage for that.

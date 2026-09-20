@@ -225,15 +225,29 @@ const FORGET_NET_VALUE_THRESHOLD = -0.3;
  */
 export async function runMemoryDecaySweep(params: { workspaceId?: string; limit?: number } = {}): Promise<DecaySweepResult> {
   const limit = Math.min(Math.max(params.limit ?? 500, 1), 2000);
-  const memories = await db.memory.findMany({
-    where: {
-      pinned: false,
-      archived: false,
-      state: { notIn: ["quarantined", "forgotten", "archived"] },
-      ...(params.workspaceId ? {} : {}),
-    },
-    take: limit,
-  });
+  // Staleness first, and deterministically.
+  //
+  // Without an order this was `take: limit` over an unordered scan, so on any
+  // corpus larger than the limit the sweep processed an arbitrary subset that
+  // could differ between runs: a memory could sit indefinitely stale because it
+  // never happened to fall in the chosen 500, and the same sweep over the same
+  // data could produce different results.
+  //
+  // The order has to be the sweep's own definition of staleness, which is
+  // COALESCE(lastUsefulAt, updatedAt) -- see `lastActive` below. Prisma's
+  // orderBy cannot express a COALESCE across two columns, and neither
+  // single-column approximation is correct: nulls-first puts every
+  // never-useful memory ahead of one that was genuinely useful a year ago,
+  // and nulls-last does the reverse. So the ordering is done in SQL and the
+  // rows are then fetched by id.
+  const ordered = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "memories"
+    WHERE "pinned" = false AND "archived" = false
+      AND "state" NOT IN ('quarantined', 'forgotten', 'archived')
+    ORDER BY COALESCE("lastUsefulAt", "updatedAt") ASC, "id" ASC
+    LIMIT ${limit}
+  `;
+  const memories = await db.memory.findMany({ where: { id: { in: ordered.map((row) => row.id) } } });
 
   const weights = await resolveMemoryValueWeights(params.workspaceId);
   let markedStale = 0;
