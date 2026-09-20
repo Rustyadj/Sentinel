@@ -161,3 +161,26 @@ describe("contentSimilarity", () => {
     expect(similarity).toBeGreaterThanOrEqual(DUPLICATE_SIMILARITY_THRESHOLD);
   });
 });
+
+describe("acknowledgements versus facts that begin with one", () => {
+  const decide = (content: string) => classifyForIngestion({ content, speaker: "user" }).decision;
+
+  it("discards an utterance that is only acknowledgement", () => {
+    for (const content of ["ok", "ok thanks", "ok thanks that worked", "great, it fixed it", "perfect that makes sense"]) {
+      expect(decide(content), content).toBe("DISCARD");
+    }
+  });
+
+  it("keeps a durable fact that merely opens with one", () => {
+    // The distinction the closing `$` buys: "Yes, ..." is an answer, not an
+    // acknowledgement, and a gate that cannot tell them apart throws away the
+    // answers to every yes/no question.
+    for (const content of [
+      "Yes, the port is 3000.",
+      "Yes, the deployment uses docker compose on the VPS.",
+      "Nice, the gateway now passes all 42 probes.",
+    ]) {
+      expect(decide(content), content).not.toBe("DISCARD");
+    }
+  });
+});

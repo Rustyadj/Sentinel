@@ -245,3 +245,23 @@ were deliberately not changed to make it do so. That distinction is proved in
 in exactly the reverse of the order they happened: ordering by `createdAt`
 returns them backwards, and the test asserts both the correct sequence and
 that the rows really are inserted the other way round.
+
+## Result after selective persistence (phase11-selective-persistence.json)
+
+Every metric unchanged: Recall@10 0.933, Precision@10 0.381, MRR 0.870, false
+retrieval 0.000, temporal accuracy 1.000, scope leakage 0.000, 142.5 context
+tokens.
+
+That is expected and worth stating plainly. The benchmark seeds its corpus
+directly, so it measures *retrieval* over a fixed set of memories; selective
+persistence decides what enters the corpus in the first place and cannot move
+a retrieval number by construction. Running it was the point — the change had
+to be shown not to disturb what has already been proved.
+
+What selective persistence is worth is measured in
+`tests/memory/selective-persistence.test.ts` instead: secrets never stored and
+never written to the audit trail either, chatter and duplicates rejected,
+facts available from an authoritative source declined rather than copied,
+authorization checked before the gate so a duplicate rejection cannot be used
+to probe another tenant's corpus, and every decision — accepted or rejected —
+recorded with its reasons.

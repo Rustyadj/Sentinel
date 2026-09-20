@@ -55,6 +55,18 @@ export interface IngestionInput {
   projectId?: string | null;
   /** Content of memories already stored in the same scope, for duplicate detection. */
   existingContents?: string[];
+  /**
+   * Sources Sentinel can query on demand and trust the answer of — a schema
+   * file, a live API, the deployment config, the git history.
+   *
+   * Memory is for what cannot be looked up. Copying a fact out of an
+   * authoritative source into durable memory creates a second copy that ages
+   * independently of the first, and the copy is the one retrieval will find:
+   * it is how a memory system comes to confidently assert last quarter's
+   * pricing. Naming the sources available lets the gate decline to duplicate
+   * them.
+   */
+  authoritativeSources?: string[];
 }
 
 /** Secret-shaped content is never stored, whatever else it looks like. */
@@ -72,7 +84,13 @@ const SECRET_PATTERNS: RegExp[] = [
  * the conversation itself, and the model narrating its own process.
  */
 const TRANSIENT_PATTERNS: RegExp[] = [
-  /^(?:ok(?:ay)?|sure|thanks?|thank you|got it|yes|no|yep|nope|sounds good|perfect|great|nice|cool)\b[\s.!]*$/i,
+  // One or more acknowledgements, optionally closed by a bare confirmation:
+  // "ok", "ok thanks", "ok thanks that worked", "great, it fixed it".
+  //
+  // Both the opening and closing vocabularies are closed sets, and the whole
+  // utterance must be nothing else -- the `$` is what keeps "Yes, the port is
+  // 3000." a durable fact rather than an acknowledgement.
+  /^(?:(?:ok(?:ay)?|sure|thanks?|thank you|got it|yes|no|yep|nope|sounds good|perfect|great|nice|cool)\b[\s,.!]*)+(?:(?:and\s+)?(?:that|it|this)\s+)?(?:worked|works|helped|did it|fixed it|is fine|makes sense)?[\s.!]*$/i,
   /^(?:hi|hello|hey|good (?:morning|afternoon|evening))\b/i,
   /^(?:let me|i'?ll|i am going to|i'?m going to)\s+(?:check|look|see|try|take a look|search|read|run)\b/i,
   /^(?:here'?s|here is) (?:what|the) /i,
@@ -109,6 +127,21 @@ const SEMANTIC_PATTERNS: RegExp[] = [
   /\b(?:is|are|runs on|lives (?:at|in|on)|located|hosted|configured|deployed) (?:at|on|in|with)?\b/i,
   /\b(?:the|our|this) (?:project|repo|service|database|server|api|endpoint|port|domain|branch)\b/i,
   /\b(?:version|port|url|hostname|path|credential-free config)\b/i,
+];
+
+/**
+ * Content that an authoritative source answers better than memory can.
+ *
+ * Each pairs a subject with the kind of source that owns it. The rule only
+ * fires when the caller says that source is actually reachable, because
+ * "look it up instead" is bad advice when there is nowhere to look.
+ */
+const AUTHORITATIVE_SUBJECTS: Array<[RegExp, string]> = [
+  [/\b(?:column|table|schema|migration|index|foreign key)\b/i, "schema"],
+  [/\b(?:env var|environment variable|config value|setting)\b/i, "config"],
+  [/\b(?:current|latest) (?:price|pricing|rate|quota|limit|version|release)\b/i, "api"],
+  [/\b(?:commit|branch|tag|pull request|PR #\d+)\b/i, "git"],
+  [/\b(?:is (?:up|down|healthy|available)|status of|uptime)\b/i, "status"],
 ];
 
 /** Short shelf life — true now, not worth remembering. */
@@ -207,6 +240,19 @@ export function classifyForIngestion(input: IngestionInput): IngestionVerdict {
   if (matchesAny(content, TRANSIENT_PATTERNS)) return discard("Transient conversational filler.");
   if (novelty < 1 - DUPLICATE_SIMILARITY_THRESHOLD) {
     return discard(`Duplicate of existing memory (novelty ${novelty.toFixed(2)}).`);
+  }
+
+  const authoritative = (input.authoritativeSources ?? [])
+    .map((source) => source.toLowerCase());
+  if (authoritative.length > 0) {
+    const covered = AUTHORITATIVE_SUBJECTS.find(
+      ([pattern, owner]) => authoritative.includes(owner) && pattern.test(content),
+    );
+    if (covered) {
+      return discard(
+        `Available on demand from an authoritative source (${covered[1]}); storing it would create a second copy that ages independently.`,
+      );
+    }
   }
 
   // --- Lane classification ----------------------------------------------

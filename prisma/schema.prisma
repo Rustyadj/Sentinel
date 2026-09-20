@@ -256,12 +256,13 @@ model Memory {
   supersededById String?
   changeReason   String?
 
-  preferenceEvidence      UserPreferenceEvidence[]
-  retrievals              MemoryRetrieval[]
-  embeddings              MemoryEmbedding[]
-  reconsolidations        MemoryReconsolidation[]  @relation("ReconsolidationSubject")
-  reconsolidationsCausing MemoryReconsolidation[]  @relation("ReconsolidationCause")
-  workspace               Workspace?               @relation(fields: [workspaceId], references: [id])
+  preferenceEvidence       UserPreferenceEvidence[]
+  retrievals               MemoryRetrieval[]
+  embeddings               MemoryEmbedding[]
+  reconsolidations         MemoryReconsolidation[]   @relation("ReconsolidationSubject")
+  reconsolidationsCausing  MemoryReconsolidation[]   @relation("ReconsolidationCause")
+  workspace                Workspace?                @relation(fields: [workspaceId], references: [id])
+  memoryIngestionDecisions MemoryIngestionDecision[]
 
   @@index([projectId])
   @@index([workspaceId])
@@ -272,6 +273,45 @@ model Memory {
   @@index([eventTime])
   @@index([validTo])
   @@map("memories")
+}
+
+/// What Sentinel was offered, what it decided, and why.
+///
+/// The selective-persistence gate returned a verdict that nothing recorded. A
+/// rejected observation left no trace, so "why was that not remembered?" had
+/// no answer and the rejection rules could never be shown to be too strict or
+/// too loose. A rejection has no memoryId, which is why this cannot be columns
+/// on Memory.
+model MemoryIngestionDecision {
+  id                     String  @id @default(cuid())
+  /// DISCARD | EPISODIC | SEMANTIC | PROCEDURAL | PREFERENCE | ENTITY_RELATION
+  decision               String
+  lane                   String?
+  accepted               Boolean
+  content                String
+  reasons                Json    @default("[]")
+  signals                Json    @default("{}")
+  expectedRetrievalValue Float   @default(0)
+  needsModelReview       Boolean @default(false)
+
+  owner       String
+  projectId   String?
+  workspaceId String?
+  source      String?
+  speaker     String?
+
+  /// Set only when the observation became a memory. SET NULL on delete:
+  /// forgetting a memory must not erase the record that it was accepted.
+  memoryId String?
+  memory   Memory? @relation(fields: [memoryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([owner])
+  @@index([accepted])
+  @@index([memoryId])
+  @@index([createdAt])
+  @@map("memory_ingestion_decisions")
 }
 
 /// Why a belief changed, what replaced it, and on what evidence.
