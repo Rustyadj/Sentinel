@@ -7,7 +7,6 @@ import { getRuntimeView } from "./runtime/service";
 export async function saveAgentModel(agentId: string, user: { id: string; workspaceId: string }, input: { model?: unknown; reasoningEffort?: unknown; reset?: boolean }) {
   const runtime = await getRuntimeView(agentId);
   if (!runtime) throw new Error("Runtime not found");
-  if (runtime.kind === "openclaw") throw new Error("OpenClaw model control is outside this rollout");
   const existing = await db.agent.findUniqueOrThrow({ where: { id: agentId } });
   const defaults = sentinelModelDefault(runtime.kind);
   const model = input.reset ? defaults.runtimeModelId : input.model ?? existing.model;
@@ -25,7 +24,6 @@ export async function saveAgentModel(agentId: string, user: { id: string; worksp
 export async function getAgentModelSettings(agentId: string, userId: string) {
   const runtime = await getRuntimeView(agentId);
   if (!runtime) throw new Error("Runtime not found");
-  if (runtime.kind === "openclaw") throw new Error("OpenClaw model control is outside this rollout");
   const config = await resolveEffectiveAgentModel(agentId, runtime.kind);
   const sessions = await db.agentSession.findMany({ where: { agentId, userId }, orderBy: { startedAt: "desc" }, take: 30 });
   const choices = [...new Set([...MODEL_CHOICES[runtime.kind], config.runtimeModelId])];

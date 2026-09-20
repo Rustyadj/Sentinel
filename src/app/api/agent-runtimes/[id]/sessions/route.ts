@@ -20,7 +20,6 @@ export async function POST(request: Request, { params }: Context) {
     }
     let modelOverride;
     if (body.model !== undefined) {
-      if (runtime.kind === "openclaw") throw new RuntimeError("Model overrides are not enabled for this runtime", "unsupported_override", 422);
       validateModelConfiguration(runtime.kind, body.model, body.reasoningEffort);
       modelOverride = { model: body.model as string, effort: body.reasoningEffort as EffortLevel | null | undefined, authorized: true };
     }

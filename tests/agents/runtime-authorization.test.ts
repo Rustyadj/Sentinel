@@ -39,8 +39,8 @@ describe("runtime permission boundaries", () => {
 
   it("fails closed for unassigned runtimes even when the caller is authenticated", async () => {
     const user = await makeUser();
-    await db.agentRuntime.update({ where: { id: "runtime-openclaw" }, data: { workspaceId: null } });
+    await db.agentRuntime.update({ where: { id: "runtime-hermes-nathan2" }, data: { workspaceId: null } });
     currentUser.requireUser.mockResolvedValue(user);
-    await expect(requireRuntimeAccess("runtime-openclaw", RUNTIME_PERMISSIONS.view)).rejects.toMatchObject({ status: 403 });
+    await expect(requireRuntimeAccess("runtime-hermes-nathan2", RUNTIME_PERMISSIONS.view)).rejects.toMatchObject({ status: 403 });
   });
 });

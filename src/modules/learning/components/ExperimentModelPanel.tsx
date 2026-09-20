@@ -17,7 +17,7 @@ export function ExperimentModelPanel({ candidates }: { candidates: { id: string;
       const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error("Could not load experiment agents");
       return response.json();
-    })).then(([a, r]) => { setAgents(a); setRuntimes(r.runtimes.filter((runtime: Runtime) => runtime.kind !== "openclaw")); })
+    })).then(([a, r]) => { setAgents(a); setRuntimes(r.runtimes); })
       .catch(error => { if (!controller.signal.aborted) setMessage(String(error)); });
     return () => controller.abort();
   }, []);

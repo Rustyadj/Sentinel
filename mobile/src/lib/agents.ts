@@ -16,7 +16,6 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   { id: "hermes-lisa", name: "Hermes Lisa", role: "Chief Orchestrator", avatar: "🌸", color: "#8B5CF6" },
   { id: "claude-code", name: "Claude Code", role: "Senior Engineer", avatar: "💻", color: "#3B82F6" },
   { id: "codex", name: "Codex", role: "Code Specialist", avatar: "⚡", color: "#10B981" },
-  { id: "openclaw", name: "OpenClaw", role: "Research Agent", avatar: "🔍", color: "#F59E0B" },
   { id: "security-red", name: "Red Teamer", role: "Offensive Security", avatar: "🔴", color: "#EF4444" },
   { id: "security-blue", name: "Blue Defender", role: "Defensive Security", avatar: "🔵", color: "#06B6D4" },
 ];

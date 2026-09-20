@@ -124,19 +124,19 @@ describe("release audit — runtime and session API tenant boundaries", () => {
     const owner = await makeUser();
     const otherUser = await makeUser();
     const workspace = await makeWorkspace(owner.id, "Runtime enumeration tenant");
-    await assignRuntime("runtime-openclaw", workspace.id);
+    await assignRuntime("runtime-hermes-nathan2", workspace.id);
     const privateSession = await makeSession({
-      runtimeId: "runtime-openclaw",
-      runtime: "openclaw",
-      agentId: "openclaw",
+      runtimeId: "runtime-hermes-nathan2",
+      runtime: "hermes",
+      agentId: "hermes-nathan2",
       userId: otherUser.id,
       workspaceId: workspace.id,
     });
     auth.requireUser.mockResolvedValue(owner);
 
     const response = await listRuntimeSessions(
-      new Request("http://localhost/api/agent-runtimes/runtime-openclaw/sessions"),
-      { params: Promise.resolve({ id: "runtime-openclaw" }) },
+      new Request("http://localhost/api/agent-runtimes/runtime-hermes-nathan2/sessions"),
+      { params: Promise.resolve({ id: "runtime-hermes-nathan2" }) },
     );
     expect(response.status).toBe(200);
     const body = await response.json();

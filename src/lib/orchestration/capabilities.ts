@@ -17,9 +17,9 @@ export async function getCapabilityWeights(agentId: string): Promise<CapabilityW
 
 /**
  * The implementation worker pool for a room: every agent id whose VPS
- * registry kind is a coding runtime. Hermes (lead) and OpenClaw (personal
- * research assistant) are excluded by kind, not by a hardcoded role flag —
- * configurable later via a per-room override if that becomes necessary.
+ * registry kind is a coding runtime. Hermes (lead) is excluded by kind, not
+ * by a hardcoded role flag — configurable later via a per-room override if
+ * that becomes necessary.
  */
 export function resolveWorkerPool(agentIds: string[]): string[] {
   return agentIds.filter((id) => {

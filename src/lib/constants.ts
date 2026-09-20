@@ -46,20 +46,6 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     memoryScope: "project",
   },
   {
-    id: "openclaw",
-    name: "OpenClaw",
-    role: "Research Agent",
-    avatar: "🔍",
-    color: "#F59E0B",
-    description: "Deep research and analysis",
-    skills: ["research", "analysis", "web-search", "summarization"],
-    model: "claude-opus-4-8",
-    systemPrompt:
-      "You are OpenClaw, the research and analysis agent in Sentinel OS. You perform deep research using web search and other tools, synthesize information from multiple sources, and produce comprehensive, well-cited analyses.",
-    toolPermissions: ["web_search", "web_fetch", "document_read"],
-    memoryScope: "project",
-  },
-  {
     id: "security-red",
     name: "Red Teamer",
     role: "Offensive Security",

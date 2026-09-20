@@ -1,0 +1,124 @@
+# Traefik dynamic configuration for Sentinel.
+#
+# Target on the VPS: /etc/traefik/dynamic/sentinel.yml
+# Apply procedure and verification: docs/MCP_INGRESS.md
+#
+# Changes from the currently-deployed file:
+#   * The OpenClaw legacy router, middleware and service are gone. OpenClaw is
+#     no longer part of the architecture, so nothing should route to :3001.
+#   * The Hermes legacy backend moves 4860 -> 4862 (the verified listener).
+#   * A dedicated, higher-priority router carries the MCP endpoint and its
+#     OAuth discovery documents, so their proxy behaviour can be tuned for a
+#     long-lived streaming JSON-RPC channel without affecting the normal UI.
+#
+# The app container's port 3000 is NOT published to the host by Compose; it is
+# reachable only on the Docker bridge/loopback. Traefik is the single ingress,
+# and TLS terminates here.
+
+http:
+  routers:
+    # ── MCP control plane (external clients, e.g. ChatGPT) ──────────────────
+    # Covers the JSON-RPC endpoint and both discovery documents. An MCP client
+    # fetches /.well-known/oauth-protected-resource/mcp first (it is named in
+    # the 401 WWW-Authenticate challenge), then the authorization server
+    # metadata, then drives the authorize/token pair. All of them must be
+    # publicly reachable over TLS on the same origin as /api/mcp, because the
+    # app derives `issuer` and `resource` from the inbound request origin.
+    sentinel-mcp:
+      rule: >-
+        Host(`sentinel.srv1427612.hstgr.cloud`) &&
+        (PathPrefix(`/api/mcp`) ||
+         PathPrefix(`/.well-known/oauth-authorization-server`) ||
+         PathPrefix(`/.well-known/oauth-protected-resource`) ||
+         PathPrefix(`/api/integrations/oauth`))
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      priority: 200
+      middlewares:
+        - sentinel-forwarded
+        - sentinel-security-headers
+      service: sentinel-mcp
+
+    sentinel-legacy-hermes:
+      rule: "Host(`sentinel.srv1427612.hstgr.cloud`) && PathPrefix(`/legacy/hermes`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      priority: 100
+      middlewares:
+        - sentinel-strip-legacy-hermes
+      service: sentinel-legacy-hermes
+
+    sentinel:
+      rule: "Host(`sentinel.srv1427612.hstgr.cloud`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      priority: 1
+      middlewares:
+        - sentinel-forwarded
+        - sentinel-security-headers
+      service: sentinel
+
+  middlewares:
+    sentinel-strip-legacy-hermes:
+      stripPrefix:
+        prefixes:
+          - "/legacy/hermes"
+
+    # Next.js builds `request.nextUrl.origin` from the forwarded host/proto.
+    # Without these the OAuth documents would advertise an http:// or
+    # localhost issuer and every external MCP client would fail discovery.
+    sentinel-forwarded:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        customResponseHeaders:
+          # A bearer-token JSON-RPC endpoint must never be cached by an
+          # intermediary, and neither must an auth challenge.
+          Cache-Control: "no-store"
+
+    sentinel-security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+  services:
+    sentinel:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3000"
+        healthCheck:
+          # Liveness, deliberately not /api/ready: readiness reports optional
+          # runtime state, and an unauthenticated runtime must not remove the
+          # whole app from the load balancer.
+          path: /api/health
+          interval: 15s
+          timeout: 5s
+
+    sentinel-mcp:
+      loadBalancer:
+        # No response buffering: the MCP streamable-HTTP transport writes
+        # incrementally, and a buffering middleware would hold the whole
+        # response until completion. Traefik does not buffer unless a
+        # `buffering` middleware is attached — none is, deliberately.
+        passHostHeader: true
+        serversTransport: sentinel-mcp-transport
+        servers:
+          - url: "http://127.0.0.1:3000"
+
+  serversTransports:
+    sentinel-mcp-transport:
+      forwardingTimeouts:
+        dialTimeout: "10s"
+        # 0 = no idle-read timeout, so a long agent execution streaming back
+        # through MCP is not cut off mid-run.
+        responseHeaderTimeout: "0s"
+        idleConnTimeout: "300s"

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { AgentModelPanel } from "./AgentModelPanel";
 import { ConfigEditor } from "./AgentsPage";
 
-type RuntimeKind = "hermes" | "openclaw" | "claude-code" | "codex";
+type RuntimeKind = "hermes" | "claude-code" | "codex";
 type ControlStatus = "verified" | "partial" | "unavailable";
 
 interface RuntimeSummary {
@@ -91,7 +91,7 @@ interface Repository { id: string; name: string; branch: string | null; dirty: b
 interface StreamItem { type: string; timestamp?: string; data?: Record<string, unknown> }
 
 const DISPLAY_NAME: Record<RuntimeKind, string> = {
-  hermes: "Hermes", openclaw: "OpenClaw", "claude-code": "Claude Code", codex: "Codex",
+  hermes: "Hermes", "claude-code": "Claude Code", codex: "Codex",
 };
 
 const STATUS_TONE: Record<OperationalState, string> = {
@@ -382,7 +382,7 @@ export function AgentRuntimeConsole() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-[10px] text-amber-400"><ShieldCheck className="h-3.5 w-3.5" /> Production control plane · live VPS acceptance pending</div>
             <h1 className="text-xl font-semibold">Agent runtime console</h1>
-            <p className="mt-1 max-w-2xl text-xs text-[--muted-foreground]">One governed surface for Hermes, OpenClaw, Claude Code, and Codex. No runtime is marked Verified until the host runbook passes.</p>
+            <p className="mt-1 max-w-2xl text-xs text-[--muted-foreground]">One governed surface for Hermes, Claude Code, and Codex. No runtime is marked Verified until the host runbook passes.</p>
           </div>
           <div className="flex gap-5 text-xs"><span><b className="text-lg">{statusCounts.total}</b> runtimes</span><span><b className="text-lg">{statusCounts.coding}</b> coding</span><span className="text-amber-400"><b className="text-lg">{statusCounts.verified}</b> verified</span></div>
         </header>
@@ -434,7 +434,7 @@ export function AgentRuntimeConsole() {
               </section>
 
               <section className="rounded-xl border border-[--border] bg-[#060708] p-4"><div className="mb-3 flex items-center gap-2"><Terminal className="h-3.5 w-3.5 text-emerald-400" /><h3 className="text-xs font-medium">Live runtime events</h3>{prUrl ? <a href={prUrl} target="_blank" rel="noreferrer" className="ml-2 text-[10px] text-indigo-300 hover:text-indigo-200">Open PR <ExternalLink className="ml-1 inline h-3 w-3" /></a> : null}<span className="ml-auto text-[9px] text-[--muted-foreground]">Provider output only · no simulated terminal</span></div><div className="max-h-72 min-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed text-[#8f96aa]">{events.length ? events.map((event, index) => <div key={`${event.timestamp ?? "event"}-${index}`} className="border-b border-white/5 py-1"><span className="mr-2 text-indigo-400">{event.type}</span>{JSON.stringify(event.data ?? {})}</div>) : logs.length ? logs.map((line, index) => <div key={index} className="py-0.5">{line}</div>) : <div className="flex min-h-28 items-center justify-center text-[#414656]"><FileCode2 className="mr-2 h-4 w-4" />Events appear only after a real runtime task starts.</div>}</div></section>
-              {selected.kind !== "openclaw" && <AgentModelPanel key={selected.agentId} agentId={selected.agentId} />}
+              <AgentModelPanel key={selected.agentId} agentId={selected.agentId} />
               {configOpen ? <section className="rounded-xl border border-[--border] bg-[--card] p-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-medium">Runtime configuration</h3><span className="text-[9px] text-[--muted-foreground]">Server-enforced configure permission</span></div><ConfigEditor agentId={selected.agentId} /></section> : null}
             </div>
           ) : <div className="flex min-h-80 items-center justify-center rounded-xl border border-dashed border-[--border] text-xs text-[--muted-foreground]">Select a runtime to inspect its control surface.</div>}

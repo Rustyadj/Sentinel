@@ -315,12 +315,12 @@ describe("Lisa's tool-calling execution loop", () => {
     const { user, room } = await setUpRoom();
     setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", () => "DONE: nothing to do."));
 
-    // "openclaw" is a real registered agent id, but not a member of this
+    // "hermes-nathan2" is a real registered agent id, but not a member of this
     // room's agentIds — the server-side routing guard must not treat it as
     // a valid direct-worker override just because it resolves via getVpsAgent.
-    await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "openclaw, what do you think?", recipientAgentIds: ["openclaw"] });
+    await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "hermes-nathan2, what do you think?", recipientAgentIds: ["hermes-nathan2"] });
 
-    expect(await db.message.count({ where: { chatRoomId: room.id, messageType: "ANSWER", agentId: "openclaw" } })).toBe(0);
+    expect(await db.message.count({ where: { chatRoomId: room.id, messageType: "ANSWER", agentId: "hermes-nathan2" } })).toBe(0);
   });
 
   it("blocks direct-reply execution rather than falling back to the shared working tree when worktree setup fails", async () => {

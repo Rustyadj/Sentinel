@@ -352,7 +352,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
   }
 
   // Runtime routing is authoritative server-side: an agentId registered in
-  // RUNTIME_AGENT_MAP (Hermes, OpenClaw, Claude Code, Codex) always goes
+  // RUNTIME_AGENT_MAP (Hermes, Claude Code, Codex) always goes
   // through its real runtime adapter, regardless of what — if anything — the
   // browser sent as executionMode. This is what keeps a client from ever
   // needing to pick a mode, and stops a persistent-agent request from

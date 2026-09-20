@@ -14,7 +14,7 @@ Configure the protected GitHub `production` environment with `VPS_HOST`, `VPS_US
 - `AUTH_URL`: canonical HTTPS origin.
 - OAuth client IDs/secrets as configured in `src/auth.ts`.
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `OPENROUTER_API_KEY`: server-only provider credentials. Browser-supplied keys are disabled in production unless `ALLOW_BROWSER_PROVIDER_KEYS=true` is deliberately set.
-- `HERMES_ENDPOINT`, `HERMES_CLINT_ENDPOINT`, `OPENCLAW_ENDPOINT`: private agent health endpoints.
+- `HERMES_ENDPOINT`, `HERMES_NATHAN2_ENDPOINT`: private agent health endpoints.
 - `AGENT_CONFIG_DIR`, `AGENT_LOG_DIR`: dedicated mounted paths. Do not mount `/` or a home directory.
 - `SENTINEL_TELEMETRY_URL`, `SENTINEL_TELEMETRY_TOKEN`: optional authenticated VPS telemetry collector. When absent or stale, Mission Control renders host, container, network, and runtime metrics as unavailable or stale rather than substituting sample data.
 

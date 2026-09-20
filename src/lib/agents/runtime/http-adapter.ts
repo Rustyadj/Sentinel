@@ -26,7 +26,7 @@ type Fetcher = typeof fetch;
 
 export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
   constructor(
-    readonly kind: Extract<AgentRuntimeKind, "hermes" | "openclaw">,
+    readonly kind: Extract<AgentRuntimeKind, "hermes">,
     private readonly resolveRuntime: RuntimeResolver,
     private readonly store: RuntimeSessionStore = runtimeSessionStore,
     private readonly runner: RuntimeProcessRunner = nodeRuntimeProcessRunner,
@@ -93,14 +93,11 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
     return health.ready ? { ready: true } : { ready: false, reason: health.failureCode ?? "not_ready" };
   }
 
-  // Route-audited against the live Hermes gateway (OpenAPI at :4860/openapi.json)
-  // and the OpenClaw core server: neither exposes a REST "send message"
-  // endpoint. Hermes's dashboard authenticates chat over a WebSocket (issued
-  // via POST /api/auth/ws-ticket); OpenClaw's core server has no chat
-  // endpoint at all (only /terminal/run, a raw execSync passthrough — not a
-  // safe or semantically correct stand-in for chat). Live chat requires a
-  // WebSocket client against each vendor's undocumented protocol, which is
-  // unimplemented — this is an accurate capability gap, not a placeholder.
+  // Route-audited against the live Hermes gateway (OpenAPI at :4862/openapi.json):
+  // it exposes no REST "send message" endpoint. Hermes's dashboard authenticates
+  // chat over a WebSocket (issued via POST /api/auth/ws-ticket). Live chat requires
+  // a WebSocket client against that undocumented protocol, which is unimplemented
+  // here — this is an accurate capability gap, not a placeholder.
   async startSession(_input: StartSessionInput): Promise<AgentSession> {
     void _input;
     throw new UnsupportedRuntimeCapabilityError("start_session_requires_websocket_client");

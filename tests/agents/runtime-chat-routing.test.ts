@@ -22,7 +22,7 @@ vi.mock("@/lib/db", () => ({
     agentSession: {
       findFirst: vi.fn().mockResolvedValue({
         id: "session-a",
-        runtimeInstanceId: "runtime-openclaw",
+        runtimeInstanceId: "runtime-hermes-lisa",
         userId: "user-a",
         chatRoomId: "room-a",
         status: "ready",
@@ -49,7 +49,11 @@ vi.mock("@/lib/agents/runtime/service", () => ({
   }),
 }));
 vi.mock("@/lib/agents/runtime/store", () => ({
-  runtimeSessionStore: { update: vi.fn(), append: vi.fn(), get: vi.fn() },
+  runtimeSessionStore: {
+    update: vi.fn(),
+    append: vi.fn(),
+    get: vi.fn().mockResolvedValue({ metadata: { actualModel: "deepseek/deepseek-v4-flash" } }),
+  },
 }));
 vi.mock("@/lib/agents/runtime/config", () => ({ asRuntimeInstance: (runtime: unknown) => runtime }));
 
@@ -83,7 +87,7 @@ describe("runtime chat routing", () => {
 
   it("runs persistence, shared session memory, neural capture, and graph notification", async () => {
     const response = await routeRuntimeChat({
-      agentId: "openclaw",
+      agentId: "hermes-lisa",
       userId: "user-a",
       roomId: "room-a",
       userContent: "hello",
@@ -93,7 +97,7 @@ describe("runtime chat routing", () => {
 
     expect(mocks.persistChatExchange).toHaveBeenCalledWith(expect.objectContaining({
       roomId: "room-a",
-      agentId: "openclaw",
+      agentId: "hermes-lisa",
       assistantContent: "native reply",
     }));
     expect(mocks.appendSessionMemory).toHaveBeenCalledWith("room-a", [
@@ -101,7 +105,7 @@ describe("runtime chat routing", () => {
       { role: "agent", content: "native reply" },
     ]);
     expect(mocks.captureAgentTurn).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: "openclaw",
+      agentId: "hermes-lisa",
       roomId: "room-a",
       userContent: "hello",
       fullContent: "native reply",

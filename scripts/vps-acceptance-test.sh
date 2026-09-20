@@ -144,7 +144,7 @@ else
         fi
       fi
 
-      if [[ "$RUN_RUNTIME_RESTART_TESTS" == true && ( "$kind" == hermes || "$kind" == openclaw ) ]]; then
+      if [[ "$RUN_RUNTIME_RESTART_TESTS" == true && "$kind" == hermes ]]; then
         api "/api/agent-runtimes/$runtime_id/restart" -X POST >"$EVIDENCE_DIR/$runtime_id-restart.json" \
           && record PASS "$runtime_id restart" || record FAIL "$runtime_id restart"
       fi

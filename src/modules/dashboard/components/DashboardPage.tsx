@@ -27,7 +27,6 @@ const _D = Date.now();
 const RECENT_ACTIVITY = [
   { agent: "Hermes Lisa", action: "Completed task analysis", time: new Date(_D - 2 * 60 * 1000), color: "#8B5CF6", status: "complete" },
   { agent: "Claude Code", action: "Generated Prisma schema", time: new Date(_D - 8 * 60 * 1000), color: "#3B82F6", status: "complete" },
-  { agent: "OpenClaw", action: "Research: Next.js 16 features", time: new Date(_D - 15 * 60 * 1000), color: "#F59E0B", status: "complete" },
   { agent: "Hermes Lisa", action: "Memory checkpoint saved", time: new Date(_D - 45 * 60 * 1000), color: "#8B5CF6", status: "complete" },
 ];
 

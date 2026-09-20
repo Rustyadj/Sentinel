@@ -15,17 +15,6 @@ const HERMES_CAPABILITIES: RuntimeCapabilities = {
   nativeUi: { supported: true },
 };
 
-const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
-  streaming: true,
-  resume: true,
-  cancel: true,
-  toolEvents: true,
-  fileChangeEvents: false,
-  restart: { supported: true },
-  reload: { supported: true },
-  nativeUi: { supported: true },
-};
-
 export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
   {
     id: "runtime-hermes-lisa",
@@ -74,25 +63,6 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     sentinelControl: "partial",
     nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
     model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
-  },
-  {
-    id: "runtime-openclaw",
-    agentId: "openclaw",
-    kind: "openclaw",
-    transport: "docker",
-    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:18789/readyz",
-    containerName: process.env.OPENCLAW_CONTAINER ?? "openclaw",
-    configPath: `${CONFIG_ROOT}/openclaw`,
-    logSource: { kind: "file", ref: `${LOG_ROOT}/openclaw.log` },
-    workspaceId: process.env.OPENCLAW_WORKSPACE_ID,
-    enabled: true,
-    // Verified: native :18789 gateway adapter (openclaw-gateway.ts). The legacy
-    // /chat stub and /terminal/run passthrough remain deliberately unused.
-    executionVerified: true,
-    capabilities: OPENCLAW_CAPABILITIES,
-    sentinelControl: "partial",
-    nativeUiUrl: process.env.OPENCLAW_NATIVE_URL ?? "/legacy/openclaw",
-    model: process.env.OPENCLAW_MODEL ?? "claude-opus-4-8",
   },
   {
     id: "runtime-claude-code",

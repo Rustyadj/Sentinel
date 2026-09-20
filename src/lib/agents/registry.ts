@@ -9,7 +9,7 @@ import { isActiveAgentId } from "./active";
 import { compatibilityRuntime } from "./runtime/config";
 
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
-export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
+export type AgentKind = "hermes" | "claude-code" | "codex" | "custom";
 
 export interface VpsAgent {
   id: string;
@@ -77,23 +77,6 @@ const REGISTRY: VpsAgent[] = [
     enabled: envFlag("HERMES_NATHAN2_ENABLED", true),
     legacyPath: NATHAN_RUNTIME?.nativeUiUrl ?? null,
     dashboardPort: 4864,
-  },
-  {
-    id: "openclaw",
-    name: "OpenClaw",
-    kind: "openclaw",
-    type: "open-webui-agent",
-    description: "Personal AI assistant — Docker on VPS",
-    model: process.env.OPENCLAW_MODEL ?? "claude-opus-4-8",
-    endpoint: process.env.OPENCLAW_ENDPOINT ?? "http://127.0.0.1:18789/readyz",
-    containerName: process.env.OPENCLAW_CONTAINER ?? "openclaw",
-    configPath: `${AGENT_CONFIG_DIR}/openclaw`,
-    logPath: `${AGENT_LOG_DIR}/openclaw.log`,
-    memoryScope: "user",
-    workspaceId: "personal",
-    enabled: envFlag("OPENCLAW_ENABLED", true),
-    legacyPath: "/legacy/openclaw",
-    dashboardPort: null,
   },
   {
     id: "claude-code",

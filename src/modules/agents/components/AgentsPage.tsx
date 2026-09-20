@@ -440,8 +440,8 @@ function AgentCard({ agent }: { agent: VpsAgent }) {
     } finally { setReloading(false); setTimeout(() => setActionMsg(""), 5000); }
   }
 
-  const kindColor = agent.kind === "hermes" ? "text-violet-400" : agent.kind === "openclaw" ? "text-amber-400" : "text-indigo-400";
-  const kindBg = agent.kind === "hermes" ? "bg-violet-500/10 border-violet-500/20" : agent.kind === "openclaw" ? "bg-amber-500/10 border-amber-500/20" : "bg-indigo-500/10 border-indigo-500/20";
+  const kindColor = agent.kind === "hermes" ? "text-violet-400" : "text-indigo-400";
+  const kindBg = agent.kind === "hermes" ? "bg-violet-500/10 border-violet-500/20" : "bg-indigo-500/10 border-indigo-500/20";
 
   return (
     <div className={cn(
@@ -557,7 +557,7 @@ export function AgentsPage() {
           </div>
           <div>
             <h1 className="text-base font-semibold text-[#e2e5ed]">Agent Registry</h1>
-            <p className="text-xs text-[#5a5f6e]">Hermes and OpenClaw — health, logs, config</p>
+            <p className="text-xs text-[#5a5f6e]">Hermes and coding runtimes — health, logs, config</p>
           </div>
         </div>
         <div className="flex items-center gap-1 text-[10px] text-[#3a3f50]">
@@ -602,7 +602,7 @@ export function AgentsPage() {
             {[
               { label: "Total agents", value: agents.length, icon: Server },
               { label: "Hermes", value: agents.filter((a) => a.kind === "hermes").length, icon: Cpu },
-              { label: "OpenClaw", value: agents.filter((a) => a.kind === "openclaw").length, icon: Bot },
+              { label: "Coding runtimes", value: agents.filter((a) => a.kind === "claude-code" || a.kind === "codex").length, icon: Bot },
             ].map(({ label, value, icon: Icon }) => (
               <div key={label} className="bg-[#0c0e12] border border-[#1e2130] rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
