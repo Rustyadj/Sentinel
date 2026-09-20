@@ -37,11 +37,47 @@ async function waitForRun(runId: string, userId: string, timeoutMs: number) {
   return db.orchestrationRun.findFirstOrThrow({ where: { id: runId, userId } });
 }
 
+async function permittedRunWhere(principal: McpPrincipal, taskId: string) {
+  // Re-resolve from the durable run on every read/action. This proves the run
+  // is owned by this identity and that its project/workspace is still in the
+  // user's permitted set; access revoked after creation therefore fails closed.
+  const resolved = await resolveMcpContext(principal.userId, { contextTaskId: taskId });
+  const scope = resolved.scope;
+  if (!scope.projectId && !scope.workspaceId) return null;
+  return {
+    id: taskId,
+    userId: principal.userId,
+    ...(scope.projectId
+      ? { projectId: scope.projectId }
+      : { projectId: null, workspaceId: scope.workspaceId }),
+  };
+}
+
 export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer(
     { name: "sentinel", version: "1.0.0" },
     { instructions: "Use sentinel.route_task for user work. Sentinel resolves project context and selects one worker; never ask for raw commands, credentials, or internal infrastructure details." },
   );
+
+  server.registerResource("sentinel-context", "sentinel://context", {
+    title: "Permitted Sentinel context",
+    description: "Authenticated, permission-filtered Sentinel projects and workspaces available for explicit tool context.",
+    mimeType: "application/json",
+  }, async (uri) => {
+    requireScope(principal, "sentinel.read");
+    const context = await listPermittedContext(principal.userId);
+    return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(context) }] };
+  });
+
+  server.registerResource("sentinel-capabilities", "sentinel://capabilities", {
+    title: "Sentinel capabilities",
+    description: "Safe current agent capability and availability summary for this authenticated Sentinel user.",
+    mimeType: "application/json",
+  }, async (uri) => {
+    requireScope(principal, "sentinel.read");
+    const agents = await listAgentCapabilityDescriptors(principal.userId);
+    return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify({ agents }) }] };
+  });
 
   server.registerTool("sentinel.list_agents", {
     title: "List Sentinel agents",
@@ -227,7 +263,8 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ taskId }) => {
     requireScope(principal, "sentinel.tasks.read");
-    const run = await db.orchestrationRun.findFirst({ where: { id: taskId, userId: principal.userId }, select: { id: true, status: true, projectId: true, workspaceId: true, resolvedAgentId: true, error: true, queuedAt: true, startedAt: true, completedAt: true, validation: true } });
+    const where = await permittedRunWhere(principal, taskId);
+    const run = where ? await db.orchestrationRun.findFirst({ where, select: { id: true, status: true, projectId: true, workspaceId: true, resolvedAgentId: true, error: true, queuedAt: true, startedAt: true, completedAt: true, validation: true } }) : null;
     if (!run) throw new Error("Task not found.");
     return toolResult({ task: run }, `Task ${run.id} is ${run.status}.`);
   });
@@ -239,7 +276,8 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ taskId }) => {
     requireScope(principal, "sentinel.tasks.read");
-    const run = await db.orchestrationRun.findFirst({ where: { id: taskId, userId: principal.userId }, include: { artifacts: { select: { id: true, title: true, type: true, mimeType: true, storageUrl: true } } } });
+    const where = await permittedRunWhere(principal, taskId);
+    const run = where ? await db.orchestrationRun.findFirst({ where, include: { artifacts: { select: { id: true, title: true, type: true, mimeType: true, storageUrl: true } } } }) : null;
     if (!run) throw new Error("Task not found.");
     return toolResult({ task: { id: run.id, status: run.status, projectId: run.projectId, workspaceId: run.workspaceId, result: run.result, validation: run.validation, error: run.error, artifacts: run.artifacts } }, `Task ${run.id} is ${run.status}.`);
   });
@@ -251,6 +289,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   }, async ({ taskId }) => {
     requireScope(principal, "sentinel.tasks.write");
+    if (!await permittedRunWhere(principal, taskId)) throw new Error("Task cannot be cancelled or was not found.");
     const cancellation = await cancelOrchestrationRun(taskId, principal.userId);
     if (!cancellation) throw new Error("Task cannot be cancelled or was not found.");
     const message = cancellation.status === "cancelled" ? `Cancelled queued task ${taskId}.` : `Cancellation requested for task ${taskId}; Sentinel will confirm once the executing runtime acknowledges it.`;

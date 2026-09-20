@@ -14,6 +14,8 @@ vi.mock("@/lib/orchestration/executor", () => ({
 vi.mock("@/lib/knowledge/memoryAccess", () => ({
   memoryReadWhere: vi.fn(),
 }));
+const contextDeps = vi.hoisted(() => ({ resolveMcpContext: vi.fn(), listPermittedContext: vi.fn() }));
+vi.mock("@/lib/integrations/mcp-context", () => contextDeps);
 const deps = vi.hoisted(() => ({
   findUser: vi.fn(),
   findRun: vi.fn(),
@@ -37,6 +39,12 @@ import { createOrchestrationRun } from "@/lib/orchestration/service";
 beforeEach(() => {
   Object.values(deps).forEach((mock) => mock.mockReset());
   deps.listDescriptors.mockResolvedValue([]);
+  contextDeps.resolveMcpContext.mockReset();
+  contextDeps.listPermittedContext.mockReset();
+  contextDeps.resolveMcpContext.mockResolvedValue({
+    scope: { projectId: null, projectName: null, workspaceId: null, workspaceName: null, resolution: "none" },
+    reason: "not permitted",
+  });
 });
 
 describe("Sentinel MCP server", () => {
@@ -70,6 +78,8 @@ describe("Sentinel MCP server", () => {
     expect(route?.inputSchema).toMatchObject({
       properties: expect.objectContaining({ projectId: expect.anything(), workspaceId: expect.anything(), contextTaskId: expect.anything() }),
     });
+    const { resources } = await client.listResources();
+    expect(resources.map((resource) => resource.uri).sort()).toEqual(["sentinel://capabilities", "sentinel://context"]);
     await Promise.all([client.close(), server.close()]);
   });
 
@@ -96,6 +106,23 @@ describe("Sentinel MCP server", () => {
     const insufficient = await client.callTool({ name: "sentinel.cancel_task", arguments: { taskId: "run-1" } });
     expect(insufficient.isError).toBe(true);
     expect(JSON.stringify(insufficient)).toContain("sentinel.tasks.write");
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("revalidates durable execution scope before returning task data", async () => {
+    contextDeps.resolveMcpContext.mockResolvedValue({
+      scope: { projectId: "project-1", projectName: "Sentinel", workspaceId: "workspace-1", workspaceName: "Main", resolution: "context" },
+      reason: "owned and permitted",
+    });
+    deps.findRun.mockResolvedValue({ id: "run-1", status: "succeeded", projectId: "project-1", workspaceId: "workspace-1", validation: { passed: true } });
+    const server = createSentinelMcpServer({ userId: "user-1", clientId: "chatgpt", externalClientId: "client-1", scopes: ["sentinel.tasks.read"] });
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    const result = await client.callTool({ name: "sentinel.get_task", arguments: { taskId: "run-1" } });
+    expect(result.isError).not.toBe(true);
+    expect(contextDeps.resolveMcpContext).toHaveBeenCalledWith("user-1", { contextTaskId: "run-1" });
+    expect(deps.findRun).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "run-1", userId: "user-1", projectId: "project-1" } }));
     await Promise.all([client.close(), server.close()]);
   });
 
