@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { WorkerModelConfig } from "@/lib/agents/model-policy";
+import type { ReportedTokenUsage } from "@/lib/agents/pricing";
 import { CliRuntimeAdapter } from "./cli-adapter";
 import type { RuntimeCapabilities, RuntimeEvent, RuntimeInstance } from "./types";
 
@@ -62,6 +63,7 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
         const lines = (await readFile(path, "utf8")).split("\n");
         let owned = false;
         let reported: Record<string, unknown> | null = null;
+        let tokenUsage: ReportedTokenUsage | null = null;
         for (const line of lines) {
           try {
             const frame = JSON.parse(line);
@@ -69,9 +71,12 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
             if (owned && frame.type === "turn_context" && typeof frame.payload.model === "string") {
               reported = { actualModel: frame.payload.model, actualEffort: frame.payload.effort ?? null, actualModelSource: "runtime_turn_context" };
             }
+            if (owned && frame.type === "event_msg" && frame.payload?.type === "token_count") {
+              tokenUsage = codexTokenUsage(frame.payload.info?.total_token_usage) ?? tokenUsage;
+            }
           } catch { /* An incomplete last JSONL frame is not provenance. */ }
         }
-        if (reported) return reported;
+        if (reported) return { ...reported, ...(tokenUsage ? { tokenUsage } : {}) };
       }
     }
     return null;
@@ -89,4 +94,26 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
       reload: { supported: false, reason: "runtime_does_not_expose_capability" },
     };
   }
+}
+
+function tokenCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function codexTokenUsage(value: unknown): ReportedTokenUsage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const usage = value as Record<string, unknown>;
+  const totalInputTokens = tokenCount(usage.input_tokens);
+  const cachedInputTokens = tokenCount(usage.cached_input_tokens);
+  const cacheWrite5mInputTokens = tokenCount(usage.cache_write_input_tokens);
+  const outputTokens = tokenCount(usage.output_tokens);
+  if ([totalInputTokens, cachedInputTokens, cacheWrite5mInputTokens, outputTokens].some((count) => count === null)) return null;
+  if (cachedInputTokens! + cacheWrite5mInputTokens! > totalInputTokens!) return null;
+  return {
+    inputTokens: totalInputTokens! - cachedInputTokens! - cacheWrite5mInputTokens!,
+    outputTokens: outputTokens!,
+    cachedInputTokens: cachedInputTokens!,
+    cacheWrite5mInputTokens: cacheWrite5mInputTokens!,
+    cacheWrite1hInputTokens: 0,
+  };
 }

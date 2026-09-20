@@ -6,6 +6,7 @@
 
 import { resolveWorkerModel } from "./model-policy";
 import { isActiveAgentId } from "./active";
+import { compatibilityRuntime } from "./runtime/config";
 
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
 export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
@@ -37,6 +38,10 @@ function envFlag(name: string, fallback = true): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+const NATHAN_RUNTIME = compatibilityRuntime("hermes-nathan2");
+
+const NATHAN_RUNTIME = compatibilityRuntime("hermes-nathan2");
+
 const REGISTRY: VpsAgent[] = [
   {
     id: "hermes-lisa",
@@ -62,14 +67,15 @@ const REGISTRY: VpsAgent[] = [
     type: "claude-code-agent",
     description: "Secondary Hermes assistant",
     model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
-    endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4864",
+    // Runtime dispatch owns this endpoint; the registry is only a legacy/UI view.
+    endpoint: NATHAN_RUNTIME?.endpoint ?? "",
     containerName: process.env.HERMES_NATHAN2_CONTAINER ?? "hermes-nathan2",
     configPath: `${AGENT_CONFIG_DIR}/hermes-nathan2`,
     logPath: `${AGENT_LOG_DIR}/hermes-nathan2.log`,
     memoryScope: "org",
     workspaceId: "default",
     enabled: envFlag("HERMES_NATHAN2_ENABLED", true),
-    legacyPath: null,
+    legacyPath: NATHAN_RUNTIME?.nativeUiUrl ?? null,
     dashboardPort: 4864,
   },
   {

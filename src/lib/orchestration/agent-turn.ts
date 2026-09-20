@@ -6,6 +6,7 @@ import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { getRuntimeAdapter } from "@/lib/agents/runtime/service";
 import { ModelUnavailableError, type EffortLevel } from "@/lib/agents/model-policy";
 import { emitCollaborationEvent } from "./event-bus";
+import { evaluateMissionDirective, MISSION_DIRECTIVE_PROMPT } from "./mission-bridge";
 import { postCollaborationMessage } from "./messages";
 import { ensureTaskWorktree } from "./worktree-manager";
 
@@ -94,11 +95,26 @@ export async function runDirectAgentReply(roomId: string, agentId: string, userI
     // the catch below — execution is blocked, not silently retried against
     // the shared primary tree.
     const workingDirectory = await ensureDirectWorkingDirectory(roomId, agentId);
-    const reply = await runAgentTurn({ roomId, agentId, userId, prompt: userContent, workingDirectory });
+    // Only Hermes Lisa (the lead) is ever given the launchImplementationMission
+    // vocabulary — a direct @mention reply from claude-code/codex etc. is
+    // never eligible to bridge back into Lisa's orchestration loop.
+    const isLead = getVpsAgent(agentId)?.kind === "hermes";
+    const prompt = isLead ? `${MISSION_DIRECTIVE_PROMPT}\n\nUser: ${userContent}` : userContent;
+    const reply = await runAgentTurn({ roomId, agentId, userId, prompt, workingDirectory });
     await postCollaborationMessage({
       chatRoomId: roomId, senderAgentId: agentId, recipientAgentIds: ["user"], type: "ANSWER", content: reply.slice(0, 4_000),
     });
     await emitCollaborationEvent(roomId, "agent.finished", { agentId, direct: true });
+    // The chat -> multi-worker orchestration bridge: parses Lisa's reply for
+    // an explicit launchImplementationMission directive and, only if
+    // Guardian allows it, launches runLisaLoop. Ordinary conversation (no
+    // directive) leaves this a no-op. Failures here must never make the
+    // chat reply itself look like it failed — the reply already posted.
+    if (isLead) {
+      await evaluateMissionDirective({ roomId, userId, leadAgentId: agentId, replyText: reply }).catch((error) => {
+        console.error("[agent-turn] mission-bridge evaluation failed", error);
+      });
+    }
   } catch (error) {
     await emitCollaborationEvent(roomId, "agent.failed", { agentId, error: error instanceof Error ? error.message : "Unknown error" });
   }

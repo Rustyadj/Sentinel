@@ -8,6 +8,18 @@
 const SENSITIVE_KEY_PATTERN =
   /(password|passwd|secret|token|api[_-]?key|auth(orization)?|credential|private[_-]?key|access[_-]?key|session[_-]?id|cookie|ssn|ein|ccnum|card[_-]?number|cvv)/i;
 
+// Catches secret-shaped `KEY=value` / `KEY: "value"` assignments embedded in
+// free-form text (e.g. a coding worker's stdout from `cat .env`), which
+// SENSITIVE_KEY_PATTERN alone can't reach since it only matches object keys,
+// not text content. Keyword list intentionally mirrors
+// agents/runtime/sensitive-config.ts's SENSITIVE_CONFIG_PATTERN so this stays
+// exactly as conservative as the config-UI gate — only redacts the value,
+// never the surrounding line, to keep legitimate code/log context readable.
+const SENSITIVE_ASSIGNMENT_PATTERN =
+  /((?:password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential)s?\s*[:=]\s*)("?)([^\s"'\n]{4,})(\2)/gi;
+const PRIVATE_KEY_BLOCK_PATTERN =
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g;
+
 export interface RedactionResult {
   payload: Record<string, unknown>;
   redactedKeys: string[];
@@ -25,8 +37,11 @@ function redactValue(
     return redactObject(value as Record<string, unknown>, path, redactedKeys);
   }
   if (typeof value === "string") {
-    const sanitized = value.replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [REDACTED]")
-      .replace(/\b(?:sk|ghp|github_pat|xoxb|xoxp)[-_][A-Za-z0-9_-]{16,}/g, "[REDACTED]");
+    const sanitized = value
+      .replace(PRIVATE_KEY_BLOCK_PATTERN, "[REDACTED PRIVATE KEY]")
+      .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [REDACTED]")
+      .replace(/\b(?:sk|ghp|github_pat|xoxb|xoxp)[-_][A-Za-z0-9_-]{16,}/g, "[REDACTED]")
+      .replace(SENSITIVE_ASSIGNMENT_PATTERN, "$1$2[REDACTED]$4");
     if (sanitized !== value) redactedKeys.push(path);
     return sanitized;
   }

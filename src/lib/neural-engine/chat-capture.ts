@@ -21,6 +21,7 @@ import { autoEvaluateExperience } from "./evaluator";
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { recordReflection } from "@/lib/learning/reflection";
 import { analyzeIntent } from "@/lib/learning/intent";
+import { calculateModelCost, type ReportedTokenUsage } from "@/lib/agents/pricing";
 
 export interface AgentTurnCapture {
   agentId: string;
@@ -32,6 +33,7 @@ export interface AgentTurnCapture {
   /** The assistant's full response text (empty ⇒ the turn produced nothing). */
   fullContent: string;
   knowledgeUsedIds?: string[];
+  tokenUsage?: ReportedTokenUsage;
 }
 
 /**
@@ -55,6 +57,7 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
 
     const succeeded = input.fullContent.trim().length > 0;
     const intent = analyzeIntent(input.userContent);
+    const cost = calculateModelCost(input.model, input.tokenUsage);
 
     const experience = await startExperience({
       agentId: input.agentId,
@@ -76,6 +79,7 @@ export async function captureAgentTurn(input: AgentTurnCapture): Promise<string 
         errors: succeeded ? [] : ["empty_response"],
       },
       latencyMs,
+      ...(cost === null ? {} : { cost }),
     });
 
     await autoEvaluateExperience(experience.id);

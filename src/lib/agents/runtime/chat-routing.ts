@@ -10,6 +10,7 @@ import { getRuntimeAdapter } from "./service";
 import { RuntimeError } from "./errors";
 import { runtimeSessionStore } from "./store";
 import type { RuntimeEvent } from "./types";
+import { isReportedTokenUsage } from "@/lib/agents/pricing";
 
 export type ChatExecutionMode = "model_chat" | "persistent_agent_runtime" | "coding_runtime" | "workflow_runtime";
 
@@ -151,6 +152,7 @@ export async function routeRuntimeChat(input: {
             startedAtMs: requestStartedAtMs,
             fullContent,
             knowledgeUsedIds: [],
+            ...(isReportedTokenUsage(provenance.tokenUsage) ? { tokenUsage: provenance.tokenUsage } : {}),
           });
           enqueue({ type: "knowledge_update", roomId: room.id });
         }

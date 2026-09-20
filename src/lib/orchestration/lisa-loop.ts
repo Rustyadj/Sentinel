@@ -5,6 +5,7 @@ import { MUTUALLY_EXCLUSIVE_CONCURRENT, wouldSplitAcrossCodingRuntimes } from "@
 import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
 import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
+import { evaluateGuardian } from "@/lib/learning/guardian";
 import { AGENT_CAPABILITY_KEYS, type AgentCapabilityKey } from "./capabilities";
 import { buildAgentContext } from "./context-builder";
 import { emitCollaborationEvent } from "./event-bus";
@@ -27,8 +28,11 @@ export type LisaTool =
   | "mergeTask" | "getTaskStatus" | "getAgentStatus" | "getWorktreeStatus"
   | "getArtifact" | "getRoutingHistory" | "DONE" | "ASK_USER";
 
-interface Directive {
-  tool: LisaTool;
+// `tool` is kept as `string`, not `LisaTool`, so this same parser and shape
+// can be reused outside the loop's own dispatch (see mission-bridge.ts) for
+// directives that aren't part of LisaTool's closed menu at all.
+export interface Directive {
+  tool: string;
   args: Record<string, unknown>;
 }
 
@@ -57,7 +61,14 @@ const TOOL_MENU = `Available tools — respond with ONLY a fenced json code bloc
 - DONE {summary} -> claim the objective is complete; Sentinel verifies completion criteria (all tasks resolved, no pending approvals/disagreements/locks) before accepting — if rejected, keep going
 - ASK_USER {question} -> pause and ask the human operator; the room resumes this objective on their next message`;
 
-function parseDirectives(text: string): Directive[] | null {
+/**
+ * Parses Sentinel's one structured directive grammar: a fenced ```json code
+ * block (or, failing that, a bare top-level array) containing
+ * `{"tool": "...", "args": {...}}` objects. Shared by the in-loop dispatcher
+ * (TOOL_MENU above) and mission-bridge.ts's pre-loop directive — there is
+ * deliberately only one directive/tool-call protocol in this codebase.
+ */
+export function parseDirectives(text: string): Directive[] | null {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i);
   const bare = fenced ? null : text.match(/(\[[\s\S]*\])/);
   const source = fenced?.[1] ?? bare?.[1];
@@ -69,7 +80,7 @@ function parseDirectives(text: string): Directive[] | null {
       .map((item: unknown): Directive | null => {
         const record = (item ?? {}) as Record<string, unknown>;
         if (typeof record.tool !== "string") return null;
-        return { tool: record.tool as LisaTool, args: (record.args ?? {}) as Record<string, unknown> };
+        return { tool: record.tool, args: (record.args ?? {}) as Record<string, unknown> };
       })
       .filter((d): d is Directive => d !== null);
   } catch {
@@ -135,6 +146,90 @@ async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolea
   return false;
 }
 
+/**
+ * Guardian gate for coding-runtime work (claude-code/codex), run in
+ * addition to — never instead of — `ensureApprovalCleared` above. Per
+ * guardian.ts's own doc comment, Guardian "does not replace the canonical
+ * risk gate, it observes/reviews/blocks around it," so both must pass
+ * before a coding worker is dispatched (defense in depth): approval-gate's
+ * regex risk model doesn't know about prompt-hierarchy-override,
+ * credential-exfiltration, path-traversal, or fake-approval-marker attempts,
+ * which are exactly the categories Guardian hard-blocks on deterministically.
+ *
+ * Guardian's tier/verdict system doesn't map onto a single "recheck with
+ * humanAuthorized=true" loop for every tier, so this branches by mode:
+ *  - Tier 3 ("block" pending human authorization): re-evaluated fresh each
+ *    attempt, with `humanAuthorized` derived from whether an ApprovalRequest
+ *    for this task has already been approved — same pattern already used
+ *    for candidate promotion elsewhere (learning-service.ts, skill-versions.ts).
+ *  - Tier 2 ("hold", mode "review"): evaluateGuardian never turns this into
+ *    "allow" on its own, by design — only a human calling
+ *    resolveGuardianReview() on that *specific* GuardianDecision does. So the
+ *    decision id is stashed on the ApprovalRequest's payload, and the
+ *    approvals PATCH route resolves it when a human decides that request
+ *    (see src/app/api/approvals/[id]/route.ts). Re-evaluating Guardian fresh
+ *    here would just mint another "hold" forever.
+ *  - Hard blocks (deterministic patterns, self-elevation, denied model
+ *    review): terminal — the task is marked BLOCKED and does not get an
+ *    approval path, matching guardian.ts's "BLOCK: Guardian can prevent
+ *    execution... without waiting for a human" mode.
+ */
+async function ensureGuardianCleared(ctx: LoopContext, task: Task, runtimeKind: string): Promise<boolean> {
+  const ownerAgentId = task.agentId!;
+  const actionText = `${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`;
+
+  const existingRequests = await db.approvalRequest.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "desc" } });
+  const guardianRequest = existingRequests.find((request) => {
+    const payload = request.payload as Record<string, unknown> | null;
+    return typeof payload?.guardianDecisionId === "string";
+  });
+
+  if (guardianRequest) {
+    if (guardianRequest.status === "pending") return false;
+    if (guardianRequest.status === "rejected") return false; // already surfaced as BLOCKED when it was resolved
+    const payload = guardianRequest.payload as Record<string, unknown>;
+    const decision = await db.guardianDecision.findUnique({ where: { id: payload.guardianDecisionId as string } });
+    if (decision?.guardianDecision === "allow") return true;
+    return false;
+  }
+
+  const priorApproval = existingRequests.find((request) => request.status === "approved");
+  const risk = assessRisk(actionText);
+  const evaluation = await evaluateGuardian({
+    action: actionText,
+    actor: ownerAgentId,
+    runtime: runtimeKind,
+    riskLevel: risk,
+    humanAuthorized: Boolean(priorApproval),
+  });
+
+  if (evaluation.verdict === "allow") return true;
+
+  const needsTier3Approval = evaluation.decision.reasonCodes.includes("tier3_requires_human_approval");
+  if (needsTier3Approval || evaluation.mode === "review") {
+    const approval = await requestApprovalGate({
+      chatRoomId: ctx.roomId, taskId: task.id, requesterAgentId: ownerAgentId,
+      title: `Guardian review required: ${task.title}`, description: task.description ?? undefined, command: task.title,
+      extraPayload: evaluation.mode === "review" ? { guardianDecisionId: evaluation.decision.id } : {},
+    });
+    await setTaskStatus(task.id, "APPROVAL_REQUIRED");
+    await emitCollaborationEvent(ctx.roomId, "approval.requested", {
+      taskId: task.id, approvalId: approval.id, risk, guardianTier: evaluation.tier, guardianDecisionId: evaluation.decision.id,
+    });
+    return false;
+  }
+
+  await setTaskStatus(task.id, "BLOCKED");
+  await emitCollaborationEvent(ctx.roomId, "task.blocked", {
+    taskId: task.id, reason: "guardian_block", reasonCodes: evaluation.decision.reasonCodes, guardianDecisionId: evaluation.decision.id,
+  });
+  await postCollaborationMessage({
+    chatRoomId: ctx.roomId, senderAgentId: ownerAgentId, recipientAgentIds: ["user"], type: "BLOCKER", taskId: task.id,
+    content: `Guardian blocked this task before execution (${evaluation.decision.reasonCodes.join(", ")}). It will not run.`,
+  });
+  return false;
+}
+
 async function reviewCycleCount(chatRoomId: string, taskId: string): Promise<number> {
   return db.collaborationEvent.count({ where: { chatRoomId, type: "task.review_failed", payload: { path: ["taskId"], equals: taskId } } });
 }
@@ -142,10 +237,27 @@ async function reviewCycleCount(chatRoomId: string, taskId: string): Promise<num
 async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<string, unknown>> {
   const ownerAgentId = task.agentId!;
   await assertTaskNotSplitAcrossCodingRuntimes(task.id, ownerAgentId);
+  const runtime = await resolveAgentRuntime(ownerAgentId);
+
+  // Guardian gate — additive to ensureApprovalCleared above, not a
+  // replacement (see ensureGuardianCleared's doc comment). Checked before
+  // the task ever flips to RUNNING so a block/hold never sits in the event
+  // stream as a started-then-reverted task.
+  if (runtime.kind === "claude-code" || runtime.kind === "codex") {
+    if (!(await ensureGuardianCleared(ctx, task, runtime.kind))) {
+      const latest = await db.task.findUnique({ where: { id: task.id } });
+      return {
+        status: latest?.status ?? "BLOCKED",
+        message: latest?.status === "APPROVAL_REQUIRED"
+          ? "Awaiting human approval before Guardian will allow this task to run. Move on to other work or ASK_USER if you're blocked on it."
+          : "Guardian blocked this task before execution — it will not run.",
+      };
+    }
+  }
+
   await setTaskStatus(task.id, "RUNNING");
   await emitCollaborationEvent(ctx.roomId, "task.started", { taskId: task.id, agentId: ownerAgentId });
 
-  const runtime = await resolveAgentRuntime(ownerAgentId);
   const worktree = await ensureTaskWorktree({ runtime, taskId: task.id, agentId: ownerAgentId }).catch((error) => {
     console.error("[lisa-loop] worktree setup failed, falling back to shared working directory", error);
     return null;

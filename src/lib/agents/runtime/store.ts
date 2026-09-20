@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { redactPayload } from "@/lib/learning/redaction";
 import type {
   AgentRuntimeKind,
   AgentSession,
@@ -98,12 +99,22 @@ export class PrismaRuntimeSessionStore implements RuntimeSessionStore {
   }
 
   async append(sessionId: string, type: RuntimeEventType, data: Record<string, unknown> = {}) {
+    // Worker stdout/stderr lands here verbatim from the CLI/runtime adapters
+    // (cli-adapter.ts, hermes.ts, openclaw.ts) — this is the single choke
+    // point all of them funnel through, so it's also the one place that can
+    // catch a coding worker `cat`-ing a real credential before it's
+    // persisted, streamed back to the caller (the returned RuntimeEvent
+    // below is what chat-routing.ts accumulates into chat transcripts), or
+    // later picked up as Learning Core evidence. Redact-then-persist, not
+    // block: this is executed output, not a config value a human is about
+    // to submit (that's sensitive-config.ts's job).
+    const { payload: sanitizedData } = redactPayload(data);
     const event = await db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`runtime-event:${sessionId}`}))`;
       const aggregate = await tx.agentRuntimeEvent.aggregate({ where: { sessionId }, _max: { sequence: true } });
       const sequence = (aggregate._max.sequence ?? 0) + 1;
       const row = await tx.agentRuntimeEvent.create({
-        data: { sessionId, sequence, type, payload: data as Prisma.InputJsonValue },
+        data: { sessionId, sequence, type, payload: sanitizedData as Prisma.InputJsonValue },
       });
       await tx.agentSession.update({ where: { id: sessionId }, data: { lastActivityAt: row.occurredAt } });
       return {
@@ -114,17 +125,17 @@ export class PrismaRuntimeSessionStore implements RuntimeSessionStore {
         data: jsonRecord(row.payload),
       } as RuntimeEvent;
     });
-    const eventValue = data.event && typeof data.event === "object" ? data.event as Record<string, unknown> : data;
+    const eventValue = sanitizedData.event && typeof sanitizedData.event === "object" ? sanitizedData.event as Record<string, unknown> : sanitizedData;
     const failedTool = type === "tool_completed" && (eventValue.is_error === true || eventValue.success === false || eventValue.ok === false || eventValue.error);
-    const exitCode = data.exitCode ?? eventValue.exitCode;
+    const exitCode = sanitizedData.exitCode ?? eventValue.exitCode;
     const failedCommand = type === "command_completed" && typeof exitCode === "number" && exitCode !== 0;
-    const testCommand = /(?:\btest\b|vitest|jest|pytest|playwright|cargo test|go test)/i.test(String(data.command ?? eventValue.command ?? ""));
+    const testCommand = /(?:\btest\b|vitest|jest|pytest|playwright|cargo test|go test)/i.test(String(sanitizedData.command ?? eventValue.command ?? ""));
     if (failedTool || failedCommand || type === "error") {
       const session = await this.get(sessionId);
       if (session) {
         const { recordProductionFailure } = await import("@/lib/learning/production-failures");
         const signal = failedTool ? "failed_tool_call" : failedCommand ? (testCommand ? "failing_test" : "failed_tool_call") : session.parentSessionId ? "delegation_failure" : null;
-        if (signal) await recordProductionFailure(signal, { sourceId: sessionId, workspaceId: session.workspaceId, userId: session.userId, context: data }).catch(() => undefined);
+        if (signal) await recordProductionFailure(signal, { sourceId: sessionId, workspaceId: session.workspaceId, userId: session.userId, context: sanitizedData }).catch(() => undefined);
       }
     }
     return event;
