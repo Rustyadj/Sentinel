@@ -30,6 +30,7 @@ import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
 import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay";
 import { runCoOccurrenceSelfImprovement } from "@/lib/learning/self-improvement";
 import { runConsolidationCycle } from "@/lib/neural-engine/consolidation-service";
+import { QUEUE_PREFIX } from "@/lib/queue-prefix";
 
 const requestedConcurrency = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
 const CONCURRENCY = Number.isFinite(requestedConcurrency)
@@ -93,6 +94,8 @@ function startWorker() {
 
   const worker = new Worker<JobPayload>(LEARNING_QUEUE_NAME, processJobWithDeadline, {
     connection: { url: redisUrl, maxRetriesPerRequest: null },
+    // Must match the queue side, or this worker silently consumes nothing.
+    prefix: QUEUE_PREFIX,
     concurrency: CONCURRENCY,
     autorun: true,
   });

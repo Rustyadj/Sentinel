@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { retrieveContextWithProvenance } from "@/lib/neural-engine/knowledge-bridge";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { resolveScope } from "./scope";
 import { selectWorker } from "./worker-router";
@@ -42,13 +41,18 @@ export async function createOrchestrationRun(input: RouteTaskInput, caller: { us
     requiredCapabilities: taskCapabilities(input),
     candidates: eligible.map((runtime) => runtime.agentId),
   });
-  const context = await retrieveContextWithProvenance({
-    userId: caller.userId,
-    projectId: scope.projectId ?? undefined,
-    workspaceId: scope.workspaceId ?? undefined,
-    maxItems: 12,
-    scopePolicy: "user-context",
-  });
+  // Memory is deliberately NOT retrieved here any more.
+  //
+  // It used to be: this function retrieved memory at queue time, wrote
+  // memory_retrievals rows for it, and stored the object ids on the run — and
+  // then executor.ts dispatched the bare task string, so a worker never saw
+  // any of it. Those phantom retrievals were still resolved against the run's
+  // outcome, teaching the system that memories no agent had read were useful.
+  //
+  // Retrieval now happens in the executor, immediately before dispatch: the
+  // run id exists by then (so retrievals are attributable to it), the context
+  // is fresh rather than however stale the queue was, and — critically — what
+  // is recorded as injected is what was actually put in the prompt.
   const existing = input.idempotencyKey && caller.externalClientId
     ? await db.orchestrationRun.findUnique({ where: { externalClientId_idempotencyKey: { externalClientId: caller.externalClientId, idempotencyKey: input.idempotencyKey } } })
     : null;
@@ -64,8 +68,8 @@ export async function createOrchestrationRun(input: RouteTaskInput, caller: { us
       requestedAgentId: input.preferredAgentId ?? null,
       resolvedAgentId: routing.agentId,
       routingDecision: json({ ...routing, requiredCapabilities: taskCapabilities(input) }),
-      contextSnapshot: json({ scope, memoryCount: context.memories.length, noteCount: context.notes.length, decisionCount: context.decisions.length }),
-      retrievedObjectIds: context.knowledgeObjectIds,
+      contextSnapshot: json({ scope }),
+      retrievedObjectIds: [],
     },
   });
   await writeAuditLog({
@@ -75,7 +79,7 @@ export async function createOrchestrationRun(input: RouteTaskInput, caller: { us
     action: "orchestration.run.queued",
     entityType: "orchestration_run",
     entityId: run.id,
-    details: { resolvedAgentId: routing.agentId, requiredCapabilities: taskCapabilities(input), retrievedObjectCount: context.knowledgeObjectIds.length },
+    details: { resolvedAgentId: routing.agentId, requiredCapabilities: taskCapabilities(input) },
   });
   await enqueueOrchestrationRun(run.id);
   return run;

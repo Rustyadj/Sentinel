@@ -1,4 +1,5 @@
 import { Queue, type ConnectionOptions, type JobsOptions } from "bullmq";
+import { QUEUE_PREFIX } from "@/lib/queue-prefix";
 
 export const ORCHESTRATION_QUEUE_NAME = "orchestration";
 export const ORCHESTRATION_JOB_OPTIONS = {
@@ -19,7 +20,7 @@ let queue: Queue<OrchestrationJobPayload> | null = null;
 export function getOrchestrationQueue(): Queue<OrchestrationJobPayload> | null {
   const options = connection();
   if (!options) return null;
-  if (!queue) queue = new Queue<OrchestrationJobPayload>(ORCHESTRATION_QUEUE_NAME, { connection: options });
+  if (!queue) queue = new Queue<OrchestrationJobPayload>(ORCHESTRATION_QUEUE_NAME, { connection: options, prefix: QUEUE_PREFIX });
   return queue;
 }
 

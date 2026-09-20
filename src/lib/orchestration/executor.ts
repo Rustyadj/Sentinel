@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/workspaces/audit";
 import { assertConcurrentDispatchAllowed } from "@/lib/agents/coexecution-policy";
 import { acquireExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
 import { UnrecoverableError } from "bullmq";
+import { buildMemoryContext, withMemoryContext } from "@/lib/neural-engine/memory-context";
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
@@ -60,13 +61,48 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
     agentId: runtime.agentId, adapterType: runtime.kind, model: runtime.model, status: "running",
     routingReason: json(run.routingDecision), input: json({ task, projectId: run.projectId, workspaceId: run.workspaceId }), startedAt: new Date(),
   } });
+  // Sentinel is the memory authority: every runtime — Hermes Nathan2, Hermes
+  // Lisa, Claude Code, Codex, Gemini — receives memory through this one
+  // governed path, and none of them retrieves memory for itself. Scope and
+  // authorization are inherited wholesale from buildRetrievalFilters; nothing
+  // is widened here.
+  const memory = await buildMemoryContext(
+    {
+      userId: run.userId,
+      // The task text is the query: memory is ranked against the work being
+      // done, not against the clock.
+      query: task,
+      projectId: run.projectId ?? undefined,
+      workspaceId: run.workspaceId ?? undefined,
+      maxItems: 12,
+      scopePolicy: "user-context",
+    },
+    { consumer: "orchestration", runId: run.id },
+  );
+  const prompt = withMemoryContext(task, memory.context);
+  await db.orchestrationRun.update({
+    where: { id: run.id },
+    data: {
+      retrievedObjectIds: memory.knowledgeObjectIds,
+      contextSnapshot: json({
+        ...(run.contextSnapshot as Record<string, unknown> | null ?? {}),
+        memory: {
+          retrieved: memory.retrievedMemoryIds.length,
+          injected: memory.context.injected.length,
+          dropped: memory.context.droppedMemoryIds.length,
+          contextTokens: memory.context.estimatedTokens,
+        },
+      }),
+    },
+  }).catch(() => undefined);
+
   const session = await adapter.startSession({ runtimeId: runtime.id, userId: run.userId, workspaceId: run.workspaceId ?? undefined, projectId: run.projectId ?? undefined });
   sessionId = session.id;
   await db.executionAttempt.update({ where: { id: attempt.id }, data: { runtimeJobId: session.id } });
   const started = Date.now();
   let text = "";
   try {
-    for await (const event of adapter.send({ sessionId: session.id, userId: run.userId, prompt: task })) {
+    for await (const event of adapter.send({ sessionId: session.id, userId: run.userId, prompt })) {
       if (ownershipLost) throw new Error("Execution ownership lease was lost; adapter cancellation was requested.");
       if (event.type === "assistant_delta" && typeof event.data.text === "string") text += event.data.text;
       const current = await db.orchestrationRun.findUnique({ where: { id: run.id }, select: { status: true } });

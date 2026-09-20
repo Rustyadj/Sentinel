@@ -13,9 +13,19 @@
 
 import { db } from "@/lib/db";
 import { provenanceTrustFor } from "./memory-provenance";
+import type { InjectedMemoryRecord } from "./context-assembly";
 
 export interface RecordRetrievalInput {
+  /** Every memory the retrieval surfaced, injected or not. */
   memoryIds: string[];
+  /**
+   * The subset that actually reached the worker's prompt, with the position
+   * and token cost it occupied. Anything retrieved but absent from this list
+   * is recorded as retrieved-only and can never count as outcome evidence.
+   */
+  injected?: InjectedMemoryRecord[];
+  /** Which surface consumed this — "chat", "orchestration", "mcp". */
+  consumer?: string | null;
   userId?: string | null;
   projectId?: string | null;
   workspaceId?: string | null;
@@ -35,17 +45,26 @@ export async function recordMemoryRetrieval(input: RecordRetrievalInput): Promis
   const memoryIds = [...new Set(input.memoryIds.filter(Boolean))];
   if (!memoryIds.length) return 0;
 
+  const injectedById = new Map((input.injected ?? []).map((record) => [record.memoryId, record]));
+
   try {
     await db.$transaction([
       db.memoryRetrieval.createMany({
-        data: memoryIds.map((memoryId) => ({
-          memoryId,
-          userId: input.userId ?? null,
-          projectId: input.projectId ?? null,
-          workspaceId: input.workspaceId ?? null,
-          experienceId: input.experienceId ?? null,
-          runId: input.runId ?? null,
-        })),
+        data: memoryIds.map((memoryId) => {
+          const injection = injectedById.get(memoryId);
+          return {
+            memoryId,
+            injected: injection !== undefined,
+            injectedRank: injection?.rank ?? null,
+            contextTokens: injection?.estimatedTokens ?? null,
+            consumer: input.consumer ?? null,
+            userId: input.userId ?? null,
+            projectId: input.projectId ?? null,
+            workspaceId: input.workspaceId ?? null,
+            experienceId: input.experienceId ?? null,
+            runId: input.runId ?? null,
+          };
+        }),
       }),
       db.memory.updateMany({
         where: { id: { in: memoryIds } },

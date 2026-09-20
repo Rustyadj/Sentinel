@@ -149,6 +149,8 @@ export async function retrieveContextWithProvenance(ctx: RetrievalContext) {
   // turns carrying synthetic `session:<roomId>:<n>` ids with scope "session".
   // Those have no Memory row, and letting one into the batch would fail the
   // foreign key and roll back every retrieval record in the transaction.
+  if (ctx.skipUsageRecording) return { ...result, knowledgeObjectIds };
+
   await recordMemoryRetrieval({
     memoryIds: result.memories.filter((m) => m.scope !== "session").map((m) => m.id),
     userId,

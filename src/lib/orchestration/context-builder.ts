@@ -1,10 +1,17 @@
 import { db } from "@/lib/db";
+import { buildMemoryContext } from "@/lib/neural-engine/memory-context";
 
 export interface BuildContextInput {
   chatRoomId: string;
   taskId: string;
   agentId: string;
   extra?: string;
+  /**
+   * Required for memory injection. Memory is scoped per user, so without it
+   * there is no safe scope to retrieve in and the prompt is built exactly as
+   * it was before — task context only, no memory.
+   */
+  userId?: string;
 }
 
 /**
@@ -16,7 +23,7 @@ export interface BuildContextInput {
  */
 export async function buildAgentContext(input: BuildContextInput): Promise<string> {
   const [room, task, decisions, messages] = await Promise.all([
-    db.chatRoom.findUnique({ where: { id: input.chatRoomId }, select: { name: true, objective: true } }),
+    db.chatRoom.findUnique({ where: { id: input.chatRoomId }, select: { name: true, objective: true, projectId: true } }),
     db.task.findUnique({ where: { id: input.taskId } }),
     db.decision.findMany({ where: { chatRoomId: input.chatRoomId }, orderBy: { createdAt: "desc" }, take: 5 }),
     db.message.findMany({
@@ -50,5 +57,27 @@ export async function buildAgentContext(input: BuildContextInput): Promise<strin
     }
   }
   if (input.extra) lines.push(input.extra);
-  return lines.join("\n");
+
+  // Task execution used to receive no Sentinel memory whatsoever: this builder
+  // assembled room/task/dependency/decision context and stopped there, so an
+  // agent working a task knew nothing the system had learned. Memory goes
+  // through the same governed path every other surface uses — it is never
+  // retrieved directly here.
+  const body = lines.join("\n");
+  if (!input.userId) return body;
+
+  const memory = await buildMemoryContext(
+    {
+      userId: input.userId,
+      // Without a query, retrieval returns whatever is newest and
+      // highest-valued in scope rather than what this task is about.
+      query: [task?.title, task?.description, room?.objective].filter(Boolean).join(" "),
+      projectId: room?.projectId ?? undefined,
+      roomId: input.chatRoomId,
+      maxItems: 12,
+      scopePolicy: "user-context",
+    },
+    { consumer: "task" },
+  );
+  return memory.context.text ? `${memory.context.text}\n\n---\n\n${body}` : body;
 }

@@ -264,6 +264,21 @@ model MemoryRetrieval {
   workspaceId  String?
   retrievedAt  DateTime @default(now())
 
+  /// Whether this retrieved memory was actually placed in the prompt the
+  /// worker received. Retrieval and injection are separate facts: memory was
+  /// being retrieved for orchestration runs and recorded here long before
+  /// anything injected it, and resolving those never-seen retrievals against
+  /// run outcomes fed the usefulness signal fabricated evidence. Only an
+  /// injected retrieval may count as evidence about a memory.
+  injected      Boolean @default(false)
+  /// 0-based position in the assembled context block. Null when not injected.
+  injectedRank  Int?
+  /// Estimated prompt tokens this memory occupied. Null when not injected.
+  contextTokens Int?
+  /// What consumed it — "chat", "orchestration", "mcp", ... Lets retrieval
+  /// quality be measured per surface instead of in aggregate.
+  consumer      String?
+
   /// Set when the surrounding experience is evaluated. Null while unresolved.
   outcomeStatus        String?
   outcomeScore         Float?
@@ -276,6 +291,8 @@ model MemoryRetrieval {
   @@index([memoryId])
   @@index([experienceId])
   @@index([resolvedAt])
+  @@index([injected])
+  @@index([consumer])
   @@map("memory_retrievals")
 }
 

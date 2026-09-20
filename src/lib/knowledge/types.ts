@@ -184,6 +184,16 @@ export interface ExtractionCandidate {
 }
 
 export interface RetrievalContext {
+  /**
+   * What the caller is actually asking about.
+   *
+   * Optional for backward compatibility: callers that omit it get the previous
+   * value-ordered top-N. Callers that supply it get memories ranked against
+   * the question instead of against the clock. Every agent-facing surface
+   * should supply it -- without it, retrieval cannot tell a relevant memory
+   * from a recent one.
+   */
+  query?: string;
   projectId?: string;
   workspaceId?: string;
   organizationId?: string;
@@ -193,4 +203,14 @@ export interface RetrievalContext {
   scopePolicy?: "isolated" | "user-context";
   /** Links this retrieval to the work it fed, so usefulness can be resolved later. */
   experienceId?: string;
+  /**
+   * Suppress the usage write inside retrieveContextWithProvenance.
+   *
+   * Set by buildMemoryContext (src/lib/neural-engine/memory-context.ts), which
+   * records usage itself *after* assembling the prompt block — that is the only
+   * point at which it is known which memories were actually injected rather
+   * than merely retrieved. Without this the batch would be written twice, once
+   * with every `injected` flag wrongly false.
+   */
+  skipUsageRecording?: boolean;
 }
