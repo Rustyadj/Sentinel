@@ -155,3 +155,37 @@ the supersession link the same way it would when a correction is ingested.
 - Irrelevant retrieval rose 0.559 → 0.589. The tokenizer fix matches more
   tokens, so more low-scoring memories clear the coverage floor. It is a real
   cost and is not being written off.
+
+### Diagnosis: the `project_isolation` and `stale_information` recall misses
+
+Investigated after Phase 8. Neither is a ranking, filter, scope-resolution or
+retrieval-budget fault, and neither is a leak.
+
+`isolation-project` asks "What is the deployment domain for this project?" and
+expects `mem-sentinel-port`. The Sentinel project corpus contains no memory
+stating a deployment domain; the only domain in the world is MobileOps's, and
+that is precisely what the case forbids. Returning nothing is the *correct*
+behaviour for this corpus, and the case scores it as a miss. The fixture is
+asking for an answer the corpus does not contain.
+
+`stale-port` asks "Give me the current deployment configuration" and expects
+the same memory. Measured token overlap between query and memory:
+
+    "What is the deployment domain for this project?"  -> []
+    "Give me the current deployment configuration."    -> []
+
+Zero, both times, against `[sentinel, application, container, listen, port,
+3000, behind, traefik, deploy, port]`. Ranking drops a memory that matches no
+query term, by design — that rule is what took irrelevant retrieval from 0.957
+to 0.559. "deployment configuration" and "listens on port 3000 behind Traefik"
+are the same subject to a reader and share no token.
+
+This is the lexical-only ceiling, and it is the strongest evidence in the
+benchmark for semantic retrieval: both cases are exactly what an embedding
+would catch. They are left failing rather than fixed. Adding "domain" or
+"configuration" to the port memory's tags, or a synonym list built from these
+two queries, would raise the score without improving retrieval for anything
+else — which is the one thing this benchmark must never be used for.
+
+Isolation itself is unaffected: scope leakage is 0.000 in every category,
+including these.
