@@ -70,3 +70,30 @@ does compute a relevance signal, is not on this path.
 Scope isolation is the one genuinely strong result: zero leakage across
 project, workspace and user boundaries, and quarantined memories never
 reached a prompt.
+
+## Result after query-aware retrieval (commit 2b4d3a9)
+
+`results/phase7-query-aware.json`, same 32 cases:
+
+| Metric | Baseline | Query-aware |
+|---|---|---|
+| Recall@5 | 0.189 | **0.867** |
+| Recall@10 | 0.200 | **0.900** |
+| Precision@10 | 0.032 | **0.363** |
+| MRR | 0.126 | **0.837** |
+| Irrelevant retrieval | 0.957 | **0.559** |
+| Mean context tokens | 662 | **139** |
+| Scope leakage | 0.000 | 0.000 |
+| False retrieval | 0.031 | **0.063** |
+
+False retrieval got *worse*, and that is not hidden. Two cases now surface a
+superseded belief alongside the correction that replaced it: ranking finds both
+because both are about the same subject, and nothing yet resolves
+contradictions at retrieval time. Supersession recorded bitemporally
+(`validTo`) is already excluded; a contradiction that was never marked as one
+is not. That is Phase 8's job.
+
+Still at zero and worth watching: `temporal_ordering` (retrieval does not order
+episodic memories by event time), `ambiguous_memories`, and
+`project_isolation` recall — the last is a recall miss, not a leak; leakage
+remains 0.000 across every isolation category.
