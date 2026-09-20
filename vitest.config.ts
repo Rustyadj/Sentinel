@@ -16,6 +16,16 @@ process.env.DATABASE_URL = TEST_DATABASE_URL;
 const TEST_REDIS_URL = process.env.SENTINEL_TEST_REDIS_URL ?? "redis://127.0.0.1:55480";
 process.env.REDIS_URL = TEST_REDIS_URL;
 
+// A throwaway Redis is not isolation on its own: anything else may be pointed
+// at the same instance. A leftover worker:orchestration process from another
+// checkout was doing exactly that -- it consumed the queue test's job, failed
+// it against its own database and held the lock, which surfaced as the
+// long-standing "could not be removed because it is locked by another worker"
+// failure. Namespacing every BullMQ key puts the suite's queues out of reach
+// of any worker that does not share this prefix.
+const TEST_QUEUE_PREFIX = process.env.SENTINEL_TEST_BULLMQ_PREFIX ?? "bull-vitest";
+process.env.BULLMQ_PREFIX = TEST_QUEUE_PREFIX;
+
 
 export default defineConfig({
   resolve: {
@@ -39,6 +49,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
       REDIS_URL: TEST_REDIS_URL,
+      BULLMQ_PREFIX: TEST_QUEUE_PREFIX,
     },
     environment: "jsdom",
     setupFiles: ["./tests/env-isolation.ts", "./src/test/setup.ts"],

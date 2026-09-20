@@ -18,6 +18,7 @@
 // purpose client, which is intentionally lenient (maxRetriesPerRequest: 1,
 // "Redis is optional") in the opposite direction.
 
+import { QUEUE_PREFIX } from "@/lib/queue-prefix";
 import { Queue, type ConnectionOptions, type JobsOptions } from "bullmq";
 
 export const LEARNING_QUEUE_NAME = "learning-core";
@@ -66,14 +67,14 @@ let deadLetterQueue: Queue | null = null;
 export function getLearningQueue(): Queue | null {
   const connection = getConnectionOptions();
   if (!connection) return null;
-  if (!queue) queue = new Queue(LEARNING_QUEUE_NAME, { connection });
+  if (!queue) queue = new Queue(LEARNING_QUEUE_NAME, { connection, prefix: QUEUE_PREFIX });
   return queue;
 }
 
 export function getDeadLetterQueue(): Queue | null {
   const connection = getConnectionOptions();
   if (!connection) return null;
-  if (!deadLetterQueue) deadLetterQueue = new Queue(LEARNING_DEAD_LETTER_QUEUE_NAME, { connection });
+  if (!deadLetterQueue) deadLetterQueue = new Queue(LEARNING_DEAD_LETTER_QUEUE_NAME, { connection, prefix: QUEUE_PREFIX });
   return deadLetterQueue;
 }
 
