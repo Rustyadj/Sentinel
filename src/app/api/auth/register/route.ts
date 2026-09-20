@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { normalizeEmail } from "@/lib/auth/email";
 import { db } from "@/lib/db";
+import { findEmailIdentities } from "@/lib/auth/identity";
 
 export async function POST(req: Request) {
   const body = await req.json() as { email?: string; password?: string; name?: string };
@@ -18,8 +19,8 @@ export async function POST(req: Request) {
   // the address is typed, here or by a social provider.
   const email = normalizeEmail(body.email);
 
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing) {
+  const existing = await findEmailIdentities(email);
+  if (existing.length > 0) {
     return NextResponse.json({ error: "An account with that email already exists" }, { status: 409 });
   }
 

@@ -4,7 +4,8 @@ import GitHub from "next-auth/providers/github";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { normalizeEmail, normalizeEmailOrNull } from "@/lib/auth/email";
+import { normalizeEmailOrNull } from "@/lib/auth/email";
+import { findCredentialIdentity, findEmailIdentities } from "@/lib/auth/identity";
 
 declare module "next-auth" {
   interface Session {
@@ -27,11 +28,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await db.user.findUnique({
-          // Normalized so a user who typed a capital letter at signup can
-          // still sign in, and so this matches the stored canonical address.
-          where: { email: normalizeEmail(credentials.email as string) },
-        });
+        const user = await findCredentialIdentity(credentials.email as string);
 
         if (!user?.passwordHash) return null;
 
@@ -68,18 +65,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, account, user }) {
       if (account) token.provider = account.provider;
-      if (!token.sub && (user?.email || token.email)) {
-        // This upsert is what created the duplicate identity: a social
-        // provider returns the canonical lowercase address, which did not
-        // match an account registered with different casing, so it created a
-        // second user instead of finding the first.
+      if ((account?.provider !== "credentials" || !token.sub) && (user?.email || token.email)) {
         const email = normalizeEmailOrNull(user?.email ?? token.email);
         if (email) {
-          const dbUser = await db.user.upsert({
-            where: { email },
-            update: { name: user?.name ?? token.name ?? undefined },
-            create: { email, name: user?.name ?? token.name ?? undefined },
+          const candidates = await findEmailIdentities(email);
+          if (candidates.length > 1) {
+            // Choosing either row would mint sessions and MCP grants for an
+            // arbitrary authority boundary. An operator must reconcile it.
+            throw new Error("Account identity requires administrator reconciliation.");
+          }
+          const dbUser = candidates[0] ?? await db.user.create({
+            data: { email, name: user?.name ?? token.name ?? undefined },
           });
+          if (candidates[0] && (user?.name ?? token.name)) {
+            await db.user.update({ where: { id: dbUser.id }, data: { name: user?.name ?? token.name ?? undefined } });
+          }
           token.sub = dbUser.id;
         }
       }

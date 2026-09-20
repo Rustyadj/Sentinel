@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { verifyMobileToken } from "@/lib/mobile-auth";
 import { normalizeEmail } from "@/lib/auth/email";
+import { findEmailIdentities } from "@/lib/auth/identity";
 
 export async function requireUser() {
   const session = await auth();
@@ -19,11 +20,14 @@ export async function requireUser() {
   // still the same account, and must not fall through to the upsert below.
   if (userById && normalizeEmail(userById.email) === email) return userById;
 
-  return db.user.upsert({
-    where: { email },
-    update: { name: session.user.name ?? undefined },
-    create: { email, name: session.user.name ?? undefined },
-  });
+  if (userById) throw new Error("Unauthorized");
+
+  const candidates = await findEmailIdentities(email);
+  if (candidates.length > 1) {
+    throw new Error("Account identity requires administrator reconciliation.");
+  }
+  if (candidates[0]) return candidates[0];
+  return db.user.create({ data: { email, name: session.user.name ?? undefined } });
 }
 
 /**
