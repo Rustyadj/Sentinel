@@ -95,6 +95,7 @@ function memoryRow(memory: BenchMemory, now: number) {
     createdAt,
     updatedAt: createdAt,
     validFrom: createdAt,
+    eventTime: memory.eventAgeDays == null ? null : new Date(now - memory.eventAgeDays * DAY_MS),
     validTo: memory.validTo == null ? null : new Date(now - memory.validTo * DAY_MS),
     supersededById: memory.supersededById ?? null,
   };

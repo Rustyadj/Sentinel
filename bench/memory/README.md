@@ -208,3 +208,40 @@ seeing nothing of workspace B's.
 The only fixture change was adding `workspaceId: WS_PRIMARY` to the two
 workspace-scoped memories, because a workspace-scoped row without one is now
 unresolved by definition. No case, query, relevant set or forbidden set moved.
+
+## Result after temporal / episodic ordering (phase10-temporal-ordering.json)
+
+| Metric | Phase 9 | Phase 10 |
+|---|---|---|
+| Temporal accuracy | 0.000 | **1.000** |
+| Recall@10 | 0.933 | 0.933 |
+| Precision@10 | 0.381 | 0.381 |
+| MRR | 0.870 | 0.870 |
+| False retrieval | 0.000 | 0.000 |
+| Scope leakage | 0.000 | 0.000 |
+| Irrelevant retrieval | 0.589 | 0.589 |
+| Mean context tokens | 142.5 | 142.5 |
+
+Ordering was at zero because there was nothing correct to order by. Memory
+carried `createdAt` (insertion), `validFrom` (when a belief became valid) and
+`updatedAt`, and none of them is event time — an incident that happened in
+March and was written down in September is not "valid from September", and
+anything recalled after the fact inserts in the order it was remembered.
+Migration 20260920180000 adds a nullable `eventTime`, and ordering falls back
+to `validFrom` rather than inventing one when it is absent.
+
+The first implementation resequenced the whole result set by time. That
+scored temporal accuracy 1.000 and cost MRR (0.870 → 0.848): the oldest memory
+in the set was a standing configuration fact, so "walk me through the rollout"
+answered with that first and the rollout second. Only memories that can *be* a
+sequence — episodic, or carrying an event time — are now resequenced, and
+everything else keeps its ranked position behind them. That recovers MRR in
+full.
+
+The benchmark's episodic fixtures were recorded in the order they occurred, so
+that case cannot distinguish event time from insertion order, and the fixtures
+were deliberately not changed to make it do so. That distinction is proved in
+`tests/memory/temporal-ordering.test.ts`, where the three events are inserted
+in exactly the reverse of the order they happened: ordering by `createdAt`
+returns them backwards, and the test asserts both the correct sequence and
+that the rows really are inserted the other way round.

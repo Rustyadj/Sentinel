@@ -241,7 +241,16 @@ model Memory {
   derivedFromExperienceIds String[] @default([])
 
   // Bitemporal history, mirroring KnowledgeObject/KnowledgeEdge/Decision.
-  version        Int       @default(1)
+  version Int @default(1)
+
+  /// When the event this memory describes actually happened.
+  ///
+  /// Distinct from createdAt (insertion) and validFrom (when the belief became
+  /// valid). Null for anything that is not an event; ordering falls back to
+  /// validFrom rather than inventing one, because a guessed event time orders
+  /// confidently and wrongly.
+  eventTime DateTime?
+
   validFrom      DateTime  @default(now())
   validTo        DateTime?
   supersededById String?
@@ -260,6 +269,7 @@ model Memory {
   @@index([state])
   @@index([provenanceClass])
   @@index([shadowOnly])
+  @@index([eventTime])
   @@index([validTo])
   @@map("memories")
 }

@@ -95,3 +95,56 @@ export function classifyTemporalIntent(query: string | null | undefined): Tempor
 export function includesSupersededMemories(intent: TemporalIntent): boolean {
   return intent !== "current";
 }
+
+// --- Ordering ------------------------------------------------------------
+//
+// A second, independent axis. "Walk me through the rollout in order" is a
+// current-truth question that nonetheless wants its answer sequenced, so this
+// is deliberately not folded into TemporalIntent: a query can be current and
+// chronological, or historical and chronological, and collapsing the two would
+// force a choice that does not exist.
+
+/** Queries that want their answer sequenced rather than ranked. */
+const ORDERING_CUES: Array<[RegExp, string]> = [
+  [/\bin (?:what |which )?order\b/i, "in order"],
+  [/\bwhat happened (?:first|next|then|after|before)\b/i, "what happened first"],
+  [/\bwalk me through\b/i, "walk me through"],
+  [/\b(?:step by step|chronologically|in sequence|timeline|sequence of events)\b/i, "chronologically"],
+  [/\bthe (?:first|last) thing (?:we|you|i|they)\b/i, "the last thing we"],
+  [/\bwhat (?:changed|happened) between\b/i, "what changed between"],
+  [/\bwhat (?:came|happened) (?:after|before)\b/i, "what came after"],
+  [/\bin the order (?:they|it|we)\b/i, "in the order they"],
+];
+
+/**
+ * Whether this question wants a sequence.
+ *
+ * Returns the cue that matched, or null. Conservative for the same reason as
+ * the rest of this module: reordering a ranked result set by time is right for
+ * "walk me through the rollout" and wrong for "what is the deployment port",
+ * where it would put the oldest weak match first.
+ */
+export function orderingCue(query: string | null | undefined): string | null {
+  const text = (query ?? "").trim();
+  if (!text) return null;
+  for (const [pattern, label] of ORDERING_CUES) {
+    if (pattern.test(text)) return label;
+  }
+  return null;
+}
+
+/**
+ * The time a memory's content is *about*.
+ *
+ * eventTime when the memory records an event; otherwise validFrom, when the
+ * belief became true. createdAt is the last resort and is explicitly not
+ * preferred: it is when the row was inserted, which for anything recalled
+ * later is the order it was remembered in, not the order it happened.
+ */
+export function effectiveEventTime(memory: {
+  eventTime?: Date | null;
+  validFrom?: Date | null;
+  createdAt: Date;
+}): Date {
+  return memory.eventTime ?? memory.validFrom ?? memory.createdAt;
+}

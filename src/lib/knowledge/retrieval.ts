@@ -6,7 +6,7 @@ import type { Prisma } from "@prisma/client";
 import type { RetrievalContext } from "./types";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
 import { rankMemories, type RankedMemory } from "./retrieval-ranking";
-import { classifyTemporalIntent } from "./temporal-intent";
+import { classifyTemporalIntent, orderingCue, effectiveEventTime } from "./temporal-intent";
 import { resolveMemoryScopeAccess, type MemoryScopeAccess } from "./memory-scope";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
@@ -217,13 +217,40 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     retrieveSessionMemory(ctx.roomId),
   ]);
 
-  const ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
+  let ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
     ? rankMemories(query, memoriesRaw, {
         limit: maxItems,
         temporalIntent: temporal.intent,
         asOf: temporal.asOf,
       })
     : memoriesRaw.slice(0, maxItems).map((memory) => ({ memory, score: 0, factors: [] }));
+
+  // "Walk me through the rollout in order" wants a sequence, not a ranking.
+  //
+  // Ranking still chooses *which* memories answer the question -- reordering
+  // the candidate pool by time would answer a different question with whatever
+  // happened to be oldest. Only the chosen set is resequenced, by the time the
+  // memory is about rather than by when the row was written: a rollout
+  // recalled a week later inserts in the order it was recalled.
+  const ordering = query ? orderingCue(query) : null;
+  if (ordering) {
+    // Only the memories that can *be* a sequence are sequenced. A first pass
+    // sorted the whole result set by time, which scored the ordering perfectly
+    // and cost MRR (0.870 -> 0.848): the oldest memory in the set was a
+    // standing configuration fact, so "walk me through the rollout" answered
+    // with that first and the rollout second. A question about what happened
+    // is answered by the events; everything else keeps its ranked position
+    // behind them.
+    const isEvent = (memory: (typeof memoriesRaw)[number]) =>
+      memory.eventTime != null || memory.type === "episodic";
+    const events = ranked.filter((entry) => isEvent(entry.memory));
+    const rest = ranked.filter((entry) => !isEvent(entry.memory));
+    events.sort((a, b) => {
+      const difference = effectiveEventTime(a.memory).getTime() - effectiveEventTime(b.memory).getTime();
+      return difference !== 0 ? difference : b.score - a.score;
+    });
+    ranked = [...events, ...rest];
+  }
 
   const memories = [
     ...sessionMemories,
@@ -234,7 +261,9 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
       tags: entry.memory.tags,
       // Why this memory is here, and why it outranked the ones that are not.
       retrievalScore: entry.score,
-      retrievalFactors: entry.factors,
+      retrievalFactors: ordering
+        ? [...entry.factors, { name: "chronological_order", weight: 0, score: 0, detail: `resequenced by event time (${ordering})` }]
+        : entry.factors,
     })),
   ];
   const notes = notesRaw.map((item) => ({

@@ -63,6 +63,10 @@ export interface BenchMemory {
   provenanceClass?: string;
   /** Days before "now". Positive = older. Drives recency and temporal cases. */
   ageDays?: number;
+  /** Days before "now" that the described event happened — Memory.eventTime.
+   *  Deliberately independent of ageDays so ordering cannot pass by reading
+   *  insertion order. */
+  eventAgeDays?: number | null;
   supersededById?: string | null;
   validTo?: number | null;
 }
