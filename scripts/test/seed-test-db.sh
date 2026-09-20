@@ -4,9 +4,14 @@
 # The suite was written against the live application database, where a default
 # workspace, the well-known agents (hermes-nathan2, gemini, ...) and the static
 # agent_runtimes rows all already exist — they are inserted by data-carrying
-# migrations. The test database is built with `prisma db push` (the migration
-# chain cannot replay from scratch: two migrations both add agents.description),
-# so `db push` creates the tables but runs none of those INSERTs.
+# migrations. The test database is built with `prisma db push`, which creates
+# the tables but runs none of those INSERTs.
+#
+# (This used to note that the migration chain could not replay from scratch
+# because two migrations both add agents.description. That is fixed -- see the
+# idempotency note in 20260705010000_workspace_operating_model, and
+# scripts/test/migration-replay.sh, which proves the replay. `db push` is kept
+# here because it is faster, not because replay is broken.)
 #
 # This replays just the data portions, idempotently.
 set -euo pipefail

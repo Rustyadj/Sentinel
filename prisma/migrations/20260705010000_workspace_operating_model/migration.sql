@@ -1,3 +1,20 @@
+-- Idempotency note (added when the chain was repaired):
+--
+-- This migration was generated on a lineage that did not include
+-- 20260629_phase12_sdk_schema, 20260629010241_add_org_chart or
+-- 20260629052425_add_agent_registry_fields. Replayed in committed order it
+-- therefore re-creates tables and re-adds columns those migrations already
+-- made, and a fresh database could never reach the end of the chain.
+--
+-- Production never hit this because the objects already existed there from a
+-- `prisma db push`; the migration failed twice on 2026-07-06 and was finally
+-- marked applied by hand with applied_steps_count = 0, so its SQL never ran
+-- against production at all.
+--
+-- The duplicated CREATEs and ADDs proven by the chain audit are now
+-- conditional. Nothing else in this file was changed, and the resulting
+-- schema is asserted equal to schema.prisma by the migration replay test.
+
 -- AlterTable
 ALTER TABLE "users" ADD COLUMN     "passwordHash" TEXT;
 
@@ -6,10 +23,23 @@ ALTER TABLE "projects" ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "workspaceId" TEXT;
 
 -- AlterTable
-ALTER TABLE "agents" ADD COLUMN     "description" TEXT NOT NULL DEFAULT '',
-ADD COLUMN     "instructionFiles" JSONB NOT NULL DEFAULT '{}',
-ADD COLUMN     "promptHistory" JSONB NOT NULL DEFAULT '[]',
-ADD COLUMN     "skills" TEXT[];
+-- These four columns were already added by
+-- 20260629052425_add_agent_registry_fields. This migration was generated on a
+-- parallel lineage that did not have it in scope, so a fresh replay reached
+-- here and failed with 42701 ("column \"description\" of relation \"agents\"
+-- already exists") -- which is exactly what happened in production on
+-- 2026-07-06, twice, before the migration was marked applied by hand.
+--
+-- The adds are therefore conditional. The one change this migration genuinely
+-- intends is the instructionFiles default ('[]' from the earlier migration ->
+-- '{}', which is what schema.prisma and production both have), so that is
+-- applied unconditionally rather than being lost to IF NOT EXISTS.
+ALTER TABLE "agents" ADD COLUMN IF NOT EXISTS "description" TEXT NOT NULL DEFAULT '',
+ADD COLUMN IF NOT EXISTS "instructionFiles" JSONB NOT NULL DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS "promptHistory" JSONB NOT NULL DEFAULT '[]',
+ADD COLUMN IF NOT EXISTS "skills" TEXT[];
+
+ALTER TABLE "agents" ALTER COLUMN "instructionFiles" SET DEFAULT '{}';
 
 -- AlterTable
 ALTER TABLE "audit_logs" ADD COLUMN     "actorType" TEXT NOT NULL DEFAULT 'system',
@@ -133,7 +163,7 @@ CREATE TABLE "meetings" (
 );
 
 -- CreateTable
-CREATE TABLE "tasks" (
+CREATE TABLE IF NOT EXISTS "tasks" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT,
     "projectId" TEXT,
@@ -154,7 +184,7 @@ CREATE TABLE "tasks" (
 );
 
 -- CreateTable
-CREATE TABLE "documents" (
+CREATE TABLE IF NOT EXISTS "documents" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT,
     "projectId" TEXT,
@@ -171,7 +201,7 @@ CREATE TABLE "documents" (
 );
 
 -- CreateTable
-CREATE TABLE "org_charts" (
+CREATE TABLE IF NOT EXISTS "org_charts" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT,
     "name" TEXT NOT NULL DEFAULT 'Main',
@@ -184,7 +214,7 @@ CREATE TABLE "org_charts" (
 );
 
 -- CreateTable
-CREATE TABLE "installed_modules" (
+CREATE TABLE IF NOT EXISTS "installed_modules" (
     "id" TEXT NOT NULL,
     "moduleId" TEXT NOT NULL,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
@@ -198,7 +228,7 @@ CREATE TABLE "installed_modules" (
 );
 
 -- CreateTable
-CREATE TABLE "custom_modules" (
+CREATE TABLE IF NOT EXISTS "custom_modules" (
     "id" TEXT NOT NULL,
     "moduleId" TEXT NOT NULL,
     "label" TEXT NOT NULL,
@@ -225,6 +255,26 @@ CREATE TABLE "_PermissionToRole" (
 
     CONSTRAINT "_PermissionToRole_AB_pkey" PRIMARY KEY ("A","B")
 );
+
+-- Reconcile the tables that already existed from the earlier lineage.
+-- The CREATE TABLE IF NOT EXISTS statements above are no-ops against a
+-- database that already has these tables, which would leave them without the
+-- columns this migration's indexes and foreign keys reference (the replay
+-- failed here with 42703 on "workspaceId" before this block existed).
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT,
+ADD COLUMN IF NOT EXISTS "teamId" TEXT,
+ADD COLUMN IF NOT EXISTS "position" INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
+
+ALTER TABLE "org_charts" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
+
+ALTER TABLE "installed_modules" ADD COLUMN IF NOT EXISTS "version" TEXT NOT NULL DEFAULT '1.0.0',
+ADD COLUMN IF NOT EXISTS "manifest" JSONB NOT NULL DEFAULT '{}';
+
+ALTER TABLE "custom_modules" ADD COLUMN IF NOT EXISTS "name" TEXT,
+ADD COLUMN IF NOT EXISTS "category" TEXT NOT NULL DEFAULT 'custom',
+ADD COLUMN IF NOT EXISTS "href" TEXT;
 
 -- CreateIndex
 CREATE UNIQUE INDEX "workspaces_slug_key" ON "workspaces"("slug");
@@ -296,10 +346,10 @@ CREATE INDEX "documents_projectId_idx" ON "documents"("projectId");
 CREATE INDEX "org_charts_workspaceId_idx" ON "org_charts"("workspaceId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "installed_modules_moduleId_key" ON "installed_modules"("moduleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "installed_modules_moduleId_key" ON "installed_modules"("moduleId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "custom_modules_moduleId_key" ON "custom_modules"("moduleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "custom_modules_moduleId_key" ON "custom_modules"("moduleId");
 
 -- CreateIndex
 CREATE INDEX "_PermissionToRole_B_index" ON "_PermissionToRole"("B");
