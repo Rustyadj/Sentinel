@@ -219,6 +219,24 @@ model Memory {
   // deleting the row — see excludeFromRetrieval() in memory-governance.ts.
   state              String    @default("active")
 
+  // --- Live verification (additive) ---
+  // Memory is historical evidence, not automatically current truth. A stable
+  // fact stays correct for years; a volatile one was true when recorded and is
+  // worthless afterwards. Without this distinction a nine-month-old "the
+  // gateway is healthy" is retrieved with the same standing as an
+  // architectural decision.
+
+  /// stable | slow | volatile — how fast the underlying fact changes.
+  volatility          String    @default("stable")
+  /// none | on_read | periodic — when the fact should be re-checked against
+  /// its authoritative source before being relied on.
+  verificationPolicy  String?
+  /// When it was last confirmed against that source. Distinct from
+  /// lastValidatedAt, which records agreement with Sentinel's own evidence.
+  lastVerifiedAt      DateTime?
+  /// Where the current answer can be obtained, when one exists.
+  authoritativeSource String?
+
   // --- Continual memory (additive) ---
   // How this memory came to exist. Observed/user-provided knowledge must stay
   // distinguishable from inferred/generalized knowledge at retrieval time.
@@ -277,6 +295,7 @@ model Memory {
   @@index([state])
   @@index([provenanceClass])
   @@index([shadowOnly])
+  @@index([volatility])
   @@index([eventTime])
   @@index([validTo])
   @@map("memories")

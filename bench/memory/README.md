@@ -286,3 +286,33 @@ A note on the benchmark's own procedural fixtures: they are seeded with
 That is the right fixture for a retrieval benchmark and it does mean the
 benchmark cannot detect a regression in promotion policy. The unit tests are
 the coverage for that.
+
+## Result after live-verification metadata (phase13-verification.json)
+
+Unchanged again, and again by construction: volatility and verification policy
+annotate what is returned, they do not change which memories are returned. The
+benchmark's fixtures are all stable facts, so nothing in it is flagged.
+
+Covered by `src/lib/knowledge/verification.test.ts`: a stable fact is never
+flagged however old, a volatile one is flagged within the hour, a slow-moving
+one after weeks not minutes, an `on_read` policy is checked however fresh, and
+an unrecognised volatility is treated as stable rather than guessed at.
+
+## Summary — baseline to here
+
+| Metric | Baseline | Query-aware (start of this work) | Now |
+|---|---|---|---|
+| Recall@10 | 0.200 | 0.900 | **0.933** |
+| Precision@10 | 0.032 | 0.363 | **0.381** |
+| MRR | 0.126 | 0.837 | **0.870** |
+| False retrieval | 0.031 | 0.063 | **0.000** |
+| Irrelevant retrieval | 0.957 | 0.559 | 0.589 |
+| Temporal accuracy | 0.000 | 0.000 | **1.000** |
+| Scope leakage | 0.000 | 0.000 | 0.000 |
+| Mean context tokens | 662 | 139.2 | 142.5 |
+
+Two metrics moved the wrong way against the query-aware run and are not being
+written off: irrelevant retrieval 0.559 → 0.589 and context tokens 139.2 →
+142.5, both from the tokenizer fix matching more terms. They bought Recall@10
++0.033, MRR +0.033 and the `ambiguous_memories` category going from 0.000 to
+1.000.

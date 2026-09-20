@@ -8,6 +8,7 @@ import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
 import { rankMemories, type RankedMemory } from "./retrieval-ranking";
 import { classifyTemporalIntent, orderingCue, effectiveEventTime } from "./temporal-intent";
 import { resolveMemoryScopeAccess, type MemoryScopeAccess } from "./memory-scope";
+import { verificationNeed, verificationNotice } from "./verification";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const SESSION_MEMORY_MAX_TURNS = 20;
@@ -166,6 +167,8 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     tags: string[];
     retrievalScore?: number;
     retrievalFactors?: RankedMemory["factors"];
+    /** Set when this memory should be checked against its source before use. */
+    verification?: string | null;
   }>;
   notes: Array<{ id: string; title: string; content: string; tags: string[] }>;
   decisions: Array<{ id: string; title: string; summary: string; status: string }>;
@@ -260,6 +263,11 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
       scope: entry.memory.scope,
       tags: entry.memory.tags,
       // Why this memory is here, and why it outranked the ones that are not.
+      // A volatile fact that has gone unverified is still returned -- knowing
+      // what a price was in March is useful -- but it is returned marked, so a
+      // caller that can reach the authoritative source checks it rather than
+      // trusting the memory.
+      verification: verificationNotice(verificationNeed(entry.memory)),
       retrievalScore: entry.score,
       retrievalFactors: ordering
         ? [...entry.factors, { name: "chronological_order", weight: 0, score: 0, detail: `resequenced by event time (${ordering})` }]
