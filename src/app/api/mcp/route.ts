@@ -4,6 +4,7 @@ import { authenticateAccessToken } from "@/lib/integrations/oauth";
 import { enforceMcpRateLimit } from "@/lib/integrations/rate-limit";
 import { createSentinelMcpServer } from "@/lib/integrations/mcp-server";
 import { publicOrigin } from "@/lib/integrations/public-origin";
+import { withNegotiableAccept } from "@/lib/integrations/mcp-http";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ async function handle(request: NextRequest) {
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   const server = createSentinelMcpServer(principal);
   await server.connect(transport);
-  const response = await transport.handleRequest(request, { authInfo: { token: "redacted", clientId: principal.clientId, scopes: principal.scopes, extra: { userId: principal.userId } } });
+  const response = await transport.handleRequest(withNegotiableAccept(request), { authInfo: { token: "redacted", clientId: principal.clientId, scopes: principal.scopes, extra: { userId: principal.userId } } });
   await server.close();
   if (method) {
     const tool = method === "tools/call" && typeof rpc?.params?.name === "string" ? rpc.params.name : null;

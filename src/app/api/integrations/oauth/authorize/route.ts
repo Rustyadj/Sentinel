@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import {
   assertAllowedScopes,
+  isSameResource,
   issueAuthorizationCode,
   normalizeScopes,
   OAuthProtocolError,
@@ -66,7 +67,7 @@ async function resolveAuthorizationRequest(
   }
   const resource = read("resource");
   const expectedResource = `${publicOrigin(request)}/api/mcp`;
-  if (!resource || resource !== expectedResource) {
+  if (!isSameResource(resource, expectedResource)) {
     throw new OAuthProtocolError("invalid_target", `resource must be ${expectedResource}.`);
   }
   const scopes = normalizeScopes(read("scope"));
@@ -77,7 +78,9 @@ async function resolveAuthorizationRequest(
     state: read("state"),
     codeChallenge,
     scopes,
-    resource,
+    // Canonical spelling, so the code and the token minted from it carry the
+    // exact audience the resource server will compare against.
+    resource: expectedResource,
     client: { id: client.id, name: client.name, allowedScopes: client.allowedScopes },
   };
 }

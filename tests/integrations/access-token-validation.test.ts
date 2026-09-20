@@ -20,6 +20,7 @@ import { authenticateAccessToken, hashOpaqueSecret } from "@/lib/integrations/oa
 
 const TOKEN = "Zm9vYmFyYmF6cXV4LXRoaXJ0eS10d28tY2hhcnMtbG9uZw";
 const USER_ID = "user-under-test";
+const RESOURCE = "https://sentinel.example/api/mcp";
 
 function storedToken(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,6 +30,7 @@ function storedToken(overrides: Record<string, unknown> = {}) {
     userId: USER_ID,
     scopes: ["sentinel.read", "sentinel.memory.read"],
     expiresAt: new Date(Date.now() + 60_000),
+    resource: RESOURCE,
     revokedAt: null,
     externalClient: { clientId: "dcr-chatgpt", enabled: true },
     ...overrides,
@@ -45,7 +47,7 @@ describe("access-token validation", () => {
   it("accepts a live token and maps it to the consenting Sentinel user", async () => {
     prisma.findUnique.mockResolvedValue(storedToken());
 
-    const principal = await authenticateAccessToken(`Bearer ${TOKEN}`);
+    const principal = await authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE);
 
     expect(principal).toMatchObject({
       userId: USER_ID,
@@ -57,7 +59,7 @@ describe("access-token validation", () => {
 
   it("looks the token up by hash and never by its plaintext", async () => {
     prisma.findUnique.mockResolvedValue(storedToken());
-    await authenticateAccessToken(`Bearer ${TOKEN}`);
+    await authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE);
 
     const where = prisma.findUnique.mock.calls[0][0].where;
     expect(where).toEqual({ tokenHash: hashOpaqueSecret(TOKEN) });
@@ -66,12 +68,12 @@ describe("access-token validation", () => {
 
   it("rejects an expired token", async () => {
     prisma.findUnique.mockResolvedValue(storedToken({ expiresAt: new Date(Date.now() - 1_000) }));
-    await expect(authenticateAccessToken(`Bearer ${TOKEN}`)).resolves.toBeNull();
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
   });
 
   it("rejects a revoked token", async () => {
     prisma.findUnique.mockResolvedValue(storedToken({ revokedAt: new Date() }));
-    await expect(authenticateAccessToken(`Bearer ${TOKEN}`)).resolves.toBeNull();
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
   });
 
   // Disabling a client must take effect immediately, not an access-token
@@ -80,17 +82,52 @@ describe("access-token validation", () => {
     prisma.findUnique.mockResolvedValue(
       storedToken({ externalClient: { clientId: "dcr-chatgpt", enabled: false } }),
     );
-    await expect(authenticateAccessToken(`Bearer ${TOKEN}`)).resolves.toBeNull();
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
   });
 
   it("rejects an unknown token", async () => {
     prisma.findUnique.mockResolvedValue(null);
-    await expect(authenticateAccessToken(`Bearer ${TOKEN}`)).resolves.toBeNull();
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
+  });
+
+  // RFC 8707 audience binding: a token minted for one resource must not
+  // authenticate against another, however the client spells the URI.
+  it("accepts the resource indicator with a trailing slash", async () => {
+    prisma.findUnique.mockResolvedValue(storedToken());
+    await expect(
+      authenticateAccessToken(`Bearer ${TOKEN}`, `${RESOURCE}/`),
+    ).resolves.toMatchObject({ userId: USER_ID });
+  });
+
+  it("accepts a token stored with a trailing slash against the canonical resource", async () => {
+    prisma.findUnique.mockResolvedValue(storedToken({ resource: `${RESOURCE}/` }));
+    await expect(
+      authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE),
+    ).resolves.toMatchObject({ userId: USER_ID });
+  });
+
+  it("rejects a token minted for a different resource", async () => {
+    prisma.findUnique.mockResolvedValue(storedToken({ resource: "https://elsewhere.example/api/mcp" }));
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
+  });
+
+  it("rejects a token whose resource is a path prefix of the expected one", async () => {
+    prisma.findUnique.mockResolvedValue(storedToken({ resource: "https://sentinel.example/api" }));
+    await expect(authenticateAccessToken(`Bearer ${TOKEN}`, RESOURCE)).resolves.toBeNull();
+  });
+
+  // RFC 6750 section 2.1: the auth-scheme is case-insensitive. A client that
+  // sends "bearer" is conformant and must not be locked out.
+  it("accepts the bearer scheme in any case, and with extra spacing", async () => {
+    for (const header of [`bearer ${TOKEN}`, `BEARER ${TOKEN}`, `BeArEr  ${TOKEN}`]) {
+      prisma.findUnique.mockResolvedValue(storedToken());
+      await expect(authenticateAccessToken(header, RESOURCE)).resolves.toMatchObject({ userId: USER_ID });
+    }
   });
 
   it("rejects a missing or malformed Authorization header without touching the database", async () => {
     for (const header of [null, "", "Bearer", "Basic abcdefghijklmnopqrstuvwxyz012345", `Bearer short`]) {
-      await expect(authenticateAccessToken(header)).resolves.toBeNull();
+      await expect(authenticateAccessToken(header, RESOURCE)).resolves.toBeNull();
     }
     expect(prisma.findUnique).not.toHaveBeenCalled();
   });

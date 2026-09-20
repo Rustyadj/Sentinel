@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   exchangeAuthorizationCode,
   exchangeRefreshToken,
+  isSameResource,
   OAuthProtocolError,
 } from "@/lib/integrations/oauth";
 import { writeAuditLog } from "@/lib/workspaces/audit";
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
   const resource = field("resource");
   const expectedResource = `${publicOrigin(request)}/api/mcp`;
 
-  if (!resource || resource !== expectedResource) {
+  if (!isSameResource(resource, expectedResource)) {
     return oauthError({ code: "invalid_target", message: `resource must be ${expectedResource}.` });
   }
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
         redirectUri,
         codeVerifier,
         clientSecret: clientSecret ?? undefined,
-        resource,
+        resource: expectedResource,
       });
 
       if (token.refreshToken) {
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
         clientSecret: typeof clientSecret === "string" ? clientSecret : undefined,
         refreshToken,
         scope: field("scope"),
-        resource,
+        resource: expectedResource,
       });
 
       if (outcome.kind === "replay") {

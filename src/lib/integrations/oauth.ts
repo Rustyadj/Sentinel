@@ -320,14 +320,47 @@ export async function exchangeRefreshToken(input: {
   return { kind: "rotated", tokens, familyId: stored.familyId, userId: stored.userId, clientId: client.clientId };
 }
 
+/**
+ * Compare two RFC 8707 resource indicators.
+ *
+ * The indicator is an absolute URI naming this MCP endpoint, and it is an
+ * audience binding: a token minted for one resource must never authenticate
+ * against another. So this stays an equality test, not a prefix match.
+ *
+ * It is equality on the *normalised* URI, though. `.../api/mcp` and
+ * `.../api/mcp/` name the same resource, and scheme and host are
+ * case-insensitive per RFC 3986, so a client that canonicalises either way
+ * must not be turned away. Query strings remain significant and a fragment is
+ * rejected outright, which RFC 8707 section 2 already forbids.
+ */
+export function isSameResource(candidate: string | null | undefined, expected: string): boolean {
+  const normalize = (value: string | null | undefined): string | null => {
+    if (!value) return null;
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return null;
+    }
+    if (url.hash) return null;
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol}//${url.host}${path}${url.search}`;
+  };
+  const left = normalize(candidate);
+  const right = normalize(expected);
+  return left !== null && right !== null && left === right;
+}
+
 export async function authenticateAccessToken(authorization: string | null, resource: string) {
-  const match = authorization?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/);
+  // RFC 6750 section 2.1: the auth-scheme token is case-insensitive, and
+  // RFC 9110 allows more than one space before the credential.
+  const match = authorization?.match(/^bearer +([A-Za-z0-9_-]{32,})$/i);
   if (!match) return null;
   const token = await db.oAuthAccessToken.findUnique({
     where: { tokenHash: hashOpaqueSecret(match[1]) },
     include: { externalClient: true },
   });
-  if (!token || token.resource !== resource || token.revokedAt || token.expiresAt <= new Date() || !token.externalClient.enabled) return null;
+  if (!token || !isSameResource(token.resource, resource) || token.revokedAt || token.expiresAt <= new Date() || !token.externalClient.enabled) return null;
   void db.oAuthAccessToken.update({ where: { id: token.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
   return {
     tokenId: token.id,
