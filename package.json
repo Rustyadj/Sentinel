@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "bench:memory": "tsx bench/memory/run.ts",
     "prisma:validate": "prisma validate && prisma migrate status",
     "check": "tsc --noEmit && eslint",
     "telemetry:serve": "node scripts/vps-telemetry.mjs",
