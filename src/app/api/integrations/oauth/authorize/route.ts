@@ -110,11 +110,15 @@ export async function GET(request: NextRequest) {
       <style>body{margin:0;background:#0b1020;color:#eef2ff;font:16px system-ui;display:grid;min-height:100vh;place-items:center}.card{width:min(560px,calc(100% - 40px));background:#121a2d;border:1px solid #2b3757;border-radius:18px;padding:28px;box-sizing:border-box}h1{font-size:22px;margin:0 0 8px}p{color:#aeb9d4;line-height:1.5}fieldset{border:0;padding:0;margin:24px 0}label{display:flex;gap:12px;padding:12px 0;border-top:1px solid #27324e}small{display:block;color:#8996b4;margin-top:4px}.actions{display:flex;gap:12px}.actions button{flex:1;padding:11px;border-radius:9px;border:1px solid #435174;background:#19233a;color:#eef2ff;font-weight:650}.actions .approve{background:#6475ee;border-color:#6475ee;color:white}</style></head>
       <body><main class="card"><h1>Connect ${escapeHtml(resolved.client.name)} to Sentinel?</h1>
       <p>Signed in as ${escapeHtml(user.email)}. This client will act as this exact Sentinel identity and receive only the permissions you approve below.</p>
-      <form method="post">${hidden}<fieldset>${scopeRows}</fieldset><div class="actions"><button name="decision" value="deny">Deny</button><button class="approve" name="decision" value="approve">Approve</button></div></form></main></body></html>`;
+      <form method="post" action="/api/integrations/oauth/authorize">${hidden}<fieldset>${scopeRows}</fieldset><div class="actions"><button name="decision" value="deny">Deny</button><button class="approve" name="decision" value="approve">Approve</button></div></form></main></body></html>`;
     return new NextResponse(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
-        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+        // The POST target is an explicit fixed same-origin path above. Do not
+        // add form-action here: Chromium rejects even its exact loopback
+        // origin for this standalone OAuth document, blocking consent before
+        // the server can validate the request fields.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
       },
     });
   } catch (error) {
