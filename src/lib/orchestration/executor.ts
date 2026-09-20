@@ -138,7 +138,12 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   }
 }
 
-export interface CancellationRequest { accepted: boolean; status: "cancelled" | "cancelling"; }
+export interface CancellationRequest {
+  accepted: boolean;
+  status: "cancelled" | "cancelling";
+  projectId: string | null;
+  workspaceId: string | null;
+}
 
 export async function cancelOrchestrationRun(runId: string, userId: string): Promise<CancellationRequest | null> {
   const run = await db.orchestrationRun.findFirst({ where: { id: runId, userId } });
@@ -152,5 +157,5 @@ export async function cancelOrchestrationRun(runId: string, userId: string): Pro
     if (!requested.count) return null;
   }
   await writeAuditLog({ workspaceId: run.workspaceId, projectId: run.projectId, userId, action: "orchestration.run.cancel_requested", entityType: "orchestration_run", entityId: run.id, details: { priorStatus: run.status } });
-  return { accepted: true, status };
+  return { accepted: true, status, projectId: run.projectId, workspaceId: run.workspaceId };
 }

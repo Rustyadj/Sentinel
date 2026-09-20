@@ -10,13 +10,18 @@ const deps = vi.hoisted(() => ({
   resolveScope: vi.fn(),
   findProjects: vi.fn(),
   findWorkspaces: vi.fn(),
+  findRun: vi.fn(),
 }));
 
 vi.mock("@/lib/knowledge/access", () => ({ getReadableProjectIds: deps.getReadableProjectIds }));
 vi.mock("@/lib/agents/permissions", () => ({ getAccessibleWorkspaceIds: deps.getAccessibleWorkspaceIds }));
 vi.mock("@/lib/orchestration/scope", () => ({ resolveScope: deps.resolveScope }));
 vi.mock("@/lib/db", () => ({
-  db: { project: { findMany: deps.findProjects }, workspace: { findMany: deps.findWorkspaces } },
+  db: {
+    project: { findMany: deps.findProjects },
+    workspace: { findMany: deps.findWorkspaces },
+    orchestrationRun: { findFirst: deps.findRun },
+  },
 }));
 
 import { listPermittedContext, resolveMcpContext } from "@/lib/integrations/mcp-context";
@@ -107,7 +112,7 @@ describe("inference and single-candidate resolution", () => {
   it("auto-selects when exactly one project is permitted", async () => {
     permit([PROJECT_A], [WS_A, WS_B]);
     const result = await resolveMcpContext(USER, { query: "anything" });
-    expect(result.scope).toMatchObject({ projectId: "p1", resolution: "inferred" });
+    expect(result.scope).toMatchObject({ projectId: "p1", resolution: "single" });
     expect(result.reason).toContain("Only one project is permitted");
   });
 
@@ -131,6 +136,24 @@ describe("inference and single-candidate resolution", () => {
     const result = await resolveMcpContext(USER, { query: "anything" });
     expect(result.scope.workspaceId).toBeNull();
     expect(result.choices?.workspaces).toHaveLength(2);
+  });
+});
+
+describe("durable task context", () => {
+  it("reuses context only from a task owned by this user and still permitted", async () => {
+    permit([PROJECT_A], [WS_A]);
+    deps.findRun.mockResolvedValue({ projectId: "p1", workspaceId: "w1" });
+    const result = await resolveMcpContext(USER, { contextTaskId: "run-1" });
+    expect(deps.findRun).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "run-1", userId: USER } }));
+    expect(result.scope).toMatchObject({ projectId: "p1", workspaceId: "w1", resolution: "context" });
+  });
+
+  it("does not reuse a task context whose project is no longer permitted", async () => {
+    permit([], [WS_A, WS_B]);
+    deps.findRun.mockResolvedValue({ projectId: "removed-project", workspaceId: null });
+    const result = await resolveMcpContext(USER, { contextTaskId: "run-1" });
+    expect(result.scope.resolution).toBe("none");
+    expect(JSON.stringify(result)).not.toContain("removed-project");
   });
 });
 

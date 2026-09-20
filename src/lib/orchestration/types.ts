@@ -6,6 +6,10 @@ export interface RouteTaskInput {
   mode?: OrchestrationMode;
   projectHint?: string;
   workspaceHint?: string;
+  projectId?: string;
+  workspaceId?: string;
+  /** Reuse the permitted context of an earlier durable Sentinel task. */
+  contextTaskId?: string;
   preferredAgentId?: string;
   taskType?: OrchestrationTaskType;
   idempotencyKey?: string;
@@ -18,7 +22,7 @@ export interface ResolvedScope {
   workspaceName: string | null;
   projectId: string | null;
   projectName: string | null;
-  resolution: "explicit" | "inferred" | "none";
+  resolution: "explicit" | "context" | "inferred" | "single" | "none";
 }
 
 export interface RoutingDecision {

@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getRuntimeView } from "@/lib/agents/runtime/service";
 import { listAgentCapabilityDescriptors } from "@/lib/agents/capability-descriptor";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
@@ -9,7 +8,7 @@ import { recordMemoryRetrieval } from "@/lib/neural-engine/memory-usage-service"
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
 import { resolveScope } from "@/lib/orchestration/scope";
-import { resolveMcpContext } from "@/lib/integrations/mcp-context";
+import { listPermittedContext, resolveMcpContext } from "@/lib/integrations/mcp-context";
 import type { McpScope } from "./oauth";
 
 export interface McpPrincipal {
@@ -51,7 +50,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async () => {
     requireScope(principal, "sentinel.read");
-    const agents = await listAgentCapabilityDescriptors();
+    const agents = await listAgentCapabilityDescriptors(principal.userId);
     return toolResult({ agents }, `Found ${agents.length} configured Sentinel agents.`);
   });
 
@@ -62,9 +61,45 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ agentId }) => {
     requireScope(principal, "sentinel.read");
-    const agent = await getRuntimeView(agentId);
+    const agent = (await listAgentCapabilityDescriptors(principal.userId)).find((candidate) => candidate.id === agentId);
     if (!agent) throw new Error("Agent not found.");
-    return toolResult({ agent: { id: agent.agentId, enabled: agent.enabled, kind: agent.kind, endpoint: agent.endpoint, executionAdapter: agent.kind, executionVerified: agent.executionVerified } }, `${agent.agentId} is ${agent.enabled ? "enabled" : "disabled"}${agent.executionVerified ? "" : " and has no verified execution contract"}.`);
+    const status = !agent.reachable ? "unreachable" : !agent.authenticated ? "reachable_not_authenticated" : agent.executable ? "available" : "not_execution_verified";
+    return toolResult({ agent: { ...agent, status } }, `${agent.name} is ${status.replaceAll("_", " ")}.`);
+  });
+
+  server.registerTool("sentinel.capabilities", {
+    title: "Describe Sentinel capabilities",
+    description: "Return Sentinel's safe MCP capability summary and current agent availability without exposing credentials or infrastructure details.",
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, async () => {
+    requireScope(principal, "sentinel.read");
+    const agents = await listAgentCapabilityDescriptors(principal.userId);
+    return toolResult({
+      version: "1.0.0",
+      capabilities: {
+        context: ["permitted choices", "explicit project/workspace ids", "durable task context", "unambiguous inference"],
+        memory: ["governed broader search", "project filter", "workspace filter", "provenance"],
+        tasks: ["single-agent routing", "durable status", "verified results", "owned cancellation"],
+        authentication: ["OAuth authorization code", "PKCE S256", "refresh rotation", "resource-bound tokens"],
+      },
+      agents,
+    }, `Sentinel exposes governed context, memory, and durable task execution through ${agents.length} configured agents.`);
+  });
+
+  server.registerTool("sentinel.profile", {
+    title: "Get connected Sentinel profile",
+    description: "Return the stable Sentinel profile represented by the current OAuth credentials.",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ id: z.string().min(1), name: z.string().optional(), email: z.string().optional() }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    _meta: { "openai/profile": true },
+  }, async () => {
+    requireScope(principal, "sentinel.read");
+    const user = await db.user.findUnique({ where: { id: principal.userId }, select: { id: true, name: true, email: true } });
+    if (!user) throw new Error("The authenticated Sentinel profile no longer exists.");
+    const profile = { id: user.id, ...(user.name ? { name: user.name } : {}), email: user.email };
+    return toolResult(profile, JSON.stringify(profile));
   });
 
   server.registerTool("sentinel.memory_search", {
@@ -75,16 +110,18 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
       limit: z.number().int().min(1).max(20).optional(),
       projectHint: z.string().max(120).optional(),
       projectId: z.string().max(100).optional(),
+      workspaceId: z.string().max(100).optional(),
+      contextTaskId: z.string().max(100).optional(),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ query, limit = 10, projectHint, projectId }) => {
+  }, async ({ query, limit = 10, projectHint, projectId, workspaceId, contextTaskId }) => {
     requireScope(principal, "sentinel.memory.read");
     // Narrowing to a project is optional. Without one this searches everything
     // the user may read, which is the common case and must not be blocked.
     let scope = { projectId: null, projectName: null, workspaceId: null, workspaceName: null, resolution: "none" } as Awaited<ReturnType<typeof resolveScope>>;
-    if (projectHint || projectId) {
-      const resolved = await resolveMcpContext(principal.userId, { query, projectHint, projectId });
-      if (!resolved.scope.projectId) {
+    if (projectHint || projectId || workspaceId || contextTaskId) {
+      const resolved = await resolveMcpContext(principal.userId, { query, projectHint, projectId, workspaceId, contextTaskId });
+      if (!resolved.scope.projectId && !resolved.scope.workspaceId) {
         // Previously this threw "Project could not be resolved within your
         // permitted scope", which told the model nothing it could act on.
         // Hand back the permitted choices instead.
@@ -98,6 +135,11 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
       scope = resolved.scope;
     }
     const access = await memoryReadWhere(principal.userId);
+    const workspaceProjects = scope.workspaceId && !scope.projectId
+      ? (await listPermittedContext(principal.userId)).projects
+          .filter((project) => project.workspaceId === scope.workspaceId)
+          .map((project) => project.id)
+      : null;
     const memories = await db.memory.findMany({
       where: {
         AND: [
@@ -112,6 +154,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
           excludeFromRetrieval(),
           { archived: false },
           ...(scope.projectId ? [{ projectId: scope.projectId, scope: "project" }] : []),
+          ...(workspaceProjects ? [{ projectId: { in: workspaceProjects }, scope: "project" }] : []),
           { content: { contains: query, mode: "insensitive" as const } },
         ],
       },
@@ -153,11 +196,12 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
       workspaceHint: z.string().max(120).optional(),
       projectId: z.string().max(100).optional(),
       workspaceId: z.string().max(100).optional(),
+      contextTaskId: z.string().max(100).optional(),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ query = "", projectHint, workspaceHint, projectId, workspaceId }) => {
+  }, async ({ query = "", projectHint, workspaceHint, projectId, workspaceId, contextTaskId }) => {
     requireScope(principal, "sentinel.read");
-    const resolved = await resolveMcpContext(principal.userId, { query, projectHint, workspaceHint, projectId, workspaceId });
+    const resolved = await resolveMcpContext(principal.userId, { query, projectHint, workspaceHint, projectId, workspaceId, contextTaskId });
     return toolResult(
       { scope: resolved.scope, ...(resolved.choices ? { choices: resolved.choices } : {}) },
       resolved.reason,
@@ -167,13 +211,13 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
   server.registerTool("sentinel.route_task", {
     title: "Route work through Sentinel",
     description: "Ask Sentinel to resolve context, choose one suitable worker, and execute or queue work. Do not use for raw shell or infrastructure requests.",
-    inputSchema: z.object({ task: z.string().min(1).max(12_000), mode: z.enum(["sync", "async"]).optional(), projectHint: z.string().max(120).optional(), workspaceHint: z.string().max(120).optional(), preferredAgentId: z.string().max(100).optional(), taskType: z.enum(["coding", "review", "debugging", "planning", "research", "support", "construction", "estimating"]).optional(), idempotencyKey: z.string().min(8).max(128).optional() }),
+    inputSchema: z.object({ task: z.string().min(1).max(12_000), mode: z.enum(["sync", "async"]).optional(), projectId: z.string().max(100).optional(), workspaceId: z.string().max(100).optional(), contextTaskId: z.string().max(100).optional(), projectHint: z.string().max(120).optional(), workspaceHint: z.string().max(120).optional(), preferredAgentId: z.string().max(100).optional(), taskType: z.enum(["coding", "review", "debugging", "planning", "research", "support", "construction", "estimating"]).optional(), idempotencyKey: z.string().min(8).max(128).optional() }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   }, async (input) => {
     requireScope(principal, "sentinel.tasks.write");
     const run = await createOrchestrationRun(input, { userId: principal.userId, externalClientId: principal.externalClientId });
     const completed = input.mode === "sync" ? await waitForRun(run.id, principal.userId, 25_000) : run;
-    return toolResult({ task: { id: completed.id, status: completed.status, resolvedAgentId: completed.resolvedAgentId, result: completed.status === "succeeded" ? completed.result : undefined, error: completed.error ?? undefined } }, completed.status === "succeeded" ? "Sentinel completed the task." : `Sentinel task ${completed.id} is ${completed.status}.`);
+    return toolResult({ task: { id: completed.id, status: completed.status, projectId: completed.projectId, workspaceId: completed.workspaceId, resolvedAgentId: completed.resolvedAgentId, result: completed.status === "succeeded" ? completed.result : undefined, error: completed.error ?? undefined } }, completed.status === "succeeded" ? "Sentinel completed the task." : `Sentinel task ${completed.id} is ${completed.status}.`);
   });
 
   server.registerTool("sentinel.get_task", {
@@ -183,7 +227,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ taskId }) => {
     requireScope(principal, "sentinel.tasks.read");
-    const run = await db.orchestrationRun.findFirst({ where: { id: taskId, userId: principal.userId }, select: { id: true, status: true, resolvedAgentId: true, error: true, queuedAt: true, startedAt: true, completedAt: true, validation: true } });
+    const run = await db.orchestrationRun.findFirst({ where: { id: taskId, userId: principal.userId }, select: { id: true, status: true, projectId: true, workspaceId: true, resolvedAgentId: true, error: true, queuedAt: true, startedAt: true, completedAt: true, validation: true } });
     if (!run) throw new Error("Task not found.");
     return toolResult({ task: run }, `Task ${run.id} is ${run.status}.`);
   });
@@ -197,7 +241,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     requireScope(principal, "sentinel.tasks.read");
     const run = await db.orchestrationRun.findFirst({ where: { id: taskId, userId: principal.userId }, include: { artifacts: { select: { id: true, title: true, type: true, mimeType: true, storageUrl: true } } } });
     if (!run) throw new Error("Task not found.");
-    return toolResult({ task: { id: run.id, status: run.status, result: run.result, validation: run.validation, error: run.error, artifacts: run.artifacts } }, `Task ${run.id} is ${run.status}.`);
+    return toolResult({ task: { id: run.id, status: run.status, projectId: run.projectId, workspaceId: run.workspaceId, result: run.result, validation: run.validation, error: run.error, artifacts: run.artifacts } }, `Task ${run.id} is ${run.status}.`);
   });
 
   server.registerTool("sentinel.cancel_task", {
@@ -210,7 +254,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     const cancellation = await cancelOrchestrationRun(taskId, principal.userId);
     if (!cancellation) throw new Error("Task cannot be cancelled or was not found.");
     const message = cancellation.status === "cancelled" ? `Cancelled queued task ${taskId}.` : `Cancellation requested for task ${taskId}; Sentinel will confirm once the executing runtime acknowledges it.`;
-    return toolResult({ taskId, status: cancellation.status, acknowledged: cancellation.status === "cancelled" }, message);
+    return toolResult({ taskId, projectId: cancellation.projectId, workspaceId: cancellation.workspaceId, status: cancellation.status, acknowledged: cancellation.status === "cancelled" }, message);
   });
   return server;
 }

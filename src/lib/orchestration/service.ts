@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
-import { resolveScope } from "./scope";
+import { resolveMcpContext } from "@/lib/integrations/mcp-context";
 import { selectWorker } from "./worker-router";
 import { enqueueOrchestrationRun } from "./queue";
-import { listRuntimeViews } from "@/lib/agents/runtime/service";
+import { getRuntimeAdapter, listRuntimeViews } from "@/lib/agents/runtime/service";
+import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import type { AgentCapabilityKey } from "./capabilities";
 import type { RouteTaskInput } from "./types";
 
@@ -25,15 +26,39 @@ function taskCapabilities(input: RouteTaskInput): AgentCapabilityKey[] {
 }
 
 export async function createOrchestrationRun(input: RouteTaskInput, caller: { userId: string; externalClientId?: string }) {
-  const scope = await resolveScope(caller.userId, input);
-  if (input.projectHint && !scope.projectId) throw new Error("Project could not be resolved within your permitted scope.");
-  if (input.workspaceHint && !scope.workspaceId) throw new Error("Workspace could not be resolved within your permitted scope.");
+  const resolvedContext = await resolveMcpContext(caller.userId, {
+    query: input.task, projectHint: input.projectHint, workspaceHint: input.workspaceHint,
+    projectId: input.projectId, workspaceId: input.workspaceId, contextTaskId: input.contextTaskId,
+  });
+  const scope = resolvedContext.scope;
+  if (!scope.projectId && !scope.workspaceId) {
+    const choices = resolvedContext.choices;
+    const projects = choices?.projects.map((project) => `${project.name} (${project.id})`).join(", ") || "none";
+    const workspaces = choices?.workspaces.map((workspace) => `${workspace.name} (${workspace.id})`).join(", ") || "none";
+    throw new Error(`${resolvedContext.reason} Permitted projects: ${projects}. Permitted workspaces: ${workspaces}. Retry with projectId or workspaceId.`);
+  }
   const runtimes = await listRuntimeViews();
   // executionVerified is an operator assertion that this runtime has a proven
   // task-execution contract. It gates dispatch, never reachability: an agent
   // that merely answers a health check is not dispatchable.
-  const eligible = runtimes.filter((runtime) => runtime.enabled && runtime.executionVerified && (input.preferredAgentId ? runtime.agentId === input.preferredAgentId : true));
-  if (!eligible.length) throw new Error("Requested agent is unavailable or has no verified execution contract.");
+  const configured = runtimes.filter((runtime) => input.preferredAgentId ? runtime.agentId === input.preferredAgentId : true);
+  if (!configured.length) throw new Error("Requested agent is not configured or is not permitted for this operation.");
+  const verified = configured.filter((runtime) => runtime.enabled && runtime.executionVerified);
+  if (!verified.length) throw new Error("Requested agent is disabled or has no verified execution contract.");
+  const health = await Promise.all(verified.map(async (runtime) => ({
+    runtime,
+    status: await getRuntimeAdapter(runtime.kind).health(asRuntimeInstance(runtime)).catch(() => null),
+  })));
+  const eligible = health.filter(({ status }) => status?.ready === true).map(({ runtime }) => runtime);
+  if (!eligible.length) {
+    const requested = health[0]?.status;
+    if (input.preferredAgentId && requested?.reachable && !requested.authenticated) {
+      throw new Error(`${input.preferredAgentId} is reachable but not authenticated.`);
+    }
+    throw new Error(input.preferredAgentId
+      ? `${input.preferredAgentId} is currently unavailable for execution.`
+      : "No configured Sentinel agent is currently ready for execution.");
+  }
   // selectWorker is the sole worker-selection authority. A run is a single
   // dispatch, so this never creates a Claude/Codex split implicitly.
   const routing = await selectWorker({

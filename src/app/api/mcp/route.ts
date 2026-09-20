@@ -40,7 +40,13 @@ async function handle(request: NextRequest) {
       : {};
     const body = await response.clone().json().catch(() => null) as {
       error?: { code?: unknown };
-      result?: { isError?: unknown; structuredContent?: { task?: { id?: unknown }; taskId?: unknown; scope?: { projectId?: unknown; workspaceId?: unknown } } };
+      result?: { isError?: unknown; structuredContent?: {
+        task?: { id?: unknown; projectId?: unknown; workspaceId?: unknown };
+        taskId?: unknown;
+        projectId?: unknown;
+        workspaceId?: unknown;
+        scope?: { projectId?: unknown; workspaceId?: unknown };
+      } };
     } | null;
     const structured = body?.result?.structuredContent;
     const executionId = typeof structured?.task?.id === "string"
@@ -52,11 +58,27 @@ async function handle(request: NextRequest) {
           : null;
     const projectId = typeof structured?.scope?.projectId === "string"
       ? structured.scope.projectId
+      : typeof structured?.task?.projectId === "string" ? structured.task.projectId
+      : typeof structured?.projectId === "string" ? structured.projectId
       : typeof args.projectId === "string" ? args.projectId : null;
     const workspaceId = typeof structured?.scope?.workspaceId === "string"
       ? structured.scope.workspaceId
+      : typeof structured?.task?.workspaceId === "string" ? structured.task.workspaceId
+      : typeof structured?.workspaceId === "string" ? structured.workspaceId
       : typeof args.workspaceId === "string" ? args.workspaceId : null;
     const failed = Boolean(body?.error || body?.result?.isError) || response.status >= 400;
+    const requiredScopes: Record<string, string> = {
+      "sentinel.list_agents": "sentinel.read",
+      "sentinel.agent_status": "sentinel.read",
+      "sentinel.capabilities": "sentinel.read",
+      "sentinel.profile": "sentinel.read",
+      "sentinel.project_context": "sentinel.read",
+      "sentinel.memory_search": "sentinel.memory.read",
+      "sentinel.route_task": "sentinel.tasks.write",
+      "sentinel.get_task": "sentinel.tasks.read",
+      "sentinel.get_result": "sentinel.tasks.read",
+      "sentinel.cancel_task": "sentinel.tasks.write",
+    };
     await writeAuditLog({
       userId: principal.userId,
       workspaceId,
@@ -68,7 +90,8 @@ async function handle(request: NextRequest) {
         clientId: principal.clientId,
         method,
         ...(tool ? { tool } : {}),
-        scopes: principal.scopes,
+        grantedScopes: principal.scopes,
+        ...(tool && requiredScopes[tool] ? { requiredScope: requiredScopes[tool] } : {}),
         success: !failed,
         ...(typeof body?.error?.code === "number" || typeof body?.error?.code === "string" ? { errorCode: body.error.code } : {}),
         ...(executionId ? { executionId } : {}),

@@ -84,6 +84,8 @@ export interface ContextRequest {
   projectId?: string;
   /** Exact id, as returned by sentinel.project_context. */
   workspaceId?: string;
+  /** Durable task whose already-resolved context should be reused. */
+  contextTaskId?: string;
 }
 
 export interface ContextResolution {
@@ -150,6 +152,38 @@ export async function resolveMcpContext(userId: string, request: ContextRequest)
     };
   }
 
+  if (request.contextTaskId) {
+    const run = await db.orchestrationRun.findFirst({
+      where: { id: request.contextTaskId, userId },
+      select: { projectId: true, workspaceId: true },
+    });
+    const project = run?.projectId ? permitted.projects.find((candidate) => candidate.id === run.projectId) : null;
+    if (project) {
+      return {
+        scope: {
+          projectId: project.id, projectName: project.name, workspaceId: project.workspaceId,
+          workspaceName: project.workspaceName, resolution: "context",
+        },
+        reason: `Reused the permitted project context from task ${request.contextTaskId}.`,
+      };
+    }
+    const workspace = run?.workspaceId ? permitted.workspaces.find((candidate) => candidate.id === run.workspaceId) : null;
+    if (workspace) {
+      return {
+        scope: {
+          projectId: null, projectName: null, workspaceId: workspace.id,
+          workspaceName: workspace.name, resolution: "context",
+        },
+        reason: `Reused the permitted workspace context from task ${request.contextTaskId}.`,
+      };
+    }
+    return {
+      scope: { projectId: null, projectName: null, workspaceId: null, workspaceName: null, resolution: "none" },
+      choices: permitted,
+      reason: "No owned task with a still-permitted context has that id. Choose one of the listed contexts.",
+    };
+  }
+
   // Unchanged behaviour for the natural-language path.
   const inferred = await resolveScope(userId, {
     task: request.query ?? "",
@@ -169,7 +203,7 @@ export async function resolveMcpContext(userId: string, request: ContextRequest)
         projectName: project.name,
         workspaceId: project.workspaceId,
         workspaceName: project.workspaceName,
-        resolution: "inferred",
+        resolution: "single",
       },
       reason: `Only one project is permitted for this user, so "${project.name}" was selected.`,
     };
@@ -182,7 +216,7 @@ export async function resolveMcpContext(userId: string, request: ContextRequest)
         projectName: null,
         workspaceId: workspace.id,
         workspaceName: workspace.name,
-        resolution: "inferred",
+        resolution: "single",
       },
       reason: `No projects are permitted; only one workspace is, so "${workspace.name}" was selected.`,
     };
