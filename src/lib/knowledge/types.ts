@@ -193,4 +193,14 @@ export interface RetrievalContext {
   scopePolicy?: "isolated" | "user-context";
   /** Links this retrieval to the work it fed, so usefulness can be resolved later. */
   experienceId?: string;
+  /**
+   * Suppress the usage write inside retrieveContextWithProvenance.
+   *
+   * Set by buildMemoryContext (src/lib/neural-engine/memory-context.ts), which
+   * records usage itself *after* assembling the prompt block — that is the only
+   * point at which it is known which memories were actually injected rather
+   * than merely retrieved. Without this the batch would be written twice, once
+   * with every `injected` flag wrongly false.
+   */
+  skipUsageRecording?: boolean;
 }

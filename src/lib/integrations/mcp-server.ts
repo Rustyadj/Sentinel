@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { getRuntimeView } from "@/lib/agents/runtime/service";
 import { listAgentCapabilityDescriptors } from "@/lib/agents/capability-descriptor";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
+import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
+import { recordMemoryRetrieval } from "@/lib/neural-engine/memory-usage-service";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
 import { resolveScope } from "@/lib/orchestration/scope";
@@ -97,10 +99,43 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     }
     const access = await memoryReadWhere(principal.userId);
     const memories = await db.memory.findMany({
-      where: { AND: [access, ...(scope.projectId ? [{ projectId: scope.projectId, scope: "project" }] : []), { content: { contains: query, mode: "insensitive" } }] },
+      where: {
+        AND: [
+          access,
+          // Governance states are not a scope. Quarantined and forgotten
+          // memories were previously reachable through this tool: it queried
+          // the table directly and so bypassed the exclusion that every
+          // in-product retrieval path applies. An external MCP client could
+          // therefore be served memory Sentinel had already judged unsafe or
+          // retired. MCP exposes Sentinel's memory policy — it does not get
+          // its own.
+          excludeFromRetrieval(),
+          { archived: false },
+          ...(scope.projectId ? [{ projectId: scope.projectId, scope: "project" }] : []),
+          { content: { contains: query, mode: "insensitive" as const } },
+        ],
+      },
       select: { id: true, content: true, scope: true, tags: true, source: true, projectId: true, updatedAt: true },
       take: limit,
-      orderBy: [{ pinned: "desc" }, { importanceScore: "desc" }, { updatedAt: "desc" }],
+      // valueScore is the decay policy's output; ranking by it here is what
+      // makes decay mean the same thing to an external client as it does in
+      // chat. Nulls last, so unscored memories fall behind scored ones.
+      orderBy: [
+        { pinned: "desc" },
+        { valueScore: { sort: "desc" as const, nulls: "last" as const } },
+        { importanceScore: "desc" },
+        { updatedAt: "desc" },
+      ],
+    });
+    // Reading memory through MCP is a real retrieval and is recorded as one,
+    // so external usage feeds the same value signal as in-product usage.
+    // `injected` is deliberately left false: Sentinel handed these to a client
+    // and cannot observe whether that client put them in front of a model.
+    await recordMemoryRetrieval({
+      memoryIds: memories.map((memory) => memory.id),
+      consumer: "mcp",
+      userId: principal.userId,
+      projectId: scope.projectId,
     });
     return toolResult({ scope, memories }, `Found ${memories.length} permitted memory result(s).`);
   });

@@ -159,7 +159,7 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
   });
 
   try {
-    const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId });
+    const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, userId: ctx.userId });
     const output = await runAgentTurn({ roomId: ctx.roomId, agentId: ownerAgentId, userId: ctx.userId, prompt: context, workingDirectory: worktree?.path });
 
     const artifact = await db.artifact.create({
@@ -312,7 +312,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       await emitCollaborationEvent(ctx.roomId, "task.review_requested", { taskId, agentId: reviewerAgentId });
 
       const reviewContext = await buildAgentContext({
-        chatRoomId: ctx.roomId, taskId, agentId: reviewerAgentId,
+        chatRoomId: ctx.roomId, taskId, agentId: reviewerAgentId, userId: ctx.userId,
         extra: 'Review the implementation above. Reply with a first line of exactly "VERDICT: APPROVE" or "VERDICT: CHANGES_REQUESTED", followed by your reasoning.',
       });
       const reviewResult = await runAgentTurn({ roomId: ctx.roomId, agentId: reviewerAgentId, userId: ctx.userId, prompt: reviewContext });
@@ -341,7 +341,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       if (!taskId) return { error: "taskId is required" };
       const task = await db.task.findUnique({ where: { id: taskId } });
       if (!task?.agentId) return { error: "task not found or has no owner yet" };
-      const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId, agentId: task.agentId, extra: "Self-check your latest work against the task's acceptance criteria. State clearly whether it's correct and complete, and what (if anything) is missing." });
+      const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId, agentId: task.agentId, userId: ctx.userId, extra: "Self-check your latest work against the task's acceptance criteria. State clearly whether it's correct and complete, and what (if anything) is missing." });
       const result = await runAgentTurn({ roomId: ctx.roomId, agentId: task.agentId, userId: ctx.userId, prompt: context });
       await postCollaborationMessage({ chatRoomId: ctx.roomId, senderAgentId: task.agentId, recipientAgentIds: ["user"], type: "RESULT", taskId, content: result.slice(0, 4_000) });
       return { taskId, selfCheck: result.slice(0, 1_000) };

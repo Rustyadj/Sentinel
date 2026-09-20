@@ -35,6 +35,8 @@ export interface ResolveOutcomeResult {
   disconfirmed: number;
   skippedNotIndependent: number;
   skippedAlreadyCounted: number;
+  /** Retrieved but never placed in the worker's prompt, so not evidence. */
+  skippedNotInjected: number;
 }
 
 /**
@@ -64,6 +66,7 @@ export function isIndependentEvidence(
 export async function resolveRetrievalOutcomes(input: ResolveOutcomeInput): Promise<ResolveOutcomeResult> {
   const result: ResolveOutcomeResult = {
     resolved: 0, confirmed: 0, disconfirmed: 0, skippedNotIndependent: 0, skippedAlreadyCounted: 0,
+    skippedNotInjected: 0,
   };
   if (input.successScore == null && !input.outcomeStatus) return result;
 
@@ -93,6 +96,16 @@ export async function resolveRetrievalOutcomes(input: ResolveOutcomeInput): Prom
       },
     });
     result.resolved += 1;
+
+    // A memory that was retrieved but never reached the prompt cannot have
+    // influenced the outcome, in either direction. Counting it would be
+    // inventing evidence — which is precisely what the orchestration path did
+    // before injection was wired up. The row is still resolved (so it is not
+    // reprocessed forever), it simply carries no weight.
+    if (!retrieval.injected) {
+      result.skippedNotInjected += 1;
+      continue;
+    }
 
     if (countedMemoryIds.has(retrieval.memoryId)) {
       result.skippedAlreadyCounted += 1;
