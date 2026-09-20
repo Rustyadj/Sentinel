@@ -40,14 +40,12 @@ export interface Retriever {
 /**
  * The current production path, exactly as chat / orchestration / MCP call it.
  *
- * Note for anyone reading a baseline report and wondering why precision is
- * low: `buildMemoryContext` takes a RetrievalContext, and RetrievalContext has
- * no query field. The production retrieval path is query-independent — it
- * returns the top-N memories in scope ordered by (pinned, valueScore,
- * importanceScore, createdAt). The case's `query` is therefore recorded but
- * not consumed here. That is a property of the system under test, not a defect
- * in the harness, and it is the single most important thing the baseline
- * establishes.
+ * The baseline run of this benchmark recorded what happened when
+ * RetrievalContext had no query field at all: retrieval returned the top-N
+ * in-scope memories by (pinned, valueScore, importanceScore, createdAt) and
+ * never saw the question, so 32 cases produced 4 distinct result sets. The
+ * query is now passed through and ranked on; baseline.json is kept as the
+ * before picture.
  */
 export const productionRetriever: Retriever = {
   name: "production:buildMemoryContext",
@@ -55,6 +53,7 @@ export const productionRetriever: Retriever = {
     const result = await buildMemoryContext(
       {
         userId: testCase.ctx.userId,
+        query: testCase.query,
         projectId: testCase.ctx.projectId,
         workspaceId: testCase.ctx.workspaceId,
         organizationId: testCase.ctx.organizationId,

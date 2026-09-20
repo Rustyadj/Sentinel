@@ -5,9 +5,15 @@ import { redisGet, redisSet } from "@/lib/redis";
 import type { Prisma } from "@prisma/client";
 import type { RetrievalContext } from "./types";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
+import { rankMemories, type RankedMemory } from "./retrieval-ranking";
 
 const SESSION_MEMORY_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const SESSION_MEMORY_MAX_TURNS = 20;
+
+/** How many in-scope memories to score before trimming to the caller's budget.
+ *  Large enough that a relevant memory is not excluded by value ordering
+ *  before ranking ever sees it -- the failure the benchmark exposed. */
+const CANDIDATE_POOL_SIZE = 200;
 
 function sessionMemoryKey(roomId: string): string {
   return `session:${roomId}:memory`;
@@ -77,7 +83,14 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
             ...notForgottenOrQuarantined,
             OR: [
               { scope: "project", projectId: ctx.projectId },
-              { scope: { in: ["user", "global"] }, projectId: null },
+              // "workspace" was missing here, so workspace-scoped memories
+              // were unreachable from every surface -- the benchmark scored
+              // workspace recall at 0.000 for exactly this reason. Memory has
+              // no workspaceId column, so a workspace-scoped row is isolated
+              // by `owner` like user/global rows are; it is no broader than
+              // what this branch already returns. Genuine per-workspace
+              // isolation needs a column and is tracked separately.
+              { scope: { in: ["workspace", "organization", "user", "global"] }, projectId: null },
             ],
           }
         : {
@@ -97,7 +110,7 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
       owner: ctx.userId,
       archived: false,
       projectId: null,
-      scope: { in: ["user", "global"] },
+      scope: { in: ["workspace", "organization", "user", "global"] },
       ...notForgottenOrQuarantined,
     },
     note: { projectId: null, userId: ctx.userId },
@@ -110,13 +123,25 @@ export function buildRetrievalFilters(ctx: RetrievalContext): {
 }
 
 export async function retrieveContext(ctx: RetrievalContext): Promise<{
-  memories: Array<{ id: string; content: string; scope: string; tags: string[] }>;
+  memories: Array<{
+    id: string;
+    content: string;
+    scope: string;
+    tags: string[];
+    retrievalScore?: number;
+    retrievalFactors?: RankedMemory["factors"];
+  }>;
   notes: Array<{ id: string; title: string; content: string; tags: string[] }>;
   decisions: Array<{ id: string; title: string; summary: string; status: string }>;
   totalItems: number;
 }> {
   const maxItems = Math.min(Math.max(ctx.maxItems ?? 40, 1), 100);
   const filters = buildRetrievalFilters(ctx);
+  // With a query we score a wider pool and let ranking choose; without one we
+  // keep the original value-ordered top-N exactly as it was.
+  const query = (ctx.query ?? "").trim();
+  const poolSize = query ? Math.max(maxItems, CANDIDATE_POOL_SIZE) : maxItems;
+
   const [memoriesRaw, notesRaw, decisionsRaw, sessionMemories] = await Promise.all([
     db.memory.findMany({
       where: filters.memory,
@@ -132,7 +157,7 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
         { importanceScore: "desc" },
         { createdAt: "desc" },
       ],
-      take: maxItems,
+      take: poolSize,
     }),
     db.obsidianNote.findMany({
       where: filters.note,
@@ -147,13 +172,20 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     retrieveSessionMemory(ctx.roomId),
   ]);
 
+  const ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
+    ? rankMemories(query, memoriesRaw, { limit: maxItems })
+    : memoriesRaw.slice(0, maxItems).map((memory) => ({ memory, score: 0, factors: [] }));
+
   const memories = [
     ...sessionMemories,
-    ...memoriesRaw.map((item) => ({
-      id: item.id,
-      content: item.content,
-      scope: item.scope,
-      tags: item.tags,
+    ...ranked.map((entry) => ({
+      id: entry.memory.id,
+      content: entry.memory.content,
+      scope: entry.memory.scope,
+      tags: entry.memory.tags,
+      // Why this memory is here, and why it outranked the ones that are not.
+      retrievalScore: entry.score,
+      retrievalFactors: entry.factors,
     })),
   ];
   const notes = notesRaw.map((item) => ({

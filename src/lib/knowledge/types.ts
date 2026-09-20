@@ -184,6 +184,16 @@ export interface ExtractionCandidate {
 }
 
 export interface RetrievalContext {
+  /**
+   * What the caller is actually asking about.
+   *
+   * Optional for backward compatibility: callers that omit it get the previous
+   * value-ordered top-N. Callers that supply it get memories ranked against
+   * the question instead of against the clock. Every agent-facing surface
+   * should supply it -- without it, retrieval cannot tell a relevant memory
+   * from a recent one.
+   */
+  query?: string;
   projectId?: string;
   workspaceId?: string;
   organizationId?: string;

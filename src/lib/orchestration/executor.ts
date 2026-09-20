@@ -69,6 +69,9 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   const memory = await buildMemoryContext(
     {
       userId: run.userId,
+      // The task text is the query: memory is ranked against the work being
+      // done, not against the clock.
+      query: task,
       projectId: run.projectId ?? undefined,
       workspaceId: run.workspaceId ?? undefined,
       maxItems: 12,

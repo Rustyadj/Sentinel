@@ -69,6 +69,9 @@ export async function buildAgentContext(input: BuildContextInput): Promise<strin
   const memory = await buildMemoryContext(
     {
       userId: input.userId,
+      // Without a query, retrieval returns whatever is newest and
+      // highest-valued in scope rather than what this task is about.
+      query: [task?.title, task?.description, room?.objective].filter(Boolean).join(" "),
       projectId: room?.projectId ?? undefined,
       roomId: input.chatRoomId,
       maxItems: 12,
