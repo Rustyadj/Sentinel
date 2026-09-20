@@ -5,6 +5,7 @@ import {
   OAuthProtocolError,
 } from "@/lib/integrations/oauth";
 import { writeAuditLog } from "@/lib/workspaces/audit";
+import { publicOrigin } from "@/lib/integrations/public-origin";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
     return typeof value === "string" && value.length > 0 ? value : null;
   };
   const grantType = body.get("grant_type");
+  const resource = field("resource");
+  const expectedResource = `${publicOrigin(request)}/api/mcp`;
+
+  if (!resource || resource !== expectedResource) {
+    return oauthError({ code: "invalid_target", message: `resource must be ${expectedResource}.` });
+  }
 
   try {
     if (grantType === "authorization_code") {
@@ -55,6 +62,7 @@ export async function POST(request: NextRequest) {
         redirectUri,
         codeVerifier,
         clientSecret: clientSecret ?? undefined,
+        resource,
       });
 
       if (token.refreshToken) {
@@ -92,6 +100,7 @@ export async function POST(request: NextRequest) {
         clientSecret: typeof clientSecret === "string" ? clientSecret : undefined,
         refreshToken,
         scope: field("scope"),
+        resource,
       });
 
       if (outcome.kind === "replay") {

@@ -83,6 +83,7 @@ import {
 
 const ALL = ["sentinel.read", "sentinel.tasks.read", "sentinel.tasks.write", "sentinel.memory.read"];
 const USER = "user-1";
+const RESOURCE = "https://sentinel.test/api/mcp";
 
 beforeEach(() => store.reset());
 
@@ -111,6 +112,7 @@ function seedRefreshToken(client: Row, overrides: Record<string, unknown> = {}) 
     externalClientId: client.id,
     userId: USER,
     scopes: ALL,
+    resource: RESOURCE,
     familyId: "fam-1",
     previousTokenId: null,
     accessTokenId: access.id,
@@ -123,7 +125,7 @@ function seedRefreshToken(client: Row, overrides: Record<string, unknown> = {}) 
 }
 
 const refresh = (client: Row, token: string, extra: Record<string, unknown> = {}) =>
-  exchangeRefreshToken({ clientId: client.clientId as string, refreshToken: token, ...extra });
+  exchangeRefreshToken({ clientId: client.clientId as string, refreshToken: token, resource: RESOURCE, ...extra });
 
 describe("refresh token rotation", () => {
   it("mints a new access token and a new refresh token", async () => {
@@ -209,6 +211,25 @@ describe("replay detection", () => {
 });
 
 describe("binding", () => {
+  it("refuses a refresh token at a different protected resource", async () => {
+    const client = makeClient();
+    const token = seedRefreshToken(client);
+    await expect(exchangeRefreshToken({
+      clientId: client.clientId as string,
+      refreshToken: token,
+      resource: "https://other.example/api/mcp",
+    })).rejects.toMatchObject({ code: "invalid_target" });
+  });
+
+  it("keeps the protected resource bound across rotation", async () => {
+    const client = makeClient();
+    const token = seedRefreshToken(client);
+    const result = await refresh(client, token);
+    if (result.kind !== "rotated") throw new Error("expected rotation");
+    expect(store.tables.access.at(-1)?.resource).toBe(RESOURCE);
+    expect(store.tables.refresh.at(-1)?.resource).toBe(RESOURCE);
+  });
+
   it("refuses a refresh token presented by a different client", async () => {
     const owner = makeClient();
     const attacker = makeClient();

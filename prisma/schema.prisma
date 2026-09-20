@@ -1949,6 +1949,7 @@ model OAuthAuthorizationCode {
   scopes              String[]  @default([])
   codeChallenge       String
   codeChallengeMethod String    @default("S256")
+  resource            String?
   expiresAt           DateTime
   usedAt              DateTime?
   createdAt           DateTime  @default(now())
@@ -1973,6 +1974,7 @@ model OAuthRefreshToken {
   externalClientId String
   userId           String
   scopes           String[]  @default([])
+  resource         String?
   // Shared by every token rotated from the same original consent.
   familyId         String
   // The token this one replaced, so a rotation chain can be walked.
@@ -2002,6 +2004,7 @@ model OAuthAccessToken {
   externalClientId String
   userId           String
   scopes           String[]  @default([])
+  resource         String?
   expiresAt        DateTime
   revokedAt        DateTime?
   createdAt        DateTime  @default(now())
@@ -2012,6 +2015,7 @@ model OAuthAccessToken {
 
   @@index([externalClientId, expiresAt])
   @@index([userId, expiresAt])
+  @@index([resource, expiresAt])
   @@map("oauth_access_tokens")
 }
 

@@ -14,7 +14,8 @@ function unauthorized(request: NextRequest) {
 }
 
 async function handle(request: NextRequest) {
-  const principal = await authenticateAccessToken(request.headers.get("authorization"));
+  const resource = `${publicOrigin(request)}/api/mcp`;
+  const principal = await authenticateAccessToken(request.headers.get("authorization"), resource);
   if (!principal) return unauthorized(request);
   try {
     await enforceMcpRateLimit(principal.clientId, principal.userId);
@@ -22,22 +23,58 @@ async function handle(request: NextRequest) {
     const message = error instanceof Error ? error.message : "MCP request rejected.";
     return NextResponse.json({ error: message }, { status: message.includes("unavailable") ? 503 : 429 });
   }
-  const rpc = request.method === "POST" ? await request.clone().json().catch(() => null) as { method?: unknown } | null : null;
+  const rpc = request.method === "POST" ? await request.clone().json().catch(() => null) as {
+    method?: unknown;
+    params?: { name?: unknown; arguments?: unknown };
+  } | null : null;
   const method = typeof rpc?.method === "string" ? rpc.method : null;
-  if (method) {
-    await writeAuditLog({
-      userId: principal.userId,
-      action: "mcp.invocation",
-      entityType: "external_client",
-      entityId: principal.externalClientId,
-      details: { clientId: principal.clientId, method },
-    });
-  }
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   const server = createSentinelMcpServer(principal);
   await server.connect(transport);
   const response = await transport.handleRequest(request, { authInfo: { token: "redacted", clientId: principal.clientId, scopes: principal.scopes, extra: { userId: principal.userId } } });
   await server.close();
+  if (method) {
+    const tool = method === "tools/call" && typeof rpc?.params?.name === "string" ? rpc.params.name : null;
+    const args = rpc?.params?.arguments && typeof rpc.params.arguments === "object" && !Array.isArray(rpc.params.arguments)
+      ? rpc.params.arguments as Record<string, unknown>
+      : {};
+    const body = await response.clone().json().catch(() => null) as {
+      error?: { code?: unknown };
+      result?: { isError?: unknown; structuredContent?: { task?: { id?: unknown }; taskId?: unknown; scope?: { projectId?: unknown; workspaceId?: unknown } } };
+    } | null;
+    const structured = body?.result?.structuredContent;
+    const executionId = typeof structured?.task?.id === "string"
+      ? structured.task.id
+      : typeof structured?.taskId === "string"
+        ? structured.taskId
+        : typeof args.taskId === "string"
+          ? args.taskId
+          : null;
+    const projectId = typeof structured?.scope?.projectId === "string"
+      ? structured.scope.projectId
+      : typeof args.projectId === "string" ? args.projectId : null;
+    const workspaceId = typeof structured?.scope?.workspaceId === "string"
+      ? structured.scope.workspaceId
+      : typeof args.workspaceId === "string" ? args.workspaceId : null;
+    const failed = Boolean(body?.error || body?.result?.isError) || response.status >= 400;
+    await writeAuditLog({
+      userId: principal.userId,
+      workspaceId,
+      projectId,
+      action: tool ? "mcp.tool.invoked" : "mcp.rpc.invoked",
+      entityType: executionId ? "orchestration_run" : "external_client",
+      entityId: executionId ?? principal.externalClientId,
+      details: {
+        clientId: principal.clientId,
+        method,
+        ...(tool ? { tool } : {}),
+        scopes: principal.scopes,
+        success: !failed,
+        ...(typeof body?.error?.code === "number" || typeof body?.error?.code === "string" ? { errorCode: body.error.code } : {}),
+        ...(executionId ? { executionId } : {}),
+      },
+    });
+  }
   return response;
 }
 

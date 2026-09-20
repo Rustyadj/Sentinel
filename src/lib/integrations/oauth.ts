@@ -60,7 +60,7 @@ export function verifyPkceS256(verifier: string, challenge: string): boolean {
 
 export class OAuthProtocolError extends Error {
   constructor(
-    public readonly code: "invalid_client" | "invalid_grant" | "invalid_request" | "invalid_scope" | "unauthorized_client",
+    public readonly code: "access_denied" | "invalid_client" | "invalid_grant" | "invalid_request" | "invalid_scope" | "invalid_target" | "unauthorized_client",
     message: string,
   ) {
     super(message);
@@ -73,6 +73,7 @@ export async function issueAuthorizationCode(input: {
   redirectUri: string;
   scopes: McpScope[];
   codeChallenge: string;
+  resource: string;
 }) {
   const code = randomOpaqueSecret();
   await db.oAuthAuthorizationCode.create({
@@ -83,6 +84,7 @@ export async function issueAuthorizationCode(input: {
       redirectUri: input.redirectUri,
       scopes: input.scopes,
       codeChallenge: input.codeChallenge,
+      resource: input.resource,
       expiresAt: new Date(Date.now() + AUTHORIZATION_CODE_TTL_MS),
     },
   });
@@ -95,6 +97,7 @@ export async function exchangeAuthorizationCode(input: {
   code: string;
   redirectUri: string;
   codeVerifier: string;
+  resource: string;
 }) {
   const client = await db.externalClient.findUnique({ where: { clientId: input.clientId } });
   if (!client?.enabled) throw new OAuthProtocolError("invalid_client", "Unknown or disabled client.");
@@ -112,6 +115,7 @@ export async function exchangeAuthorizationCode(input: {
     code.usedAt ||
     code.expiresAt <= new Date() ||
     code.codeChallengeMethod !== "S256" ||
+    code.resource !== input.resource ||
     !verifyPkceS256(input.codeVerifier, code.codeChallenge)
   ) {
     throw new OAuthProtocolError("invalid_grant", "Authorization code is invalid, expired, or already used.");
@@ -132,6 +136,7 @@ export async function exchangeAuthorizationCode(input: {
     withRefreshToken: client.grantTypes.includes("refresh_token"),
     familyId: null,
     previousTokenId: null,
+    resource: code.resource,
   });
 }
 
@@ -156,6 +161,7 @@ async function issueTokenSet(input: {
   /** Null starts a new rotation family; otherwise the chain continues. */
   familyId: string | null;
   previousTokenId: string | null;
+  resource: string;
 }): Promise<IssuedTokenSet> {
   const accessToken = randomOpaqueSecret(48);
   const expiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
@@ -165,6 +171,7 @@ async function issueTokenSet(input: {
       externalClientId: input.externalClientId,
       userId: input.userId,
       scopes: input.scopes,
+      resource: input.resource,
       expiresAt,
     },
   });
@@ -181,6 +188,7 @@ async function issueTokenSet(input: {
       externalClientId: input.externalClientId,
       userId: input.userId,
       scopes: input.scopes,
+      resource: input.resource,
       // A fresh consent starts its own family; cuid() is only used as a
       // convenient unique family label, never as a credential.
       familyId: input.familyId ?? `fam_${randomOpaqueSecret(16)}`,
@@ -237,6 +245,7 @@ export async function exchangeRefreshToken(input: {
   refreshToken: string;
   /** Optional narrowing. Expansion is refused, never silently granted. */
   scope?: string | null;
+  resource: string;
 }): Promise<RefreshOutcome> {
   const client = await db.externalClient.findUnique({ where: { clientId: input.clientId } });
   if (!client?.enabled) throw new OAuthProtocolError("invalid_client", "Unknown or disabled client.");
@@ -253,6 +262,9 @@ export async function exchangeRefreshToken(input: {
     where: { tokenHash: hashOpaqueSecret(input.refreshToken) },
   });
   if (!stored) throw new OAuthProtocolError("invalid_grant", "Refresh token is invalid.");
+  if (stored.resource !== input.resource) {
+    throw new OAuthProtocolError("invalid_target", "Refresh token is not valid for this protected resource.");
+  }
 
   // Client binding: a token issued to one client is worthless to another, even
   // if that other client is otherwise valid.
@@ -302,19 +314,20 @@ export async function exchangeRefreshToken(input: {
     // change whose authority the token represents.
     familyId: stored.familyId,
     previousTokenId: stored.id,
+    resource: stored.resource,
   });
 
   return { kind: "rotated", tokens, familyId: stored.familyId, userId: stored.userId, clientId: client.clientId };
 }
 
-export async function authenticateAccessToken(authorization: string | null) {
+export async function authenticateAccessToken(authorization: string | null, resource: string) {
   const match = authorization?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/);
   if (!match) return null;
   const token = await db.oAuthAccessToken.findUnique({
     where: { tokenHash: hashOpaqueSecret(match[1]) },
     include: { externalClient: true },
   });
-  if (!token || token.revokedAt || token.expiresAt <= new Date() || !token.externalClient.enabled) return null;
+  if (!token || token.resource !== resource || token.revokedAt || token.expiresAt <= new Date() || !token.externalClient.enabled) return null;
   void db.oAuthAccessToken.update({ where: { id: token.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
   return {
     tokenId: token.id,
