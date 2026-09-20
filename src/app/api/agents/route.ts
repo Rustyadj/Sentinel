@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { RETIRED_AGENT_IDS } from "@/lib/agents/active";
 import {
   canEditConfig,
   getAccessibleWorkspaceIds,
@@ -14,7 +15,7 @@ export async function GET() {
   if (!user) return unauthorized();
   const workspaceIds = await getAccessibleWorkspaceIds(user.id);
   const agents = await db.agent.findMany({
-    where: { workspaceId: { in: workspaceIds } },
+    where: { workspaceId: { in: workspaceIds }, id: { notIn: [...RETIRED_AGENT_IDS] } },
     orderBy: { createdAt: "asc" },
   });
   return NextResponse.json(agents);

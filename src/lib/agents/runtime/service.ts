@@ -1,5 +1,6 @@
 import type { AgentRuntime as AgentRuntimeRow } from "@prisma/client";
 import { db } from "@/lib/db";
+import { isActiveAgentId, RETIRED_AGENT_IDS } from "@/lib/agents/active";
 import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
 import { GeminiRuntimeAdapter } from "./gemini";
@@ -46,19 +47,20 @@ function recordToView(row: AgentRuntimeRow): RuntimeView {
 
 export async function listRuntimeViews(): Promise<RuntimeView[]> {
   try {
-    const rows = await db.agentRuntime.findMany({ where: { enabled: true }, orderBy: [{ kind: "asc" }, { agentId: "asc" }] });
+    const rows = await db.agentRuntime.findMany({ where: { enabled: true, agentId: { notIn: [...RETIRED_AGENT_IDS] } }, orderBy: [{ kind: "asc" }, { agentId: "asc" }] });
     if (rows.length) return rows.map(recordToView);
   } catch {
     // During an incremental deploy the app can start before the additive
     // migration. Compatibility data keeps reads alive; mutations still require
     // persisted runtime/session rows and therefore fail closed.
   }
-  return COMPATIBILITY_RUNTIMES.filter((runtime) => runtime.enabled);
+  return COMPATIBILITY_RUNTIMES.filter((runtime) => runtime.enabled && isActiveAgentId(runtime.agentId));
 }
 
 export async function getRuntimeView(id: string): Promise<RuntimeView | null> {
+  if (!isActiveAgentId(id) || RETIRED_AGENT_IDS.some((agentId) => compatibilityRuntime(id)?.agentId === agentId)) return null;
   try {
-    const row = await db.agentRuntime.findFirst({ where: { enabled: true, OR: [{ id }, { agentId: id }] } });
+    const row = await db.agentRuntime.findFirst({ where: { enabled: true, agentId: { notIn: [...RETIRED_AGENT_IDS] }, OR: [{ id }, { agentId: id }] } });
     if (row) return recordToView(row);
   } catch {
     // See incremental migration note in listRuntimeViews().

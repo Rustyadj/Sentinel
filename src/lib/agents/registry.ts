@@ -5,6 +5,7 @@
  */
 
 import { resolveWorkerModel } from "./model-policy";
+import { isActiveAgentId } from "./active";
 
 export type AgentStatus = "online" | "offline" | "degraded" | "unknown";
 export type AgentKind = "hermes" | "openclaw" | "claude-code" | "codex" | "custom";
@@ -125,11 +126,11 @@ const REGISTRY: VpsAgent[] = [
 ];
 
 export function getAllVpsAgents(): VpsAgent[] {
-  return REGISTRY.filter((a) => a.enabled);
+  return REGISTRY.filter((a) => a.enabled && isActiveAgentId(a.id));
 }
 
 export function getVpsAgent(id: string): VpsAgent | undefined {
-  return REGISTRY.find((a) => a.id === id && a.enabled);
+  return REGISTRY.find((a) => a.id === id && a.enabled && isActiveAgentId(a.id));
 }
 
-export const ALLOWED_AGENT_IDS = new Set(REGISTRY.map((a) => a.id));
+export const ALLOWED_AGENT_IDS = new Set(REGISTRY.filter((a) => isActiveAgentId(a.id)).map((a) => a.id));
