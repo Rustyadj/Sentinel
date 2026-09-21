@@ -2949,6 +2949,15 @@ model Repository {
   /// local to whoever is asking.
   host String @default("local")
 
+  /// Where this repository's code is expected to be running, as
+  /// [{ environment, containerName, versionUrl, healthUrl }].
+  ///
+  /// Configuration rather than observation: it says where to look, never what
+  /// was found. A repository with no targets reports its deployment stages as
+  /// not configured, which is the honest answer — it is not the same as
+  /// "nothing is deployed", and the interface must not render it as one.
+  deployTargets Json @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

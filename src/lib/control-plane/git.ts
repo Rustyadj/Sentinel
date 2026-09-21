@@ -43,7 +43,7 @@ export class GitObservationError extends Error {
  * A dashboard render must never change the state it is reporting on.
  */
 const READ_ONLY_COMMANDS = new Set([
-  "rev-parse", "log", "status", "rev-list", "config", "symbolic-ref", "for-each-ref", "show-ref",
+  "rev-parse", "log", "status", "rev-list", "config", "symbolic-ref", "for-each-ref", "show-ref", "merge-base",
 ]);
 
 async function git(repoPath: string, args: string[]): Promise<string> {
@@ -259,4 +259,41 @@ export async function observeRepository(repoPath: string): Promise<GitObservatio
     remoteRefsFetchedAt,
     observedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Is `ancestor` contained in `descendant`'s history?
+ *
+ * This is what "merged" and "deployed is behind main" actually mean, and it is
+ * the only honest way to ask. Comparing SHAs for equality answers a different
+ * and much weaker question: a commit that was rebased, squashed or merged into
+ * main has a different SHA there, and equality would report it as never merged.
+ *
+ * Returns null rather than false when the question cannot be answered — an
+ * unknown commit (not fetched, garbage collected) is not evidence of absence.
+ */
+export async function isAncestor(repoPath: string, ancestor: string, descendant: string): Promise<boolean | null> {
+  for (const ref of [ancestor, descendant]) {
+    const known = await git(repoPath, ["rev-parse", "--verify", `${ref}^{commit}`]).catch(() => "");
+    if (!known.trim()) return null;
+  }
+  try {
+    await git(repoPath, ["merge-base", "--is-ancestor", ancestor, descendant]);
+    return true;
+  } catch {
+    // git exits 1 for "not an ancestor" and 128 for a bad object; the refs were
+    // verified above, so a failure here means not an ancestor.
+    return false;
+  }
+}
+
+/** How many commits `head` is missing relative to `target`. Null when unanswerable. */
+export async function countCommitsBetween(repoPath: string, head: string, target: string): Promise<number | null> {
+  try {
+    const stdout = await git(repoPath, ["rev-list", "--count", `${head}..${target}`]);
+    const count = Number(stdout.trim());
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
 }

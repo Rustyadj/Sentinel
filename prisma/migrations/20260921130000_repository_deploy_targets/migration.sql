@@ -1,0 +1,11 @@
+-- Where to look for a repository's running code.
+--
+-- Mapping a repository to the container and endpoints that serve it is
+-- configuration, not observation: it says where to look, never what was found.
+-- Keeping it beside the repository (rather than inferring a container name from
+-- the repository name) means a repository with no targets can report "not
+-- configured" instead of "nothing is deployed" — two answers an operator acts
+-- on very differently.
+--
+-- Additive: one defaulted column.
+ALTER TABLE "repositories" ADD COLUMN IF NOT EXISTS "deployTargets" JSONB NOT NULL DEFAULT '[]';

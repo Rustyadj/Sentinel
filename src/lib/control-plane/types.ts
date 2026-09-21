@@ -183,3 +183,87 @@ export interface RuntimeObservation {
   agreement: SourceAgreement;
   observedAt: string;
 }
+
+// --- Revision position ---
+
+/**
+ * The eight places a change can be. Ordered, because the rail draws them in
+ * this order and because "furthest reached" is only meaningful on an order.
+ */
+export const STAGE_IDS = [
+  "working",
+  "committed",
+  "pushed",
+  "pr",
+  "merged",
+  "built",
+  "deployed",
+  "verified",
+] as const;
+
+export type StageId = (typeof STAGE_IDS)[number];
+
+/**
+ * `reached` and `not_reached` are claims about the revision in hand.
+ * `unknown` means the question was asked and could not be answered.
+ * `not_connected` means it was never asked because the integration is absent —
+ * kept distinct so the interface can name what to connect instead of implying
+ * something is wrong with the code.
+ * `blocked` is a stage that actively failed, which is different from one that
+ * has simply not happened yet.
+ * `diverged` is a stage holding a revision other than the one in hand — the
+ * case that matters most: production running something that is not this change.
+ */
+export type StageState = "reached" | "not_reached" | "blocked" | "diverged" | "unknown" | "not_connected";
+
+export interface Evidence {
+  label: string;
+  value: string;
+  source: string;
+  observedAt: string | null;
+}
+
+export interface Stage {
+  id: StageId;
+  state: StageState;
+  /** The revision this stage holds, when it holds one and it is known. */
+  sha: string | null;
+  /** One line an operator can act on. Never decorative. */
+  detail: string;
+  evidence: Evidence[];
+  missingIntegration?: string;
+}
+
+/** Production against the default branch: the question the rail exists to answer. */
+export type DriftStatus = "match" | "behind" | "ahead" | "diverged" | "unknown";
+
+export interface Drift {
+  status: DriftStatus;
+  deployedSha: string | null;
+  defaultBranchSha: string | null;
+  defaultBranch: string;
+  /** Commits on the default branch that are not deployed. */
+  commitsBehind: number | null;
+  /**
+   * When the default branch ref was last refreshed from the remote. Everything
+   * compared against it is only as current as this.
+   */
+  defaultBranchAsOf: string | null;
+  /** True when that ref is old enough that the comparison should not be trusted. */
+  stale: boolean;
+  detail: string;
+}
+
+export interface RevisionPosition {
+  repositoryId: string | null;
+  name: string;
+  path: string;
+  branch: string | null;
+  head: CommitSummary;
+  stages: Stage[];
+  /** Furthest stage this revision has actually reached. */
+  position: StageId;
+  drift: Drift;
+  environment: string;
+  observedAt: string;
+}
