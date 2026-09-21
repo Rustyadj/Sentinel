@@ -32,6 +32,15 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379
       AUTH_SECRET: ci-only-secret-ci-only-secret-ci-only
       AUTH_URL: http://127.0.0.1:3000
+      # vitest.config.ts deliberately ignores DATABASE_URL and REDIS_URL: on a
+      # developer machine those point at the running application, and the suite
+      # must never be able to reach it. It resolves its own targets instead,
+      # defaulting to local throwaway instances that do not exist on a runner.
+      # These two variables are how a caller says "this environment is already
+      # disposable" — without them the job connects to nothing and every
+      # database-backed test fails.
+      SENTINEL_TEST_DATABASE_URL: postgresql://sentinel:sentinel@127.0.0.1:5432/sentinel_test
+      SENTINEL_TEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
