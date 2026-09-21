@@ -15,6 +15,7 @@ import {
   Check,
   X,
   LogOut,
+  Plug,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
@@ -24,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useKeyStore, maskKey } from "@/store/useKeyStore";
+import { McpDiagnosticsPanel } from "@/components/integrations/McpDiagnosticsPanel";
 
 const VOICE_PROVIDER_STORAGE_KEY = "sentinel.voice.provider";
 
@@ -35,6 +37,7 @@ const SETTINGS_SECTIONS = [
   { id: "security", label: "Security", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "api", label: "API Keys", icon: Key },
+  { id: "integrations", label: "Integrations", icon: Plug },
 ];
 
 export default function SettingsPage() {
@@ -76,6 +79,7 @@ export default function SettingsPage() {
           {activeSection === "security" && <SecuritySettings />}
           {activeSection === "api" && <APIKeySettings />}
           {activeSection === "notifications" && <NotificationSettings />}
+          {activeSection === "integrations" && <McpDiagnosticsPanel />}
         </div>
       </div>
     </div>
