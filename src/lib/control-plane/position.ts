@@ -272,9 +272,11 @@ export async function resolveRevisionPosition(
         ? `No container is running for ${runtime.environment}.`
         : container.state !== "running"
           ? `Container ${container.name} is ${container.state}.`
-          : deployedSha === head.sha
-            ? `This commit is running in ${runtime.environment}.`
-            : `${runtime.environment} is running ${short(deployedSha)}, not this commit.`,
+          : !deployedSha
+            ? `A container is running in ${runtime.environment}, but it declares no revision, so what it is running is unknown.`
+            : deployedSha === head.sha
+              ? `This commit is running in ${runtime.environment}.`
+              : `${runtime.environment} is running ${short(deployedSha)}, not this commit.`,
     evidence: container
       ? [
           evidence("Container", container.name, "docker inspect", container.observedAt),
@@ -336,12 +338,23 @@ export async function resolveRevisionPosition(
 
 /**
  * The marker's position: the furthest stage actually reached, scanning forward
- * and stopping at the first gap.
+ * and stopping at the first stage that is not established.
  *
- * Stopping matters. A later stage can be `reached` for a different revision —
- * production is deployed and verified while this commit sits unpushed — and
- * taking the furthest `reached` stage anywhere on the rail would place the
- * marker at the end and report an unpushed change as live.
+ * Stopping matters. A later stage can be `reached` for a *different* revision —
+ * production is deployed and verified while this commit sits unpushed — so
+ * taking the furthest `reached` stage anywhere on the rail would report an
+ * unpushed change as live.
+ *
+ * `unknown` stops the marker too, and that distinction was found by running
+ * this against a real repository: MobileOps is merged, its container is
+ * healthy, but the container declares no revision. Skipping the unknown
+ * `built`/`deployed` stages carried the marker to `verified` — the rail
+ * claiming that commit was live on the strength of a healthcheck belonging to
+ * a container whose contents nobody could identify.
+ *
+ * `not_connected` is different and is skipped. It means Sentinel was never in
+ * a position to ask — the deliberate state of the PR stage with no forge
+ * credential — and the stages after it rest on their own independent evidence.
  */
 function furthestReached(stages: Stage[]): StageId {
   let furthest: StageId = "committed";
@@ -350,7 +363,7 @@ function furthestReached(stages: Stage[]): StageId {
     const stage = stages.find((candidate) => candidate.id === id);
     if (!stage) break;
     if (stage.state === "reached") furthest = id;
-    else if (stage.state === "not_connected" || stage.state === "unknown") continue;
+    else if (stage.state === "not_connected") continue;
     else break;
   }
   return furthest;

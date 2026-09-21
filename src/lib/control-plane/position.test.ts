@@ -170,6 +170,51 @@ describe("resolveRevisionPosition", () => {
     expect(stage(position, "merged").state).toBe("reached");
   });
 
+  it("does not carry the marker past a stage it could not establish", async () => {
+    const repo = await repoWithOrigin();
+    const observation = await observeRepository(repo);
+
+    // The shape a real repository was found in: merged, container healthy, but
+    // the container declares no revision, so nothing identifies what is running.
+    const unidentified: RuntimeObservation = {
+      ...runtime(null),
+      container: container({ sha: unobserved("not_observed"), shaSource: "none" }),
+    };
+
+    const position = await resolveRevisionPosition(observation, unidentified);
+
+    expect(stage(position, "merged").state).toBe("reached");
+    expect(stage(position, "deployed").state).toBe("unknown");
+    expect(stage(position, "verified").state).toBe("reached");
+    // A healthcheck on a container of unknown contents is not evidence that
+    // *this* commit is live.
+    expect(position.position).toBe("merged");
+  });
+
+  it("does not describe an unidentifiable container as running something else", async () => {
+    const repo = await repoWithOrigin();
+    const observation = await observeRepository(repo);
+
+    const position = await resolveRevisionPosition(observation, {
+      ...runtime(null),
+      container: container({ sha: unobserved("not_observed"), shaSource: "none" }),
+    });
+
+    expect(stage(position, "deployed").detail).toContain("declares no revision");
+    expect(stage(position, "deployed").detail).not.toContain("running unknown");
+  });
+
+  it("still carries the marker past a stage that was never asked", async () => {
+    const repo = await repoWithOrigin();
+    const observation = await observeRepository(repo);
+
+    const position = await resolveRevisionPosition(observation, runtime(observation.head.sha));
+
+    // PR is not_connected, and the stages after it rest on their own evidence.
+    expect(stage(position, "pr").state).toBe("not_connected");
+    expect(position.position).toBe("verified");
+  });
+
   it("never guesses pull request state, and names the integration that would answer", async () => {
     const repo = await repoWithOrigin();
     const position = await resolveRevisionPosition(await observeRepository(repo), runtime(null));
