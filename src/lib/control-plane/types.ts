@@ -109,3 +109,77 @@ export interface GitObservation {
   remoteRefsFetchedAt: string | null;
   observedAt: string;
 }
+
+// --- Runtime observation ---
+
+/**
+ * What is actually running, as opposed to what was deployed.
+ *
+ * `sha` is separated from `shaSource` on purpose. A container can report its
+ * revision through an OCI label (written by the build, hard to fake), through
+ * a baked environment variable (written by the deploy, easy to leave stale),
+ * or not at all. Those are not equally strong claims and the interface must
+ * not present them as one.
+ */
+export type ShaSource = "oci_label" | "env_release_sha" | "env_commit" | "version_endpoint" | "none";
+
+export interface ContainerObservation {
+  name: string;
+  /** running | exited | restarting | paused | dead | created */
+  state: string;
+  /** Docker's own healthcheck verdict, when the image defines one. */
+  health: "healthy" | "unhealthy" | "starting" | "none";
+  image: string;
+  /** Immutable artifact identity. A tag can be reused; this cannot. */
+  imageDigest: string | null;
+  startedAt: string | null;
+  restartCount: number;
+  sha: Maybe<string>;
+  shaSource: ShaSource;
+  builtAt: string | null;
+  /** compose project/service, when the container was started by compose. */
+  composeProject: string | null;
+  composeService: string | null;
+  observedAt: string;
+}
+
+export interface VersionEndpointObservation {
+  url: string;
+  commit: string | null;
+  builtAt: string | null;
+  environment: string | null;
+  observedAt: string;
+}
+
+export interface HealthProbeObservation {
+  url: string;
+  /** ok | degraded | down | unreachable */
+  status: string;
+  httpStatus: number | null;
+  latencyMs: number | null;
+  detail: string | null;
+  checkedAt: string;
+}
+
+/**
+ * One environment, assembled from every independent source that had something
+ * to say about it.
+ *
+ * `agreement` exists because two sources reporting the same SHA is materially
+ * stronger evidence than one source reporting it, and two sources disagreeing
+ * is the single most important thing the control plane can tell an operator —
+ * it means the container was replaced without its metadata being updated, or
+ * the endpoint is serving a constant baked at an earlier build.
+ */
+export type SourceAgreement = "corroborated" | "single_source" | "conflicting" | "none";
+
+export interface RuntimeObservation {
+  environment: string;
+  container: ContainerObservation | null;
+  version: Maybe<VersionEndpointObservation>;
+  health: Maybe<HealthProbeObservation>;
+  /** The SHA the control plane is prepared to claim is running, if any. */
+  runningSha: Maybe<string>;
+  agreement: SourceAgreement;
+  observedAt: string;
+}
