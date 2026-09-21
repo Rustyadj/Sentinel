@@ -181,6 +181,18 @@
   --status-busy: #d97706;
   --status-error: #b3261e;
   --status-idle: #9a968e;
+
+  /* Release rail.
+
+     Four values, not eight. The rail communicates through line continuity and
+     marker position; colour is reserved for the two states that need an
+     operator to look — a revision that is not where it should be, and a
+     transition that failed. Everything else is ink and grey. */
+  --rail-carried: #1b1b1f;
+  --rail-pending: #cfcbc4;
+  --rail-attention: #b45309;
+  --rail-severed: #b3261e;
+  --rail-marker: #4f46e5;
 }
 
 /* Legacy dark shell — every screen still rendered by components/layout/AppShell. */
@@ -432,4 +444,39 @@ body {
   .neural-space * {
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Release rail motion.
+
+   The only thing on the control plane that moves on its own is the halo behind
+   the marker for the revision currently in flight, and it moves slowly enough
+   to be felt rather than watched. Everything else animates only in response to
+   an action. If more than one thing is breathing at a time, the screen is
+   telling the operator that everything is equally urgent, which is the same as
+   telling them nothing.
+   --------------------------------------------------------------------------- */
+@keyframes rail-marker-breathe {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.88); }
+}
+
+.rail-marker-halo {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: rail-marker-breathe 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-marker-halo {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* Tabular numerals wherever a SHA, a count or a timestamp is shown, so columns
+   of them line up and a changing digit does not reflow the row. */
+.control-plane-figures {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }

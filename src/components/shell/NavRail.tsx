@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bot, HardDrive, MessageSquare, Network, Settings, type LucideIcon } from "lucide-react";
+import { Activity, Bot, GitBranch, HardDrive, MessageSquare, Network, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SHELL_NAV, SHELL_SECONDARY_NAV, type NavItem } from "@/lib/navigation";
 
-const ICONS: Record<string, LucideIcon> = { MessageSquare, Network, HardDrive, Bot, Activity, Settings };
+const ICONS: Record<string, LucideIcon> = { MessageSquare, Network, HardDrive, Bot, Activity, GitBranch, Settings };
 
 function isActive(item: NavItem, pathname: string) {
   if (item.href === "/chat") return pathname === "/" || pathname.startsWith("/chat");

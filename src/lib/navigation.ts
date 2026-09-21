@@ -50,6 +50,9 @@ export const SHELL_NAV: NavItem[] = [
   { id: "workspaces", label: "Workspaces", icon: "HardDrive",     href: "/agent-workspaces" },
   { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
   { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
+  // Accountability's other half: Activity is what happened, Control is where
+  // each change currently sits and whether production matches main.
+  { id: "control",    label: "Control",    icon: "GitBranch",     href: "/control" },
 ];
 
 /** Global, always-available, never a primary destination. */
