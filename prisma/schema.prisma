@@ -2908,3 +2908,185 @@ model WorkspaceEvent {
   @@index([type])
   @@map("workspace_events")
 }
+
+// --- Control plane (additive) ---
+//
+// Sentinel can already run git commands and read container state, but it has
+// nowhere to record what it saw, so "where is this change right now?" has to be
+// re-derived from scratch on every page load and can never be compared against
+// what was true an hour ago.
+//
+// Three of the four models below are observation logs, not configuration. A
+// Deployment row is not an instruction to deploy; it is a record that a given
+// SHA was observed running somewhere at a given time, with the evidence that
+// justified the claim. The same is true of HealthCheck and SystemEvent.
+//
+// Working-tree state is deliberately NOT stored. A dirty file count is true for
+// seconds and is cheap to observe directly, so persisting it would only create
+// a second, slower, wrong answer. It is read live and cached in Redis.
+
+model Repository {
+  id String @id @default(cuid())
+
+  /// Nullable because a repository can be registered before it is attributed to
+  /// a project, and because some repositories (the deploy config repo) belong
+  /// to no project at all. An unattributed repository is still worth tracking.
+  projectId String?
+  name      String
+
+  /// github | gitlab | local — where the remote lives, if there is one.
+  provider String @default("local")
+
+  /// SSH or HTTPS remote. Null for a repository that exists only on disk.
+  remoteUrl     String?
+  defaultBranch String  @default("main")
+
+  /// Absolute path on the host Sentinel observes it from. Null when Sentinel
+  /// knows of the repository only through its remote.
+  localPath String?
+
+  /// Which machine `localPath` is on, so a path is never silently assumed to be
+  /// local to whoever is asking.
+  host String @default("local")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deployments Deployment[]
+  events      SystemEvent[]
+
+  @@unique([host, localPath])
+  @@index([projectId])
+  @@map("repositories")
+}
+
+model Deployment {
+  id           String @id @default(cuid())
+  repositoryId String
+
+  /// production | staging | development — free text rather than an enum so a
+  /// new environment does not require a migration.
+  environment String
+
+  /// The commit the running artifact was built from. Full SHA; the UI shortens.
+  sha String
+
+  /// The artifact itself. imageDigest is the strongest available identity —
+  /// a tag can be reused, a digest cannot.
+  imageRef      String?
+  imageDigest   String?
+  containerName String?
+
+  /// building | deployed | failed | superseded | unknown. "unknown" is a real
+  /// state, used when a container is running but its SHA cannot be established.
+  status String @default("unknown")
+
+  builtAt    DateTime?
+  deployedAt DateTime?
+
+  /// When Sentinel last confirmed this row still described reality. Distinct
+  /// from deployedAt: a deployment from Tuesday observed just now is current
+  /// information about an old deployment.
+  observedAt DateTime @default(now())
+
+  /// docker_inspect | version_endpoint | workflow_run | manual — how the claim
+  /// was established. A deployment with no source is not displayed as fact.
+  source String
+
+  /// The raw material the claim rests on, kept so the UI can show its work.
+  evidence Json @default("{}")
+
+  repository   Repository    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  healthChecks HealthCheck[]
+  events       SystemEvent[]
+
+  @@index([repositoryId, environment, observedAt])
+  @@index([sha])
+  @@map("deployments")
+}
+
+model HealthCheck {
+  id String @id @default(cuid())
+
+  /// Nullable because a health check can outlive the deployment row it was
+  /// taken against, and because an endpoint can be probed before Sentinel knows
+  /// which deployment is answering.
+  deploymentId String?
+
+  /// The endpoint probed, so a green check can never be mistaken for a
+  /// statement about the whole system.
+  target String
+
+  /// ok | degraded | down | unreachable | unknown
+  status     String
+  httpStatus Int?
+  latencyMs  Int?
+
+  /// What the endpoint actually said, truncated by the caller.
+  detail String?
+
+  checkedAt DateTime @default(now())
+  source    String   @default("probe")
+
+  deployment Deployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
+
+  @@index([deploymentId, checkedAt])
+  @@index([target, checkedAt])
+  @@map("health_checks")
+}
+
+model SystemEvent {
+  id String @id @default(cuid())
+
+  /// Dotted, past-tense, and stable: git.committed, git.pushed, pr.opened,
+  /// deploy.started, deploy.completed, health.verified, agent.started,
+  /// memory.created, memory.superseded, mcp.called, approval.granted.
+  kind String
+
+  /// git | deploy | agent | memory | mcp | governance — the subsystem, used for
+  /// filtering without having to pattern-match on `kind`.
+  category String
+
+  /// info | warn | error | critical
+  severity String @default("info")
+
+  /// Human-readable, written once at emit time. The stream must stay readable
+  /// without re-deriving prose from payload on every render.
+  summary String
+
+  /// Who or what caused it: a user id, an agent id, or a system component.
+  actor String?
+
+  projectId    String?
+  repositoryId String?
+  deploymentId String?
+  agentId      String?
+  workspaceId  String?
+  memoryId     String?
+  environment  String?
+
+  payload Json @default("{}")
+
+  /// When it happened, as opposed to when Sentinel learned of it. An event
+  /// imported from a workflow run can be hours older than its row.
+  occurredAt DateTime @default(now())
+  recordedAt DateTime @default(now())
+
+  /// Which log this was observed through, so a duplicate observed twice can be
+  /// told apart from two real occurrences.
+  source String
+
+  /// Stable identity of the underlying occurrence (e.g. "git.committed:<sha>").
+  /// Unique so that re-scanning a repository or replaying a workflow cannot
+  /// inflate the stream — the aggregators are expected to run repeatedly.
+  dedupeKey String? @unique
+
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  deployment Deployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
+
+  @@index([occurredAt])
+  @@index([category, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([agentId, occurredAt])
+  @@map("system_events")
+}
