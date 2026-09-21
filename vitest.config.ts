@@ -5,10 +5,42 @@ import { defineConfig } from "vitest/config";
 // loads in *this* process and which therefore never sees `test.env` below).
 // Without this the suite silently resolves DATABASE_URL from .env — the live
 // application database.
-const TEST_DATABASE_URL =
-  process.env.SENTINEL_TEST_DATABASE_URL ??
-  "postgresql://postgres:sentinel_test@127.0.0.1:55439/sentinel_vitest";
+//
+// A throwaway database was not enough on its own. It was one *long-lived*
+// throwaway database, and nothing removed what a test wrote to it: every run
+// added roughly 1,900 rows to the same tables, ~62,000 by the time this was
+// written. That makes the suite slower over time, makes it non-deterministic
+// (a test that counts or sweeps rows sees every previous run's leftovers), and
+// specifically hides decay-sweep bugs — a sweep asked to act on "the memories
+// this test created" is handed tens of thousands of unrelated ones.
+//
+// So each run gets its OWN database, cloned from a prepared template by
+// tests/global-setup.ts and dropped again afterwards. The run therefore starts
+// from a known state and leaves nothing behind, without a single DELETE
+// against a shared database. Build the template once with
+// scripts/test/prepare-test-template.sh.
+//
+// Pinning SENTINEL_TEST_DATABASE_URL opts out and uses that database directly
+// (useful for inspecting a failure), at the cost of the isolation above.
+const TEMPLATE_DATABASE_URL =
+  process.env.SENTINEL_TEST_TEMPLATE_URL ??
+  "postgresql://postgres:sentinel_test@127.0.0.1:55439/sentinel_vitest_template";
+
+function ephemeralDatabaseUrl(templateUrl: string): string {
+  const url = new URL(templateUrl);
+  const template = url.pathname.replace(/^\//, "");
+  // Postgres identifiers cap at 63 bytes; pid + base36 clock keeps this well
+  // under that and unique across concurrent runs on the same server.
+  url.pathname = `/${template}_run_${process.pid}_${Date.now().toString(36)}`;
+  return url.toString();
+}
+
+const PINNED_DATABASE_URL = process.env.SENTINEL_TEST_DATABASE_URL;
+const TEST_DATABASE_URL = PINNED_DATABASE_URL ?? ephemeralDatabaseUrl(TEMPLATE_DATABASE_URL);
 process.env.DATABASE_URL = TEST_DATABASE_URL;
+// Read by tests/global-setup.ts, which runs in this same process.
+process.env.SENTINEL_TEST_TEMPLATE_URL = TEMPLATE_DATABASE_URL;
+process.env.SENTINEL_TEST_EPHEMERAL_URL = PINNED_DATABASE_URL ? "" : TEST_DATABASE_URL;
 
 // Likewise a throwaway Redis, never the application's. Several suites enqueue
 // real BullMQ jobs; pointing them at the live instance would inject test jobs
