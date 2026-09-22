@@ -117,9 +117,17 @@ export function consolidationPriority(candidate: Omit<ConsolidationCandidate, "p
  * Only completed, evaluated experiences are eligible — an experience with no
  * outcome has nothing to teach yet.
  */
-export async function selectConsolidationCandidates(limit = DEFAULT_CYCLE_LIMIT): Promise<ConsolidationCandidate[]> {
+export async function selectConsolidationCandidates(
+  limit = DEFAULT_CYCLE_LIMIT,
+  agentId?: string,
+): Promise<ConsolidationCandidate[]> {
   const experiences = await db.experience.findMany({
-    where: { consolidationState: "pending", completedAt: { not: null }, evaluatorScore: { not: null } },
+    where: {
+      consolidationState: "pending",
+      completedAt: { not: null },
+      evaluatorScore: { not: null },
+      ...(agentId ? { agentId } : {}),
+    },
     orderBy: { completedAt: "desc" },
     take: Math.min(Math.max(limit, 1), 1000),
     select: { id: true, agentId: true, objective: true, evaluatorScore: true, outcomeStatus: true },
@@ -235,11 +243,13 @@ export interface ConsolidationCycleResult {
  * generalization for the same cluster is updated with new evidence instead of
  * duplicated.
  */
-export async function runConsolidationCycle(options: { limit?: number; mode?: "shadow" | "active" } = {}): Promise<ConsolidationCycleResult> {
+export async function runConsolidationCycle(
+  options: { limit?: number; mode?: "shadow" | "active"; agentId?: string } = {},
+): Promise<ConsolidationCycleResult> {
   const mode = options.mode ?? "shadow";
   const run = await db.consolidationRun.create({ data: { mode } });
 
-  const candidates = await selectConsolidationCandidates(options.limit);
+  const candidates = await selectConsolidationCandidates(options.limit, options.agentId);
   const clusters = clusterEpisodes(candidates);
   let generated = 0;
 
