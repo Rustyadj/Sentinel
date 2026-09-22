@@ -18,7 +18,7 @@ import bcrypt from "bcryptjs";
 import { OAuthError } from "./errors";
 import {
   ALL_SCOPES,
-  DEFAULT_SCOPES,
+  DEFAULT_CLIENT_SCOPES,
   formatScopeString,
   narrowScopes,
   parseScopeString,
@@ -114,7 +114,7 @@ export async function registerClient(
   redirectUris.forEach(assertUsableRedirectUri);
 
   const requested = typeof body.scope === "string" ? parseScopeString(body.scope) : [];
-  const allowedScopes = requested.length > 0 ? requested : DEFAULT_SCOPES;
+  const allowedScopes = requested.length > 0 ? requested : DEFAULT_CLIENT_SCOPES;
 
   const authMethod = body.token_endpoint_auth_method === "client_secret_post" ? "client_secret_post" : "none";
   const clientSecret = authMethod === "none" ? null : randomToken(32);

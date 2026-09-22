@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import { OAuthError } from "@/lib/mcp/errors";
 import { resolveAuthorizeRequest } from "@/lib/mcp/oauth";
-import { DEFAULT_SCOPES, SCOPE_DESCRIPTIONS, formatScopeString, type McpScope } from "@/lib/mcp/scopes";
+import { PRE_TICKED_SCOPES, SCOPE_DESCRIPTIONS, formatScopeString, type McpScope } from "@/lib/mcp/scopes";
 import { prismaStore } from "@/lib/mcp/store";
 
 /**
@@ -160,7 +160,7 @@ export default async function McpAuthorizePage({
                     type="checkbox"
                     name="approved_scope"
                     value={scope}
-                    defaultChecked={DEFAULT_SCOPES.includes(scope)}
+                    defaultChecked={PRE_TICKED_SCOPES.includes(scope)}
                     className="mt-0.5 h-4 w-4 accent-[#6c7cff]"
                   />
                   <span>

@@ -3,6 +3,44 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-002 — An unscoped client registration ceilings at every scope, not read-only
+
+**Date:** 2026-09-22
+**Status:** Accepted
+
+**Decision.** When a client registers without naming scopes, its ceiling is the
+full scope list. The set that arrives pre-ticked on the consent screen stays
+read-only, and the two now live in separate constants (`DEFAULT_CLIENT_SCOPES`
+vs `PRE_TICKED_SCOPES`). See [MCP_GATEWAY.md](MCP_GATEWAY.md).
+
+**Why.**
+- ChatGPT's dynamic registration sends no `scope`. Under the old shared
+  constant its ceiling came out read-only, and since the consent screen can
+  only offer the ceiling, `sentinel:tasks.write` was never displayed and never
+  grantable. `sentinel_create_task` was unreachable by construction — a
+  capability the operator believed was shipped but no human could switch on.
+- A ceiling is not a grant. ADR-001 already established that registration
+  grants nothing; widening it moves no authority, because every scope still
+  has to be ticked by a signed-in human for one named workspace.
+- Splitting the constants makes the conflation unrepeatable: widening what a
+  client *may* ask for can no longer quietly widen what a human is nudged to
+  approve.
+
+**Rejected.**
+- *Pre-ticking write once the ceiling widened.* That would trade a capability
+  bug for a consent bug — the human would grant task creation by not reading.
+- *Special-casing ChatGPT's client name at registration.* Tools are gated on
+  scopes, never on client identity; an allowlist of names would reintroduce
+  exactly the coupling the scope model exists to avoid.
+- *Telling operators to pre-register ChatGPT with an explicit scope string.*
+  Defeats dynamic registration, and silently fails open to read-only for
+  anyone who skips the step.
+
+**Consequences.** No migration and no token format change. Existing grants are
+unaffected; clients registered before this keep their stored read-only ceiling
+and must re-register (in ChatGPT, remove and re-add the connector) to be
+offered write.
+
 ## ADR-001 — External MCP gateway authenticates with OAuth 2.1, not a shared token
 
 **Date:** 2026-09-17

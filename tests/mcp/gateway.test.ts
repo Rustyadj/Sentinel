@@ -21,7 +21,7 @@ import {
   type McpPrincipal,
 } from "@/lib/mcp/oauth";
 import { memoryStore, type McpStore } from "@/lib/mcp/store";
-import { MCP_SCOPES, ALL_SCOPES, formatScopeString } from "@/lib/mcp/scopes";
+import { MCP_SCOPES, ALL_SCOPES, DEFAULT_CLIENT_SCOPES, PRE_TICKED_SCOPES, formatScopeString } from "@/lib/mcp/scopes";
 import { randomToken, s256Challenge } from "@/lib/mcp/tokens";
 import { handleMessage, PROTOCOL_VERSION, type JsonRpcResponse } from "@/lib/mcp/server";
 import type { McpDataSource, MemoryRecord, TaskRecord, ToolContext } from "@/lib/mcp/tools";
@@ -206,6 +206,60 @@ describe("MCP gateway — authentication and scopes", () => {
     const result = call.result as { isError: boolean; content: { text: string }[] };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain(MCP_SCOPES.tasksWrite);
+  });
+
+  it("lets a client that registered without a scope still be granted every tool", async () => {
+    const store = memoryStore();
+    // ChatGPT's dynamic registration sends no `scope`. The ceiling it falls
+    // back to must not be read-only: the consent screen only ever offers the
+    // ceiling, so a read-only default put sentinel_create_task permanently out
+    // of reach — unlistable and ungrantable, no matter what the human wanted.
+    const registration = await registerClient(store, {
+      client_name: "ChatGPT",
+      redirect_uris: [REDIRECT_URI],
+    });
+    expect(registration.scope).toContain(MCP_SCOPES.tasksWrite);
+
+    const verifier = randomToken(32);
+    // No `scope` on the authorize request either — the other half of how
+    // ChatGPT arrives. The offer falls back to the client's full ceiling.
+    const resolved = await resolveAuthorizeRequest(store, {
+      clientId: registration.client_id,
+      redirectUri: REDIRECT_URI,
+      scope: null,
+      codeChallenge: s256Challenge(verifier),
+      codeChallengeMethod: "S256",
+      state: null,
+    });
+    expect(resolved.scopes).toContain(MCP_SCOPES.tasksWrite);
+
+    const { code } = await issueAuthorizationCode(store, resolved, {
+      userId: "user-1",
+      workspaceId: "ws-1",
+      approvedScopes: [MCP_SCOPES.tasksRead, MCP_SCOPES.tasksWrite],
+    });
+    const tokens = await exchangeAuthorizationCode(store, {
+      clientId: registration.client_id,
+      clientSecret: null,
+      code,
+      redirectUri: REDIRECT_URI,
+      codeVerifier: verifier,
+    });
+
+    const principal = (await authenticateBearer(store, `Bearer ${tokens.access_token}`))!;
+    const list = await rpc(principal, "tools/list");
+    const names = (list.result as { tools: { name: string }[] }).tools.map((tool) => tool.name);
+    expect(names).toContain("sentinel_create_task");
+
+    const call = await rpc(principal, "tools/call", { name: "sentinel_create_task", arguments: { title: "from ChatGPT" } });
+    expect((call.result as { isError?: boolean }).isError).toBeFalsy();
+  });
+
+  it("still never pre-ticks a write scope for the human", async () => {
+    // The ceiling widened; the default selection must not. These are separate
+    // constants precisely so widening one cannot quietly widen the other.
+    expect(PRE_TICKED_SCOPES).not.toContain(MCP_SCOPES.tasksWrite);
+    expect(DEFAULT_CLIENT_SCOPES).toContain(MCP_SCOPES.tasksWrite);
   });
 
   it("stops accepting tokens the moment the grant is revoked", async () => {

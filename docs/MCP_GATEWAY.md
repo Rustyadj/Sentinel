@@ -39,6 +39,15 @@ ChatGPT                         Sentinel
 
 - **Registration grants nothing.** A registered client reads no data until a
   signed-in human approves it. The scopes at registration are only a *ceiling*.
+  A client that registers without naming scopes — which is what ChatGPT does —
+  gets the full scope list as its ceiling. That is not a grant: the consent
+  screen offers the ceiling, and only what the human ticks becomes real.
+- **The ceiling and the pre-ticked set are different things.** `DEFAULT_CLIENT_SCOPES`
+  is the former, `PRE_TICKED_SCOPES` the latter, and they are separate constants
+  on purpose. When they were one constant, an unscoped registration capped at
+  read-only, and because the consent screen can only ever offer the ceiling,
+  `sentinel:tasks.write` was unreachable — `sentinel_create_task` could not be
+  approved or even displayed, whatever the human wanted.
 - **Consent is per-workspace.** A grant is bound to one workspace, and every tool
   read is filtered by it. A grant with no workspace sees nothing — the gateway
   fails closed rather than falling back to "everything".

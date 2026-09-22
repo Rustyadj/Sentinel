@@ -23,11 +23,24 @@ export type McpScope = (typeof MCP_SCOPES)[keyof typeof MCP_SCOPES];
 export const ALL_SCOPES: McpScope[] = Object.values(MCP_SCOPES);
 
 /**
- * What a client gets when it registers without naming scopes, and the default
- * pre-selection on the consent screen: everything read-only. Write access is
- * always an explicit act by the human.
+ * The ceiling a client gets when it registers without naming scopes.
+ *
+ * This is deliberately everything, because a ceiling grants nothing on its
+ * own — no scope becomes real until a human ticks it at /mcp/authorize. The
+ * two ideas below used to share one constant, and conflating them had teeth:
+ * ChatGPT's dynamic registration sends no `scope`, so its ceiling came out
+ * read-only, and since the consent screen only ever offers the ceiling,
+ * `sentinel:tasks.write` could never be approved or even displayed. The write
+ * tool was unreachable by construction. Keep these two separate.
  */
-export const DEFAULT_SCOPES: McpScope[] = [
+export const DEFAULT_CLIENT_SCOPES: McpScope[] = ALL_SCOPES;
+
+/**
+ * What arrives pre-ticked on the consent screen: everything read-only. Write
+ * access is offered but never pre-selected — granting it stays an explicit
+ * act by the human.
+ */
+export const PRE_TICKED_SCOPES: McpScope[] = [
   MCP_SCOPES.workspaceRead,
   MCP_SCOPES.agentsRead,
   MCP_SCOPES.memoriesRead,
