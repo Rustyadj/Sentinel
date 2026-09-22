@@ -154,7 +154,12 @@ async function resolveVoiceWorkerTurn(request: NextRequest, roomId: string | und
     select: { userId: true, agentIds: true },
   });
   if (!room?.userId) return null;
-  return { userId: room.userId, agentId: room.agentIds[0] ?? "hermes-lisa" };
+  // A room with no assigned agent has nobody to answer as. Defaulting to Lisa
+  // meant an unassigned room was answered in her identity, against her
+  // runtime and memory, with nothing recording that a substitution happened.
+  const agentId = room.agentIds[0];
+  if (!agentId) return null;
+  return { userId: room.userId, agentId };
 }
 
 function pickProvider(model: string) {

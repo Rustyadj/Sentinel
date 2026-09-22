@@ -1,10 +1,13 @@
 import type { VoiceProvider, VoiceProviderConfig, VoiceStatus } from "../types";
-import { OPENAI_REALTIME_ESCALATION_TOOL } from "../openai-realtime-config";
+import { SENTINEL_REASONING_TOOL } from "../agent-voice-config";
 
 interface RealtimeSessionResponse {
   clientSecret: string;
-  model: string;
-  escalationModel: string;
+  sessionId: string | null;
+  agentId: string;
+  voice: string;
+  voiceModel: string;
+  reasoningModel: string;
 }
 
 interface RealtimeEvent {
@@ -14,10 +17,12 @@ interface RealtimeEvent {
   error?: { message?: string };
   name?: string;
   call_id?: string;
+  arguments?: string;
   item?: {
     type?: string;
     name?: string;
     call_id?: string;
+    arguments?: string;
   };
 }
 
@@ -29,10 +34,11 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
   private channel: RTCDataChannel | null = null;
   private microphone: MediaStream | null = null;
   private audio: HTMLAudioElement | null = null;
-  private miniModel = "";
-  private escalationModel = "";
-  private escalated = false;
-  private escalatedResponseStarted = false;
+  private voiceModel = "";
+  private agentId = "";
+  private telemetrySessionId: string | null = null;
+  /** Tool call ids already dispatched, so a repeated event cannot run a turn twice. */
+  private dispatchedCalls = new Set<string>();
   private inputTranscript = "";
 
   async startSession(config: VoiceProviderConfig): Promise<void> {
@@ -42,7 +48,10 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentId: config.agentId || "hermes-lisa",
+          // No default: the caller must say which agent is speaking.
+          // Falling back to Lisa here meant an unconfigured surface opened a
+          // session in her voice and her conversation.
+          agentId: config.agentId,
           roomId: config.roomId,
           language: config.language,
         }),
@@ -52,8 +61,9 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
         throw new Error(token?.error || "OpenAI Realtime is unavailable");
       }
 
-      this.miniModel = token.model;
-      this.escalationModel = token.escalationModel;
+      this.voiceModel = token.voiceModel;
+      this.agentId = token.agentId;
+      this.telemetrySessionId = token.sessionId;
       this.microphone = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -164,7 +174,6 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
         break;
       }
       case "response.created":
-        if (this.escalated) this.escalatedResponseStarted = true;
         this.setStatus("thinking");
         break;
       case "response.output_audio.delta":
@@ -172,28 +181,22 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
         this.setStatus("speaking");
         break;
       case "response.function_call_arguments.done":
-        if (event.name === OPENAI_REALTIME_ESCALATION_TOOL && event.call_id) {
-          this.escalate(event.call_id);
+        if (event.name === SENTINEL_REASONING_TOOL && event.call_id) {
+          void this.delegateReasoning(event.call_id, event.arguments);
         }
         break;
       case "response.output_item.done":
+        // The same call surfaces on two events; dispatchedCalls makes the
+        // second a no-op, so a turn is never reasoned — or a tool run — twice.
         if (
           event.item?.type === "function_call" &&
-          event.item.name === OPENAI_REALTIME_ESCALATION_TOOL &&
+          event.item.name === SENTINEL_REASONING_TOOL &&
           event.item.call_id
         ) {
-          this.escalate(event.item.call_id);
+          void this.delegateReasoning(event.item.call_id, event.item.arguments);
         }
         break;
       case "response.done":
-        if (this.escalated && this.escalatedResponseStarted) {
-          this.escalated = false;
-          this.escalatedResponseStarted = false;
-          this.send({
-            type: "session.update",
-            session: { type: "realtime", model: this.miniModel, tool_choice: "auto" },
-          });
-        }
         if (this.status !== "error") this.setStatus("listening");
         break;
       case "error":
@@ -202,29 +205,65 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
     }
   }
 
-  private escalate(callId: string): void {
-    if (this.escalated) return;
-    this.escalated = true;
-    this.escalatedResponseStarted = false;
+  /**
+   * Hands the turn to this agent's own reasoning model.
+   *
+   * The live model never answers substantive turns itself — it calls this,
+   * and Sentinel runs the turn on the agent's runtime with its memory,
+   * permissions and MCP tools. The answer comes back as the tool's output and
+   * the live model speaks it, so the user hears one continuous conversation.
+   */
+  private async delegateReasoning(callId: string, rawArguments: string | undefined): Promise<void> {
+    // Interruption and retry both re-emit the same call id. Executing twice
+    // would re-run whatever tools the turn triggers, so the first wins.
+    if (this.dispatchedCalls.has(callId)) return;
+    this.dispatchedCalls.add(callId);
     this.setStatus("thinking");
-    this.send({
-      type: "session.update",
-      session: { type: "realtime", model: this.escalationModel, tool_choice: "none" },
-    });
-    this.send({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify({ switched: true, model: this.escalationModel }),
-      },
-    });
-    this.send({
-      type: "response.create",
-      response: {
-        instructions: "Answer the current user turn with the required deeper reasoning. Do not call the escalation tool again.",
-      },
-    });
+
+    let request = "";
+    try {
+      request = String((JSON.parse(rawArguments ?? "{}") as { request?: unknown }).request ?? "");
+    } catch {
+      request = "";
+    }
+    if (!request.trim()) request = this.inputTranscript.trim();
+
+    let output: object;
+    try {
+      const response = await fetch("/api/voice/reasoning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: this.agentId,
+          roomId: this.config?.roomId,
+          sessionId: this.telemetrySessionId,
+          request,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { answer?: string; error?: string }
+        | null;
+      if (!response.ok || !payload?.answer) {
+        throw new Error(payload?.error || "Sentinel could not answer that.");
+      }
+      output = { answer: payload.answer };
+    } catch (error) {
+      // Surfaced to the model as a spoken-able failure rather than thrown:
+      // a dropped tool output leaves the live session waiting forever.
+      output = {
+        error: error instanceof Error ? error.message : "Sentinel could not answer that.",
+      };
+    }
+
+    try {
+      this.send({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: callId, output: JSON.stringify(output) },
+      });
+      this.send({ type: "response.create" });
+    } catch {
+      // The session closed mid-turn; nothing left to speak into.
+    }
   }
 
   private send(event: object): void {
@@ -247,8 +286,7 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
       this.audio.remove();
       this.audio = null;
     }
-    this.escalated = false;
-    this.escalatedResponseStarted = false;
+    this.dispatchedCalls.clear();
     this.inputTranscript = "";
   }
 

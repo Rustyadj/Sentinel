@@ -6,7 +6,14 @@ import { cn } from "@/lib/utils";
 import type { VoiceProvider, VoiceStatus } from "@/lib/voice/types";
 
 interface VoiceControlsProps {
-  agentId?: string;
+  /**
+   * Required. Which agent is speaking is never inferred: an optional agentId
+   * meant a surface that forgot to pass one opened a session in Lisa's voice,
+   * with Lisa's instructions, in whatever conversation was open. Making it
+   * required turns that into a compile error instead of a silent identity
+   * swap at runtime.
+   */
+  agentId: string;
   /** Required by LiveKitVoiceProvider to scope the voice session's token to a real conversation. */
   roomId?: string;
   onTranscript: (text: string) => void;

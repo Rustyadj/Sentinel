@@ -3158,3 +3158,47 @@ model McpGrant {
   @@index([userId])
   @@map("mcp_grants")
 }
+
+/// Per-session telemetry for live voice conversations.
+///
+/// One row per live session, covering both halves of the split: minutes spent
+/// on the live audio layer, and tokens spent on the agent's own reasoning
+/// model. They are billed by different vendors at different rates, so folding
+/// them into a single number would make neither answerable.
+///
+/// `estimatedCostUsd` is nullable and stays null when a model has no rate card
+/// entry — an unpriced model reports unknown rather than zero, because a
+/// confident zero is worse than an honest gap.
+model VoiceSessionTelemetry {
+  id             String    @id @default(cuid())
+  userId         String
+  agentId        String
+  roomId         String?
+  voiceModel     String
+  reasoningModel String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  /// Live audio layer wall-clock, the unit GPT-Live-1 is billed in.
+  liveSeconds Int @default(0)
+
+  reasoningInputTokens  Int @default(0)
+  reasoningOutputTokens Int @default(0)
+
+  /// Tool executions performed through Sentinel during this session.
+  toolCallCount Int @default(0)
+
+  /// Reasoning round-trip latency, kept as a sum plus a count so an average
+  /// survives incremental updates, with the worst case retained separately —
+  /// a mean alone hides the turn that made the conversation feel broken.
+  latencyMsTotal Int @default(0)
+  latencySamples Int @default(0)
+  latencyMsMax   Int @default(0)
+
+  estimatedCostUsd Float?
+
+  @@index([userId])
+  @@index([agentId])
+  @@index([roomId])
+  @@map("voice_session_telemetry")
+}

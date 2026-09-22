@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import {
-  getOpenAIRealtimeModelConfig,
-  openAIRealtimeInstructions,
-  OPENAI_REALTIME_ESCALATION_TOOL_DEFINITION,
-  resolveOpenAIRealtimeAgentId,
-} from "@/lib/voice/openai-realtime-config";
+  SENTINEL_REASONING_TOOL_DEFINITION,
+  liveSessionInstructions,
+  resolveAgentVoiceConfig,
+} from "@/lib/voice/agent-voice-config";
+import { startVoiceSessionTelemetry } from "@/lib/voice/telemetry";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json(
-      { error: "OpenAI Realtime is not configured on this deployment" },
+      { error: "The live voice layer is not configured on this deployment" },
       { status: 503 },
     );
   }
@@ -36,28 +36,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const agentId = resolveOpenAIRealtimeAgentId(body.agentId);
-  if (!agentId) {
+  // Refuses an absent or unknown agentId rather than defaulting to one — the
+  // caller must say who is speaking.
+  const config = resolveAgentVoiceConfig(body.agentId);
+  if (!config) {
     return NextResponse.json(
-      { error: "OpenAI Realtime is enabled only for Hermes Lisa and Hermes Nathan2" },
+      { error: "Live voice is enabled only for Hermes Lisa and Hermes Nathan2, and the agent must be named explicitly" },
       { status: 400 },
     );
   }
 
+  // The room must belong to this user *and* to this agent. Checking ownership
+  // alone let a caller open a session in one agent's room while wearing the
+  // other's voice and instructions, which is precisely the bleed the two are
+  // meant to be isolated against.
   if (body.roomId) {
     const room = await db.chatRoom.findFirst({
       where: { id: body.roomId, userId: user.id },
-      select: { id: true },
+      select: { id: true, agentIds: true },
     });
     if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    if (!room.agentIds?.includes(config.agentId)) {
+      return NextResponse.json(
+        { error: "That conversation does not belong to this agent" },
+        { status: 403 },
+      );
+    }
   }
 
-  const models = getOpenAIRealtimeModelConfig();
   const language = body.language?.trim().slice(0, 35);
   const instructions = [
-    openAIRealtimeInstructions(agentId),
+    liveSessionInstructions(config),
     language ? `The user's preferred language is ${language}.` : "",
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const openAIResponse = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -70,29 +83,31 @@ export async function POST(req: NextRequest) {
       expires_after: { anchor: "created_at", seconds: 600 },
       session: {
         type: "realtime",
-        model: models.miniModel,
+        model: config.voiceModel,
         output_modalities: ["audio"],
         instructions,
         audio: {
           input: {
-            transcription: { model: models.transcriptionModel },
+            transcription: { model: config.transcriptionModel },
             noise_reduction: { type: "far_field" },
+            // Full duplex: the model listens while speaking and yields when
+            // the user starts talking, which is what makes barge-in work.
             turn_detection: {
               type: "semantic_vad",
               create_response: true,
               interrupt_response: true,
             },
           },
-          output: { voice: models.voice },
+          output: { voice: config.voice },
         },
-        tools: [OPENAI_REALTIME_ESCALATION_TOOL_DEFINITION],
+        tools: [SENTINEL_REASONING_TOOL_DEFINITION],
         tool_choice: "auto",
       },
     }),
     cache: "no-store",
   });
 
-  const payload = await openAIResponse.json().catch(() => null) as {
+  const payload = (await openAIResponse.json().catch(() => null)) as {
     value?: string;
     expires_at?: number;
     error?: { message?: string };
@@ -101,17 +116,27 @@ export async function POST(req: NextRequest) {
   if (!openAIResponse.ok || !payload?.value) {
     const detail = payload?.error?.message?.slice(0, 240);
     return NextResponse.json(
-      { error: detail || "OpenAI could not create a Realtime session" },
+      { error: detail || "The live voice provider could not create a session" },
       { status: openAIResponse.status >= 400 && openAIResponse.status < 500 ? 502 : 503 },
     );
   }
 
+  const sessionId = await startVoiceSessionTelemetry({
+    userId: user.id,
+    agentId: config.agentId,
+    roomId: body.roomId ?? null,
+    voiceModel: config.voiceModel,
+    reasoningModel: config.reasoningModel,
+  }).catch(() => null);
+
   return NextResponse.json({
     clientSecret: payload.value,
     expiresAt: payload.expires_at,
-    model: models.miniModel,
-    escalationModel: models.fullModel,
-    transcriptionModel: models.transcriptionModel,
-    agentId,
+    sessionId,
+    agentId: config.agentId,
+    voice: config.voice,
+    voiceModel: config.voiceModel,
+    reasoningModel: config.reasoningModel,
+    transcriptionModel: config.transcriptionModel,
   });
 }

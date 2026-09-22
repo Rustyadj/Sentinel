@@ -3,6 +3,47 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-003 — The live voice model carries audio; the agent's own model thinks
+
+**Date:** 2026-09-22
+**Status:** Accepted
+
+**Decision.** GPT-Live-1 is the conversational audio layer for Hermes Lisa and
+Hermes Nathan2 and holds no reasoning authority. It is given one tool,
+`sentinel_reasoning`, which routes the turn through `routeRuntimeChat()` — the
+same entry point a typed message uses. Voice and text therefore share one
+conversation, memory, permission model and tool path. Per-agent voice and
+reasoning configuration is declarative in `src/lib/voice/agent-voice-config.ts`.
+See [voice/GPT_LIVE_ARCHITECTURE.md](voice/GPT_LIVE_ARCHITECTURE.md).
+
+**Why.**
+- The previous design let the live model answer directly and "escalate" to a
+  larger realtime model for hard turns. That put two different minds behind one
+  identity, neither being the agent's configured brain, and neither able to
+  reach its memory, MCP tools or permissions. Spoken Lisa and typed Lisa were
+  not the same agent.
+- Routing every substantive turn out of the live layer is the only way the two
+  stay identical, and it means no voice-specific memory or tool system has to
+  exist to be kept in sync.
+- Identity must be named, never inferred. Four separate code paths silently
+  substituted Lisa when no agent was given; each is now a refusal, and
+  `VoiceControls`' `agentId` is required so omission is a compile error.
+
+**Rejected.**
+- *Keeping realtime-model escalation.* It is a quality dial on the wrong axis:
+  the question is never "how hard is this turn" but "whose mind answers it".
+- *A voice-specific memory or tool surface.* Two systems to keep in sync, and
+  the spoken agent would drift from the typed one.
+- *Letting the session request name a reasoning model.* That is precisely the
+  automatic model swapping between the two agents that must not be possible.
+
+**Consequences.** One additive table (`voice_session_telemetry`), which keeps
+live audio minutes and reasoning tokens separate because they are billed
+differently. `estimatedCostUsd` is null for models with no rate card entry —
+currently both agents' — because a confident zero is worse than an honest gap.
+The live provider's model and voice ids (`gpt-live-1`, `sol`, `spruce`) are
+configuration, not verified fact, and are unproven against the live API.
+
 ## ADR-002 — An unscoped client registration ceilings at every scope, not read-only
 
 **Date:** 2026-09-22

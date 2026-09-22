@@ -144,6 +144,10 @@ export function TopBar() {
 
         <div className="hidden items-center border-l border-white/[0.055] pl-3 md:flex">
           <VoiceControls
+            // The global voice button is Lisa's, deliberately — she is the
+            // orchestrator, and this control is not scoped to a conversation.
+            // Previously it passed no agent at all and got her by accident.
+            agentId="hermes-lisa"
             onTranscript={(text) => {
               window.dispatchEvent(new CustomEvent("sentinel:voice-transcript", { detail: { text } }));
             }}
