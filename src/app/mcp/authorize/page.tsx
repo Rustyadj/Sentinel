@@ -85,6 +85,16 @@ export default async function McpAuthorizePage({
       resource: one("resource"),
     });
   } catch (error) {
+    // This page was entirely silent until now, which made a connector that
+    // died here indistinguishable from one that never arrived. Record the
+    // shape of the client_id — an https:// value means the client is using a
+    // Client ID Metadata Document rather than dynamic registration, which
+    // this server does not yet resolve, and which looks identical to an
+    // unknown client from the inside.
+    console.log(
+      `[mcp] authorize refused: ${error instanceof OAuthError ? error.message : "unknown error"}` +
+        ` client_id_kind=${clientId.startsWith("https://") ? "cimd-url" : "registered-id"}`,
+    );
     // Never redirect on these — an invalid client or redirect_uri is exactly
     // when the redirect target must not be trusted.
     return (

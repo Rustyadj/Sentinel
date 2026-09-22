@@ -407,12 +407,17 @@ export function unauthorizedResponse(description = "Authentication required."): 
   } catch {
     metadataUrl = "/.well-known/oauth-protected-resource";
   }
+  // The `scope` challenge is what a client uses to decide what to ask for.
+  // Without it a client falls back to scopes_supported, or to omitting scope
+  // entirely — which is how a connector ends up authorized for less than it
+  // needs and then failing on its first real call.
+  const scope = formatScopeString(DEFAULT_CLIENT_SCOPES);
   return Response.json(
     { error: "invalid_token", error_description: description },
     {
       status: 401,
       headers: {
-        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", error="invalid_token", error_description="${description}"`,
+        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", scope="${scope}", error="invalid_token", error_description="${description}"`,
       },
     },
   );
