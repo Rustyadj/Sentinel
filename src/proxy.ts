@@ -38,8 +38,10 @@ export const proxy = auth;
 // /api/integrations/oauth/authorize is deliberately NOT excluded: that is the
 // human consent screen, it calls requireUser(), and redirecting an
 // unauthenticated visitor to sign-in is exactly the correct behaviour there.
+// /mcp/authorize is the workspace-scoped connector consent screen and performs
+// its own session check while preserving the OAuth and PKCE query parameters.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp/authorize|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -3099,3 +3099,62 @@ model SystemEvent {
   @@index([agentId, occurredAt])
   @@map("system_events")
 }
+
+// --- External MCP gateway (additive) ---------------------------------------
+// ChatGPT and other external MCP clients authenticate with OAuth 2.1 and are
+// bound to the workspace and scopes approved at /mcp/authorize.
+
+model McpClient {
+  clientId                String    @id
+  clientSecretHash        String?
+  name                    String
+  redirectUris            String[]
+  allowedScopes           String[]
+  tokenEndpointAuthMethod String    @default("none")
+  registeredByUserId      String?
+  disabledAt              DateTime?
+  createdAt               DateTime  @default(now())
+
+  authCodes McpAuthCode[]
+  grants    McpGrant[]
+
+  @@map("mcp_clients")
+}
+
+model McpAuthCode {
+  id                  String    @id @default(cuid())
+  codeHash            String    @unique
+  clientId            String
+  userId              String
+  workspaceId         String?
+  scopes              String[]
+  redirectUri         String
+  codeChallenge       String
+  codeChallengeMethod String    @default("S256")
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime  @default(now())
+
+  client McpClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("mcp_auth_codes")
+}
+
+model McpGrant {
+  id               String    @id @default(cuid())
+  clientId         String
+  userId           String
+  workspaceId      String?
+  scopes           String[]
+  refreshTokenHash String    @unique
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+
+  client McpClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mcp_grants")
+}
