@@ -41,6 +41,14 @@ export const proxy = auth;
 // /mcp/authorize is the workspace-scoped connector consent screen and performs
 // its own session check while preserving the OAuth and PKCE query parameters.
 //
+// api/voice is excluded for the same reason, and it matters most mid-call:
+// every voice route calls requireUser() itself and returns a JSON 401, but
+// routed through this gate a request with a lapsed session gets a 307 that
+// fetch silently follows to an HTML sign-in page. The tool call then reads as
+// "the server sent something unparseable" rather than "you are signed out",
+// so a live conversation reports a mysterious failure instead of asking the
+// user to sign in again.
+//
 // The exclusion is `mcp/` and bare `mcp`, not just `mcp/authorize`, because
 // /mcp is itself an MCP endpoint — the conventional mount point, aliasing
 // /api/mcp. Listing only the consent page left POST /mcp being answered with a
@@ -51,6 +59,6 @@ export const proxy = auth;
 // the one path nobody had listed.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/voice|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };
