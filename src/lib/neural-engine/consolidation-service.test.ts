@@ -130,7 +130,7 @@ describe("shadow consolidation cycle", () => {
       makeEvaluatedExperience(agentId, "breaking prisma migration once more", 0.15),
     ]);
 
-    const result = await runConsolidationCycle({ mode: "shadow" });
+    const result = await runConsolidationCycle({ mode: "shadow", agentId });
     expect(result.memoriesGenerated).toBeGreaterThanOrEqual(1);
 
     const derived = await db.memory.findFirstOrThrow({
@@ -159,7 +159,7 @@ describe("shadow consolidation cycle", () => {
       makeEvaluatedExperience(agentId, "fails eslint gate gemini run", 0.1),
     ]);
 
-    await runConsolidationCycle({ mode: "shadow" });
+    await runConsolidationCycle({ mode: "shadow", agentId });
 
     const retrievable = await db.memory.findMany({ where: { owner: agentId, ...excludeFromRetrieval() } });
     expect(retrievable).toHaveLength(0);
@@ -172,7 +172,7 @@ describe("shadow consolidation cycle", () => {
       makeEvaluatedExperience(agentId, "research tasks nathan2 timing out", 0.2),
       makeEvaluatedExperience(agentId, "long research tasks timing out nathan2", 0.1),
     ]);
-    await runConsolidationCycle({ mode: "shadow" });
+    await runConsolidationCycle({ mode: "shadow", agentId });
     const first = await db.memory.findFirstOrThrow({ where: { owner: agentId, provenanceClass: "GENERALIZED" } });
 
     await Promise.all([
@@ -180,7 +180,7 @@ describe("shadow consolidation cycle", () => {
       makeEvaluatedExperience(agentId, "research nathan2 tasks timing out", 0.2),
       makeEvaluatedExperience(agentId, "timing out on research tasks nathan2", 0.1),
     ]);
-    await runConsolidationCycle({ mode: "shadow" });
+    await runConsolidationCycle({ mode: "shadow", agentId });
 
     const all = await db.memory.findMany({ where: { owner: agentId, provenanceClass: "GENERALIZED" } });
     expect(all).toHaveLength(1);
@@ -191,8 +191,9 @@ describe("shadow consolidation cycle", () => {
   });
 
   it("records a durable, restart-safe run with a compression ratio", async () => {
+    const agentId = agent();
     const before = await db.consolidationRun.count();
-    const result = await runConsolidationCycle({ mode: "shadow", limit: 50 });
+    const result = await runConsolidationCycle({ mode: "shadow", limit: 50, agentId });
     expect(await db.consolidationRun.count()).toBe(before + 1);
 
     const run = await db.consolidationRun.findUniqueOrThrow({ where: { id: result.runId } });
@@ -204,8 +205,8 @@ describe("shadow consolidation cycle", () => {
     const agentId = agent();
     await makeEvaluatedExperience(agentId, "one-off unremarkable task", 0.9);
 
-    await runConsolidationCycle({ mode: "shadow" });
-    const second = await runConsolidationCycle({ mode: "shadow" });
+    await runConsolidationCycle({ mode: "shadow", agentId });
+    const second = await runConsolidationCycle({ mode: "shadow", agentId });
 
     const stillPending = await db.experience.count({ where: { agentId, consolidationState: "pending" } });
     expect(stillPending).toBe(0);
