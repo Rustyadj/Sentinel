@@ -51,6 +51,12 @@ ChatGPT                         Sentinel
 - **Consent is per-workspace.** A grant is bound to one workspace, and every tool
   read is filtered by it. A grant with no workspace sees nothing — the gateway
   fails closed rather than falling back to "everything".
+- **The workspace picker has no default.** It used to pre-select the first
+  workspace by name, and every grant ever issued landed there because the human
+  clicked Allow without opening the dropdown — leaving connectors permanently
+  unable to see the other workspaces, with nothing to indicate why. The binding
+  is for the life of the grant, so the choice has to be deliberate: the form
+  will not submit until one is picked.
 - **Workspace membership is live.** Sentinel re-checks ownership or an active
   role assignment on every MCP request. Removing a user's workspace access
   immediately disables that connector grant, even before token expiry.

@@ -130,12 +130,24 @@ export default async function McpAuthorizePage({
               You have no workspaces yet. Create one before connecting an external client.
             </p>
           ) : (
+            // No pre-selected workspace. This used to default to
+            // workspaces[0], which is whatever sorts first alphabetically —
+            // a meaningless choice that reads as a recommendation. Every
+            // grant ever issued here landed on that first entry because the
+            // human clicked Allow without touching the dropdown, and since a
+            // grant is bound to its workspace for life, the connector then
+            // silently could not see any of the others. An empty default
+            // plus `required` makes the browser refuse the form until a
+            // workspace is actually chosen.
             <select
               name="workspace_id"
               required
-              defaultValue={workspaces[0].id}
+              defaultValue=""
               className="mt-2 w-full rounded-lg border border-[--border] bg-[--card] px-3 py-2 text-sm text-[--foreground]"
             >
+              <option value="" disabled>
+                Choose a workspace…
+              </option>
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>
                   {workspace.name}
