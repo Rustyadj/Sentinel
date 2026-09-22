@@ -11,7 +11,8 @@ what was rejected. No implementation detail — that belongs in the topic doc.
 **Decision.** Sentinel acts as an MCP *server*. External clients (ChatGPT first)
 authenticate with OAuth 2.1 — authorization code + PKCE S256, dynamic client
 registration, rotating refresh tokens — and every tool call is gated on scopes a
-human consented to for one specific workspace. See [MCP_GATEWAY.md](MCP_GATEWAY.md).
+human consented to for their Sentinel identity. See
+[CHATGPT_INTEGRATION.md](CHATGPT_INTEGRATION.md).
 
 **Why.**
 - ChatGPT connectors expect discovery + OAuth; a static token would require every
@@ -31,7 +32,7 @@ human consented to for one specific workspace. See [MCP_GATEWAY.md](MCP_GATEWAY.
 - *Sentinel as MCP client instead.* A different product, not this one: the ask was
   to expose Sentinel's tools outward.
 
-**Consequences.** Three additive tables (`mcp_clients`, `mcp_auth_codes`,
-`mcp_grants`), a consent page at `/mcp/authorize`, and `MCP_GATEWAY_ISSUER` as a
-new required production variable. The OAuth logic is written against an `McpStore`
-interface so the end-to-end test runs with no database.
+**Consequences.** The SDK-backed server at `/api/mcp` and the OAuth implementation
+under `/api/integrations/oauth/*` are the canonical public surface. `AUTH_URL`
+defines the trusted public origin. Legacy `/api/mcp/oauth/*` and `/mcp/authorize`
+URLs are compatibility aliases only and contain no independent protocol logic.

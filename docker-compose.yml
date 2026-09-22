@@ -71,7 +71,6 @@ services:
       REDIS_URL: redis://redis:6379
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL:-https://sentinel.srv1427612.hstgr.cloud}
-      MCP_GATEWAY_ISSUER: ${MCP_GATEWAY_ISSUER:-https://sentinel.srv1427612.hstgr.cloud}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}

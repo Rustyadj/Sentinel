@@ -74,4 +74,3 @@ dump.rdb
 test-results/
 
 # MCP smoke-probe scratch state (client id + PKCE verifier)
-.mcp-smoke.json
