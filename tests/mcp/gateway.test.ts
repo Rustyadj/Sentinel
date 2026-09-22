@@ -23,7 +23,7 @@ import {
 import { memoryStore, type McpStore } from "@/lib/mcp/store";
 import { MCP_SCOPES, ALL_SCOPES, DEFAULT_CLIENT_SCOPES, PRE_TICKED_SCOPES, formatScopeString } from "@/lib/mcp/scopes";
 import { randomToken, s256Challenge } from "@/lib/mcp/tokens";
-import { handleMessage, PROTOCOL_VERSION, type JsonRpcResponse } from "@/lib/mcp/server";
+import { handleMessage, PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, type JsonRpcResponse } from "@/lib/mcp/server";
 import type { McpDataSource, MemoryRecord, TaskRecord, ToolContext } from "@/lib/mcp/tools";
 
 const REDIRECT_URI = "https://chatgpt.com/connector_platform_oauth_redirect";
@@ -158,6 +158,19 @@ describe("MCP gateway — authentication and scopes", () => {
 
     const initialize = await rpc(principal!, "initialize");
     expect((initialize.result as { protocolVersion: string }).protocolVersion).toBe(PROTOCOL_VERSION);
+
+    // A client that names a revision we support must get that same revision
+    // back. Answering with a newer one tells it we share no common version,
+    // and a strict client disconnects before it ever calls tools/list — the
+    // connector just looks broken, with nothing logged to say why.
+    for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
+      const negotiated = await rpc(principal!, "initialize", { protocolVersion: version });
+      expect((negotiated.result as { protocolVersion: string }).protocolVersion).toBe(version);
+    }
+
+    // An unknown revision falls back to ours rather than echoing nonsense.
+    const unknown = await rpc(principal!, "initialize", { protocolVersion: "1999-01-01" });
+    expect((unknown.result as { protocolVersion: string }).protocolVersion).toBe(PROTOCOL_VERSION);
 
     const list = await rpc(principal!, "tools/list");
     const names = (list.result as { tools: { name: string }[] }).tools.map((tool) => tool.name);

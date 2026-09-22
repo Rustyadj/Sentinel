@@ -16,6 +16,28 @@ import { MCP_TOOLS, callTool, findTool, toolsVisibleTo, type ToolContext } from 
 export const PROTOCOL_VERSION = "2025-06-18";
 export const SERVER_INFO = { name: "sentinel-mcp-gateway", version: "1.1.0" };
 
+/**
+ * Every protocol revision this gateway will speak, newest first.
+ *
+ * Nothing this server exposes changed across these revisions — initialize,
+ * tools/list and tools/call are identical for our purposes — so accepting an
+ * older one costs nothing and refusing it costs the whole connection.
+ */
+export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
+
+/**
+ * MCP requires the server to echo the client's requested version when it can
+ * support it, and only otherwise to name one of its own. Answering with a
+ * newer version than the client asked for is the client's cue that they have
+ * no revision in common, and a strict client hangs up right there — before
+ * tools/list, so the connector simply appears not to work.
+ */
+export function negotiateProtocolVersion(requested: unknown): string {
+  return typeof requested === "string" && (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requested)
+    ? requested
+    : PROTOCOL_VERSION;
+}
+
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
   id?: string | number | null;
@@ -71,7 +93,7 @@ export async function handleRpc(message: JsonRpcRequest, ctx: ToolContext): Prom
   switch (message.method) {
     case "initialize":
       return ok(id, {
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: negotiateProtocolVersion(message.params?.protocolVersion),
         // Only tools. No resources, prompts or sampling are exposed to
         // external connectors — declaring them would invite calls this
         // gateway has no authorization model for.
