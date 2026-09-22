@@ -40,8 +40,17 @@ export const proxy = auth;
 // unauthenticated visitor to sign-in is exactly the correct behaviour there.
 // /mcp/authorize is the workspace-scoped connector consent screen and performs
 // its own session check while preserving the OAuth and PKCE query parameters.
+//
+// The exclusion is `mcp/` and bare `mcp`, not just `mcp/authorize`, because
+// /mcp is itself an MCP endpoint — the conventional mount point, aliasing
+// /api/mcp. Listing only the consent page left POST /mcp being answered with a
+// 307 to an HTML sign-in form: no 401, no WWW-Authenticate, nothing pointing
+// at the OAuth metadata. A connector given that URL cannot discover how to
+// authenticate and simply gives up, leaving no trace server-side — the same
+// bug this comment block already described three times over, hit once more by
+// the one path nobody had listed.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp/authorize|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };

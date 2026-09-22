@@ -275,6 +275,40 @@ describe("MCP gateway — authentication and scopes", () => {
     expect(DEFAULT_CLIENT_SCOPES).toContain(MCP_SCOPES.tasksWrite);
   });
 
+  it("accepts the /mcp alias as the resource and normalizes it to /api/mcp", async () => {
+    const store = memoryStore();
+    const registration = await registerClient(store, { client_name: "ChatGPT", redirect_uris: [REDIRECT_URI] });
+    const verifier = randomToken(32);
+
+    // A client configured with the bare /mcp mount names that URL as the
+    // resource. Refusing it would reject a request that identifies this very
+    // server by a URL it answers on.
+    const resolved = await resolveAuthorizeRequest(store, {
+      clientId: registration.client_id,
+      redirectUri: REDIRECT_URI,
+      scope: null,
+      codeChallenge: s256Challenge(verifier),
+      codeChallengeMethod: "S256",
+      state: null,
+      resource: "https://sentinel.test/mcp",
+    });
+    // Normalized: the audience bound into tokens stays the canonical form.
+    expect(resolved.resource).toBe("https://sentinel.test/api/mcp");
+
+    // Something that is not this server is still refused.
+    await expect(
+      resolveAuthorizeRequest(store, {
+        clientId: registration.client_id,
+        redirectUri: REDIRECT_URI,
+        scope: null,
+        codeChallenge: s256Challenge(verifier),
+        codeChallengeMethod: "S256",
+        state: null,
+        resource: "https://elsewhere.example/mcp",
+      }),
+    ).rejects.toThrow();
+  });
+
   it("stops accepting tokens the moment the grant is revoked", async () => {
     const store = memoryStore();
     const { tokens } = await connect(store);

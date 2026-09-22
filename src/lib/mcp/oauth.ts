@@ -181,8 +181,14 @@ export async function resolveAuthorizeRequest(
   if (request.codeChallengeMethod !== "S256" || !request.codeChallenge) {
     throw new OAuthError("invalid_request", "PKCE with code_challenge_method=S256 is required.");
   }
+  // The canonical resource identifier — what the protected resource metadata
+  // advertises and what an access token carries as `aud`. /mcp is an alias
+  // mount of the same endpoint, so a client configured with that URL may name
+  // it here; accept it and normalize, rather than refusing a request that
+  // identifies this very server by a URL it answers on.
   const resource = `${issuerUrl()}/api/mcp`;
-  if (request.resource && request.resource !== resource) {
+  const acceptableResources = [resource, `${issuerUrl()}/mcp`];
+  if (request.resource && !acceptableResources.includes(request.resource)) {
     throw new OAuthError("invalid_request", "resource does not identify this MCP server.");
   }
 
