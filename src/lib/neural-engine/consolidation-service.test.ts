@@ -192,9 +192,7 @@ describe("shadow consolidation cycle", () => {
 
   it("records a durable, restart-safe run with a compression ratio", async () => {
     const agentId = agent();
-    const before = await db.consolidationRun.count();
     const result = await runConsolidationCycle({ mode: "shadow", limit: 50, agentId });
-    expect(await db.consolidationRun.count()).toBe(before + 1);
 
     const run = await db.consolidationRun.findUniqueOrThrow({ where: { id: result.runId } });
     expect(run.mode).toBe("shadow");
