@@ -1,3 +1,4 @@
+import { logDiscovery } from "@/lib/mcp/access-log";
 import { authorizationServerMetadata } from "@/lib/mcp/oauth";
 
 // RFC 8414 §3.1 path-insertion form, for the resource /api/mcp.
@@ -15,7 +16,8 @@ import { authorizationServerMetadata } from "@/lib/mcp/oauth";
 // matching pair for the authorization-server document.
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  logDiscovery(request, "/.well-known/oauth-authorization-server/api/mcp");
   return Response.json(authorizationServerMetadata(), {
     headers: { "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" },
   });

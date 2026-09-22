@@ -21,8 +21,13 @@ export async function POST(request: Request) {
       throw new OAuthError("invalid_request", "Body must be JSON.");
     }
     const registration = await registerClient(prismaStore(db), body as Record<string, unknown>);
+    console.log(`[mcp] register ok client=${registration.client_id} name=${JSON.stringify(registration.client_name)}`);
     return Response.json(registration, { status: 201 });
   } catch (error) {
+    // A refused registration is the single most likely place for a connector
+    // to die quietly, so say why here rather than only in the response body
+    // the client may never surface to the human.
+    console.log(`[mcp] register refused: ${error instanceof Error ? error.message : String(error)}`);
     return oauthErrorResponse(error);
   }
 }

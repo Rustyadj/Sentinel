@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { logGateway } from "@/lib/mcp/access-log";
 import { canUseMcpWorkspace, prismaDataSource } from "@/lib/mcp/data-source";
 import { JSON_RPC } from "@/lib/mcp/errors";
 import { authenticateBearer, issuerUrl, unauthorizedResponse } from "@/lib/mcp/oauth";
@@ -20,11 +21,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const principal = await authenticateBearer(prismaStore(db), request.headers.get("authorization"));
-  if (!principal) return unauthorizedResponse();
+  if (!principal) {
+    logGateway(request, { outcome: "unauthenticated", status: 401 });
+    return unauthorizedResponse();
+  }
   if (principal.scopes.length === 0) {
+    logGateway(request, { outcome: "grant-has-no-scopes", status: 401 });
     return unauthorizedResponse("This connector's grant no longer carries any scopes.");
   }
   if (!(await canUseMcpWorkspace(principal.userId, principal.workspaceId))) {
+    logGateway(request, { outcome: "workspace-unavailable", status: 401 });
     return unauthorizedResponse("Workspace access was removed or the workspace is unavailable.");
   }
 
@@ -32,11 +38,23 @@ export async function POST(request: Request) {
   try {
     payload = await request.json();
   } catch {
+    logGateway(request, { outcome: "invalid-json", status: 400 });
     return Response.json(
       { jsonrpc: "2.0", id: null, error: { code: JSON_RPC.parseError, message: "Invalid JSON." } },
       { status: 400 },
     );
   }
+
+  logGateway(request, {
+    rpcMethod:
+      payload && typeof payload === "object" && "method" in payload && typeof payload.method === "string"
+        ? payload.method
+        : Array.isArray(payload)
+          ? "batch"
+          : null,
+    outcome: "ok",
+    status: 200,
+  });
 
   const response = await handleMessage(payload, {
     principal,
@@ -55,7 +73,11 @@ export async function GET(request: Request) {
   // POST. Authentication discovery must win over transport negotiation, or a
   // bare 405 prevents the host from ever learning where OAuth metadata lives.
   const principal = await authenticateBearer(prismaStore(db), request.headers.get("authorization"));
-  if (!principal) return unauthorizedResponse();
+  if (!principal) {
+    logGateway(request, { outcome: "unauthenticated", status: 401 });
+    return unauthorizedResponse();
+  }
+  logGateway(request, { outcome: "get-not-supported", status: 405 });
   return new Response("This MCP endpoint accepts POST only.", { status: 405, headers: { Allow: "POST" } });
 }
 
