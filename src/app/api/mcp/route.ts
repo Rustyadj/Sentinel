@@ -50,7 +50,12 @@ export async function POST(request: Request) {
   return Response.json(response, { headers: { "Cache-Control": "no-store" } });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Some MCP hosts probe the endpoint with GET before their first JSON-RPC
+  // POST. Authentication discovery must win over transport negotiation, or a
+  // bare 405 prevents the host from ever learning where OAuth metadata lives.
+  const principal = await authenticateBearer(prismaStore(db), request.headers.get("authorization"));
+  if (!principal) return unauthorizedResponse();
   return new Response("This MCP endpoint accepts POST only.", { status: 405, headers: { Allow: "POST" } });
 }
 
