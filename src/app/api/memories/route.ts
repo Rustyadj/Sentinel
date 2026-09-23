@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
 import { memoryReadWhere } from "@/lib/knowledge/memoryAccess";
+import { syncMemoryToGraph } from "@/lib/knowledge/entity-sync";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
 
 const SELECT = {
@@ -60,9 +61,11 @@ export async function POST(req: NextRequest) {
   if (["workspace", "organization", "org", "public"].includes(body.scope)) {
     return NextResponse.json({ error: "This scope requires a workspace-aware memory model" }, { status: 400 });
   }
-  return NextResponse.json(await db.memory.create({ data: {
+  const memory = await db.memory.create({ data: {
     type: body.type, scope: body.scope, owner: user.id, content: body.content,
     tags: body.tags ?? [], projectId: body.scope === "project" ? body.projectId : null,
     confidence: body.confidence ?? 1, importanceScore: body.importanceScore ?? 0.5, source: body.source,
-  }, select: SELECT }), { status: 201 });
+  }, select: SELECT });
+  await syncMemoryToGraph(memory, user.id).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
+  return NextResponse.json(memory, { status: 201 });
 }

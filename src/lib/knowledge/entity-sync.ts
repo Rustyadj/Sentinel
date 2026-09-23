@@ -104,6 +104,36 @@ export async function syncTaskToGraph(task: TaskGraphInput, actingUserId: string
   });
 }
 
+export interface MemoryGraphInput {
+  id: string;
+  content: string;
+  scope: string;
+  owner: string;
+  source: string;
+  tags: string[];
+  projectId: string | null;
+}
+
+/**
+ * Bridges a plain Memory row (the pgvector-backed one behind /memory and
+ * /api/memories — not a Learning Core entity) into the same canonical
+ * graph Task/Decision/Agent already land in. Without this, durable memory
+ * was invisible to the graph: creating a memory left no trace an operator
+ * or agent could navigate to from anywhere else in Sentinel.
+ */
+export async function syncMemoryToGraph(memory: MemoryGraphInput, actingUserId: string): Promise<string> {
+  return syncEntityToGraph({
+    type: "Memory" as KnowledgeObjectType,
+    title: memory.content.length > 140 ? `${memory.content.slice(0, 137)}...` : memory.content,
+    sourceType: "memory",
+    sourceId: memory.id,
+    scope: (memory.scope === "project" ? "project" : "user") as KnowledgeScope,
+    projectId: memory.projectId,
+    ownerUserId: actingUserId,
+    metadata: { source: memory.source, tags: memory.tags },
+  });
+}
+
 export interface WorkflowGraphInput {
   id: string;
   name: string;
