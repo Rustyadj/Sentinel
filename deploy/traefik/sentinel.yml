@@ -28,6 +28,8 @@ http:
       rule: >-
         Host(`sentinel.srv1427612.hstgr.cloud`) &&
         (PathPrefix(`/api/mcp`) ||
+         Path(`/mcp`) ||
+         PathPrefix(`/mcp/`) ||
          PathPrefix(`/.well-known/oauth-authorization-server`) ||
          PathPrefix(`/.well-known/oauth-protected-resource`) ||
          PathPrefix(`/api/integrations/oauth`))

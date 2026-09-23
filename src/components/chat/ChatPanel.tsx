@@ -255,12 +255,17 @@ export function ChatPanel({
 
           <div className="mx-1 h-4 w-px bg-white/[0.06]" aria-hidden />
 
-          <VoiceControls
-            agentId={lead?.id}
-            roomId={activeRoomId ?? undefined}
-            onTranscript={setInput}
-            onStatusChange={onVoiceStatusChange}
-          />
+          {/* No lead agent means there is nobody to speak as — offering the
+              control anyway would start a session for whoever the server
+              guessed. */}
+          {lead?.id ? (
+            <VoiceControls
+              agentId={lead.id}
+              roomId={activeRoomId ?? undefined}
+              onTranscript={setInput}
+              onStatusChange={onVoiceStatusChange}
+            />
+          ) : null}
         </div>
         <div className="mt-1.5 flex h-5 items-center gap-[2px] overflow-hidden px-1" aria-hidden>
           {[5, 9, 14, 8, 17, 11, 6, 13, 18, 10, 7, 15, 9, 17, 12, 6, 14, 19, 11, 8, 16, 10, 6, 13, 8, 15, 10, 5, 12, 7, 9, 4].map((height, index) => (

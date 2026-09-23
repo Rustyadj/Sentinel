@@ -95,14 +95,18 @@ describe("POST /api/chat — resolveVoiceWorkerTurn (stateless worker path)", ()
     expect(response.status).toBe(404);
   });
 
-  it("defaults to hermes-lisa when the room has no agentIds", async () => {
+  it("refuses a room with no assigned agent instead of answering as Lisa", async () => {
     process.env.VOICE_WORKER_SECRET = "correct-secret";
     mocks.findUniqueRoom.mockResolvedValue({ userId: "user-1", agentIds: [] });
     mocks.getVpsAgent.mockReturnValue(undefined);
     const response = await POST(request({ roomId: "room-1", userContent: "hi" }, {
       authorization: "Bearer correct-secret",
     }));
-    expect(response.status).toBe(404); // hermes-lisa isn't a real agent/VPS agent in this mock
+    // This used to default to hermes-lisa, so an unassigned room was answered
+    // in her identity, on her runtime and memory, with nothing recording the
+    // substitution. Now the worker's bearer grants no turn here at all and the
+    // request falls through to normal session auth, which has no user: 401.
+    expect(response.status).toBe(401);
   });
 
   it("requires userContent even with a valid worker secret and room", async () => {
