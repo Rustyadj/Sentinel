@@ -3143,3 +3143,67 @@ model VoiceSessionTelemetry {
   @@index([roomId])
   @@map("voice_session_telemetry")
 }
+
+/// One row per request System 1 looked at (shadow or active). Records what it
+/// decided, what it would have done, and what actually ran, so shadow routing
+/// can be compared against real behaviour before it is ever made authoritative.
+/// See docs/SYSTEM_ONE.md.
+model SystemOneDecision {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  surface String
+  agentId String
+  userId  String
+  roomId  String?
+
+  /// off | shadow | active — the mode this request ran under.
+  mode          String
+  /// ok | disabled | timeout | error | malformed | circuit_open | aborted
+  outcome       String
+  provider      String
+  providerModel String?
+  s1LatencyMs   Int?
+  s1InputTokens Int     @default(0)
+  s1CostUsd     Float?
+
+  intent     String?
+  route      String?
+  confidence Float?
+  decision   Json?
+
+  /// What System 1 recommends. In shadow mode, what it *would* have done.
+  plannedAction String?
+  planReasons   Json?
+  /// What actually ran: system2 | system2_skip_memory | fast_path_tool | fast_path_failed
+  executedPath  String
+
+  system2Invoked      Boolean
+  system2Avoided      Boolean @default(false)
+  memorySkipped       Boolean @default(false)
+  toolId              String?
+  toolOk              Boolean?
+  toolLatencyMs       Int?
+  system2Model        String?
+  system2InputTokens  Int?
+  system2OutputTokens Int?
+  /// Tool names the System 2 runtime actually called — the ground truth a
+  /// shadow `suggestedTool` is scored against.
+  system2Tools        Json?
+
+  /// Estimated from this agent's recent System 2 turns; null when there is no history.
+  estTokensAvoided  Int?
+  /// Null when the agent's model has no rate card entry. Never a guessed zero.
+  estCostAvoidedUsd Float?
+
+  totalLatencyMs Int?
+  /// Millisecond offsets from request receipt, keyed by phase mark.
+  phases         Json
+  interrupted    Boolean @default(false)
+  /// Voice only: time to first audio, reported back by the client.
+  ttfaMs         Int?
+
+  @@index([createdAt])
+  @@index([agentId, createdAt])
+  @@map("system_one_decisions")
+}

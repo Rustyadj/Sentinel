@@ -17,6 +17,10 @@ import { analyzeCuriosityContext, recordCuriosityEvent, answerCuriosityEvent } f
 import type { NextRequest } from "next/server";
 import { isRuntimeChatMode, routeRuntimeChat, RUNTIME_AGENT_MAP, type ChatExecutionMode } from "@/lib/agents/runtime/chat-routing";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
+import { RequestTrace, recordDecision } from "@/lib/system-one/telemetry";
+import { beginSystemOne, planForTurn } from "@/lib/system-one/turn";
+import { observeRuntimeStream } from "@/lib/system-one/stream-observer";
+import type { RoutingPlan, SystemOneResult } from "@/lib/system-one/types";
 
 interface ContextBlockResult {
   block: string;
@@ -302,6 +306,7 @@ export async function POST(request: NextRequest) {
 
 async function handlePost(request: NextRequest): Promise<Response> {
   const requestStartedAtMs = Date.now();
+  const trace = new RequestTrace();
   let body: {
     messages?: Array<{ role: "user" | "assistant"; content: string }>;
     agentId?: string;
@@ -367,8 +372,30 @@ async function handlePost(request: NextRequest): Promise<Response> {
   const runtimeMode = runtimeRoute?.mode ?? body.executionMode;
   if (!voiceTurn && isRuntimeChatMode(runtimeMode)) {
     if (!userContent) return sseError("Missing required field: userContent");
+    // System 1 observes runtime chat in every mode but never routes it: the
+    // runtime owns this turn's memory and persistence, and typed chat has no
+    // layer to present raw tool data (the fast path is a voice feature — see
+    // docs/SYSTEM_ONE.md). The decision runs alongside the turn and is scored
+    // against the tools the runtime actually called. Zero added latency.
+    const s1 = beginSystemOne({
+      surface: "runtime_chat", agentId, request: userContent, recentTurns: messages.slice(-3, -1), trace, signal: request.signal,
+    });
     try {
-      return await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: runtimeMode! });
+      trace.mark("system2_start");
+      const response = await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: runtimeMode! });
+      return observeRuntimeStream(response, {
+        onFirstText: () => { trace.mark("system2_first_token"); trace.mark("response_first_token"); },
+        onComplete: async (observed) => {
+          trace.mark("request_complete");
+          const result = await s1.result;
+          await recordDecision({
+            surface: "runtime_chat", agentId, userId: user.id, roomId, mode: s1.mode === "active" ? "shadow" : s1.mode,
+            result, plan: s1.mode === "off" ? null : planForTurn(s1, result, "runtime_chat", false),
+            executedPath: "system2", system2Invoked: true, trace, interrupted: observed.aborted,
+            system2: { model: observed.model, inputTokens: observed.inputTokens, outputTokens: observed.outputTokens, tools: observed.toolNames },
+          });
+        },
+      });
     } catch (error) {
       return sseError(error instanceof Error ? error.message : "Runtime routing failed", error instanceof RuntimeError ? error.status : 503);
     }
@@ -383,14 +410,57 @@ async function handlePost(request: NextRequest): Promise<Response> {
     agentTemplate?.systemPrompt ||
     `You are an AI assistant in the Sentinel OS platform. Be concise and professional.`;
   const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
-  const { block: contextBlock, knowledgeObjectIds } = await buildContextBlock(
-    roomId,
-    memoryScope,
-    user.id,
-    agentId,
-    userContent ?? messages[messages.length - 1]?.content ?? "",
-  );
+  const turnText = userContent ?? messages[messages.length - 1]?.content ?? "";
+
+  // System 1 runs concurrently with memory retrieval (read-only, so safe to
+  // start speculatively). In active mode the two race: if System 1 decides
+  // first, with high confidence, that this turn needs no memory, the model
+  // call starts without waiting for retrieval; if retrieval finishes first it
+  // is simply used. Either way this is never slower than retrieval alone.
+  // Authorization is untouched — retrieval is scoped exactly as before, and
+  // System 1 can only decide to *not* use what the user was already allowed.
+  const s1 = beginSystemOne({
+    surface: "chat", agentId, request: turnText, recentTurns: messages.slice(-3, -1), configuredModel: model, trace, signal: request.signal,
+  });
+  trace.mark("memory_start");
+  const contextPromise = buildContextBlock(roomId, memoryScope, user.id, agentId, turnText).then((context) => {
+    trace.mark("memory_complete");
+    return context;
+  });
+  let s1Result: SystemOneResult | null = null;
+  let s1Plan: RoutingPlan | null = null;
+  let memorySkipped = false;
+  const SKIP_MEMORY = Symbol("skip-memory");
+  const decided: Promise<ContextBlockResult | typeof SKIP_MEMORY> = s1.mode === "active"
+    ? s1.result.then((result): ContextBlockResult | typeof SKIP_MEMORY | Promise<ContextBlockResult> => {
+        s1Result = result;
+        s1Plan = planForTurn(s1, result, "chat", true);
+        trace.mark("routing_complete");
+        return s1Plan.action === "system2_skip_memory" ? SKIP_MEMORY : contextPromise;
+      })
+    : contextPromise;
+  const raced: ContextBlockResult | typeof SKIP_MEMORY = await Promise.race([contextPromise, decided]);
+  if (raced === SKIP_MEMORY) {
+    memorySkipped = true;
+    void contextPromise.catch(() => undefined);
+  }
+  const { block: contextBlock, knowledgeObjectIds } = raced === SKIP_MEMORY ? { block: "", knowledgeObjectIds: [] as string[] } : raced;
   const systemPrompt = basePrompt + contextBlock;
+
+  /** Records this turn once the model has finished; never awaited by the stream. */
+  const finishSystemOne = () => {
+    trace.mark("request_complete");
+    void (async () => {
+      const result = s1Result ?? await s1.result;
+      await recordDecision({
+        surface: "chat", agentId, userId: user.id, roomId, mode: s1.mode, result,
+        plan: s1Plan ?? (s1.mode === "off" ? null : planForTurn(s1, result, "chat", true)),
+        executedPath: memorySkipped ? "system2_skip_memory" : "system2", system2Invoked: true, memorySkipped, trace,
+        system2: { model, inputTokens: 0, outputTokens: 0, tools: [] },
+      });
+    })();
+  };
+  const markText = () => { trace.mark("system2_first_token"); trace.mark("response_first_token"); };
 
   void emitLearningEvent({
     eventType: "retrieval_executed",
@@ -446,6 +516,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
+        trace.mark("system2_start");
         const response = await anthropic.messages.create({
           model,
           max_tokens: 2048,
@@ -459,6 +530,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           ) {
+            if (!fullContent) markText();
             fullContent += event.delta.text;
             ctrl.enqueue(sse({ type: "text", text: event.delta.text }));
           }
@@ -488,6 +560,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
             knowledgeUsedIds: knowledgeObjectIds,
           });
         }
+        finishSystemOne();
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
@@ -504,6 +577,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       ctrl.enqueue(sse({ type: "presence", agentId, status: "thinking" }));
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
+        trace.mark("system2_start");
         const stream = await openai.chat.completions.create({
           model,
           max_tokens: 2048,
@@ -517,6 +591,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         for await (const chunk of stream) {
           const text = chunk.choices[0]?.delta?.content;
           if (text) {
+            if (!fullContent) markText();
             fullContent += text;
             ctrl.enqueue(sse({ type: "text", text }));
           }
@@ -546,6 +621,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
             knowledgeUsedIds: knowledgeObjectIds,
           });
         }
+        finishSystemOne();
         ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
         ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
         ctrl.close();
@@ -569,6 +645,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         },
       });
 
+      trace.mark("system2_start");
       const stream = await openai.chat.completions.create({
         model,
         max_tokens: 2048,
@@ -582,6 +659,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       for await (const chunk of stream) {
         const text = chunk.choices[0]?.delta?.content;
         if (text) {
+          if (!fullContent) markText();
           fullContent += text;
           ctrl.enqueue(sse({ type: "text", text }));
         }
@@ -611,6 +689,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           knowledgeUsedIds: knowledgeObjectIds,
         });
       }
+      finishSystemOne();
       ctrl.enqueue(sse({ type: "presence", agentId, status: "idle" }));
       ctrl.enqueue(encoder.encode("data: [DONE]\n\n"));
       ctrl.close();

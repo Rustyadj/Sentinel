@@ -27,6 +27,33 @@ const RUNTIME_PROVIDERS: Record<string, string> = {
   codex: "openai",
 };
 
+/**
+ * A runtime that answered ready is trusted for a few seconds, so a turn does
+ * not pay a health round trip it just paid, and a voice session can warm it
+ * before the first utterance. Only successes are cached: a failing runtime is
+ * re-checked every time. A runtime that dies inside the window fails on send,
+ * which is surfaced exactly as before.
+ */
+const READINESS_TTL_MS = 15_000;
+const readyAt = new Map<string, number>();
+
+async function checkReadiness(runtime: Parameters<typeof asRuntimeInstance>[0]) {
+  const checkedAt = readyAt.get(runtime.id);
+  if (checkedAt !== undefined && Date.now() - checkedAt < READINESS_TTL_MS) return { ready: true as const };
+  const readiness = await getRuntimeAdapter(runtime.kind).readiness(asRuntimeInstance(runtime));
+  if (readiness.ready) readyAt.set(runtime.id, Date.now());
+  else readyAt.delete(runtime.id);
+  return readiness;
+}
+
+/** Session warm-up: authorize and health-check the agent's runtime ahead of the first turn. */
+export async function warmRuntimeChat(agentId: string): Promise<boolean> {
+  const route = RUNTIME_AGENT_MAP[agentId];
+  if (!route) return false;
+  const { runtime } = await requireRuntimeAccess(route.runtimeId, RUNTIME_PERMISSIONS.execute);
+  return (await checkReadiness(runtime)).ready;
+}
+
 export function isRuntimeChatMode(mode: ChatExecutionMode | undefined) {
   return mode === "persistent_agent_runtime" || mode === "coding_runtime";
 }
@@ -42,7 +69,7 @@ export async function routeRuntimeChat(input: {
   if (!route || route.mode !== input.mode) throw new RuntimeError("Selected agent does not support this execution mode", "execution_mode_mismatch", 422);
   const { runtime } = await requireRuntimeAccess(route.runtimeId, RUNTIME_PERMISSIONS.execute);
   const adapter = getRuntimeAdapter(runtime.kind);
-  const readiness = await adapter.readiness(asRuntimeInstance(runtime));
+  const readiness = await checkReadiness(runtime);
   if (!readiness.ready) throw new RuntimeError(`Runtime unavailable: ${readiness.reason ?? "not ready"}`, "runtime_not_ready", 503);
 
   const room = input.roomId

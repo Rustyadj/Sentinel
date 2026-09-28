@@ -40,6 +40,12 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
   /** Tool call ids already dispatched, so a repeated event cannot run a turn twice. */
   private dispatchedCalls = new Set<string>();
   private inputTranscript = "";
+  /** In-flight reasoning calls, aborted when the user speaks over them. */
+  private pendingCalls = new Map<string, AbortController>();
+  /** When the user last stopped speaking — the zero point for time-to-first-audio. */
+  private speechStoppedAt: number | null = null;
+  /** Decision awaiting its first audio frame, for the TTFA measurement. */
+  private awaitingFirstAudio: { decisionId: string; since: number } | null = null;
 
   async startSession(config: VoiceProviderConfig): Promise<void> {
     this.config = config;
@@ -155,10 +161,16 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
 
     switch (event.type) {
       case "input_audio_buffer.speech_started":
+        // Barge-in. The live provider stops its own audio (semantic_vad with
+        // interrupt_response); here the obsolete backend work is cancelled so
+        // it neither finishes nor gets spoken. Never force the old answer out.
+        this.abortPendingCalls();
+        this.awaitingFirstAudio = null;
         this.inputTranscript = "";
         this.setStatus("listening");
         break;
       case "input_audio_buffer.speech_stopped":
+        this.speechStoppedAt = performance.now();
         this.setStatus("transcribing");
         break;
       case "conversation.item.input_audio_transcription.delta":
@@ -178,6 +190,7 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
         break;
       case "response.output_audio.delta":
       case "response.output_audio_transcript.delta":
+        this.reportFirstAudio();
         this.setStatus("speaking");
         break;
       case "response.function_call_arguments.done":
@@ -228,7 +241,11 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
     }
     if (!request.trim()) request = this.inputTranscript.trim();
 
+    const controller = new AbortController();
+    this.pendingCalls.set(callId, controller);
+    const turnStartedAt = this.speechStoppedAt ?? performance.now();
     let output: object;
+    let decisionId: string | undefined;
     try {
       const response = await fetch("/api/voice/reasoning", {
         method: "POST",
@@ -239,15 +256,32 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
           sessionId: this.telemetrySessionId,
           request,
         }),
+        signal: controller.signal,
       });
       const payload = (await response.json().catch(() => null)) as
-        | { answer?: string; error?: string }
+        | { answer?: string; error?: string; decisionId?: string; structured?: unknown }
         | null;
       if (!response.ok || !payload?.answer) {
         throw new Error(payload?.error || "Sentinel could not answer that.");
       }
-      output = { answer: payload.answer };
+      decisionId = payload.decisionId;
+      output = payload.structured ? { answer: payload.answer, data: payload.structured } : { answer: payload.answer };
     } catch (error) {
+      if (controller.signal.aborted) {
+        // Superseded by a newer utterance. Close the call so the session is
+        // not left waiting on it, but do not ask for a response: the user
+        // has moved on and the old answer must not be spoken.
+        this.pendingCalls.delete(callId);
+        try {
+          this.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ superseded: true }) },
+          });
+        } catch {
+          // Session already closed.
+        }
+        return;
+      }
       // Surfaced to the model as a spoken-able failure rather than thrown:
       // a dropped tool output leaves the live session waiting forever.
       output = {
@@ -255,6 +289,9 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
       };
     }
 
+    this.pendingCalls.delete(callId);
+    if (controller.signal.aborted) return;
+    if (decisionId) this.awaitingFirstAudio = { decisionId, since: turnStartedAt };
     try {
       this.send({
         type: "conversation.item.create",
@@ -266,6 +303,25 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
     }
   }
 
+  private abortPendingCalls(): void {
+    for (const controller of this.pendingCalls.values()) controller.abort();
+    this.pendingCalls.clear();
+  }
+
+  /** Time from the user finishing speaking to the answer's first audio. */
+  private reportFirstAudio(): void {
+    const pending = this.awaitingFirstAudio;
+    if (!pending) return;
+    this.awaitingFirstAudio = null;
+    const ttfaMs = Math.round(performance.now() - pending.since);
+    void fetch("/api/voice/reasoning/trace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decisionId: pending.decisionId, ttfaMs }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }
+
   private send(event: object): void {
     if (!this.channel || this.channel.readyState !== "open") {
       throw new Error("OpenAI Realtime session is not active");
@@ -274,6 +330,8 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
   }
 
   private async cleanup(): Promise<void> {
+    this.abortPendingCalls();
+    this.awaitingFirstAudio = null;
     this.channel?.close();
     this.channel = null;
     this.peer?.close();

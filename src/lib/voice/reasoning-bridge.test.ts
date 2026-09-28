@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ routeRuntimeChat: vi.fn() }));
+const mocks = vi.hoisted(() => ({ routeRuntimeChat: vi.fn(), cancel: vi.fn(), audit: vi.fn() }));
+vi.mock("@/lib/agents/runtime/service", () => ({ getRuntimeAdapter: () => ({ cancel: mocks.cancel }) }));
+vi.mock("@/lib/workspaces/audit", () => ({ writeAuditLog: mocks.audit }));
 vi.mock("@/lib/agents/runtime/chat-routing", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/agents/runtime/chat-routing")>();
   return { ...actual, routeRuntimeChat: mocks.routeRuntimeChat };
@@ -87,6 +89,40 @@ describe("voice reasoning bridge", () => {
     expect(result.inputTokens).toBe(120);
     expect(result.outputTokens).toBe(34);
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("counts Hermes tool starts (tool_started), once per tool, and names them", async () => {
+    mocks.routeRuntimeChat.mockResolvedValue(
+      runtimeStream([
+        { type: "runtime_event", event: { type: "tool_started", data: { phase: "tool.start", name: "get_active_rentals" } } },
+        { type: "runtime_event", event: { type: "tool_started", data: { phase: "tool.generating", name: "get_active_rentals" } } },
+        { type: "runtime_event", event: { type: "tool_completed", data: { name: "get_active_rentals" } } },
+        { type: "text", text: "Two." },
+      ]),
+    );
+    const result = await runVoiceReasoningTurn({ agentId: "hermes-nathan2", userId: "user-1", request: "rentals?" });
+    expect(result.toolCalls).toBe(1);
+    expect(result.toolNames).toEqual(["get_active_rentals"]);
+  });
+
+  it("cancels the runtime session when the caller aborts (user interrupted)", async () => {
+    const controller = new AbortController();
+    const encoder = new TextEncoder();
+    mocks.cancel.mockResolvedValue({ success: true });
+    mocks.audit.mockResolvedValue(undefined);
+    // A turn that streams its session frame and then stalls, like a slow runtime.
+    mocks.routeRuntimeChat.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "source", sessionId: "sess-9", runtime: "hermes" })}\n\n`));
+        c.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "text", text: "Partial" })}\n\n`));
+        setTimeout(() => controller.abort(), 10);
+      },
+    })));
+    const onFirstText = vi.fn();
+    const result = await runVoiceReasoningTurn({ agentId: "hermes-lisa", userId: "user-1", request: "long one", signal: controller.signal, onFirstText });
+    expect(result.cancelled).toBe(true);
+    expect(onFirstText).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith("sess-9"));
   });
 
   it("survives a malformed frame rather than dropping the turn", async () => {

@@ -8,6 +8,8 @@ import {
   resolveAgentVoiceConfig,
 } from "@/lib/voice/agent-voice-config";
 import { startVoiceSessionTelemetry } from "@/lib/voice/telemetry";
+import { warmRuntimeChat } from "@/lib/agents/runtime/chat-routing";
+import { warmSystemOne } from "@/lib/system-one/turn";
 
 export const runtime = "nodejs";
 
@@ -120,6 +122,12 @@ export async function POST(req: NextRequest) {
       { status: openAIResponse.status >= 400 && openAIResponse.status < 500 ? 502 : 503 },
     );
   }
+
+  // Warm the agent's runtime, read-only tools and System 1 connection while
+  // the browser is still negotiating WebRTC, so the first spoken turn does not
+  // pay for it. Fire-and-forget: none of it can fail the session.
+  void warmRuntimeChat(config.agentId).catch(() => false);
+  void warmSystemOne(config.agentId).catch(() => undefined);
 
   const sessionId = await startVoiceSessionTelemetry({
     userId: user.id,

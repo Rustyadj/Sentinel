@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { systemOneHealthItem } from "@/lib/system-one/health";
 import { getAccessibleWorkspaceIds } from "@/lib/agents/permissions";
 import { redisHealth } from "@/lib/redis";
 import type {
@@ -237,6 +238,7 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
     outputTokens: total.outputTokens + (agent.apiUsage?.outputTokens ?? 0),
     observed: total.observed || Boolean(agent.apiUsage),
   }), { requests: 0, inputTokens: 0, outputTokens: 0, observed: false });
+  const systemOne = await systemOneHealthItem(user.id).catch((): HealthItem => ({ id: "system-one", label: "System 1 (Jev)", status: "unavailable", value: "Unavailable", detail: "System 1 telemetry query failed" }));
   const health: HealthItem[] = [
     { id: "cpu", label: "VPS CPU", status: typeof host?.cpuPercent === "number" ? "healthy" : "unavailable", value: typeof host?.cpuPercent === "number" ? `${host.cpuPercent.toFixed(1)}%` : "Unavailable", detail: telemetry.source.reason ?? "Host telemetry" },
     { id: "memory", label: "VPS memory", status: host?.memoryUsedBytes !== undefined ? "healthy" : "unavailable", value: host?.memoryUsedBytes !== undefined ? `${bytes(host.memoryUsedBytes)} / ${bytes(host.memoryTotalBytes) ?? "unknown"}` : "Unavailable", detail: telemetry.source.reason ?? "Host telemetry" },
@@ -245,6 +247,7 @@ export async function buildMissionControlData(user: ControlPlaneUser): Promise<M
     { id: "containers", label: "Containers", status: telemetry.payload?.containers ? (telemetry.payload.containers.every((container) => container.status === "running" || container.status === "healthy") ? "healthy" : "degraded") : "unavailable", value: telemetry.payload?.containers ? `${telemetry.payload.containers.filter((container) => container.status === "running" || container.status === "healthy").length}/${telemetry.payload.containers.length} healthy` : "Unavailable", detail: telemetry.source.reason ?? "Container telemetry" },
     { id: "postgres", label: "PostgreSQL", status: "healthy", value: "Connected", detail: "Mission Control query succeeded" },
     { id: "redis", label: "Redis", status: redis.ok ? "healthy" : redis.configured ? "down" : "unavailable", value: redis.ok ? `${redis.latencyMs ?? 0} ms` : "Unavailable", detail: redis.error ?? "Ping succeeded" },
+    systemOne,
     { id: "usage", label: "API usage", status: apiUsage.observed ? "active" : "unavailable", value: apiUsage.observed ? `${apiUsage.requests} requests` : "Unavailable", detail: apiUsage.observed ? `${apiUsage.inputTokens + apiUsage.outputTokens} tokens observed` : "Agent telemetry did not report API usage" },
   ];
 

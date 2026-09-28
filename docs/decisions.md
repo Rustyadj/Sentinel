@@ -3,6 +3,54 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-004 — A System 1 decision layer routes paths, never models
+
+**Date:** 2026-09-26
+**Status:** Accepted (amends ADR-003; does not supersede it)
+
+**Decision.** Sentinel gains a System 1 layer (`src/lib/system-one/`, first
+provider: TypeSafe's Jev via OpenRouter) that answers typed questions about a
+request — intent, route, whether memory, a tool or real reasoning is needed —
+in one batched call. It chooses between *paths*: answer from a read-only tool,
+skip memory retrieval, or hand the turn to the agent's own runtime. It never
+chooses *which model thinks*: `suggestedModel` is always the agent's configured
+model, and the no-substitution guarantee in `model-policy` is unchanged. The
+layer runs `off`, `shadow` (decides and records, controls nothing) or `active`,
+per agent, and any failure falls back to today's path.
+
+The one amendment to ADR-003: a spoken turn may be answered from a
+deterministic, read-only tool result instead of a runtime turn. The live layer
+speaks structured data it was handed; it still reasons about nothing, so the
+"whose mind answers" rule holds — no mind answered.
+
+**Why.**
+- Most of the cost and latency of a turn like "what's checked out right now"
+  is the agent's model deciding to call one read-only tool and then rephrasing
+  its output. A calibrated classifier answers the routing question in ~100ms
+  for a fraction of a cent.
+- Confidence gates routing, never truth: nothing is ever *answered* by System
+  1, only *routed*.
+- Authorization stays deterministic. System 1 only ever chooses among tools
+  the agent already holds a credential for, and only tools the tool's own
+  server annotates `readOnlyHint: true` are eligible. Writes always go through
+  the agent's runtime.
+
+**Rejected.**
+- *Per-request model selection, including tiers within an allowlist.* That is
+  the automatic model swapping ADR-003 and `model-policy` forbid, and it would
+  let spoken and typed turns of the same agent think with different minds.
+- *System 1 synchronously in front of every request.* A slow classifier would
+  make Sentinel slower than it was. It runs concurrently with read-only
+  preparation, under a strict timeout and a circuit breaker.
+- *Reusing `learning/feature-flags` for the mode.* `evaluateFlag` writes on
+  every read and is boolean; mode is env-resolved per agent instead.
+
+**Consequences.** One additive table (`system_one_decisions`). A fast path for
+a tool needs every required argument to be enumerable, because System 1
+chooses and cannot extract free text; "tools assigned to Nick" still reaches
+the runtime. Savings in dollars are null for any model without a rate card
+entry, which today includes both Hermes agents' models.
+
 ## ADR-003 — The live voice model carries audio; the agent's own model thinks
 
 **Date:** 2026-09-22

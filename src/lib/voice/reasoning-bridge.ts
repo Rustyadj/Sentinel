@@ -10,6 +10,9 @@
  * streaming response into the single answer the live layer needs to speak.
  */
 import { routeRuntimeChat, RUNTIME_AGENT_MAP } from "@/lib/agents/runtime/chat-routing";
+import { getRuntimeAdapter } from "@/lib/agents/runtime/service";
+import type { AgentRuntimeKind } from "@/lib/agents/runtime/types";
+import { writeAuditLog } from "@/lib/workspaces/audit";
 
 export interface VoiceReasoningResult {
   answer: string;
@@ -19,19 +22,36 @@ export interface VoiceReasoningResult {
   outputTokens: number;
   /** The model that actually ran, as reported by the runtime. */
   executedModel: string | null;
+  /** Names of the tools the runtime called — ground truth for System 1 shadow scoring. */
+  toolNames: string[];
+  /** True when the caller aborted (user interrupted) and the runtime turn was cancelled. */
+  cancelled: boolean;
 }
 
 interface SseEvent {
   type?: string;
   text?: string;
+  sessionId?: string;
+  runtime?: string;
   event?: { type?: string; data?: Record<string, unknown> };
 }
 
 /** Pulls `data:` frames out of the runtime's SSE stream. */
-async function* readSseEvents(response: Response): AsyncGenerator<SseEvent> {
+async function* readSseEvents(response: Response, signal?: AbortSignal): AsyncGenerator<SseEvent> {
   const body = response.body;
   if (!body) return;
   const reader = body.getReader();
+  const onAbort = () => void reader.cancel().catch(() => {});
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
+  try {
+    yield* readFrames(reader);
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+async function* readFrames(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SseEvent> {
   const decoder = new TextDecoder();
   let buffer = "";
   while (true) {
@@ -63,6 +83,43 @@ function readTokenCount(data: Record<string, unknown> | undefined, keys: string[
   return 0;
 }
 
+/**
+ * Tool starts as runtimes actually report them. Hermes emits `tool_started`
+ * (phase `tool.start`, then again as `tool.generating`); the older
+ * `tool_call` shape is kept for runtimes that use it. Counting only
+ * `tool_call` — as this did before — reported zero tools for every Hermes turn.
+ */
+function toolStartName(type: string | undefined, data: Record<string, unknown> | undefined): string | null | undefined {
+  if (type === "tool_call") return toolName(data);
+  if (type === "tool_started" && data?.phase !== "tool.generating") return toolName(data);
+  return undefined;
+}
+
+function toolName(data: Record<string, unknown> | undefined): string | null {
+  for (const key of ["name", "tool_name", "tool"]) {
+    const value = data?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return null;
+}
+
+async function cancelRuntimeSession(sessionId: string, runtime: string | undefined, userId: string) {
+  if (!runtime) return;
+  try {
+    const result = await getRuntimeAdapter(runtime as AgentRuntimeKind).cancel(sessionId);
+    await writeAuditLog({
+      userId,
+      action: "agent_runtime.task_cancelled",
+      entityType: "AgentSession",
+      entityId: sessionId,
+      details: { runtime, success: result.success, reason: "voice_interrupt" },
+    });
+  } catch {
+    // Best effort: the user has already moved on, and the runtime's own
+    // timeout still bounds an uncancelled turn.
+  }
+}
+
 export function isVoiceCapableRuntimeAgent(agentId: string): boolean {
   return Boolean(RUNTIME_AGENT_MAP[agentId]);
 }
@@ -81,6 +138,9 @@ export async function runVoiceReasoningTurn(input: {
   userId: string;
   roomId?: string;
   request: string;
+  /** Aborted when the user interrupts; cancels the runtime turn rather than finishing it. */
+  signal?: AbortSignal;
+  onFirstText?: () => void;
 }): Promise<VoiceReasoningResult> {
   const route = RUNTIME_AGENT_MAP[input.agentId];
   if (!route) {
@@ -101,9 +161,18 @@ export async function runVoiceReasoningTurn(input: {
   let inputTokens = 0;
   let outputTokens = 0;
   let executedModel: string | null = null;
+  let sessionId: string | undefined;
+  let runtimeKind: string | undefined;
+  const toolNames: string[] = [];
 
-  for await (const event of readSseEvents(response)) {
+  for await (const event of readSseEvents(response, input.signal)) {
+    if (event.type === "source") {
+      sessionId = event.sessionId;
+      runtimeKind = event.runtime;
+      continue;
+    }
     if (event.type === "text" && typeof event.text === "string") {
+      if (!answer) input.onFirstText?.();
       answer += event.text;
       continue;
     }
@@ -111,8 +180,10 @@ export async function runVoiceReasoningTurn(input: {
     if (!runtimeEvent) continue;
     // Tool executions are counted from the runtime's own events, so voice
     // reports the same tool activity the typed path would.
-    if (runtimeEvent.type === "tool_call" || runtimeEvent.type === "tool_result") {
-      if (runtimeEvent.type === "tool_call") toolCalls += 1;
+    const started = toolStartName(runtimeEvent.type, runtimeEvent.data);
+    if (started !== undefined) {
+      toolCalls += 1;
+      if (started) toolNames.push(started);
     }
     const data = runtimeEvent.data;
     if (data) {
@@ -123,6 +194,9 @@ export async function runVoiceReasoningTurn(input: {
     }
   }
 
+  const cancelled = Boolean(input.signal?.aborted);
+  if (cancelled && sessionId) void cancelRuntimeSession(sessionId, runtimeKind, input.userId);
+
   return {
     answer: answer.trim(),
     latencyMs: Date.now() - startedAt,
@@ -130,5 +204,7 @@ export async function runVoiceReasoningTurn(input: {
     inputTokens,
     outputTokens,
     executedModel,
+    toolNames,
+    cancelled,
   };
 }

@@ -1,0 +1,8 @@
+{
+  "source": "production agent_runtime_events (hermesos), task_submitted -> first assistant_delta, queried 2026-09-26",
+  "caveat": "Tiny sample from 2026-08-14..20; voice_session_telemetry had 0 rows (voice never used in production). Indicative only — replace with off-mode system_one_decisions rows once traffic exists.",
+  "hermes_without_tools": { "n": 7, "ttft_p50_ms": 2397, "ttft_p95_ms": 10144, "total_p50_ms": 2618, "total_p95_ms": 10504 },
+  "hermes_with_tools": { "n": 6, "ttft_p50_ms": 9053, "ttft_p95_ms": 251777, "total_note": "last-event timing includes idle sessions; not a turn duration" },
+  "claude_code": { "n": 1, "ttft_ms": 2343 },
+  "codex": { "n": 1, "ttft_ms": 5553 }
+}

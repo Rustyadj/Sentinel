@@ -1,0 +1,1162 @@
+{
+ "source": "MobileOps backend/mcp_server.py @ 2026-09-26 (snapshot; live catalog used when a connector is configured)",
+ "tools": [
+  {
+   "name": "inventory_search",
+   "description": "List/search current equipment inventory and all operational quantity buckets.",
+   "inputSchema": {
+    "properties": {
+     "query": {
+      "type": "string"
+     },
+     "category": {
+      "type": "string"
+     },
+     "location": {
+      "type": "string"
+     },
+     "condition": {
+      "type": "string"
+     },
+     "limit": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "equipment_get",
+   "description": "Get the live inventory breakdown for one equipment record by MobileOps equipment id.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "inventory_capacity",
+   "description": "Check equipment availability and commitments on an ISO date.",
+   "inputSchema": {
+    "properties": {
+     "target_date": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "target_date"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "inventory_transfers_list",
+   "description": "List inventory transfers between MobileOps locations.",
+   "inputSchema": {
+    "properties": {
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "rentals_list",
+   "description": "List rentals and their return state.",
+   "inputSchema": {
+    "properties": {
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "rental_contact_actions",
+   "description": "List unlogged status-driven customer follow-ups, including contact permission and preferred channel.",
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "bookings_list",
+   "description": "List bookings and reservation state.",
+   "inputSchema": {
+    "properties": {
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "dispatches_list",
+   "description": "List outbound or inbound dispatch movements.",
+   "inputSchema": {
+    "properties": {
+     "direction": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "rental_id": {
+      "type": "string"
+     },
+     "booking_id": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "maintenance_list",
+   "description": "List maintenance records.",
+   "inputSchema": {
+    "properties": {
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "shop_tasks_list",
+   "description": "List shop tasks and completion state.",
+   "inputSchema": {
+    "properties": {
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "operational_status",
+   "description": "Get current MobileOps KPIs, recent activity, and upcoming inventory shortages.",
+   "inputSchema": {
+    "properties": {
+     "shortage_days": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_inventory_availability",
+   "description": "Get authoritative current inventory buckets for one equipment id.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_inventory_forecast",
+   "description": "Build a deterministic, chronological availability forecast for requested equipment on an outbound date.",
+   "inputSchema": {
+    "properties": {
+     "requested_date": {
+      "type": "string"
+     },
+     "requested_lines": {
+      "type": "string"
+     },
+     "customer_id": {
+      "type": "string"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "exclude_booking_id": {
+      "type": "string"
+     },
+     "exclude_dispatch_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "requested_date",
+     "requested_lines"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_inventory_timeline",
+   "description": "Get the dated, auditable inventory movements behind a requested outbound forecast.",
+   "inputSchema": {
+    "properties": {
+     "requested_date": {
+      "type": "string"
+     },
+     "requested_lines": {
+      "type": "string"
+     },
+     "customer_id": {
+      "type": "string"
+     },
+     "customer_name": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "requested_date",
+     "requested_lines"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_customer_preferences",
+   "description": "Get persisted preferred, acceptable-alternate, avoid, and required equipment rules for a customer.",
+   "inputSchema": {
+    "properties": {
+     "customer_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "customer_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_active_rentals",
+   "description": "Get active and partially returned rentals with current outstanding line quantities.",
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_scheduled_returns",
+   "description": "Get dated inbound dispatches that can affect future inventory.",
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_scheduled_outbounds",
+   "description": "Get dated outbound commitments and their equipment lines.",
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_rental_detail",
+   "description": "Get one rental and its partial-return state by id.",
+   "inputSchema": {
+    "properties": {
+     "rental_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "rental_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_equipment_status",
+   "description": "Get equipment status, location breakdown, and unavailable buckets.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_repair_pipeline",
+   "description": "Get the repair pipeline, optionally filtered to one equipment id.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_inventory_conflicts",
+   "description": "Get proactive outbound shortage, return-dependency, and preference conflicts in the requested horizon.",
+   "inputSchema": {
+    "properties": {
+     "days": {
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_outbound_risk",
+   "description": "Get the explainable deterministic risk forecast for one existing outbound dispatch.",
+   "inputSchema": {
+    "properties": {
+     "dispatch_id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "dispatch_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "equipment_checkout",
+   "description": "Check out equipment to a project/foreman. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     },
+     "checked_out_to": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id",
+     "checked_out_to"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "equipment_checkin",
+   "description": "Check equipment back into the yard. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "equipment_inspect_return",
+   "description": "equipment_inspect_return",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "outcome": {
+      "type": "string"
+     },
+     "note": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id",
+     "qty",
+     "outcome"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "inventory_transfer",
+   "description": "inventory_transfer",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "to_location": {
+      "type": "string"
+     },
+     "note": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id",
+     "qty",
+     "to_location"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "inventory_receive_transfer",
+   "description": "Receive an in-transit inventory transfer. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "transfer_id": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "transfer_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "rental_create",
+   "description": "Create an active rental using the existing inventory ledger. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "customer_name": {
+      "type": "string"
+     },
+     "start_date": {
+      "type": "string"
+     },
+     "lines": {
+      "type": "string"
+     },
+     "customer_phone": {
+      "type": "string"
+     },
+     "customer_email": {
+      "type": "string"
+     },
+     "primary_contact": {
+      "type": "string"
+     },
+     "preferred_contact_method": {
+      "type": "string"
+     },
+     "delivery_notes": {
+      "type": "string"
+     },
+     "return_notes": {
+      "type": "string"
+     },
+     "gate_access_instructions": {
+      "type": "string"
+     },
+     "contact_permission": {
+      "type": "string"
+     },
+     "job_site": {
+      "type": "string"
+     },
+     "deposit": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "due_date": {
+      "type": "string"
+     },
+     "lat": {
+      "type": "string"
+     },
+     "lng": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "customer_name",
+     "start_date",
+     "lines"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "rental_return",
+   "description": "rental_return",
+   "inputSchema": {
+    "properties": {
+     "rental_id": {
+      "type": "string"
+     },
+     "returns": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "rental_id",
+     "returns"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "rental_schedule_pickup",
+   "description": "Schedule an inbound pickup dispatch for a rental. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "rental_id": {
+      "type": "string"
+     },
+     "scheduled_date": {
+      "type": "string"
+     },
+     "driver_name": {
+      "type": "string"
+     },
+     "truck": {
+      "type": "string"
+     },
+     "trailer": {
+      "type": "string"
+     },
+     "crew": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "rental_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "rental_log_communication",
+   "description": "Attach a call, text, email, in-person update, or other communication to a rental. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "rental_id": {
+      "type": "string"
+     },
+     "channel": {
+      "type": "string"
+     },
+     "summary": {
+      "type": "string"
+     },
+     "direction": {
+      "type": "string"
+     },
+     "outcome": {
+      "type": "string"
+     },
+     "trigger_key": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "rental_id",
+     "channel",
+     "summary"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "booking_create",
+   "description": "booking_create",
+   "inputSchema": {
+    "properties": {
+     "customer_name": {
+      "type": "string"
+     },
+     "start_date": {
+      "type": "string"
+     },
+     "end_date": {
+      "type": "string"
+     },
+     "items": {
+      "type": "string"
+     },
+     "job_site": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "customer_name",
+     "start_date",
+     "end_date",
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "booking_set_status",
+   "description": "booking_set_status",
+   "inputSchema": {
+    "properties": {
+     "booking_id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "booking_id",
+     "status"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "booking_dispatch",
+   "description": "booking_dispatch",
+   "inputSchema": {
+    "properties": {
+     "booking_id": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "booking_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "dispatch_create",
+   "description": "dispatch_create",
+   "inputSchema": {
+    "properties": {
+     "direction": {
+      "type": "string"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "lines": {
+      "type": "string"
+     },
+     "scheduled_date": {
+      "type": "string"
+     },
+     "job_site": {
+      "type": "string"
+     },
+     "rental_id": {
+      "type": "string"
+     },
+     "booking_id": {
+      "type": "string"
+     },
+     "driver_name": {
+      "type": "string"
+     },
+     "truck": {
+      "type": "string"
+     },
+     "trailer": {
+      "type": "string"
+     },
+     "crew": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "lat": {
+      "type": "string"
+     },
+     "lng": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "direction",
+     "customer_name",
+     "lines"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "dispatch_set_status",
+   "description": "dispatch_set_status",
+   "inputSchema": {
+    "properties": {
+     "dispatch_id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "dispatch_id",
+     "status"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "dispatch_complete_ticket",
+   "description": "dispatch_complete_ticket",
+   "inputSchema": {
+    "properties": {
+     "dispatch_id": {
+      "type": "string"
+     },
+     "lines": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "dispatch_id",
+     "lines"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "dispatch_assign",
+   "description": "Assign driver/vehicle/crew details to a dispatch. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "dispatch_id": {
+      "type": "string"
+     },
+     "driver_name": {
+      "type": "string"
+     },
+     "truck": {
+      "type": "string"
+     },
+     "trailer": {
+      "type": "string"
+     },
+     "crew": {
+      "type": "string"
+     },
+     "scheduled_date": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "dispatch_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "maintenance_create",
+   "description": "Create a maintenance record. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "equipment_id": {
+      "type": "string"
+     },
+     "issue": {
+      "type": "string"
+     },
+     "action_taken": {
+      "type": "string"
+     },
+     "cost": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "serviced_at": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "equipment_id",
+     "issue"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "maintenance_update",
+   "description": "Update a maintenance record through MobileOps. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "maintenance_id": {
+      "type": "string"
+     },
+     "equipment_id": {
+      "type": "string"
+     },
+     "issue": {
+      "type": "string"
+     },
+     "action_taken": {
+      "type": "string"
+     },
+     "cost": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "serviced_at": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "maintenance_id",
+     "equipment_id",
+     "issue"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "shop_task_create",
+   "description": "Create a shop task through MobileOps. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "title": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "task_type": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "priority": {
+      "type": "string"
+     },
+     "assignee": {
+      "type": "string"
+     },
+     "due_date": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "checklist": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "string"
+     },
+     "related_rental_id": {
+      "type": "string"
+     },
+     "related_booking_id": {
+      "type": "string"
+     },
+     "related_equipment_id": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "shop_task_set_status",
+   "description": "Change a shop task status and run completion side effects. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "task_id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "task_id",
+     "status"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "shop_task_add_update",
+   "description": "Append a timestamped update to a repair task without overwriting earlier updates. Requires explicit confirmation.",
+   "inputSchema": {
+    "properties": {
+     "task_id": {
+      "type": "string"
+     },
+     "update": {
+      "type": "string"
+     },
+     "confirmation_token": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "task_id",
+     "update"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  }
+ ]
+}
