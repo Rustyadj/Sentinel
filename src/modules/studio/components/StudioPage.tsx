@@ -439,7 +439,8 @@ function ComponentPanel({ onInsert }: { onInsert: (prompt: string) => void }) {
   function toggle(cat: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
       return next;
     });
   }

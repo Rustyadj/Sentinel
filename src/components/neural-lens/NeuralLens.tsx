@@ -417,7 +417,7 @@ export function NeuralLens({
       graphApi.current?.focusNode(match.id);
     }, SEARCH_FOCUS_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [search, filteredGraph.nodes, handleSelect]);
+  }, [search, filteredGraph.nodes, handleSelect, graphApi]);
 
   // A handful of the selected node's direct neighbors — "connected entities"
   // in the detail panel, each carrying the relationship type off its edge so

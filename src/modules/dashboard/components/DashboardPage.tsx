@@ -10,7 +10,6 @@ import {
   Zap,
   Clock,
   CheckCircle2,
-  AlertCircle,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +17,6 @@ import { useAgentStore } from "@/store/useAgentStore";
 import { useMemoryStore } from "@/store/useMemoryStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { STATUS_COLORS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";

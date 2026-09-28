@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Plus, MoreHorizontal } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -56,8 +55,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 export function KanbanPage() {
-  const [columns, setColumns] = useState<KanbanColumn[]>(INITIAL_COLUMNS);
-  const [dragging, setDragging] = useState<string | null>(null);
+  const [columns] = useState<KanbanColumn[]>(INITIAL_COLUMNS);
 
   const totalCards = columns.reduce((acc, col) => acc + col.cards.length, 0);
 

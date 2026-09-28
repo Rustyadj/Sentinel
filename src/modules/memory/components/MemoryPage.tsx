@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Brain, Pin, Archive, Trash2, Search, Filter, Plus,
-  ChevronDown, Loader2, Sparkles, AlertCircle, Check,
-  BarChart3, Clock, User, Hash, Layers, X, RefreshCw,
-  Star, StarOff, Eye, EyeOff, Zap,
+  Brain, Pin, Archive, Trash2, Search, Filter,
+  Loader2, Sparkles, Check,
+  Clock, X, RefreshCw,
+  Eye, EyeOff, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
