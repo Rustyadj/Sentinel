@@ -61,11 +61,16 @@ describe("Sentinel MCP server", () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "sentinel.agent_status",
+      "sentinel.cancel_bot_task",
       "sentinel.cancel_task",
       "sentinel.capabilities",
+      "sentinel.delegate_to_bot",
+      "sentinel.get_bot",
+      "sentinel.get_bot_task_status",
       "sentinel.get_result",
       "sentinel.get_task",
       "sentinel.list_agents",
+      "sentinel.list_bots",
       "sentinel.memory_search",
       "sentinel.profile",
       "sentinel.project_context",

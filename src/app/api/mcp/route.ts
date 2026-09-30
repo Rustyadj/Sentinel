@@ -111,6 +111,11 @@ async function handle(request: NextRequest) {
       "sentinel.get_task": "sentinel.tasks.read",
       "sentinel.get_result": "sentinel.tasks.read",
       "sentinel.cancel_task": "sentinel.tasks.write",
+      "sentinel.list_bots": "sentinel.read",
+      "sentinel.get_bot": "sentinel.read",
+      "sentinel.delegate_to_bot": "sentinel.tasks.write",
+      "sentinel.get_bot_task_status": "sentinel.tasks.read",
+      "sentinel.cancel_bot_task": "sentinel.tasks.write",
     };
     await writeAuditLog({
       userId: principal.userId,

@@ -9,6 +9,8 @@ import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { createOrchestrationRun } from "@/lib/orchestration/service";
 import { resolveScope } from "@/lib/orchestration/scope";
 import { listPermittedContext, resolveMcpContext } from "@/lib/integrations/mcp-context";
+import { getRegistryBot, listRegistryBots } from "@/lib/bots/registry";
+import { BotTaskError, cancelBotTask, delegateToBot, getBotTask, type BotCaller } from "@/lib/bots/tasks";
 import type { McpScope } from "./oauth";
 
 export interface McpPrincipal {
@@ -56,7 +58,7 @@ async function permittedRunWhere(principal: McpPrincipal, taskId: string) {
 export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer(
     { name: "sentinel", version: "1.0.0" },
-    { instructions: "Use sentinel.route_task for user work. Sentinel resolves project context and selects one worker; never ask for raw commands, credentials, or internal infrastructure details." },
+    { instructions: "Use sentinel.route_task for user work. Sentinel resolves project context and selects one worker; never ask for raw commands, credentials, or internal infrastructure details. For specialised work (creative production, research, marketing) call sentinel.list_bots with a description of the job, then sentinel.delegate_to_bot with the best match." },
   );
 
   server.registerResource("sentinel-context", "sentinel://context", {
@@ -295,5 +297,93 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
     const message = cancellation.status === "cancelled" ? `Cancelled queued task ${taskId}.` : `Cancellation requested for task ${taskId}; Sentinel will confirm once the executing runtime acknowledges it.`;
     return toolResult({ taskId, projectId: cancellation.projectId, workspaceId: cancellation.workspaceId, status: cancellation.status, acknowledged: cancellation.status === "cancelled" }, message);
   });
+
+  // ---- Specialised bots. Discovery and delegation only: creating, editing or
+  // deleting a bot, and granting it anything, is an admin action in the Sentinel
+  // UI and is deliberately not reachable from here.
+  const botCaller = (): BotCaller => ({ kind: "client", userId: principal.userId, clientId: principal.externalClientId });
+  const callableBy = () => `client:${principal.externalClientId}`;
+
+  server.registerTool("sentinel.list_bots", {
+    title: "Discover Sentinel bots",
+    description: "List specialised bots this client may delegate to. Pass `query` describing the job to rank them (e.g. \"short-form video ad\"), or `capability` to filter exactly. Returns each bot's role, capabilities, skills, tools, and current load.",
+    inputSchema: z.object({ query: z.string().max(500).optional(), capability: z.string().max(60).optional(), workspaceId: z.string().max(100).optional(), limit: z.number().int().min(1).max(50).optional() }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, async ({ query, capability, workspaceId, limit }) => {
+    requireScope(principal, "sentinel.read");
+    const bots = await listRegistryBots({ userId: principal.userId, workspaceId, query, capability, limit, callableBy: callableBy() });
+    return toolResult({ bots }, bots.length ? `Found ${bots.length} bot(s) you can delegate to.` : "No bot matches, or none accepts this client as a caller.");
+  });
+
+  server.registerTool("sentinel.get_bot", {
+    title: "Get a Sentinel bot",
+    description: "Full registry entry for one bot: capabilities, skills, tools, memory access, model, and whether it can currently run.",
+    inputSchema: z.object({ botId: z.string().min(1).max(100) }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, async ({ botId }) => {
+    requireScope(principal, "sentinel.read");
+    const bot = await getRegistryBot(principal.userId, botId);
+    if (!bot) throw new Error("Bot not found.");
+    return toolResult({ bot }, `${bot.name} — ${bot.role}.`);
+  });
+
+  server.registerTool("sentinel.delegate_to_bot", {
+    title: "Delegate a task to a bot",
+    description: "Send a task to a specialised bot. Include the brief and any project context. mode \"async\" (default) returns a task id immediately; poll sentinel.get_bot_task_status. mode \"sync\" waits up to 25s. The bot works within its own tool and memory permissions.",
+    inputSchema: z.object({
+      botId: z.string().min(1).max(100), task: z.string().min(1).max(12_000), context: z.string().max(20_000).optional(),
+      projectId: z.string().max(100).optional(), workspaceId: z.string().max(100).optional(),
+      modelRole: z.enum(["primary", "fast", "reasoning", "vision"]).optional(), mode: z.enum(["sync", "async"]).optional(),
+      idempotencyKey: z.string().min(8).max(128).optional(), parentTaskId: z.string().max(100).optional(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  }, async ({ botId, mode, ...input }) => {
+    requireScope(principal, "sentinel.tasks.write");
+    let task = await delegateToBot(botId, input, botCaller());
+    if (mode === "sync") {
+      const deadline = Date.now() + 25_000;
+      while (Date.now() < deadline && ["QUEUED", "RUNNING"].includes(task.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        task = await getBotTask(task.id, { userId: principal.userId, isAdmin: false });
+      }
+    }
+    return toolResult({ task: briefBotTask(task) }, `Bot task ${task.id} is ${task.status}.`);
+  });
+
+  server.registerTool("sentinel.get_bot_task_status", {
+    title: "Get bot task status",
+    description: "Status and result of a bot task you delegated: output, artifacts, tools used, model, token usage and any error.",
+    inputSchema: z.object({ taskId: z.string().min(1).max(100) }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, async ({ taskId }) => {
+    requireScope(principal, "sentinel.tasks.read");
+    const task = await getBotTask(taskId, { userId: principal.userId, isAdmin: false });
+    return toolResult({ task: briefBotTask(task) }, `Bot task ${task.id} is ${task.status}.`);
+  });
+
+  server.registerTool("sentinel.cancel_bot_task", {
+    title: "Cancel a bot task",
+    description: "Cancel a queued, running or waiting bot task you delegated.",
+    inputSchema: z.object({ taskId: z.string().min(1).max(100) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  }, async ({ taskId }) => {
+    requireScope(principal, "sentinel.tasks.write");
+    try {
+      const result = await cancelBotTask(taskId, { userId: principal.userId, isAdmin: false });
+      return toolResult({ taskId, status: result.status, acknowledged: result.acknowledged }, result.acknowledged ? `Cancelled bot task ${taskId}.` : `Cancellation requested for bot task ${taskId}; Sentinel confirms once the runtime acknowledges it.`);
+    } catch (error) {
+      if (error instanceof BotTaskError) throw new Error(error.message);
+      throw error;
+    }
+  });
   return server;
+}
+
+/** What a delegating agent needs: no prompts, no policy internals. */
+function briefBotTask(task: Awaited<ReturnType<typeof getBotTask>>) {
+  return {
+    id: task.id, botId: task.botId, botName: task.botName, status: task.status, createdAt: task.createdAt, startedAt: task.startedAt, finishedAt: task.finishedAt,
+    output: task.output, artifacts: task.artifacts, error: task.error, model: task.model, usage: task.usage, cost: task.cost,
+    toolCalls: task.toolCalls.map(({ tool, decision }) => ({ tool, decision })), waitingFor: task.waitingFor ? { tool: task.waitingFor.tool } : null,
+  };
 }

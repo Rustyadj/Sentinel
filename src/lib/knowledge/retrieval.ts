@@ -5,7 +5,7 @@ import { redisGet, redisSet } from "@/lib/redis";
 import type { Prisma } from "@prisma/client";
 import type { RetrievalContext } from "./types";
 import { excludeFromRetrieval } from "@/lib/learning/memory-governance";
-import { rankMemories, type RankedMemory } from "./retrieval-ranking";
+import { RANKING_WEIGHTS, rankMemories, type RankedMemory } from "./retrieval-ranking";
 import { classifyTemporalIntent, orderingCue, effectiveEventTime } from "./temporal-intent";
 import { resolveMemoryScopeAccess, type MemoryScopeAccess } from "./memory-scope";
 import { verificationNeed, verificationNotice } from "./verification";
@@ -65,6 +65,33 @@ async function retrieveSessionMemory(
   }
 }
 
+/**
+ * Narrow a memory filter to the scopes a bot's policy allows, and admit the
+ * bot's own private scope. Pure, and a no-op when the caller set no
+ * `allowedScopes`, so every existing caller is unaffected.
+ *
+ * The narrowing is an AND on top of the unchanged base filter — owner isolation,
+ * workspace authorisation and governance exclusions all still apply — so a
+ * policy can only remove access. The one addition, the bot scope, is bound to
+ * both the requesting user and the bot id.
+ */
+function restrictToBotScopes(
+  base: Prisma.MemoryWhereInput,
+  ctx: RetrievalContext,
+  exclusions: Prisma.MemoryWhereInput,
+): Prisma.MemoryWhereInput {
+  if (!ctx.allowedScopes) return base;
+  const allow = new Set(ctx.allowedScopes);
+  const shared = [...allow].filter((scope) => scope !== "bot" && scope !== "session");
+  const branches: Prisma.MemoryWhereInput[] = [];
+  if (shared.length) branches.push({ AND: [base, { scope: { in: shared } }] });
+  if (allow.has("bot") && ctx.botId) {
+    branches.push({ owner: ctx.userId, scope: "bot", botId: ctx.botId, archived: false, ...exclusions });
+  }
+  // No permitted scope resolves to anything: match nothing, never everything.
+  return branches.length ? { OR: branches } : { id: { in: [] } };
+}
+
 export function buildRetrievalFilters(
   ctx: RetrievalContext,
   /**
@@ -122,7 +149,7 @@ export function buildRetrievalFilters(
 
   if (ctx.projectId) {
     return {
-      memory: includeUserContext
+      memory: restrictToBotScopes(includeUserContext
         ? {
             archived: false,
             ...notForgottenOrQuarantined,
@@ -138,18 +165,18 @@ export function buildRetrievalFilters(
             ...notForgottenOrQuarantined,
             scope: "project",
             projectId: ctx.projectId,
-          },
+          }, ctx, notForgottenOrQuarantined),
       note: { projectId: ctx.projectId },
       decision: { projectId: ctx.projectId, status: { in: ["approved", "proposed"] } },
     };
   }
 
   return {
-    memory: {
+    memory: restrictToBotScopes({
       archived: false,
       ...notForgottenOrQuarantined,
       OR: [ownedScopes(["organization", "user", "global"], null), ...workspaceBranch],
-    },
+    }, ctx, notForgottenOrQuarantined),
     note: { projectId: null, userId: ctx.userId },
     decision: {
       projectId: null,
@@ -190,6 +217,12 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
   const temporal = classifyTemporalIntent(ctx.query);
   const poolSize = query ? Math.max(maxItems, CANDIDATE_POOL_SIZE) : maxItems;
 
+  // Notes and decisions are project- or user-level context. A caller that
+  // restricted its scopes gets them only if it allowed the matching one.
+  const allowed = ctx.allowedScopes ? new Set(ctx.allowedScopes) : null;
+  const contextAllowed = !allowed || allowed.has(ctx.projectId ? "project" : "user");
+  const sessionAllowed = !allowed || allowed.has("session");
+
   const [memoriesRaw, notesRaw, decisionsRaw, sessionMemories] = await Promise.all([
     db.memory.findMany({
       where: filters.memory,
@@ -207,17 +240,17 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
       ],
       take: poolSize,
     }),
-    db.obsidianNote.findMany({
+    !contextAllowed ? Promise.resolve([]) : db.obsidianNote.findMany({
       where: filters.note,
       orderBy: { createdAt: "desc" },
       take: Math.max(1, Math.floor(maxItems / 2)),
     }),
-    db.decision.findMany({
+    !contextAllowed ? Promise.resolve([]) : db.decision.findMany({
       where: filters.decision,
       orderBy: { createdAt: "desc" },
       take: Math.min(10, maxItems),
     }),
-    retrieveSessionMemory(ctx.roomId),
+    sessionAllowed ? retrieveSessionMemory(ctx.roomId) : Promise.resolve([]),
   ]);
 
   let ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
@@ -227,6 +260,13 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
         asOf: temporal.asOf,
       })
     : memoriesRaw.slice(0, maxItems).map((memory) => ({ memory, score: 0, factors: [] }));
+
+  // Relevance is a fraction of the best score the ranker can award, so a
+  // policy threshold means the same thing whatever the weights are tuned to.
+  if (query && ctx.minRelevance && ctx.minRelevance > 0) {
+    const maximum = Object.values(RANKING_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+    ranked = ranked.filter((entry) => entry.score / maximum >= ctx.minRelevance!);
+  }
 
   // "Walk me through the rollout in order" wants a sequence, not a ranking.
   //

@@ -2,6 +2,7 @@
 import "./dashboard";
 import "./chat";
 import "./agents";
+import "./bots";
 import "./memory";
 import "./knowledge";
 import "./workflows";

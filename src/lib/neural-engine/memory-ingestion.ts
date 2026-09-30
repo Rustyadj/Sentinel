@@ -29,8 +29,12 @@ export interface RememberInput {
   owner: string;
   speaker?: string;
   source?: string;
-  scope?: "session" | "project" | "workspace" | "user" | "global";
+  scope?: "session" | "project" | "workspace" | "organization" | "user" | "global" | "bot";
   projectId?: string | null;
+  /** Attributes the memory to a Sentinel bot. Required for scope "bot"; recorded at any scope. */
+  botId?: string | null;
+  /** The memory stops being retrievable at this time (bitemporal validTo). Used for bot retention. */
+  validTo?: Date | null;
   workspaceId?: string | null;
   tags?: string[];
   /** When the described event happened, for episodic ordering. */
@@ -39,6 +43,8 @@ export interface RememberInput {
   authoritativeSources?: string[];
   /** Overrides the shadow default for the reconsolidation that follows. */
   reconsolidationMode?: ReconsolidationMode;
+  /** Store as observed, without comparing against existing beliefs. */
+  skipReconsolidation?: boolean;
 }
 
 export interface RememberResult {
@@ -62,6 +68,8 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
   const scope = input.scope ?? (input.projectId ? "project" : "user");
   const workspaceId = input.workspaceId ?? null;
   const projectId = input.projectId ?? null;
+  const botId = input.botId ?? null;
+  if (scope === "bot" && !botId) throw new Error("A bot-scoped memory must name its bot.");
 
   // Authorization first. Running the gate before this would let a caller probe
   // another tenant's corpus through duplicate detection: "was this rejected as
@@ -74,6 +82,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
       scope,
       projectId,
       ...(scope === "workspace" ? { workspaceId } : {}),
+      ...(scope === "bot" ? { botId } : {}),
       archived: false,
       validTo: null,
     },
@@ -105,6 +114,8 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
         source: input.source ?? "ingestion",
         projectId,
         workspaceId,
+        botId,
+        validTo: input.validTo ?? null,
         importanceScore: verdict.suggestedImportance,
         confidence: verdict.signals.confidence,
         provenanceClass: input.speaker === "user" ? "USER_PROVIDED" : "OBSERVED",
@@ -150,7 +161,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
   // A correction is linked to what it corrects when it is stored, not when a
   // sweep next runs. Shadow by default, so this records the judgement without
   // acting on it unless configured otherwise.
-  if (memoryId) {
+  if (memoryId && !input.skipReconsolidation) {
     await reconsolidateMemory(memoryId, {
       mode: input.reconsolidationMode ?? defaultMode(),
       origin: "ingestion",

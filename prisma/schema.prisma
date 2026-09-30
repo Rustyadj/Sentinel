@@ -190,6 +190,11 @@ model Memory {
   archived        Boolean                      @default(false)
   projectId       String?
 
+  /// The Sentinel bot this memory is attributable to. Set for scope = "bot"
+  /// memories and for any memory a bot run wrote at a wider scope, so bot
+  /// output stays attributable however widely it is shared.
+  botId String?
+
   /// The workspace this memory belongs to.
   ///
   /// Nullable because most memories are not workspace-scoped, and because a
@@ -290,6 +295,7 @@ model Memory {
   memoryIngestionDecisions MemoryIngestionDecision[]
 
   @@index([projectId])
+  @@index([botId])
   @@index([workspaceId])
   @@index([scope, workspaceId])
   @@index([state])
@@ -594,6 +600,9 @@ model Workspace {
 
   @@index([ownerId])
   @@index([organizationId])
+  bots               Bot[]
+  mcpServers         McpServerRegistration[]
+
   @@map("workspaces")
 }
 
@@ -1141,7 +1150,18 @@ model Skill {
   // global visibility. See docs/reviews/PR21_POST_MERGE_RECONCILIATION.md.
   workspaceId String?
 
+  // Hermes-compatible skills (SKILL.md). Instructions only: `body` is markdown
+  // that is placed in a bot's prompt, never executed. A skill installed from an
+  // external source enters as status "proposed" and cannot be assigned to a bot
+  // until an admin has read it and moved it to "active".
+  format         String    @default("native") // native | hermes-skill-md
+  body           String?
+  source         Json      @default("{}")     // { kind, url?, ref?, sha256? }
+  reviewedByUserId String?
+  reviewedAt     DateTime?
+
   versions SkillVersion[]
+  botSkills BotSkill[]
 
   @@index([domain])
   @@index([status])
@@ -2216,6 +2236,11 @@ model OrchestrationRun {
   workspaceId        String?
   projectId          String?
   parentRunId        String?
+  /// Set when this run is a Hermes bot task. Plain column, no FK: task history
+  /// outlives the bot that ran it.
+  botId              String?
+  /// Who asked: user:<id> | agent:<id> | client:<id> | bot:<id>.
+  originKey          String?
   idempotencyKey     String?
   request            Json
   status             String    @default("queued")
@@ -2247,6 +2272,7 @@ model OrchestrationRun {
   @@index([workspaceId, createdAt])
   @@index([projectId, createdAt])
   @@index([status, queuedAt])
+  @@index([botId, createdAt])
   @@map("orchestration_runs")
 }
 
@@ -2265,6 +2291,9 @@ model ExecutionAttempt {
   runtimeJobId       String?
   error              String?
   cost               Float?
+  /// Token usage as reported by the runtime, when it reports any. Empty means
+  /// the runtime did not report usage, never that usage was zero.
+  usage              Json      @default("{}")
   latencyMs          Int?
   startedAt          DateTime?
   completedAt        DateTime?
@@ -3206,4 +3235,151 @@ model SystemOneDecision {
   @@index([createdAt])
   @@index([agentId, createdAt])
   @@map("system_one_decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Hermes Bot Creator
+//
+// A Bot is a governed persona hosted on an existing, verified Hermes runtime
+// (`runtimeAgentId`). It owns no process. Its tasks are ordinary
+// OrchestrationRuns (botId set), so queueing, leases, cancellation and audit
+// are the existing ones. Memory goes through the existing governed path with
+// Memory.botId for attribution.
+// ---------------------------------------------------------------------------
+
+model Bot {
+  id           String  @id @default(cuid())
+  workspaceId  String
+  slug         String
+  name         String
+  role         String
+  description  String  @default("")
+  avatar       String  @default("bot")
+  color        String  @default("#7c6cf6")
+  tags         String[] @default([])
+  templateId   String?
+  // draft | active | disabled. Only active bots are in the registry.
+  status       String  @default("draft")
+
+  systemPrompt      String   @default("")
+  mission           String   @default("")
+  responsibilities  String[] @default([])
+  constraints       String[] @default([])
+  outputPreferences String   @default("")
+  /// Ordered workflow steps: { id, label, kind: "llm" | "tool" | "deterministic", note? }.
+  /// Descriptive: shown to the bot as its working method, not executed by Sentinel.
+  workflow          Json     @default("[]")
+  /// What this bot can be delegated. Matched by the registry; never hard-coded.
+  capabilities      String[] @default([])
+
+  /// The Hermes runtime (AgentRuntime.agentId) that hosts this bot's sessions.
+  runtimeAgentId String
+  /// { primary?, fast?, reasoning?, vision?, fallback?, maxContextTokens? } — every
+  /// entry optional; absent means inherit the runtime's Sentinel default.
+  modelConfig    Json   @default("{}")
+  /// { enabled, readScopes[], writeScopes[], maxItems, minRelevance, consolidation, retention }
+  memoryPolicy     Json @default("{}")
+  /// { allowedCallers[], allowedChildBots[], canDelegate, maxDepth }
+  delegationPolicy Json @default("{}")
+  /// { maxConcurrentTasks, maxTokensPerTask?, maxTokensPerDay?, maxCostPerDay? }
+  limits           Json @default("{}")
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  toolPermissions BotToolPermission[]
+  skills          BotSkill[]
+  events          BotRunEvent[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@map("bots")
+}
+
+model BotToolPermission {
+  id              String   @id @default(cuid())
+  botId           String
+  /// "sentinel", "hermes-builtin", or an McpServerRegistration.id.
+  serverId        String
+  /// "*" is the server-level grant; a tool name overrides it for that tool.
+  toolName        String   @default("*")
+  /// disabled | read | execute | approval
+  permission      String
+  grantedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, serverId, toolName])
+  @@index([botId])
+  @@map("bot_tool_permissions")
+}
+
+model BotSkill {
+  id            String   @id @default(cuid())
+  botId         String
+  skillId       String
+  enabled       Boolean  @default(true)
+  addedByUserId String?
+  createdAt     DateTime @default(now())
+
+  bot   Bot   @relation(fields: [botId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, skillId])
+  @@index([skillId])
+  @@map("bot_skills")
+}
+
+/// An outbound MCP server that bots may be granted (e.g. a creative-production
+/// provider). Sentinel stores where it is and what it exposes; it never stores a
+/// secret — `secretEnvVar` names an environment variable.
+model McpServerRegistration {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  slug             String
+  name             String
+  description      String    @default("")
+  url              String
+  transport        String    @default("streamable-http")
+  authMode         String    @default("none") // none | bearer-env
+  secretEnvVar     String?
+  capabilityTags   String[]  @default([])
+  enabled          Boolean   @default(true)
+  /// [{ name, description, readOnly, destructive }] from a real tools/list call.
+  tools            Json      @default("[]")
+  status           String    @default("unverified") // unverified | connected | error
+  lastDiscoveredAt DateTime?
+  lastError        String?
+  createdByUserId  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, slug])
+  @@map("mcp_server_registrations")
+}
+
+/// What a bot run did, as events — never model reasoning.
+model BotRunEvent {
+  id         String   @id @default(cuid())
+  botId      String
+  runId      String
+  seq        Int
+  /// started | model | memory_read | memory_write | tool_allowed | tool_denied |
+  /// tool_completed | approval_requested | delegated | usage | error | completed
+  type       String
+  summary    String
+  data       Json     @default("{}")
+  occurredAt DateTime @default(now())
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, seq])
+  @@index([botId, occurredAt])
+  @@map("bot_run_events")
 }

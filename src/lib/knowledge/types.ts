@@ -201,6 +201,24 @@ export interface RetrievalContext {
   roomId?: string;
   maxItems?: number;
   scopePolicy?: "isolated" | "user-context";
+  /**
+   * The Sentinel bot making the request. With `allowedScopes` including "bot",
+   * this admits the private bot scope: memories this user's runs of this bot
+   * wrote. It never widens anything else.
+   */
+  botId?: string;
+  /**
+   * Restrict retrieval to these memory scopes, on top of every other rule.
+   * Undefined means no restriction (every existing caller). An empty array
+   * matches nothing, and "session" is honoured only when a roomId is supplied.
+   */
+  allowedScopes?: string[];
+  /**
+   * Drop ranked memories below this fraction (0–1) of the maximum possible
+   * ranking score. Only applies when a query was supplied; without one nothing
+   * is ranked and there is nothing to threshold.
+   */
+  minRelevance?: number;
   /** Links this retrieval to the work it fed, so usefulness can be resolved later. */
   experienceId?: string;
   /**

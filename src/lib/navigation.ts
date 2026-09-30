@@ -23,6 +23,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { id: "home",       label: "Home",       icon: "Home",          href: "/", exact: true },
   { id: "chat",       label: "Chat",       icon: "MessageSquare", href: "/chat" },
   { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
+  { id: "bots",       label: "Bots",       icon: "Boxes",         href: "/bots" },
   { id: "tasks",      label: "Tasks",      icon: "ListChecks",    href: "/tasks" },
   { id: "workspaces", label: "Workspaces", icon: "LayoutGrid",    href: "/workspaces" },
   { id: "agent-workspaces", label: "Agent Computers", icon: "HardDrive", href: "/agent-workspaces" },
@@ -49,6 +50,7 @@ export const SHELL_NAV: NavItem[] = [
   { id: "graph",      label: "Graph",      icon: "Network",       href: "/graph" },
   { id: "workspaces", label: "Workspaces", icon: "HardDrive",     href: "/agent-workspaces" },
   { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
+  { id: "bots",       label: "Bots",       icon: "Boxes",         href: "/bots" },
   { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
   // Accountability's other half: Activity is what happened, Control is where
   // each change currently sits and whether production matches main.

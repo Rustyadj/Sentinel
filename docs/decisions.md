@@ -3,6 +3,37 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-005 — Hermes bots are governed personas on existing runtimes, not new processes
+
+**Date:** 2026-09-30
+**Status:** Accepted
+
+**Decision.** A Bot (`bots` table) is a persona hosted on an existing, verified Hermes
+runtime. Its tasks are ordinary `OrchestrationRun`s with `botId` set, so queueing, the
+Redis lease, cancellation and audit are the existing ones. Bot memory goes through
+`buildMemoryContext` / `remember()` with `Memory.botId` for attribution. Delegation is five
+tools on the one SDK MCP server. See [BOTS.md](BOTS.md).
+
+**Why.**
+- Sentinel already owns durable execution, memory governance and the MCP surface; a second
+  copy of any of them would drift.
+- Spawning a container per bot needs Docker control and multiplies credentials for no gain
+  a per-session model override and prompt do not already give.
+
+**Rejected.**
+- *A parallel bot task table and executor.* Would need its own lease, cancel and retry logic.
+- *A separate bot memory store.* Explicitly ruled out; scope and retention are policy over
+  the existing store.
+- *Bot creation over MCP.* Creating bots and granting tools is an admin action in the UI only.
+
+**Consequences.**
+- Tool permissions are enforced by observing each tool call Hermes reports and interrupting
+  the session on a denial. Hermes calls tools itself, so this is detect-and-halt, not
+  pre-emptive; the prompt manifest is advisory. Ambiguous or unknown tool names are denied.
+- Hermes ships tools that bypass Sentinel (`memory`, `delegate_task`, `cronjob`); the catalog
+  marks them high risk and they are off unless granted.
+- Bot tasks never retry after a session has started, because a retry could repeat tool effects.
+
 ## ADR-004 — A System 1 decision layer routes paths, never models
 
 **Date:** 2026-09-26
