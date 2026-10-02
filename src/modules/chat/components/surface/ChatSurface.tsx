@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PanelLeft, Plus } from "lucide-react";
 import { useChatSession } from "@/lib/chat/useChatSession";
@@ -10,8 +10,13 @@ import { AgentSelector } from "@/components/shell/AgentSelector";
 import { ContextChip, type ContextEntry } from "@/components/shell/ContextChip";
 import { ConversationDrawer } from "@/components/shell/ConversationDrawer";
 import { EmptyState, IconButton } from "@/components/shell/primitives";
-import { GlobeStage } from "@/components/orrery/GlobeStage";
-import { ActivityPanel, type FeedEvent, type PanelAgent } from "@/components/orrery/ActivityPanel";
+import { GlobeStage, type GlobeHandle } from "@/components/orrery/GlobeStage";
+import { ActivityPanel, type PanelAgent } from "@/components/orrery/ActivityPanel";
+import { AttentionCards } from "@/components/orrery/AttentionCards";
+import { ModelPicker } from "@/components/orrery/ModelPicker";
+import { useOrreryData } from "@/components/orrery/useOrreryData";
+import { CANONICAL_VOICE_AGENT_IDS } from "@/lib/voice/agent-voice-config";
+import type { OrreryEvent } from "@/lib/orrery/types";
 import { cn } from "@/lib/utils";
 import { ConversationMessage } from "./ConversationMessage";
 import { Composer, type ComposerAction } from "./Composer";
@@ -30,6 +35,11 @@ export function ChatSurface() {
   const handledNewRef = useRef(false);
   const [followId, setFollowId] = useState<string | null>(null);
   const [focusChat, setFocusChat] = useState(false);
+  const globeRef = useRef<GlobeHandle>(null);
+  const handleOrreryEvents = useCallback((events: OrreryEvent[]) => {
+    for (const e of events) globeRef.current?.dispatch(e.agentId, e.nodeIds);
+  }, []);
+  const orrery = useOrreryData(handleOrreryEvents);
 
   const {
     rooms, activeRoom, activeRoomId, agents, roomAgents, activeAgent, selectedAgentIds,
@@ -72,36 +82,40 @@ export function ChatSurface() {
     return streaming?.agentId ?? activeAgent?.id ?? null;
   }, [busy, messages, activeAgent]);
 
+  const activityState = useMemo(() => new Map((orrery.activity?.agents ?? []).map((x) => [x.agentId, x])), [orrery.activity]);
+  const latestByAgent = useMemo(() => {
+    const map = new Map<string, OrreryEvent>();
+    for (const e of orrery.feed) if (!map.has(e.agentId)) map.set(e.agentId, e);
+    return map;
+  }, [orrery.feed]);
+
+  // Working = a live session/run on the server, or this chat is awaiting a reply.
+  const isWorking = useCallback(
+    (agentId: string) => agentId === workingAgentId || activityState.get(agentId)?.state === "working",
+    [workingAgentId, activityState],
+  );
+
   const globeAgents = useMemo(
-    () => agents.map((a) => ({ id: a.id, name: a.name, color: a.color, working: a.id === workingAgentId })),
-    [agents, workingAgentId],
+    () => agents.map((a) => ({ id: a.id, name: a.name, color: a.color, working: isWorking(a.id), nodeId: activityState.get(a.id)?.nodeId ?? null })),
+    [agents, isWorking, activityState],
   );
 
   const panelAgents: PanelAgent[] = useMemo(() => agents.map((a) => {
-    const working = a.id === workingAgentId;
+    const working = isWorking(a.id);
+    const latest = latestByAgent.get(a.id);
     return {
       id: a.id, name: a.name, color: a.color, model: a.model,
       state: working ? "working" : a.status === "offline" ? "offline" : "idle",
-      detail: working ? (isStreaming ? "Writing a reply" : "Thinking") : a.role,
+      detail: working ? (a.id === workingAgentId ? (isStreaming ? "Writing a reply" : "Thinking") : latest?.text ?? "Working") : a.role,
+      voice: (CANONICAL_VOICE_AGENT_IDS as readonly string[]).includes(a.id),
     };
-  }), [agents, workingAgentId, isStreaming]);
+  }), [agents, isWorking, latestByAgent, workingAgentId, isStreaming]);
 
-  const feed: FeedEvent[] = useMemo(() => messages
-    .filter((m) => m.role !== "system" && m.content.trim())
-    .slice(-30)
-    .reverse()
-    .map((m) => {
-      const isUser = m.role === "user";
-      const agent = m.agentId ? agents.find((a) => a.id === m.agentId) : undefined;
-      return {
-        id: m.id,
-        agentName: isUser ? "You" : agent?.name ?? m.agentName ?? "Agent",
-        color: isUser ? "var(--primary-soft)" : agent?.color ?? m.agentColor ?? "var(--muted-foreground)",
-        verb: isUser ? "send" : m.isStreaming ? "write" : "reply",
-        text: m.content.replace(/\s+/g, " ").trim(),
-        time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-      };
-    }), [messages, agents]);
+  const globeMessage = orrery.status === "error"
+    ? orrery.error
+    : orrery.status === "ready" && (orrery.model?.nodeCount ?? 0) === 0
+      ? "Your graph is empty. Objects appear here as conversations, tasks and agents create them."
+      : null;
 
   const contextEntries: ContextEntry[] = useMemo(() => [
     {
@@ -163,6 +177,9 @@ export function ChatSurface() {
   return (
     <AppShell header={header}>
       <GlobeStage
+        model={orrery.model}
+        emptyMessage={globeMessage}
+        handleRef={globeRef}
         agents={globeAgents}
         followId={followId}
         onFollowChange={setFollowId}
@@ -188,7 +205,13 @@ export function ChatSurface() {
             <i className={cn("h-2 w-2 rounded-full", offline ? "bg-[--destructive]" : "bg-[--status-online] shadow-[0_0_8px_rgba(16,185,129,.6)]")} />
             <div className="min-w-0">
               <h2 className="truncate text-[14px] font-semibold">{activeRoom?.name ?? "No conversation"}</h2>
-              <p className="truncate font-mono text-[11px] text-[--muted-foreground]">{activeAgent?.name ?? "Select an agent"}{activeAgent ? ` · ${activeAgent.model}` : ""}</p>
+              <p className="truncate font-mono text-[11px] text-[--muted-foreground]">{activeAgent?.name ?? "Select an agent"}</p>
+            </div>
+            <div className="ml-auto">
+              <ModelPicker
+                agents={agents.map((a) => ({ id: a.id, name: a.name, color: a.color, model: a.model }))}
+                activeAgentId={activeAgent?.id}
+              />
             </div>
           </div>
 
@@ -229,6 +252,15 @@ export function ChatSurface() {
             </div>
           </div>
 
+          <AttentionCards
+            runs={orrery.activity?.runs ?? []}
+            approvals={orrery.activity?.approvals ?? []}
+            agents={agents.map((a) => ({ id: a.id, name: a.name, color: a.color }))}
+            followId={followId}
+            onFollow={setFollowId}
+            onDecided={orrery.refresh}
+          />
+
           <Composer
             value={input}
             onChange={setInput}
@@ -241,7 +273,7 @@ export function ChatSurface() {
         </section>
 
         {focusChat ? null : (
-          <ActivityPanel agents={panelAgents} events={feed} followId={followId} onFollow={setFollowId} />
+          <ActivityPanel agents={panelAgents} events={orrery.feed} followId={followId} onFollow={setFollowId} roomId={activeRoomId ?? undefined} onTranscript={setInput} />
         )}
       </GlobeStage>
     </AppShell>

@@ -1,36 +1,29 @@
 // Canvas renderer for the Orrery globe. It owns camera, projection and
-// drawing; it knows nothing about React or Sentinel's data model. Agents are
-// supplied from outside and animate between hub nodes only while `working`.
+// drawing; it knows nothing about React or how Sentinel fetches data.
+//
+// Everything drawn comes from a GlobeModel (the real graph) and from agents
+// and events supplied by the caller. The renderer never invents nodes,
+// edges, or movement: a probe only travels when `dispatch` hands it a node
+// that a real event touched, and it returns home only when its agent is idle.
 
-import { buildGlobeLayout, hexToRgb, rgba, type GlobeLayout, type RGB, type Vec3 } from "./globe-layout";
+import { hexToRgb, mix, rgba, type GlobeModel, type RGB, type Vec3 } from "./globe-model";
 
 const TAU = Math.PI * 2;
 const CAMERA_DISTANCE = 3.4;
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 2.8;
+const DWELL_SECONDS = 1.4;
+const HEAT_HALF_LIFE = 14;
+const MAX_QUEUE = 8;
+const NEUTRAL: RGB = hexToRgb("#95a9cc");
 
 export interface GlobeAgent {
   id: string;
   name: string;
   color: string;
   working: boolean;
-}
-
-interface Probe {
-  id: string;
-  name: string;
-  rgb: RGB;
-  home: number;
-  working: boolean;
-  pos: Vec3;
-  from: Vec3;
-  to: Vec3;
-  t: number;
-  dur: number;
-  lift: number;
-  trail: Vec3[];
-  sx: number;
-  sy: number;
+  /** Index key of the agent's own graph node, when the graph has one. */
+  nodeId: string | null;
 }
 
 export interface GlobeOptions {
@@ -41,6 +34,32 @@ export interface GlobeOptions {
   onFollowChange?: (agentId: string | null) => void;
   onLensChange?: (regionIndex: number) => void;
 }
+
+interface Probe {
+  id: string;
+  name: string;
+  rgb: RGB;
+  working: boolean;
+  nodeId: string | null;
+  slot: number;
+  home: Vec3;
+  pos: Vec3;
+  from: Vec3;
+  to: Vec3;
+  phase: "rest" | "travel" | "dwell";
+  returning: boolean;
+  target: number;
+  t: number;
+  dur: number;
+  lift: number;
+  queue: number[];
+  trail: Vec3[];
+  sx: number;
+  sy: number;
+}
+
+interface Heat { v: number; rgb: RGB }
+interface Ripple { node: number; rgb: RGB; t: number }
 
 const sprites = new Map<string, HTMLCanvasElement>();
 function glow(rgb: RGB) {
@@ -70,8 +89,9 @@ function angDiff(a: number, b: number) {
 
 function arc(a: Vec3, b: Vec3, u: number, lift: number): Vec3 {
   const ra = Math.hypot(a.x, a.y, a.z), rb = Math.hypot(b.x, b.y, b.z);
-  const da = ra > 0.001 ? { x: a.x / ra, y: a.y / ra, z: a.z / ra } : { x: b.x / (rb || 1), y: b.y / (rb || 1), z: b.z / (rb || 1) };
-  const db = rb > 0.001 ? { x: b.x / rb, y: b.y / rb, z: b.z / rb } : da;
+  const unit = (v: Vec3, r: number): Vec3 | null => (r > 0.001 ? { x: v.x / r, y: v.y / r, z: v.z / r } : null);
+  const da = unit(a, ra) ?? unit(b, rb) ?? { x: 0, y: 0, z: 1 };
+  const db = unit(b, rb) ?? da;
   const dot = Math.max(-1, Math.min(1, da.x * db.x + da.y * db.y + da.z * db.z));
   const om = Math.acos(dot), so = Math.sin(om);
   const d = so < 1e-4 ? da : (() => {
@@ -82,10 +102,18 @@ function arc(a: Vec3, b: Vec3, u: number, lift: number): Vec3 {
   return { x: d.x * r, y: d.y * r, z: d.z * r };
 }
 
+const EMPTY_MODEL: GlobeModel = {
+  nodeCount: 0, edgeCount: 0, ids: [], labels: [], types: [], x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0),
+  region: new Uint8Array(0), isHub: new Uint8Array(0), edges: new Uint32Array(0), edgeWeight: new Float32Array(0),
+  regions: [], indexById: new Map(), adjacency: [],
+};
+
 export class GlobeRenderer {
-  private layout: GlobeLayout;
+  private model: GlobeModel = EMPTY_MODEL;
   private ctx: CanvasRenderingContext2D;
   private probes: Probe[] = [];
+  private heat = new Map<number, Heat>();
+  private ripples: Ripple[] = [];
   private w = 0;
   private h = 0;
   private dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -100,23 +128,20 @@ export class GlobeRenderer {
   private moved = false;
   private lastX = 0;
   private lastY = 0;
+  private pointer: { x: number; y: number } | null = null;
+  private hover = -1;
   private raf = 0;
   private last = 0;
   private reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  private sx: Float32Array;
-  private sy: Float32Array;
-  private depth: Float32Array;
+  private sx = new Float32Array(0);
+  private sy = new Float32Array(0);
+  private depth = new Float32Array(0);
   private labelRects: { x: number; y: number; w: number; i: number }[] = [];
   private ro: ResizeObserver;
   private cleanup: Array<() => void> = [];
 
-  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement, private opts: GlobeOptions, agentSlots = 8) {
-    this.layout = buildGlobeLayout(agentSlots);
+  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement, private opts: GlobeOptions) {
     this.ctx = canvas.getContext("2d")!;
-    const n = this.layout.nodeCount;
-    this.sx = new Float32Array(n);
-    this.sy = new Float32Array(n);
-    this.depth = new Float32Array(n);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
     this.resize();
@@ -124,19 +149,40 @@ export class GlobeRenderer {
     this.raf = requestAnimationFrame((t) => { this.last = t; this.raf = requestAnimationFrame(this.frame); });
   }
 
-  get regionLabels() { return this.layout.regions.map((r) => ({ label: r.label, color: r.color })); }
-  get activeLens() { return this.lens; }
+  get regionLabels() { return this.model.regions.map((r) => ({ label: r.label, color: r.color })); }
+
+  setModel(model: GlobeModel) {
+    this.model = model;
+    this.sx = new Float32Array(model.nodeCount);
+    this.sy = new Float32Array(model.nodeCount);
+    this.depth = new Float32Array(model.nodeCount);
+    this.heat.clear();
+    this.ripples = [];
+    // Probes keep their identity across graph refreshes; only their anchors move.
+    for (const p of this.probes) this.anchorProbe(p);
+  }
 
   setAgents(agents: GlobeAgent[]) {
     const prev = new Map(this.probes.map((p) => [p.id, p]));
-    this.probes = agents.slice(0, this.layout.homes.length).map((a, k) => {
-      const existing = prev.get(a.id);
-      const home = this.layout.homes[k];
-      const hp = { x: this.layout.x[home], y: this.layout.y[home], z: this.layout.z[home] };
-      if (existing) { existing.name = a.name; existing.rgb = hexToRgb(a.color); existing.working = a.working; existing.home = home; return existing; }
-      return { id: a.id, name: a.name, rgb: hexToRgb(a.color), home, working: a.working, pos: hp, from: hp, to: hp, t: 0, dur: 0.01, lift: 0, trail: [], sx: 0, sy: 0 };
+    this.probes = agents.map((a, slot) => {
+      const probe = prev.get(a.id) ?? this.newProbe(a, slot);
+      probe.name = a.name; probe.rgb = hexToRgb(a.color); probe.working = a.working; probe.nodeId = a.nodeId; probe.slot = slot;
+      this.anchorProbe(probe);
+      return probe;
     });
     if (this.follow && !this.probes.some((p) => p.id === this.follow)) this.setFollow(null);
+  }
+
+  /** A real event touched these graph nodes on behalf of an agent. */
+  dispatch(agentId: string, nodeIds: string[]) {
+    const probe = this.probes.find((p) => p.id === agentId);
+    if (!probe) return;
+    for (const id of nodeIds) {
+      const idx = this.model.indexById.get(id);
+      if (idx === undefined || probe.queue.includes(idx)) continue;
+      if (probe.queue.length >= MAX_QUEUE) break;
+      probe.queue.push(idx);
+    }
   }
 
   setFollow(id: string | null) {
@@ -149,8 +195,8 @@ export class GlobeRenderer {
     this.lens = i;
     if (i >= 0) {
       this.setFollow(null);
-      const r = this.layout.regions[i];
-      if (!r.core) {
+      const r = this.model.regions[i];
+      if (r && !r.core) {
         this.targetYaw = Math.atan2(-r.anchor.x, r.anchor.z);
         this.targetPitch = Math.atan2(r.anchor.y, Math.hypot(r.anchor.x, r.anchor.z));
       }
@@ -165,6 +211,30 @@ export class GlobeRenderer {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     this.cleanup.forEach((f) => f());
+  }
+
+  private newProbe(a: GlobeAgent, slot: number): Probe {
+    const home = this.homeFor(a.nodeId, slot);
+    return {
+      id: a.id, name: a.name, rgb: hexToRgb(a.color), working: a.working, nodeId: a.nodeId, slot, home,
+      pos: home, from: home, to: home, phase: "rest", returning: false, target: -1, t: 0, dur: 1, lift: 0, queue: [], trail: [], sx: 0, sy: 0,
+    };
+  }
+
+  /** An agent rests on its own graph node; with none, in a small ring at the core. */
+  private homeFor(nodeId: string | null, slot: number): Vec3 {
+    const idx = nodeId ? this.model.indexById.get(nodeId) : undefined;
+    if (idx !== undefined) return { x: this.model.x[idx], y: this.model.y[idx], z: this.model.z[idx] };
+    const th = slot * 2.399963 + 1.1;
+    return { x: Math.cos(th) * 0.11, y: Math.sin(th) * 0.11, z: 0 };
+  }
+
+  private anchorProbe(p: Probe) {
+    const home = this.homeFor(p.nodeId, p.slot);
+    const wasAtHome = p.phase === "rest" && p.pos === p.home;
+    p.home = home;
+    if (wasAtHome) { p.pos = home; p.from = home; p.to = home; }
+    p.queue = p.queue.filter((i) => i < this.model.nodeCount);
   }
 
   private resize() {
@@ -183,6 +253,8 @@ export class GlobeRenderer {
       host.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
+      const rect = host.getBoundingClientRect();
+      this.pointer = ignore(e) ? null : { x: e.clientX - rect.left, y: e.clientY - rect.top };
       if (!this.dragging) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
       if (Math.abs(dx) + Math.abs(dy) > 3) { this.moved = true; if (this.follow) this.setFollow(null); this.targetYaw = null; }
@@ -199,6 +271,7 @@ export class GlobeRenderer {
       const label = this.labelRects.find((l) => Math.abs(l.x - mx) < l.w / 2 && Math.abs(l.y - my) < 9);
       if (label) this.setLens(this.lens === label.i ? -1 : label.i);
     };
+    const leave = () => { this.pointer = null; };
     const wheel = (e: WheelEvent) => {
       if (ignore(e)) return;
       e.preventDefault();
@@ -207,46 +280,65 @@ export class GlobeRenderer {
     host.addEventListener("pointerdown", down);
     host.addEventListener("pointermove", move);
     host.addEventListener("pointerup", up);
+    host.addEventListener("pointerleave", leave);
     host.addEventListener("wheel", wheel, { passive: false });
     this.cleanup.push(() => {
       host.removeEventListener("pointerdown", down);
       host.removeEventListener("pointermove", move);
       host.removeEventListener("pointerup", up);
+      host.removeEventListener("pointerleave", leave);
       host.removeEventListener("wheel", wheel);
     });
   }
 
-  private pickHub() {
-    const hubs = this.layout.hubs;
-    return hubs[Math.floor(Math.random() * hubs.length)];
-  }
-
-  private startLeg(p: Probe, node: number) {
-    const L = this.layout;
-    p.from = { ...p.pos };
-    p.to = { x: L.x[node], y: L.y[node], z: L.z[node] };
-    const ra = Math.hypot(p.from.x, p.from.y, p.from.z), rb = Math.hypot(p.to.x, p.to.y, p.to.z);
+  private startLeg(p: Probe, to: Vec3, target: number, returning: boolean) {
+    p.from = { ...p.pos }; p.to = to; p.target = target; p.returning = returning;
+    const ra = Math.hypot(p.from.x, p.from.y, p.from.z), rb = Math.hypot(to.x, to.y, to.z);
     const da = ra > 0.01 && rb > 0.01
-      ? Math.acos(Math.max(-1, Math.min(1, (p.from.x * p.to.x + p.from.y * p.to.y + p.from.z * p.to.z) / (ra * rb)))) : 1;
+      ? Math.acos(Math.max(-1, Math.min(1, (p.from.x * to.x + p.from.y * to.y + p.from.z * to.z) / (ra * rb)))) : 1;
     p.lift = 0.06 + (0.16 * da) / Math.PI;
     p.dur = Math.max(0.8, 0.9 + da);
-    p.t = 0;
+    p.t = 0; p.phase = "travel";
+  }
+
+  private touch(node: number, rgb: RGB) {
+    const set = (i: number, v: number) => {
+      const cur = this.heat.get(i);
+      if (!cur || cur.v < v) this.heat.set(i, { v, rgb });
+    };
+    set(node, 1);
+    for (const j of this.model.adjacency[node] ?? []) set(j, 0.45);
+    this.ripples.push({ node, rgb, t: 0 });
   }
 
   private update(dt: number) {
-    const L = this.layout;
+    const M = this.model;
     for (const p of this.probes) {
       p.t += dt;
-      const u = Math.min(1, p.t / p.dur);
-      const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-      p.pos = arc(p.from, p.to, e, p.lift);
-      if (u < 1) { p.trail.push(p.pos); if (p.trail.length > 70) p.trail.shift(); continue; }
+      if (p.phase === "travel") {
+        const u = Math.min(1, p.t / p.dur);
+        const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+        p.pos = arc(p.from, p.to, e, p.lift);
+        p.trail.push(p.pos); if (p.trail.length > 70) p.trail.shift();
+        if (u >= 1) {
+          if (p.returning) { p.phase = "rest"; p.pos = p.to; }
+          else { p.phase = "dwell"; p.t = 0; p.pos = p.to; this.touch(p.target, p.rgb); }
+        }
+        continue;
+      }
       if (p.trail.length) p.trail.shift();
-      if (this.reduce) continue;
-      const atHome = Math.hypot(p.pos.x - L.x[p.home], p.pos.y - L.y[p.home], p.pos.z - L.z[p.home]) < 1e-3;
-      if (p.working && p.t - p.dur > 0.8) this.startLeg(p, this.pickHub());
-      else if (!p.working && !atHome) this.startLeg(p, p.home);
+      if (p.phase === "dwell" && p.t < DWELL_SECONDS) continue;
+      const next = p.queue.shift();
+      if (next !== undefined && !this.reduce) { this.startLeg(p, { x: M.x[next], y: M.y[next], z: M.z[next] }, next, false); continue; }
+      if (next !== undefined) { p.pos = { x: M.x[next], y: M.y[next], z: M.z[next] }; this.touch(next, p.rgb); }
+      const atHome = p.pos.x === p.home.x && p.pos.y === p.home.y && p.pos.z === p.home.z;
+      if (!p.working && !atHome && !this.reduce) this.startLeg(p, p.home, -1, true);
+      else if (!p.working && !atHome) p.pos = p.home;
+      if (p.phase === "dwell") p.phase = "rest";
     }
+    const decay = Math.exp(-dt / HEAT_HALF_LIFE);
+    for (const [i, h] of this.heat) { h.v *= decay; if (h.v < 0.02) this.heat.delete(i); }
+    for (let k = this.ripples.length - 1; k >= 0; k--) { this.ripples[k].t += dt; if (this.ripples[k].t > 1.3) this.ripples.splice(k, 1); }
   }
 
   private frame = (now: number) => {
@@ -271,12 +363,11 @@ export class GlobeRenderer {
   };
 
   private dim(region: number) {
-    if (this.lens < 0 || region === this.lens) return 1;
-    return 0.26;
+    return this.lens < 0 || region === this.lens ? 1 : 0.26;
   }
 
   private draw(fa: Probe | undefined) {
-    const { ctx, w, h, layout: L } = this;
+    const { ctx, w, h, model: M } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const cyw = Math.cos(this.yaw), syw = Math.sin(this.yaw), cpt = Math.cos(this.pitch), spt = Math.sin(this.pitch);
@@ -287,11 +378,12 @@ export class GlobeRenderer {
       const y2 = y * cpt - z1 * spt, z2 = y * spt + z1 * cpt, p = f / (CAMERA_DISTANCE - z2);
       return { x: cx + x1 * p, y: cy - y2 * p, d: (z2 + 1) * 0.5, z: z2 };
     };
-    for (let i = 0; i < L.nodeCount; i++) {
-      const p = project(L.x[i], L.y[i], L.z[i]);
+    for (let i = 0; i < M.nodeCount; i++) {
+      const p = project(M.x[i], M.y[i], M.z[i]);
       this.sx[i] = p.x; this.sy[i] = p.y; this.depth[i] = p.d;
     }
-    const dims = L.regions.map((_, i) => this.dim(i));
+    const dims = M.regions.map((_, i) => this.dim(i));
+    const zs = Math.sqrt(this.zoom);
 
     const atm = ctx.createRadialGradient(cx, cy, gR * 0.9, cx, cy, gR * 1.12);
     atm.addColorStop(0, "rgba(70,100,190,0)"); atm.addColorStop(0.5, "rgba(70,100,190,.07)"); atm.addColorStop(1, "rgba(70,100,190,0)");
@@ -316,62 +408,42 @@ export class GlobeRenderer {
     ctx.stroke();
 
     ctx.globalCompositeOperation = "lighter";
-    ctx.lineWidth = 0.6;
-    for (let c = 0; c < L.regions.length; c++) {
-      for (let fr = 0; fr < 2; fr++) {
-        ctx.beginPath();
-        for (let e = 0; e < L.edgeCount; e++) {
-          if (L.edgeKind[e]) continue;
-          const a = L.edges[e * 2], b = L.edges[e * 2 + 1];
-          if (L.region[a] !== c || (this.depth[a] + this.depth[b] > 1) !== !!fr) continue;
-          ctx.moveTo(this.sx[a], this.sy[a]); ctx.lineTo(this.sx[b], this.sy[b]);
-        }
-        ctx.strokeStyle = rgba(L.regions[c].tint, (fr ? 0.11 : 0.035) * dims[c]);
-        ctx.stroke();
-      }
-    }
-    ctx.beginPath();
-    for (let e = 0; e < L.edgeCount; e++) {
-      if (L.edgeKind[e] !== 1) continue;
-      const a = L.edges[e * 2], b = L.edges[e * 2 + 1];
-      if (Math.min(dims[L.region[a]], dims[L.region[b]]) < 0.5) continue;
-      ctx.moveTo(this.sx[a], this.sy[a]); ctx.lineTo(this.sx[b], this.sy[b]);
-    }
-    ctx.strokeStyle = "rgba(90,99,166,.075)"; ctx.stroke();
-    ctx.lineWidth = 1;
-    for (let e = 0; e < L.edgeCount; e++) {
-      if (L.edgeKind[e] !== 2) continue;
-      const a = L.edges[e * 2], b = L.edges[e * 2 + 1], r = L.regions[L.region[b]];
-      const g = ctx.createLinearGradient(this.sx[a], this.sy[a], this.sx[b], this.sy[b]);
-      g.addColorStop(0, "rgba(169,139,245,.28)"); g.addColorStop(1, rgba(r.rgb, 0.14 * dims[L.region[b]] * (0.4 + this.depth[b])));
-      ctx.strokeStyle = g; ctx.beginPath(); ctx.moveTo(this.sx[a], this.sy[a]); ctx.lineTo(this.sx[b], this.sy[b]); ctx.stroke();
+    // Real relationships, coloured by the region of their source, weight → opacity.
+    ctx.lineWidth = 0.8;
+    for (let e = 0; e < M.edgeCount; e++) {
+      const a = M.edges[e * 2], b = M.edges[e * 2 + 1];
+      const ra = M.region[a], rb = M.region[b], dim = Math.min(dims[ra], dims[rb]);
+      const front = (this.depth[a] + this.depth[b]) / 2;
+      const cross = ra !== rb;
+      const col = cross ? NEUTRAL : M.regions[ra].tint;
+      ctx.strokeStyle = rgba(col, (0.05 + 0.2 * M.edgeWeight[e]) * (0.4 + front) * dim);
+      ctx.beginPath(); ctx.moveTo(this.sx[a], this.sy[a]); ctx.lineTo(this.sx[b], this.sy[b]); ctx.stroke();
     }
 
-    const alphas = [0.14, 0.36, 0.82], zs = Math.sqrt(this.zoom);
-    for (let c = 0; c < L.regions.length; c++) {
-      for (let bd = 0; bd < 3; bd++) {
-        ctx.beginPath();
-        for (let i = 0; i < L.nodeCount; i++) {
-          if (L.region[i] !== c || L.tier[i] === 0) continue;
-          const d = this.depth[i], b = d < 0.42 ? 0 : d < 0.66 ? 1 : 2;
-          if (b !== bd) continue;
-          const s = (L.tier[i] === 2 ? 0.9 : 1.35) * (0.6 + 0.7 * d) * zs;
-          ctx.rect(this.sx[i] - s / 2, this.sy[i] - s / 2, s, s);
-        }
-        ctx.fillStyle = rgba(L.regions[c].tint, alphas[bd] * dims[c]); ctx.fill();
-      }
-    }
-    for (let i = 0; i < L.nodeCount; i++) {
-      if (L.tier[i] !== 0) continue;
-      const r = L.regions[L.region[i]], major = i === r.hub;
-      const sz = (major ? 30 : 15) * (0.5 + 0.6 * this.depth[i]) * zs;
-      ctx.globalAlpha = dims[L.region[i]] * (0.25 + 0.75 * this.depth[i]) * 0.8;
-      ctx.drawImage(glow(major ? r.rgb : r.tint), this.sx[i] - sz / 2, this.sy[i] - sz / 2, sz, sz);
+    for (let i = 0; i < M.nodeCount; i++) {
+      const r = M.regions[M.region[i]], d = dims[M.region[i]], dz = this.depth[i];
+      const hub = M.isHub[i] === 1;
+      const sz = (hub ? 26 : 12) * (0.5 + 0.6 * dz) * zs;
+      ctx.globalAlpha = d * (0.3 + 0.7 * dz) * (hub ? 0.85 : 0.7);
+      ctx.drawImage(glow(hub ? r.rgb : mix(r.tint, r.rgb, 0.4)), this.sx[i] - sz / 2, this.sy[i] - sz / 2, sz, sz);
     }
     ctx.globalAlpha = 1;
 
+    for (const [i, hv] of this.heat) {
+      const sz = (10 + 26 * hv.v) * (0.6 + 0.5 * this.depth[i]);
+      ctx.globalAlpha = hv.v * (0.35 + 0.65 * this.depth[i]);
+      ctx.drawImage(glow(hv.rgb), this.sx[i] - sz / 2, this.sy[i] - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+
+    for (const rp of this.ripples) {
+      const u = rp.t / 1.3;
+      ctx.strokeStyle = rgba(rp.rgb, (1 - u) * 0.8 * (0.4 + 0.6 * this.depth[rp.node]));
+      ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(this.sx[rp.node], this.sy[rp.node], 4 + u * 26, 0, TAU); ctx.stroke();
+    }
+
     for (const p of this.probes) {
-      const hp = project(L.x[p.home], L.y[p.home], L.z[p.home]);
+      const hp = project(p.home.x, p.home.y, p.home.z);
       const pp = project(p.pos.x, p.pos.y, p.pos.z);
       p.sx = pp.x; p.sy = pp.y;
       if (p.trail.length > 1) {
@@ -400,17 +472,15 @@ export class GlobeRenderer {
       const lab = p.name.toUpperCase();
       ctx.lineWidth = 3; ctx.strokeStyle = "rgba(1,4,10,.85)"; ctx.strokeText(lab, p.sx + 10, p.sy - 6);
       ctx.fillStyle = rgba(p.rgb, 1); ctx.fillText(lab, p.sx + 10, p.sy - 6);
-      if (p === fa) {
-        ctx.strokeStyle = rgba(p.rgb, 0.8); ctx.lineWidth = 1;
-        ctx.strokeRect(p.sx - 12, p.sy - 12, 24, 24);
-      }
+      if (p === fa) { ctx.strokeStyle = rgba(p.rgb, 0.8); ctx.lineWidth = 1; ctx.strokeRect(p.sx - 12, p.sy - 12, 24, 24); }
     }
 
-    // Region labels, hit-tested on click.
+    // Region labels (only regions that actually hold nodes), hit-tested on click.
     this.labelRects = [];
     ctx.textAlign = "center"; ctx.font = '600 10px "JetBrains Mono", ui-monospace, monospace';
     const placed: Array<[number, number]> = [];
-    L.regions.forEach((r, i) => {
+    M.regions.forEach((r, i) => {
+      if (r.nodeCount === 0) return;
       let x: number, y: number, z: number;
       if (r.core) { const p = project(0, 0, 0); x = p.x; y = p.y + gR * 0.3; z = 1; }
       else { const p = project(r.anchor.x * 1.04, r.anchor.y * 1.04, r.anchor.z * 1.04); x = p.x; y = p.y; z = p.z; }
@@ -423,5 +493,30 @@ export class GlobeRenderer {
       ctx.globalAlpha = 1;
       this.labelRects.push({ x, y, w: ctx.measureText(text).width, i });
     });
+
+    // Hover: the real title and type of the node under the pointer.
+    this.hover = -1;
+    if (this.pointer && !this.dragging) {
+      let best = -1, bd = 144;
+      for (let i = 0; i < M.nodeCount; i++) {
+        if (this.depth[i] < 0.45 || !dims[M.region[i]] || dims[M.region[i]] < 1) continue;
+        const d = (this.sx[i] - this.pointer.x) ** 2 + (this.sy[i] - this.pointer.y) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      this.hover = best;
+    }
+    if (this.hover >= 0) {
+      const i = this.hover;
+      const title = M.labels[i].length > 44 ? `${M.labels[i].slice(0, 43)}…` : M.labels[i];
+      const sub = `${M.types[i]} · ${M.regions[M.region[i]].label}`;
+      ctx.textAlign = "left"; ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
+      const wTitle = ctx.measureText(title).width;
+      ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+      const bw = Math.max(wTitle, ctx.measureText(sub).width) + 20, bx = Math.min(this.sx[i] + 14, w - bw - 8), by = this.sy[i] - 12;
+      ctx.fillStyle = "rgba(5,9,17,.92)"; ctx.strokeStyle = "rgba(40,58,88,.8)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, 38, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#e9edf5"; ctx.font = "12px ui-sans-serif, system-ui, sans-serif"; ctx.fillText(title, bx + 10, by + 13);
+      ctx.fillStyle = "#8391a6"; ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'; ctx.fillText(sub, bx + 10, by + 28);
+    }
   }
 }

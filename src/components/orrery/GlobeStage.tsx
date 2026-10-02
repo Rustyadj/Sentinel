@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Maximize2, Minus, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GlobeRenderer, type GlobeAgent } from "./globe-renderer";
+import type { GlobeModel } from "./globe-model";
+
+/** Imperative handle for pushing real events into the renderer. */
+export interface GlobeHandle { dispatch: (agentId: string, nodeIds: string[]) => void }
 
 export interface GlobeStageProps {
+  model: GlobeModel | null;
+  /** What to say instead of a globe when there is nothing to draw. */
+  emptyMessage?: string | null;
+  handleRef?: React.Ref<GlobeHandle>;
   agents: GlobeAgent[];
   followId: string | null;
   onFollowChange: (agentId: string | null) => void;
@@ -21,7 +29,7 @@ export interface GlobeStageProps {
  * The Orrery: Sentinel's knowledge graph as a living globe. Children render
  * above the canvas and are excluded from drag/zoom through `data-orrery-ui`.
  */
-export function GlobeStage({ agents, followId, onFollowChange, dimmed, offsetX = 0, className, children }: GlobeStageProps) {
+export function GlobeStage({ model, emptyMessage, handleRef, agents, followId, onFollowChange, dimmed, offsetX = 0, className, children }: GlobeStageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<GlobeRenderer | null>(null);
@@ -46,7 +54,12 @@ export function GlobeStage({ agents, followId, onFollowChange, dimmed, offsetX =
     return () => { renderer.destroy(); rendererRef.current = null; };
   }, []);
 
-  useEffect(() => { rendererRef.current?.setAgents(agents); }, [agents]);
+  useImperativeHandle(handleRef, () => ({
+    dispatch: (agentId, nodeIds) => rendererRef.current?.dispatch(agentId, nodeIds),
+  }), []);
+
+  // Model first, then agents: probes anchor to nodes that must already exist.
+  useEffect(() => { if (model) rendererRef.current?.setModel(model); rendererRef.current?.setAgents(agents); }, [model, agents]);
   useEffect(() => { rendererRef.current?.setFollow(followId); }, [followId]);
 
   const followed = agents.find((a) => a.id === followId);
@@ -60,6 +73,11 @@ export function GlobeStage({ agents, followId, onFollowChange, dimmed, offsetX =
         className={cn("absolute inset-0 h-full w-full transition-opacity duration-300", dimmed ? "opacity-40" : "opacity-100")}
       />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(1,4,10,.72)_0,rgba(1,4,10,.35)_520px,transparent_760px),linear-gradient(270deg,rgba(1,4,10,.6)_0,transparent_360px)] max-lg:bg-[rgba(1,4,10,.6)]" />
+      {emptyMessage ? (
+        <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center px-6 text-center max-lg:hidden" style={{ paddingLeft: offsetX * 2 + 40 }}>
+          <p className="max-w-xs text-[13px] leading-relaxed text-[--muted-foreground]">{emptyMessage}</p>
+        </div>
+      ) : null}
       {children}
 
       <div data-orrery-ui className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2 max-xl:right-3">
