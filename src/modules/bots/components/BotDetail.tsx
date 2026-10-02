@@ -96,10 +96,9 @@ function VersionsTab({ bot, reload }: { bot: Bot; reload: () => Promise<void> })
   const [versions, setVersions] = useState<{ id: string; version: number; reason: string; createdAt: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<number | null>(null);
-  const load = useCallback(async () => {
-    try { setVersions((await api<{ versions: { id: string; version: number; reason: string; createdAt: string }[] }>(`/api/bots/${bot.id}/versions`)).versions); setError(null); }
-    catch (e) { setError(errorMessage(e)); }
-  }, [bot.id]);
+  const load = useCallback(() => api<{ versions: { id: string; version: number; reason: string; createdAt: string }[] }>(`/api/bots/${bot.id}/versions`)
+    .then((d) => { setVersions(d.versions); setError(null); })
+    .catch((e) => setError(errorMessage(e))), [bot.id]);
   useEffect(() => { void load(); }, [load]);
   const restore = async (version: number) => {
     if (!window.confirm(`Restore version ${version}? Current configuration is saved as a new checkpoint first.`)) return;
