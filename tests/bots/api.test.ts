@@ -167,7 +167,7 @@ describe("meta", () => {
     const meta = await (await metaRoute.GET(new Request(`http://x/api/bots/meta?workspaceId=${workspace.id}&health=1`))).json();
     expect(meta.hosts).toEqual([{ agentId: "hermes-bot-host", kind: "hermes", executionVerified: true, health: { ready: true } }]);
     expect(meta.models).toMatchObject({ runtimeKind: "hermes", choices: expect.arrayContaining(["gpt-5.6-luna"]), unsupported: ["temperature"] });
-    expect(meta.templates.map((template: { id: string }) => template.id)).toEqual(["blank", "research", "creative-production", "coding", "marketing"]);
+    expect(meta.templates.map((template: { id: string }) => template.id)).toEqual(["mobileops-admin", "blank", "research", "creative-production", "coding", "marketing"]);
     expect(meta.memoryScopes).toEqual(["bot", "session", "project", "workspace", "organization", "user", "global"]);
     expect(meta.toolPermissions).toEqual(["disabled", "read", "execute", "approval"]);
     expect(meta.callers.agents).toEqual(["agent:hermes-bot-host"]);
