@@ -93,7 +93,7 @@ export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }:
         aria-pressed={isActive}
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400/60",
-          status === "idle" && "text-[#697084] hover:bg-white/[0.06] hover:text-[#c8cdd8]",
+          status === "idle" && "text-[--muted-foreground] hover:bg-white/[0.06] hover:text-[--foreground]",
           status === "listening" && "bg-emerald-500/15 text-emerald-400",
           status === "transcribing" && "bg-amber-500/15 text-amber-400",
           status === "thinking" && "bg-violet-500/15 text-violet-400",
@@ -123,14 +123,14 @@ export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }:
             key={i}
             className={cn(
               "w-[2px] rounded-full",
-              waveActive ? "animate-wave-bar bg-emerald-400/80" : "h-[3px] bg-[#3a3f50]"
+              waveActive ? "animate-wave-bar bg-emerald-400/80" : "h-[3px] bg-[--text-faint]"
             )}
             style={waveActive ? { animationDelay: `${i * -80}ms` } : undefined}
           />
         ))}
       </div>
 
-      <span className="min-w-0 truncate text-[10px] text-[#697084]">
+      <span className="min-w-0 truncate text-[10px] text-[--muted-foreground]">
         {error ?? (transcript || STATUS_LABELS[status])}
       </span>
     </div>

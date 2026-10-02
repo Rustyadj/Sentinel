@@ -25,7 +25,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
       className={cn(
         "group flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-[11px] transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]",
-        active ? "bg-[--card] text-[--foreground] shadow-[var(--shadow-sm)]" : "text-[--muted-foreground] hover:text-[--foreground]",
+        active ? "bg-[--card] text-[--foreground] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_40%,transparent)] [&>svg]:text-[--primary-soft]" : "text-[--muted-foreground] hover:text-[--foreground]",
       )}
     >
       <Icon className="h-[18px] w-[18px] stroke-[1.7]" />
@@ -38,7 +38,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
 export function NavRail() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Primary" className="flex w-[76px] shrink-0 flex-col justify-between bg-[--sidebar] px-2 py-3">
+    <nav aria-label="Primary" className="flex w-[76px] shrink-0 flex-col justify-between border-r border-[--sidebar-border] bg-[--sidebar] px-2 py-3">
       <div className="flex flex-col gap-1">
         <Link href="/chat" prefetch={false} aria-label="Sentinel home" className="mb-2 flex h-9 items-center justify-center">
           <span className="text-[13px] font-semibold tracking-tight text-[--foreground]">S</span>

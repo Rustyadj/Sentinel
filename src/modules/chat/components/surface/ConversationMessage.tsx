@@ -18,7 +18,7 @@ export function ConversationMessage({ message, agentName, streaming }: {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[46rem] whitespace-pre-wrap rounded-2xl rounded-br-md bg-[--muted] px-4 py-2.5 text-[15px] leading-[1.65] text-[--foreground]">
+        <div className="max-w-[84%] whitespace-pre-wrap rounded-xl rounded-br-sm border border-[--primary]/40 bg-[--primary]/20 px-3 py-2 text-[13.5px] leading-[1.5] text-[--foreground]">
           {message.content}
         </div>
       </div>
@@ -35,7 +35,7 @@ export function ConversationMessage({ message, agentName, streaming }: {
         <p className="mb-1 text-[12px] font-medium text-[--muted-foreground]">{agentName}</p>
       ) : null}
       <div className={cn(
-        "prose-sentinel text-[15px] leading-[1.7] text-[--foreground]",
+        "prose-sentinel text-[13.5px] leading-[1.6] text-[--foreground]",
         streaming && "after:ml-0.5 after:inline-block after:h-4 after:w-[2px] after:translate-y-0.5 after:animate-pulse after:bg-[--primary] after:align-middle after:content-['']",
       )}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
