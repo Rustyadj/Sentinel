@@ -13,6 +13,7 @@ import {
 import { BOT_TEMPLATES } from "@/lib/bots/templates";
 import { approveSkill, parseHermesSkill, proposeSkill, rejectSkill, sha256 } from "@/lib/bots/skills";
 import { HERMES_BUILTIN_SERVER_ID, SENTINEL_SERVER_ID } from "@/lib/bots/catalog";
+import { listBotVersions, restoreBotVersion } from "@/lib/bots/versions";
 import { botInput, makeWorkspace } from "./fixtures";
 
 void adapter; void serviceMock;
@@ -79,6 +80,21 @@ describe("bot creation and persistence", () => {
     expect((await disableBot(bot.id, owner.id)).status).toBe("disabled");
     const actions = (await db.auditLog.findMany({ where: { entityType: "Bot", entityId: bot.id } })).map((entry) => entry.action);
     expect(actions).toEqual(expect.arrayContaining(["bot.updated", "bot.enabled", "bot.disabled"]));
+  });
+
+  it("keeps immutable checkpoints and restores configuration plus explicit grants", async () => {
+    const bot = await createBot(botInput(workspace.id, { name: "Versioned", role: "Original" }), owner.id, {
+      toolGrants: [{ serverId: HERMES_BUILTIN_SERVER_ID, toolName: "read_file", permission: "read" }],
+    });
+    const initial = (await listBotVersions(bot.id)).find((entry) => entry.reason === "created")!;
+    await updateBot(bot.id, { role: "Changed" }, owner.id);
+    await grantToolPermission(bot.id, { serverId: HERMES_BUILTIN_SERVER_ID, toolName: "web_search", permission: "approval" }, owner.id);
+    await restoreBotVersion(bot.id, initial.version, owner.id);
+
+    expect((await db.bot.findUniqueOrThrow({ where: { id: bot.id } })).role).toBe("Original");
+    expect((await db.botToolPermission.findMany({ where: { botId: bot.id }, orderBy: { toolName: "asc" } })).map((grant) => grant.toolName)).toEqual(["read_file"]);
+    expect((await listBotVersions(bot.id))[0].reason).toBe(`rollback:${initial.version}`);
+    expect(await db.auditLog.findFirst({ where: { entityId: bot.id, action: "bot.version_restored" } })).not.toBeNull();
   });
 });
 

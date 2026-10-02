@@ -3292,10 +3292,30 @@ model Bot {
   toolPermissions BotToolPermission[]
   skills          BotSkill[]
   events          BotRunEvent[]
+  versions        BotConfigVersion[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, status])
   @@map("bots")
+}
+
+/// Immutable published/draft configuration checkpoints.  Snapshots include
+/// the bot policy and the explicit tool/skill grants so a rollback never
+/// leaves a configuration pointing at permissions from another version.
+model BotConfigVersion {
+  id              String   @id @default(cuid())
+  botId           String
+  version         Int
+  reason          String
+  snapshot        Json
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, version])
+  @@index([botId, createdAt])
+  @@map("bot_config_versions")
 }
 
 model BotToolPermission {

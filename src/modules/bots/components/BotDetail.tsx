@@ -14,7 +14,7 @@ interface Detail { bot: Bot; grants: { serverId: string; toolName: string; permi
 interface CatalogServer { id: string; slug: string; name: string; kind: string; description: string; enabled: boolean; status: string; lastError: string | null; lastDiscoveredAt: string | null; url?: string; capabilityTags: string[]; tools: { name: string; description?: string; readOnly: boolean | null; risk?: string }[] }
 interface Meta { hosts: { agentId: string; executionVerified: boolean; health: { ready: boolean } | null }[]; models: { choices: string[]; inherited: { model: string }; unsupported: string[] } | null; memoryScopes: string[]; callers: { agents: string[]; clients: { key: string; name: string }[] } }
 
-const TABS = [["overview", "Overview"], ["model", "Model and limits"], ["skills", "Skills"], ["tools", "Tools"], ["memory", "Memory"], ["delegation", "Delegation"], ["test", "Test"], ["activity", "Activity"]] as const;
+const TABS = [["overview", "Overview"], ["model", "Model and limits"], ["skills", "Skills"], ["tools", "Tools"], ["memory", "Memory"], ["delegation", "Delegation"], ["test", "Test"], ["activity", "Activity"], ["versions", "Versions"]] as const;
 type TabId = (typeof TABS)[number][0];
 
 const PERMS = [["disabled", "Off"], ["read", "Read only"], ["execute", "Execute"], ["approval", "Needs approval"]] as const;
@@ -85,7 +85,35 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
         {tab === "delegation" ? <DelegationTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "test" ? <TestTab bot={bot} detail={detail} /> : null}
         {tab === "activity" ? <ActivityTab bot={bot} /> : null}
+        {tab === "versions" ? <VersionsTab bot={bot} reload={reload} /> : null}
       </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------- versions --
+function VersionsTab({ bot, reload }: { bot: Bot; reload: () => Promise<void> }) {
+  const [versions, setVersions] = useState<{ id: string; version: number; reason: string; createdAt: string }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<number | null>(null);
+  const load = useCallback(async () => {
+    try { setVersions((await api<{ versions: { id: string; version: number; reason: string; createdAt: string }[] }>(`/api/bots/${bot.id}/versions`)).versions); setError(null); }
+    catch (e) { setError(errorMessage(e)); }
+  }, [bot.id]);
+  useEffect(() => { void load(); }, [load]);
+  const restore = async (version: number) => {
+    if (!window.confirm(`Restore version ${version}? Current configuration is saved as a new checkpoint first.`)) return;
+    setRestoring(version);
+    try { await api(`/api/bots/${bot.id}/versions/${version}/restore`, { method: "POST" }); await Promise.all([load(), reload()]); }
+    catch (e) { setError(errorMessage(e)); } finally { setRestoring(null); }
+  };
+  return (
+    <div className="max-w-[720px] space-y-4">
+      <p className="text-[13px] leading-5 text-[--muted-foreground]">Every configuration, tool, memory, and skill change creates an immutable checkpoint. Restoring replaces the current policy and explicit grants, then saves the restored state as a new checkpoint.</p>
+      {error ? <Notice action={<Button onClick={() => void load()}>Retry</Button>}>{error}</Notice> : null}
+      {!versions ? <p className="text-[13px] text-[--muted-foreground]" aria-busy="true">Loading versions…</p> : null}
+      {versions?.length === 0 ? <Empty title="No checkpoints yet">The next saved configuration change creates the first checkpoint.</Empty> : null}
+      {versions?.length ? <ul className="divide-y divide-[--border] overflow-hidden rounded-lg border border-[--border] bg-[--card]">{versions.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-3 p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium">Version {item.version}</p><p className="text-[12px] text-[--muted-foreground]">{item.reason.replaceAll("_", " ")} · {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p></div><Button variant="secondary" busy={restoring === item.version} disabled={item.version === versions[0]?.version} onClick={() => void restore(item.version)}>Restore</Button></li>)}</ul> : null}
     </div>
   );
 }

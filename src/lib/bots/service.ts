@@ -13,6 +13,7 @@ import {
   type CreateBotInput, type GrantToolInput, type ToolPermission, type UpdateBotInput,
 } from "./schema";
 import { z } from "zod";
+import { recordBotVersion } from "./versions";
 
 export const ACTIVE_RUN_STATUSES = ["queued", "running", "cancelling", "waiting"] as const;
 
@@ -120,6 +121,7 @@ export async function createBot(input: CreateBotInput, actorUserId: string, extr
   });
   await writeAuditLog({ workspaceId: row.workspaceId, userId: actorUserId, action: "bot.created", entityType: "Bot", entityId: row.id, details: { name: row.name, templateId: row.templateId, grants: grants.length, status: row.status } });
   if (extras.skillIds?.length) for (const skillId of extras.skillIds) await assignSkill(row.id, skillId, actorUserId);
+  await recordBotVersion(row.id, actorUserId, "created");
   return toBotRecord(row);
 }
 
@@ -150,6 +152,7 @@ export async function updateBot(id: string, input: UpdateBotInput, actorUserId: 
   if (patch.limits !== undefined) data.limits = toJson(patch.limits);
   const row = await db.bot.update({ where: { id }, data });
   await writeAuditLog({ workspaceId: row.workspaceId, userId: actorUserId, action: "bot.updated", entityType: "Bot", entityId: id, details: { fields: Object.keys(patch) } });
+  await recordBotVersion(id, actorUserId, "configuration_updated");
   return toBotRecord(row);
 }
 
@@ -212,6 +215,7 @@ export async function grantToolPermission(botId: string, input: GrantToolInput, 
     update: { permission: grant.permission, grantedByUserId: actorUserId },
   });
   await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.tool_granted", entityType: "Bot", entityId: botId, details: { ...grant } });
+  await recordBotVersion(botId, actorUserId, "tool_granted");
   return toGrant(row);
 }
 
@@ -219,7 +223,7 @@ export async function revokeToolPermission(botId: string, serverId: string, tool
   const bot = await db.bot.findUnique({ where: { id: botId } });
   if (!bot) throw new BotConfigError("Bot not found", 404);
   const { count } = await db.botToolPermission.deleteMany({ where: { botId, serverId, toolName } });
-  if (count) await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.tool_revoked", entityType: "Bot", entityId: botId, details: { serverId, toolName } });
+  if (count) { await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.tool_revoked", entityType: "Bot", entityId: botId, details: { serverId, toolName } }); await recordBotVersion(botId, actorUserId, "tool_revoked"); }
   return count > 0;
 }
 
@@ -230,6 +234,7 @@ export async function updateMemoryPolicy(botId: string, patch: Partial<z.input<t
   if (!merged.success) throw new BotConfigError(merged.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; "));
   await db.bot.update({ where: { id: botId }, data: { memoryPolicy: toJson(merged.data) } });
   await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.memory_policy_updated", entityType: "Bot", entityId: botId, details: { fields: Object.keys(patch) } });
+  await recordBotVersion(botId, actorUserId, "memory_policy_updated");
   return merged.data;
 }
 
@@ -251,6 +256,7 @@ export async function assignSkill(botId: string, skillId: string, actorUserId: s
   if (skill.status !== "active") throw new BotConfigError(`Skill "${skill.name}" is ${skill.status}; it must be reviewed and approved before it can be assigned.`, 409);
   await db.botSkill.upsert({ where: { botId_skillId: { botId, skillId } }, create: { botId, skillId, addedByUserId: actorUserId }, update: { enabled: true } });
   await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.skill_assigned", entityType: "Bot", entityId: botId, details: { skillId, name: skill.name } });
+  await recordBotVersion(botId, actorUserId, "skill_assigned");
   const granted = new Set(bot.toolPermissions.filter((row) => row.permission !== "disabled").map((row) => row.toolName));
   const grantedServers = new Set(bot.toolPermissions.filter((row) => row.permission !== "disabled" && row.toolName === "*").map((row) => row.serverId));
   const catalog = await loadCatalog(bot.workspaceId);
@@ -266,7 +272,7 @@ export async function removeSkill(botId: string, skillId: string, actorUserId: s
   const bot = await db.bot.findUnique({ where: { id: botId } });
   if (!bot) throw new BotConfigError("Bot not found", 404);
   const { count } = await db.botSkill.deleteMany({ where: { botId, skillId } });
-  if (count) await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.skill_removed", entityType: "Bot", entityId: botId, details: { skillId } });
+  if (count) { await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.skill_removed", entityType: "Bot", entityId: botId, details: { skillId } }); await recordBotVersion(botId, actorUserId, "skill_removed"); }
   return count > 0;
 }
 
@@ -275,4 +281,5 @@ export async function setSkillEnabled(botId: string, skillId: string, enabled: b
   if (!link) throw new BotConfigError("Skill is not assigned to this bot", 404);
   await db.botSkill.update({ where: { id: link.id }, data: { enabled } });
   await writeAuditLog({ workspaceId: link.bot.workspaceId, userId: actorUserId, action: enabled ? "bot.skill_enabled" : "bot.skill_disabled", entityType: "Bot", entityId: botId, details: { skillId } });
+  await recordBotVersion(botId, actorUserId, enabled ? "skill_enabled" : "skill_disabled");
 }

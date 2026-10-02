@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Activity, AlertTriangle, Bot, CheckCircle2, CircleSlash2, Code2, ExternalLink,
   FileCode2, GitFork, Loader2, MemoryStick, PauseCircle, Play, RefreshCw, RotateCcw,
@@ -384,7 +385,7 @@ export function AgentRuntimeConsole() {
             <h1 className="text-xl font-semibold">Agent runtime console</h1>
             <p className="mt-1 max-w-2xl text-xs text-[--muted-foreground]">One governed surface for Hermes, Claude Code, and Codex. No runtime is marked Verified until the host runbook passes.</p>
           </div>
-          <div className="flex gap-5 text-xs"><span><b className="text-lg">{statusCounts.total}</b> runtimes</span><span><b className="text-lg">{statusCounts.coding}</b> coding</span><span className="text-amber-400"><b className="text-lg">{statusCounts.verified}</b> verified</span></div>
+          <div className="flex flex-wrap items-center gap-3 text-xs"><span><b className="text-lg">{statusCounts.total}</b> runtimes</span><span><b className="text-lg">{statusCounts.coding}</b> coding</span><span className="text-amber-400"><b className="text-lg">{statusCounts.verified}</b> verified</span><Link href="/bots" className="rounded-lg border border-indigo-500/35 bg-indigo-500/10 px-3 py-2 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20">Bot Studio · Create bot</Link></div>
         </header>
 
         {error ? <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-xs text-red-300"><AlertTriangle className="h-4 w-4" /><span className="min-w-0 flex-1">{error}</span><button type="button" onClick={() => void loadRuntimes()} className="rounded-md border border-red-400/25 px-2 py-1 text-[10px] hover:bg-red-400/10"><RefreshCw className="mr-1 inline h-3 w-3" />Retry</button></div> : null}
