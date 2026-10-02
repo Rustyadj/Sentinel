@@ -46,7 +46,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
   const canSend = value.trim().length > 0 && !disabled && !busy;
 
   return (
-    <div className="relative mx-auto w-full max-w-[52rem] px-4 pb-5">
+    <div className="relative w-full px-3 pb-3">
       {menuOpen ? (
         <>
           <button aria-label="Close menu" className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
@@ -75,7 +75,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
         </>
       ) : null}
 
-      <div className="flex items-end gap-2 rounded-2xl bg-[--card] p-2 shadow-[var(--shadow-md)]">
+      <div className="flex items-end gap-2 rounded-xl border border-[--border] bg-[--card] p-2">
         <button
           type="button"
           aria-label="Add attachment, context or tool"
@@ -96,7 +96,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (canSend) onSend(); }
           }}
-          className="max-h-[220px] min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-[1.6] text-[--foreground] outline-none placeholder:text-[--muted-foreground] disabled:opacity-60"
+          className="max-h-[220px] min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-[1.6] text-[--foreground] outline-none placeholder:text-[--muted-foreground] disabled:opacity-60"
         />
 
         {onVoice ? (

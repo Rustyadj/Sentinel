@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PanelLeft, Plus } from "lucide-react";
 import { useChatSession } from "@/lib/chat/useChatSession";
@@ -10,6 +10,9 @@ import { AgentSelector } from "@/components/shell/AgentSelector";
 import { ContextChip, type ContextEntry } from "@/components/shell/ContextChip";
 import { ConversationDrawer } from "@/components/shell/ConversationDrawer";
 import { EmptyState, IconButton } from "@/components/shell/primitives";
+import { GlobeStage } from "@/components/orrery/GlobeStage";
+import { ActivityPanel, type FeedEvent, type PanelAgent } from "@/components/orrery/ActivityPanel";
+import { cn } from "@/lib/utils";
 import { ConversationMessage } from "./ConversationMessage";
 import { Composer, type ComposerAction } from "./Composer";
 
@@ -25,6 +28,8 @@ export function ChatSurface() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const handledNewRef = useRef(false);
+  const [followId, setFollowId] = useState<string | null>(null);
+  const [focusChat, setFocusChat] = useState(false);
 
   const {
     rooms, activeRoom, activeRoomId, agents, roomAgents, activeAgent, selectedAgentIds,
@@ -57,6 +62,46 @@ export function ChatSurface() {
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
     [agents],
   );
+
+  const busy = isThinking || isStreaming;
+  // Whoever is streaming a reply is the working agent; before the first token
+  // it is the agent the next message was routed to.
+  const workingAgentId = useMemo(() => {
+    if (!busy) return null;
+    const streaming = [...messages].reverse().find((m) => m.isStreaming && m.agentId);
+    return streaming?.agentId ?? activeAgent?.id ?? null;
+  }, [busy, messages, activeAgent]);
+
+  const globeAgents = useMemo(
+    () => agents.map((a) => ({ id: a.id, name: a.name, color: a.color, working: a.id === workingAgentId })),
+    [agents, workingAgentId],
+  );
+
+  const panelAgents: PanelAgent[] = useMemo(() => agents.map((a) => {
+    const working = a.id === workingAgentId;
+    return {
+      id: a.id, name: a.name, color: a.color, model: a.model,
+      state: working ? "working" : a.status === "offline" ? "offline" : "idle",
+      detail: working ? (isStreaming ? "Writing a reply" : "Thinking") : a.role,
+    };
+  }), [agents, workingAgentId, isStreaming]);
+
+  const feed: FeedEvent[] = useMemo(() => messages
+    .filter((m) => m.role !== "system" && m.content.trim())
+    .slice(-30)
+    .reverse()
+    .map((m) => {
+      const isUser = m.role === "user";
+      const agent = m.agentId ? agents.find((a) => a.id === m.agentId) : undefined;
+      return {
+        id: m.id,
+        agentName: isUser ? "You" : agent?.name ?? m.agentName ?? "Agent",
+        color: isUser ? "var(--primary-soft)" : agent?.color ?? m.agentColor ?? "var(--muted-foreground)",
+        verb: isUser ? "send" : m.isStreaming ? "write" : "reply",
+        text: m.content.replace(/\s+/g, " ").trim(),
+        time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+      };
+    }), [messages, agents]);
 
   const contextEntries: ContextEntry[] = useMemo(() => [
     {
@@ -98,66 +143,107 @@ export function ChatSurface() {
         entries={contextEntries}
       />
       <IconButton label="New chat" onClick={() => void handleCreateRoom()}><Plus className="h-4 w-4" /></IconButton>
+      <div role="group" aria-label="Graph visibility" className="ml-1 hidden rounded-lg border border-[--border] bg-[--card] p-0.5 text-[12px] md:flex">
+        {([["Graph live", false], ["Focus chat", true]] as const).map(([label, value]) => (
+          <button
+            key={label}
+            type="button"
+            aria-pressed={focusChat === value}
+            onClick={() => setFocusChat(value)}
+            className={cn("rounded-md px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]",
+              focusChat === value ? "bg-[--accent] text-[--foreground]" : "text-[--muted-foreground] hover:text-[--foreground]")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </>
   );
 
   return (
     <AppShell header={header}>
-      <div className="relative flex h-full flex-col">
-        <ConversationDrawer
-          rooms={rooms}
-          activeRoomId={activeRoomId}
-          onSelect={setActiveRoom}
-          onCreate={() => void handleCreateRoom()}
-        />
+      <GlobeStage
+        agents={globeAgents}
+        followId={followId}
+        onFollowChange={setFollowId}
+        dimmed={focusChat}
+        offsetX={focusChat ? 0 : 80}
+      >
+        <section
+          data-orrery-ui
+          aria-label="Conversation"
+          className={cn(
+            "absolute bottom-3.5 left-3.5 top-3.5 z-[3] flex flex-col overflow-hidden rounded-xl border border-[--glass-border] bg-[--glass] backdrop-blur-md",
+            focusChat ? "right-3.5 mx-auto max-w-[52rem]" : "right-3.5 lg:right-auto lg:w-[min(468px,40%)]",
+          )}
+        >
+          <ConversationDrawer
+            rooms={rooms}
+            activeRoomId={activeRoomId}
+            onSelect={setActiveRoom}
+            onCreate={() => void handleCreateRoom()}
+          />
 
-        {offline ? (
-          <p className="px-4 py-2 text-center text-[13px] text-[--destructive]">
-            Sentinel could not reach the conversation service. Messages cannot be sent right now.
-          </p>
-        ) : null}
-
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[52rem] space-y-6 px-4 py-8">
-            {isHydrating ? (
-              <p className="py-10 text-center text-[13px] text-[--muted-foreground]">Loading conversations…</p>
-            ) : !activeRoom ? (
-              <EmptyState
-                title="Start a conversation"
-                hint="Pick an agent above and send a message. Sentinel will load that agent's memory, workspace and tools with it."
-              />
-            ) : messages.length === 0 ? (
-              <EmptyState
-                title={activeAgent ? `Message ${activeAgent.name}` : "Send your first message"}
-                hint={roomAgents.length > 1 ? "Mention an agent with @ to direct a message to them." : undefined}
-              />
-            ) : (
-              messages.map((message) => (
-                <ConversationMessage
-                  key={message.id}
-                  message={message}
-                  agentName={message.agentId ? agentNameById.get(message.agentId) : undefined}
-                  streaming={message.isStreaming}
-                />
-              ))
-            )}
-            {isThinking && !isStreaming ? (
-              <p className="text-[13px] text-[--muted-foreground]">{activeAgent?.name ?? "Agent"} is thinking…</p>
-            ) : null}
-            <div ref={bottomRef} />
+          <div className="flex items-center gap-2.5 border-b border-[--glass-border] px-3.5 py-3">
+            <i className={cn("h-2 w-2 rounded-full", offline ? "bg-[--destructive]" : "bg-[--status-online] shadow-[0_0_8px_rgba(16,185,129,.6)]")} />
+            <div className="min-w-0">
+              <h2 className="truncate text-[14px] font-semibold">{activeRoom?.name ?? "No conversation"}</h2>
+              <p className="truncate font-mono text-[11px] text-[--muted-foreground]">{activeAgent?.name ?? "Select an agent"}{activeAgent ? ` · ${activeAgent.model}` : ""}</p>
+            </div>
           </div>
-        </div>
 
-        <Composer
-          value={input}
-          onChange={setInput}
-          onSend={() => void handleSend()}
-          disabled={offline || !activeRoom}
-          busy={isThinking || isStreaming}
-          placeholder={activeAgent ? `Message ${activeAgent.name}…` : "Message an agent…"}
-          actions={composerActions}
-        />
-      </div>
+          {offline ? (
+            <p className="px-4 py-2 text-center text-[13px] text-[--destructive]">
+              Sentinel could not reach the conversation service. Messages cannot be sent right now.
+            </p>
+          ) : null}
+
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+            <div className="w-full space-y-5 px-3.5 py-4">
+              {isHydrating ? (
+                <p className="py-10 text-center text-[13px] text-[--muted-foreground]">Loading conversations…</p>
+              ) : !activeRoom ? (
+                <EmptyState
+                  title="Start a conversation"
+                  hint="Pick an agent above and send a message. Sentinel will load that agent's memory, workspace and tools with it."
+                />
+              ) : messages.length === 0 ? (
+                <EmptyState
+                  title={activeAgent ? `Message ${activeAgent.name}` : "Send your first message"}
+                  hint={roomAgents.length > 1 ? "Mention an agent with @ to direct a message to them." : undefined}
+                />
+              ) : (
+                messages.map((message) => (
+                  <ConversationMessage
+                    key={message.id}
+                    message={message}
+                    agentName={message.agentId ? agentNameById.get(message.agentId) : undefined}
+                    streaming={message.isStreaming}
+                  />
+                ))
+              )}
+              {isThinking && !isStreaming ? (
+                <p className="text-[13px] text-[--muted-foreground]">{activeAgent?.name ?? "Agent"} is thinking…</p>
+              ) : null}
+              <div ref={bottomRef} />
+            </div>
+          </div>
+
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSend={() => void handleSend()}
+            disabled={offline || !activeRoom}
+            busy={busy}
+            placeholder={activeAgent ? `Message ${activeAgent.name}, or @agent…` : "Message an agent…"}
+            actions={composerActions}
+          />
+        </section>
+
+        {focusChat ? null : (
+          <ActivityPanel agents={panelAgents} events={feed} followId={followId} onFollow={setFollowId} />
+        )}
+      </GlobeStage>
     </AppShell>
   );
 }

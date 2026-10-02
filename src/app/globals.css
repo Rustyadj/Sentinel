@@ -123,76 +123,79 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Sentinel theme tokens.
+   Sentinel theme tokens — the Orrery design language.
 
-   Light is the source of truth for the new product shell: a warm neutral
-   canvas, white surfaces, few borders. The legacy dark values are kept intact
-   but scoped to `.sentinel-app-shell` — the old shell's root element — so every
-   screen that has not been migrated yet keeps rendering exactly as before.
+   Deep navy surfaces, a single violet accent, hairline borders. The legacy
+   shell scopes the same palette on `.sentinel-app-shell` so unmigrated screens
+   keep rendering exactly as before.
    --------------------------------------------------------------------------- */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* Surfaces */
-  --background: #faf9f7;
-  --foreground: #1b1b1f;
-  --card: #ffffff;
-  --card-foreground: #1b1b1f;
-  --border: #e7e4df;
-  --muted: #f2f0ec;
-  --muted-foreground: #6b6862;
-  --accent: #f2f0ec;
-  --accent-foreground: #1b1b1f;
-  --primary: #4f46e5;
+  --background: #040811;
+  --foreground: #e9edf5;
+  --card: #0b1420;
+  --card-foreground: #e9edf5;
+  --border: #18263a;
+  --muted: #111b28;
+  --muted-foreground: #8391a6;
+  --accent: #18233a;
+  --accent-foreground: #e9edf5;
+  --primary: #7c6cf6;
   --primary-foreground: #ffffff;
-  --destructive: #b3261e;
-  --ring: #4f46e5;
-  --sidebar: #f5f3f0;
-  --sidebar-border: #e7e4df;
-  --panel: #ffffff;
+  --destructive: #ef4444;
+  --ring: #6366f1;
+  --sidebar: #050d17;
+  --sidebar-border: #172438;
+  --panel: #09131f;
 
-  --canvas: #faf9f7;
-  --canvas-foreground: #1b1b1f;
-  --canvas-muted: #6b6862;
-  --canvas-card: #ffffff;
-  --canvas-card-foreground: #1b1b1f;
-  --canvas-card-border: #e7e4df;
+  --canvas: #01040a;
+  --canvas-foreground: #e9edf5;
+  --canvas-muted: #8391a6;
+  --canvas-card: #070c14;
+  --canvas-card-foreground: #e9edf5;
+  --canvas-card-border: #152334;
 
-  /* Elevation — soft shadows instead of borders wherever possible. */
-  --shadow-sm: 0 1px 2px rgba(24, 22, 18, 0.05);
-  --shadow-md: 0 2px 8px rgba(24, 22, 18, 0.07);
-  --shadow-lg: 0 12px 32px rgba(24, 22, 18, 0.12);
+  /* Orrery accents and glass surfaces. */
+  --lens: #a78bfa;
+  --primary-soft: #b4a7fb;
+  --glass: rgba(5, 9, 17, 0.86);
+  --glass-border: rgba(40, 58, 88, 0.55);
+  --text-faint: #5f6d82;
+
+  /* Elevation — hairlines carry structure, shadows stay deep and quiet. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
 
   /* Semantic entity colors — the single source for graph clusters, entity
      chips and status. Components read these tokens, never literals. */
-  --entity-agent: #7c5cf5;
-  --entity-project: #2563eb;
-  --entity-workspace: #16a34a;
-  --entity-knowledge: #d97706;
-  --entity-memory: #db2777;
-  --entity-tool: #ea580c;
-  --entity-source: #0891b2;
-  --entity-external: #6b6862;
-  --entity-conversation: #4f46e5;
+  --entity-agent: #a98bf5;
+  --entity-project: #e09a52;
+  --entity-workspace: #57c2a8;
+  --entity-knowledge: #4a89c4;
+  --entity-memory: #57c2a8;
+  --entity-tool: #dd8a4c;
+  --entity-source: #5c9fe0;
+  --entity-external: #b57cf0;
+  --entity-conversation: #7c6cf6;
 
   /* Status */
-  --status-online: #16a34a;
-  --status-busy: #d97706;
-  --status-error: #b3261e;
-  --status-idle: #9a968e;
+  --status-online: #10b981;
+  --status-busy: #f59e0b;
+  --status-error: #ef4444;
+  --status-idle: #5f6d82;
 
-  /* Release rail.
-
-     Four values, not eight. The rail communicates through line continuity and
-     marker position; colour is reserved for the two states that need an
+  /* Release rail. Colour is reserved for the two states that need an
      operator to look — a revision that is not where it should be, and a
      transition that failed. Everything else is ink and grey. */
-  --rail-carried: #1b1b1f;
-  --rail-pending: #cfcbc4;
-  --rail-attention: #b45309;
-  --rail-severed: #b3261e;
-  --rail-marker: #4f46e5;
+  --rail-carried: #e9edf5;
+  --rail-pending: #2a3a52;
+  --rail-attention: #f59e0b;
+  --rail-severed: #ef4444;
+  --rail-marker: #7c6cf6;
 }
 
 /* Legacy dark shell — every screen still rendered by components/layout/AppShell. */
@@ -238,7 +241,7 @@ body {
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
