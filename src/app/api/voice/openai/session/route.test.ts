@@ -12,18 +12,19 @@ vi.mock("@/lib/voice/telemetry", () => ({ startVoiceSessionTelemetry: mocks.star
 
 import { POST } from "./route";
 
-function request(body: unknown) {
+function request(body: Record<string, unknown>) {
+  const withOffer = { sdp: "v=0 offer", ...body };
   return new Request("http://localhost/api/voice/openai/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(withOffer),
   }) as unknown as Parameters<typeof POST>[0];
 }
 
 /** Captures the session payload sent to the live voice provider. */
 function stubProvider() {
   const fetchMock = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ value: "secret-abc", expires_at: 123 }), { status: 200 }),
+    new Response(JSON.stringify({ session: { id: "live-1" }, transport: { type: "webrtc", sdp: "v=0 answer" } }), { status: 200 }),
   );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -65,50 +66,78 @@ describe("POST /api/voice/openai/session", () => {
     expect(response.status).toBe(400);
   });
 
-  it("opens Lisa's session with the Sol voice and her own brain", async () => {
+  it("opens Lisa's session with the Gleam voice and her own brain", async () => {
     const fetchMock = stubProvider();
     const response = await POST(request({ agentId: "hermes-lisa" }));
     expect(response.status).toBe(200);
 
     const session = sentSession(fetchMock);
-    expect(session.audio.output.voice).toBe("sol");
+    expect(session.audio.output.voice).toBe("gleam");
     expect(session.model).toBe("gpt-live-1");
     expect(session.instructions).toContain("Hermes Lisa");
 
     const payload = await response.json();
     expect(payload.reasoningModel).toBe("deepseek/deepseek-v4.1-flash");
-    expect(payload.voice).toBe("sol");
+    expect(payload.voice).toBe("gleam");
   });
 
-  it("opens Nathan2's session with the Spruce voice and his own brain", async () => {
+  it("opens Nathan2's session with the Meridian voice and his own brain", async () => {
     mocks.findRoom.mockResolvedValue({ id: "room-2", agentIds: ["hermes-nathan2"] });
     const fetchMock = stubProvider();
     const response = await POST(request({ agentId: "hermes-nathan2", roomId: "room-2" }));
     expect(response.status).toBe(200);
 
     const session = sentSession(fetchMock);
-    expect(session.audio.output.voice).toBe("spruce");
+    expect(session.audio.output.voice).toBe("meridian");
     expect(session.instructions).toContain("Hermes Nathan2");
 
     const payload = await response.json();
     expect(payload.reasoningModel).toBe("gpt-5.6-luna");
   });
 
+  it("talks to GPT-Live, not the Realtime API, where gleam and meridian exist", async () => {
+    const fetchMock = stubProvider();
+    await POST(request({ agentId: "hermes-lisa" }));
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.openai.com/v1/live/sessions");
+  });
+
   it("gives the live layer no reasoning authority of its own", async () => {
     const fetchMock = stubProvider();
     await POST(request({ agentId: "hermes-lisa" }));
     const session = sentSession(fetchMock);
-    // Exactly one tool: the bridge into Sentinel's own runtime.
-    expect(session.tools).toHaveLength(1);
-    expect(session.tools[0].name).toBe("sentinel_reasoning");
+    // Client delegation: every substantive turn comes back to Sentinel, and
+    // the live model is given no tools or backend model of its own.
+    expect(session.delegation).toEqual({ type: "client" });
+    expect(session.tools).toBeUndefined();
+    expect(session.instructions).toMatch(/delegat/i);
   });
 
-  it("supports barge-in so the user can interrupt mid-answer", async () => {
+  it("forwards the browser's offer and returns the answer without exposing the key", async () => {
     const fetchMock = stubProvider();
-    await POST(request({ agentId: "hermes-lisa" }));
-    const turnDetection = sentSession(fetchMock).audio.input.turn_detection;
-    expect(turnDetection.interrupt_response).toBe(true);
-    expect(turnDetection.create_response).toBe(true);
+    const response = await POST(request({ agentId: "hermes-lisa", sdp: "v=0 my-offer" }));
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(sent.transport).toEqual({ type: "webrtc", sdp: "v=0 my-offer" });
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer test-openai-key");
+
+    const text = await response.text();
+    expect(JSON.parse(text).sdp).toBe("v=0 answer");
+    expect(text).not.toContain("test-openai-key");
+  });
+
+  it("requires a WebRTC offer", async () => {
+    const fetchMock = stubProvider();
+    const response = await POST(request({ agentId: "hermes-lisa", sdp: "" }));
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a provider rejection without leaking its internals", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Invalid value: 'gleam'." } }), { status: 400 }),
+    ));
+    const response = await POST(request({ agentId: "hermes-lisa" }));
+    expect(response.status).toBe(502);
+    expect((await response.json()).error).toContain("Invalid value");
   });
 
   it("requires an owned room when roomId is supplied", async () => {

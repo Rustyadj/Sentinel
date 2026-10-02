@@ -29,15 +29,12 @@ export interface AgentVoiceConfig {
   readonly reasoningModel: string;
   /** Used only when `reasoningModel` is unavailable, never for quality escalation. */
   readonly fallbackModel: string;
-  /** Speech-to-text model for live transcripts. */
-  readonly transcriptionModel: string;
 }
 
 export const CANONICAL_VOICE_AGENT_IDS = ["hermes-lisa", "hermes-nathan2"] as const;
 export type VoiceAgentId = (typeof CANONICAL_VOICE_AGENT_IDS)[number];
 
 export const GPT_LIVE_VOICE_MODEL = "gpt-live-1";
-export const GPT_LIVE_TRANSCRIPTION_MODEL = "gpt-live-transcribe";
 
 /**
  * Aliases accepted from clients, each mapping to exactly one canonical id.
@@ -61,21 +58,19 @@ const BASE_CONFIG: Readonly<Record<VoiceAgentId, AgentVoiceConfig>> = {
     agentId: "hermes-lisa",
     voiceProvider: "openai",
     voiceModel: GPT_LIVE_VOICE_MODEL,
-    voice: "sol",
+    voice: "gleam",
     reasoningProvider: "openrouter",
     reasoningModel: "deepseek/deepseek-v4.1-flash",
     fallbackModel: "deepseek/deepseek-v4.1-flash",
-    transcriptionModel: GPT_LIVE_TRANSCRIPTION_MODEL,
   },
   "hermes-nathan2": {
     agentId: "hermes-nathan2",
     voiceProvider: "openai",
     voiceModel: GPT_LIVE_VOICE_MODEL,
-    voice: "spruce",
+    voice: "meridian",
     reasoningProvider: "openai",
     reasoningModel: "gpt-5.6-luna",
     fallbackModel: "gpt-5.6-luna",
-    transcriptionModel: GPT_LIVE_TRANSCRIPTION_MODEL,
   },
 };
 
@@ -111,7 +106,6 @@ export function resolveAgentVoiceConfig(
     voice: override("VOICE", base.voice),
     reasoningModel: override("REASONING_MODEL", base.reasoningModel),
     fallbackModel: override("FALLBACK_MODEL", base.fallbackModel),
-    transcriptionModel: override("TRANSCRIPTION_MODEL", base.transcriptionModel),
   };
 }
 
@@ -119,8 +113,9 @@ export function resolveAgentVoiceConfig(
  * Identity and speaking style for the live layer.
  *
  * This says nothing about *what* to think — it tells the live model to carry
- * the conversation and hand every substantive turn to Sentinel, because the
- * agent's real reasoning, memory and tools live there.
+ * the conversation and delegate every substantive turn. GPT-Live runs in
+ * client delegation mode: its delegations come to Sentinel, which runs them on
+ * the agent's own reasoning model, memory and tools and sends the result back.
  */
 export function liveSessionInstructions(config: AgentVoiceConfig): string {
   const identity =
@@ -132,40 +127,23 @@ export function liveSessionInstructions(config: AgentVoiceConfig): string {
 
 You are the live voice of this agent, not its mind. You carry the spoken conversation: listen, acknowledge briefly, and speak answers naturally. Prefer short replies. Ask only one clarification at a time. Never read markdown syntax aloud.
 
-You do not answer substantive questions yourself. For anything beyond a greeting, an acknowledgement, or a clarifying question, call ${SENTINEL_REASONING_TOOL} with the user's request and speak the answer it returns. That call reaches this agent's own reasoning model, memory, and tools — it is the only path to them, and answering from your own knowledge instead would be speaking for an agent you are not.
+Delegation policy:
+Backend: this agent's own reasoning model, memory and tools. It is the one who actually does work and knows facts.
 
-Call ${SENTINEL_REASONING_TOOL} silently. Do not say filler such as "hold on", "one moment", "give me a second" or "let me check" before or while it runs — a short silence is better. If the call is still running after a few seconds, one brief acknowledgement is enough.
+Delegate to the backend when:
+- The user asks a question that needs facts, current information or careful reasoning.
+- The user asks you to do, check, find, make, fix, run or remember anything.
+- A correction changes work already requested.
 
-When the tool returns \`data\` instead of a finished answer, it is the literal result of a lookup: present only what it contains, briefly and naturally, and add nothing it does not say. If it does not answer the question, say so.
+Do not delegate when:
+- The user greets you, makes small talk, or asks you to repeat a result you were already given.
+- You need one brief clarification to understand the request.
+
+Never answer a substantive question from your own knowledge: that would be speaking for an agent you are not. Delegate quietly. Do not say filler such as "hold on", "one moment", "give me a second" or "let me check" before or while the backend works — a short silence is better. If the work is still running after a few seconds, one brief acknowledgement is enough.
+
+When the backend returns a lookup result, present only what it contains, briefly and naturally, and add nothing it does not say. If it does not answer the question, say so.
 
 If the user speaks while an answer is pending or being spoken, stop and listen: their new words replace the old request.
 
-Never claim an action was completed unless a tool result proves it.`;
+Never claim an action was completed unless the backend result confirms it.`;
 }
-
-export const SENTINEL_REASONING_TOOL = "sentinel_reasoning";
-
-/**
- * The single tool the live layer is given.
- *
- * It is not an "escalation" — there is no cheap path that answers first and a
- * better one behind a judgement call. Reasoning always leaves the live model,
- * because that is the only way voice and typed chat stay the same agent.
- */
-export const SENTINEL_REASONING_TOOL_DEFINITION = {
-  type: "function",
-  name: SENTINEL_REASONING_TOOL,
-  description:
-    "Send the user's request to this agent's own reasoning model, memory and tools in Sentinel, and receive the answer to speak. Required for every substantive turn.",
-  parameters: {
-    type: "object",
-    properties: {
-      request: {
-        type: "string",
-        description: "The user's request, verbatim where possible.",
-      },
-    },
-    required: ["request"],
-    additionalProperties: false,
-  },
-} as const;

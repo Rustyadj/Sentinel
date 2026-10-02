@@ -2,11 +2,7 @@ import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
-import {
-  SENTINEL_REASONING_TOOL_DEFINITION,
-  liveSessionInstructions,
-  resolveAgentVoiceConfig,
-} from "@/lib/voice/agent-voice-config";
+import { liveSessionInstructions, resolveAgentVoiceConfig } from "@/lib/voice/agent-voice-config";
 import { startVoiceSessionTelemetry } from "@/lib/voice/telemetry";
 import { warmRuntimeChat } from "@/lib/agents/runtime/chat-routing";
 import { warmSystemOne } from "@/lib/system-one/turn";
@@ -17,6 +13,17 @@ interface SessionRequestBody {
   agentId?: string;
   roomId?: string;
   language?: string;
+  /** The browser's WebRTC offer; this route exchanges it for the answer with the project key. */
+  sdp?: string;
+}
+
+/** An SDP offer is a few KB; anything near this is not one. */
+const MAX_SDP_BYTES = 64 * 1024;
+
+interface LiveSessionPayload {
+  session?: { id?: string };
+  transport?: { sdp?: string };
+  error?: { message?: string };
 }
 
 export async function POST(req: NextRequest) {
@@ -36,6 +43,10 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  if (typeof body.sdp !== "string" || !body.sdp.trim() || body.sdp.length > MAX_SDP_BYTES) {
+    return NextResponse.json({ error: "A WebRTC offer is required" }, { status: 400 });
   }
 
   // Refuses an absent or unknown agentId rather than defaulting to one — the
@@ -74,7 +85,12 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n\n");
 
-  const openAIResponse = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+  // GPT-Live (/v1/live/sessions), not the Realtime API: the GPT-Live voices
+  // (gleam, meridian, …) do not exist on /v1/realtime. There is no ephemeral
+  // token here — the offer is exchanged server-side, so the project key never
+  // reaches the browser. Delegation is "client": every substantive turn comes
+  // back to Sentinel, which runs it on the agent's own brain.
+  const openAIResponse = await fetch("https://api.openai.com/v1/live/sessions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -82,40 +98,21 @@ export async function POST(req: NextRequest) {
       "OpenAI-Safety-Identifier": createHash("sha256").update(user.id).digest("hex"),
     },
     body: JSON.stringify({
-      expires_after: { anchor: "created_at", seconds: 600 },
       session: {
-        type: "realtime",
         model: config.voiceModel,
-        output_modalities: ["audio"],
         instructions,
-        audio: {
-          input: {
-            transcription: { model: config.transcriptionModel },
-            noise_reduction: { type: "far_field" },
-            // Full duplex: the model listens while speaking and yields when
-            // the user starts talking, which is what makes barge-in work.
-            turn_detection: {
-              type: "semantic_vad",
-              create_response: true,
-              interrupt_response: true,
-            },
-          },
-          output: { voice: config.voice },
-        },
-        tools: [SENTINEL_REASONING_TOOL_DEFINITION],
-        tool_choice: "auto",
+        audio: { output: { voice: config.voice } },
+        delegation: { type: "client" },
       },
+      transport: { type: "webrtc", sdp: body.sdp },
     }),
     cache: "no-store",
   });
 
-  const payload = (await openAIResponse.json().catch(() => null)) as {
-    value?: string;
-    expires_at?: number;
-    error?: { message?: string };
-  } | null;
+  const payload = (await openAIResponse.json().catch(() => null)) as LiveSessionPayload | null;
+  const answer = payload?.transport?.sdp;
 
-  if (!openAIResponse.ok || !payload?.value) {
+  if (!openAIResponse.ok || !answer) {
     const detail = payload?.error?.message?.slice(0, 240);
     return NextResponse.json(
       { error: detail || "The live voice provider could not create a session" },
@@ -124,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Warm the agent's runtime, read-only tools and System 1 connection while
-  // the browser is still negotiating WebRTC, so the first spoken turn does not
+  // the browser finishes connecting, so the first spoken turn does not
   // pay for it. Fire-and-forget: none of it can fail the session.
   void warmRuntimeChat(config.agentId).catch(() => false);
   void warmSystemOne(config.agentId).catch(() => undefined);
@@ -138,13 +135,11 @@ export async function POST(req: NextRequest) {
   }).catch(() => null);
 
   return NextResponse.json({
-    clientSecret: payload.value,
-    expiresAt: payload.expires_at,
+    sdp: answer,
     sessionId,
     agentId: config.agentId,
     voice: config.voice,
     voiceModel: config.voiceModel,
     reasoningModel: config.reasoningModel,
-    transcriptionModel: config.transcriptionModel,
   });
 }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   GPT_LIVE_VOICE_MODEL,
-  SENTINEL_REASONING_TOOL,
   liveSessionInstructions,
   resolveAgentVoiceConfig,
 } from "./agent-voice-config";
@@ -9,7 +8,7 @@ import {
 describe("per-agent voice configuration", () => {
   it("gives Lisa the Sol voice and DeepSeek V4.1 Flash as her brain", () => {
     const lisa = resolveAgentVoiceConfig("hermes-lisa")!;
-    expect(lisa.voice).toBe("sol");
+    expect(lisa.voice).toBe("gleam");
     expect(lisa.voiceModel).toBe(GPT_LIVE_VOICE_MODEL);
     expect(lisa.reasoningModel).toBe("deepseek/deepseek-v4.1-flash");
     expect(lisa.reasoningProvider).toBe("openrouter");
@@ -17,7 +16,7 @@ describe("per-agent voice configuration", () => {
 
   it("gives Nathan2 the Spruce voice and GPT-5.6 Luna as his brain", () => {
     const nathan = resolveAgentVoiceConfig("hermes-nathan2")!;
-    expect(nathan.voice).toBe("spruce");
+    expect(nathan.voice).toBe("meridian");
     expect(nathan.voiceModel).toBe(GPT_LIVE_VOICE_MODEL);
     expect(nathan.reasoningModel).toBe("gpt-5.6-luna");
     expect(nathan.reasoningProvider).toBe("openai");
@@ -54,13 +53,13 @@ describe("per-agent voice configuration", () => {
     const env = { SENTINEL_VOICE_HERMES_LISA_VOICE: "cedar" };
     expect(resolveAgentVoiceConfig("hermes-lisa", env)?.voice).toBe("cedar");
     // Nathan2 is untouched by an override aimed at Lisa.
-    expect(resolveAgentVoiceConfig("hermes-nathan2", env)?.voice).toBe("spruce");
+    expect(resolveAgentVoiceConfig("hermes-nathan2", env)?.voice).toBe("meridian");
   });
 
   it("tells the live layer it is the voice, not the mind", () => {
     const lisa = liveSessionInstructions(resolveAgentVoiceConfig("hermes-lisa")!);
     expect(lisa).toContain("Hermes Lisa");
-    expect(lisa).toContain(SENTINEL_REASONING_TOOL);
+    expect(lisa).toMatch(/delegat/i);
     expect(lisa).toMatch(/not its mind/i);
 
     const nathan = liveSessionInstructions(resolveAgentVoiceConfig("hermes-nathan2")!);

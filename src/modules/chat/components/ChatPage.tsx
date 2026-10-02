@@ -24,6 +24,7 @@ import { useMemoryStore } from "@/store/useMemoryStore";
 import { useKeyStore } from "@/store/useKeyStore";
 import { AGENT_TEMPLATES } from "@/lib/constants";
 import type { Agent } from "@/types";
+import { VoiceChatButton, VoiceChatOverlay, supportsVoiceChat } from "./VoiceChat";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -554,6 +555,7 @@ export function ChatPage() {
     AGENT_RUNTIME_MODE[AGENT_TEMPLATES[0]?.id ?? "hermes-lisa"]?.mode ?? "model_chat"
   );
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -566,6 +568,17 @@ export function ChatPage() {
       : null);
 
   const selectedTemplate = AGENT_TEMPLATES.find((a) => a.id === selectedAgentId);
+  const voiceAgent =
+    selectedTemplate && supportsVoiceChat(selectedTemplate.id)
+      ? {
+          id: selectedTemplate.id,
+          name: selectedTemplate.name,
+          avatar: selectedTemplate.avatar,
+          color: selectedTemplate.color,
+        }
+      : null;
+  // The session route refuses a room that does not belong to the speaking agent.
+  const voiceRoomId = activeRoom?.agentIds.includes(selectedAgentId) ? activeRoom.id : undefined;
 
   const activeProject = activeRoom?.projectId
     ? projects.find((p) => p.id === activeRoom.projectId) ?? null
@@ -631,6 +644,12 @@ export function ChatPage() {
       setMessages([]);
     }
   }, []);
+
+  // Spoken turns are saved to the room by the voice reasoning route; reload so they show up.
+  const endVoiceChat = useCallback(() => {
+    setVoiceOpen(false);
+    if (activeRoom) void selectRoom(activeRoom);
+  }, [activeRoom, selectRoom]);
 
   const createProject = useCallback(async () => {
     const name = window.prompt("Project name:");
@@ -904,6 +923,7 @@ export function ChatPage() {
               </div>
             )}
             </div>
+            <VoiceChatButton agent={voiceAgent} onClick={() => setVoiceOpen(true)} variant="pill" />
           </div>
         </div>
 
@@ -965,6 +985,7 @@ export function ChatPage() {
               placeholder={`Message ${selectedTemplate?.name ?? "agent"}…`}
               className="flex-1 bg-transparent text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none"
             />
+            <VoiceChatButton agent={voiceAgent} onClick={() => setVoiceOpen(true)} />
             <button
               onClick={() => void sendMessage()}
               disabled={!input.trim() || sending}
@@ -989,6 +1010,9 @@ export function ChatPage() {
         activeProject={activeProject}
         recentMemories={recentMemories}
       />
+      {voiceOpen && voiceAgent ? (
+        <VoiceChatOverlay agent={voiceAgent} roomId={voiceRoomId} onEnd={endVoiceChat} />
+      ) : null}
     </div>
   );
 }

@@ -34,6 +34,37 @@ tools on the one SDK MCP server. See [BOTS.md](BOTS.md).
   marks them high risk and they are off unless granted.
 - Bot tasks never retry after a session has started, because a retry could repeat tool effects.
 
+## ADR-005 — Live voice runs on GPT-Live (`/v1/live/sessions`) with client delegation
+
+**Date:** 2026-10-02
+**Status:** Accepted (amends ADR-003's transport; its principle stands)
+
+**Decision.** The live voice provider uses `POST /v1/live/sessions` with
+`delegation: { type: "client" }`, exchanging the browser's SDP offer on the
+server. Substantive turns arrive as `session.delegation.created` and are
+answered with `session.commentary.append`.
+
+**Why.**
+- Gleam and Meridian, the chosen voices, are GPT-Live voices. `/v1/realtime`
+  rejects them (verified), so the previous transport could not use them.
+- Client delegation keeps ADR-003 intact: the live model has no backend of its
+  own, and every turn runs on the agent's own model, memory and tools.
+- Server-side offer exchange means the project key never reaches the browser;
+  the old path minted an ephemeral token instead.
+
+**Rejected.**
+- *Responses delegation.* GPT-Live would call an OpenAI-hosted model for the
+  turn, putting a different mind behind the agent's identity — what ADR-003
+  exists to prevent.
+- *Older realtime voices (marin, cedar).* Works on the old transport but is not
+  the voice that was chosen.
+
+**Consequences.** A delegation carries no text, so the request is rebuilt from
+transcript fragments by timestamp, and transcripts may contain mistakes. The
+separate transcription model setting was removed (GPT-Live streams its own
+transcripts). Spoken context for short replies such as "yes" comes from the
+room's history, so a call with no room has none.
+
 ## ADR-004 — A System 1 decision layer routes paths, never models
 
 **Date:** 2026-09-26
@@ -120,8 +151,9 @@ See [voice/GPT_LIVE_ARCHITECTURE.md](voice/GPT_LIVE_ARCHITECTURE.md).
 live audio minutes and reasoning tokens separate because they are billed
 differently. `estimatedCostUsd` is null for models with no rate card entry —
 currently both agents' — because a confident zero is worse than an honest gap.
-The live provider's model and voice ids (`gpt-live-1`, `sol`, `spruce`) are
-configuration, not verified fact, and are unproven against the live API.
+The live provider's model and voice ids (`gpt-live-1`, `gleam`, `meridian`) are
+configuration. (Verified against the live API on 2026-10-02; see ADR-005, which
+also moved the transport.)
 
 ## ADR-002 — An unscoped client registration ceilings at every scope, not read-only
 
