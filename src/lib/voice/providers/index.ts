@@ -19,11 +19,13 @@ export const VOICE_PROVIDER_STORAGE_KEY = "sentinel.voice.provider";
 export function createVoiceProvider(): VoiceProvider {
   const stored =
     typeof window !== "undefined" ? window.localStorage.getItem(VOICE_PROVIDER_STORAGE_KEY) : null;
-  const provider = (stored ?? process.env.NEXT_PUBLIC_VOICE_PROVIDER ?? "browser_stt") as VoiceProviderName;
+  const provider = (stored ?? process.env.NEXT_PUBLIC_VOICE_PROVIDER ?? "openai_realtime") as VoiceProviderName;
 
   if (provider === "mock") return new MockVoiceProvider();
   if (provider === "openai_realtime") return new OpenAIRealtimeProvider();
   if (provider === "livekit") return new LiveKitVoiceProvider();
 
-  return new BrowserSpeechProvider();
+  if (provider === "browser_stt") return new BrowserSpeechProvider();
+
+  return new OpenAIRealtimeProvider();
 }

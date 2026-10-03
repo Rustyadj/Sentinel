@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { AudioLines, Loader2, Mic, MicOff, X } from "lucide-react";
-import { createVoiceProvider } from "@/lib/voice/providers";
+import { OpenAIRealtimeProvider } from "@/lib/voice/providers/openaiRealtime";
 import type { VoiceProvider, VoiceProviderConfig, VoiceStatus } from "@/lib/voice/types";
 import { resolveMissionRoom, sendVoiceTranscript } from "@/lib/chat/voiceBridge";
 import { useKeyStore } from "@/store/useKeyStore";
@@ -23,7 +23,7 @@ interface PersistentVoiceOrbProps {
   submitTranscript?: (text: string) => Promise<string>;
 }
 
-export function PersistentVoiceOrb({ providerFactory = createVoiceProvider, submitTranscript }: PersistentVoiceOrbProps) {
+export function PersistentVoiceOrb({ providerFactory = () => new OpenAIRealtimeProvider(), submitTranscript }: PersistentVoiceOrbProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [open, setOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -90,7 +90,7 @@ export function PersistentVoiceOrb({ providerFactory = createVoiceProvider, subm
         <div className="w-[min(310px,calc(100vw-88px))] rounded-xl border border-[#2a3342] bg-[#101821]/98 p-3 text-white shadow-[0_18px_55px_rgba(2,6,23,0.38)] backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-semibold">{labels[status]}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close voice status" className="flex h-7 w-7 items-center justify-center rounded text-[#8290a2] outline-none hover:bg-white/[0.05] hover:text-white focus-visible:ring-2 focus-visible:ring-violet-400/60"><X className="h-3.5 w-3.5" /></button></div>
           <div className="mt-2 flex h-5 items-center gap-[3px]" aria-hidden>{Array.from({ length: 12 }, (_, index) => <span key={index} className={cn("w-[2px] rounded-full", wave ? "animate-wave-bar bg-violet-300" : "h-1 bg-[#465264]")} style={wave ? { animationDelay: `${index * -75}ms` } : undefined} />)}</div>
-          <p className={cn("mt-2 min-h-8 text-[9px] leading-4", error ? "text-red-300" : "text-[#9eabba]")}>{error || response || transcript || "Use the orb to talk to Hermes through the existing Mission Control chat."}</p>
+          <p className={cn("mt-2 min-h-8 text-[9px] leading-4", error ? "text-red-300" : "text-[#9eabba]")}>{error || response || transcript || "Tap the orb to talk with Hermes Lisa live."}</p>
           <Link href="/chat" className="mt-2 inline-flex text-[9px] font-medium text-violet-300 outline-none hover:text-violet-200 focus-visible:ring-2 focus-visible:ring-violet-400/60">Open conversation</Link>
         </div>
       ) : null}
