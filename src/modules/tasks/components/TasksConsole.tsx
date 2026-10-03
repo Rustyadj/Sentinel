@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { GitBranch, FolderGit2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
@@ -84,7 +85,9 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
                 className="border-b border-[--canvas-card-border] last:border-0 hover:bg-[--canvas-card]/60"
               >
                 <td className="max-w-[280px] px-3 py-2.5">
-                  <div className="truncate font-medium text-[--canvas-foreground]">{task.title}</div>
+                  <Link href={`/tasks/${task.id}`} className="block truncate font-medium text-[--canvas-foreground] hover:underline">
+                    {task.title}
+                  </Link>
                   {task.project ? (
                     <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[--muted-foreground]">
                       <FolderGit2 className="h-3 w-3" /> {task.project.name}
