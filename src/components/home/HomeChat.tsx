@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { useKeyStore } from "@/store/useKeyStore";
 import { AGENT_TEMPLATES } from "@/lib/constants";
+import { VoiceChatButton, VoiceChatOverlay, supportsVoiceChat } from "@/modules/chat/components/VoiceChat";
 
 interface ChatMessage {
   id: string;
@@ -73,11 +74,16 @@ export function HomeChat({ onStreamingChange, onStreamEnd }: HomeChatProps) {
   const [sending, setSending] = useState(false);
   const [agentId, setAgentId] = useState(AGENT_TEMPLATES[0]?.id ?? "hermes-lisa");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const agent = AGENT_TEMPLATES.find((a) => a.id === agentId);
+  const voiceAgent =
+    agent && supportsVoiceChat(agent.id)
+      ? { id: agent.id, name: agent.name, avatar: agent.avatar, color: agent.color }
+      : null;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -276,6 +282,7 @@ export function HomeChat({ onStreamingChange, onStreamEnd }: HomeChatProps) {
               placeholder={`Message ${agent?.name ?? "your agent"}…`}
               className="max-h-40 flex-1 resize-none bg-transparent text-sm leading-relaxed text-[--foreground] outline-none placeholder:text-[--muted-foreground]"
             />
+            <VoiceChatButton agent={voiceAgent} onClick={() => setVoiceOpen(true)} />
             <button
               onClick={() => void send()}
               disabled={!input.trim() || sending}
@@ -294,6 +301,9 @@ export function HomeChat({ onStreamingChange, onStreamEnd }: HomeChatProps) {
           </p>
         </div>
       </div>
+      {voiceOpen && voiceAgent ? (
+        <VoiceChatOverlay agent={voiceAgent} onEnd={() => setVoiceOpen(false)} />
+      ) : null}
     </div>
   );
 }

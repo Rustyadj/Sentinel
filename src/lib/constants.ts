@@ -16,6 +16,20 @@ export const AGENT_TEMPLATES: Omit<Agent, "status">[] = [
     memoryScope: "org",
   },
   {
+    id: "hermes-nathan2",
+    name: "Hermes Nathan2",
+    role: "MobileOps Field Specialist",
+    avatar: "🛠️",
+    color: "#F59E0B",
+    description: "MobileOps ICF field-operations agent",
+    skills: ["field-ops", "documents", "scheduling", "reporting"],
+    model: "gpt-5.6-luna",
+    systemPrompt:
+      "You are Hermes Nathan2, the MobileOps ICF field-operations specialist in Sentinel OS. Be warm, direct, concise and action-oriented.",
+    toolPermissions: ["all"],
+    memoryScope: "org",
+  },
+  {
     id: "claude-code",
     name: "Claude Code",
     role: "Senior Engineer",
