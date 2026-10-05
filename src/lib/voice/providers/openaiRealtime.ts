@@ -103,7 +103,8 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
       // GPT-Live requires this exact label.
       const channel = peer.createDataChannel("oai-events");
       this.channel = channel;
-      channel.addEventListener("open", () => this.setStatus("listening"));
+      // Opening the SCTP channel only means WebRTC negotiated. GPT-Live is not
+      // ready for application traffic until it emits session.started.
       channel.addEventListener("message", (event) => this.handleEvent(event.data));
       channel.addEventListener("close", () => {
         this.resolveClosed?.();
@@ -118,6 +119,10 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
 
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
+      await waitForIceGathering(peer);
+
+      const offerSdp = peer.localDescription?.sdp;
+      if (!offerSdp) throw new Error("The browser did not create a WebRTC offer");
 
       // The offer goes to Sentinel, which exchanges it with the project key.
       // No credential, ephemeral or otherwise, is ever handed to the browser.
@@ -129,7 +134,7 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
           agentId: config.agentId,
           roomId: config.roomId,
           language: config.language,
-          sdp: offer.sdp,
+          sdp: offerSdp,
         }),
       });
       const session = (await sessionResponse.json().catch(() => null)) as
@@ -209,6 +214,9 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
     }
 
     switch (event.type) {
+      case "session.started":
+        this.setStatus("listening");
+        break;
       case "session.input_transcript.delta": {
         const fragment = this.toFragment(event);
         if (!fragment) break;
@@ -458,6 +466,31 @@ export class OpenAIRealtimeProvider implements VoiceProvider {
     this.status = next;
     this.config?.onStatusChange?.(next);
   }
+}
+
+/**
+ * setLocalDescription starts asynchronous ICE gathering. Sending offer.sdp
+ * immediately can omit candidates in browsers without trickle ICE support on
+ * the server exchange, leaving an otherwise valid GPT-Live session unable to
+ * establish media. Send the browser's final localDescription instead.
+ */
+async function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
+  if (peer.iceGatheringState === "complete") return;
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      peer.removeEventListener("icegatheringstatechange", onState);
+      reject(new Error("Timed out while gathering WebRTC connection candidates"));
+    }, 10_000);
+    const onState = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      clearTimeout(timeout);
+      peer.removeEventListener("icegatheringstatechange", onState);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onState);
+    onState();
+  });
 }
 
 /** Splits a long answer on sentence boundaries into appends the live model can take. */

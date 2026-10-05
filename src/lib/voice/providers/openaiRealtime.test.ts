@@ -35,6 +35,8 @@ const track = { enabled: true, stop: vi.fn() };
 
 class FakePeer {
   connectionState = "connected";
+  iceGatheringState = "complete";
+  localDescription: { type: string; sdp: string } | null = null;
   remoteAnswer: string | undefined;
   ontrack: unknown = null;
   addTrack() {}
@@ -47,7 +49,9 @@ class FakePeer {
   async createOffer() {
     return { type: "offer", sdp: "v=0 offer" };
   }
-  async setLocalDescription() {}
+  async setLocalDescription(description: { type: string; sdp: string }) {
+    this.localDescription = description;
+  }
   async setRemoteDescription(description: { sdp: string }) {
     this.remoteAnswer = description.sdp;
   }
@@ -114,7 +118,7 @@ afterEach(() => {
 });
 
 describe("OpenAIRealtimeProvider (GPT-Live, client delegation)", () => {
-  it("sends its offer to Sentinel, never to OpenAI, and goes live on the channel opening", async () => {
+  it("sends its gathered offer to Sentinel, never to OpenAI, and waits for session.started", async () => {
     const { config } = await startProvider();
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/voice/openai/session");
@@ -122,6 +126,8 @@ describe("OpenAIRealtimeProvider (GPT-Live, client delegation)", () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("openai.com"))).toBe(false);
 
     channel.fire("open");
+    expect(config.onStatusChange).not.toHaveBeenCalledWith("listening");
+    channel.emit({ type: "session.started", session: { id: "live-1" } });
     expect(config.onStatusChange).toHaveBeenCalledWith("listening");
   });
 
