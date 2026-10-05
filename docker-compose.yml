@@ -128,6 +128,8 @@ services:
       SENTINEL_AGENT_MCP_HERMES_NATHAN2_URL: ${SENTINEL_AGENT_MCP_HERMES_NATHAN2_URL:-}
       SENTINEL_AGENT_MCP_HERMES_NATHAN2_TOKEN: ${SENTINEL_AGENT_MCP_HERMES_NATHAN2_TOKEN:-}
       SENTINEL_AGENT_MCP_HERMES_NATHAN2_NAME: ${SENTINEL_AGENT_MCP_HERMES_NATHAN2_NAME:-mobileops}
+      MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
+      MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
       AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
@@ -198,6 +200,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
+      MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
       REDIS_URL: redis://redis:6379
       LEARNING_WORKER_CONCURRENCY: ${LEARNING_WORKER_CONCURRENCY:-2}
       NEURAL_SWEEP_SECRET: ${NEURAL_SWEEP_SECRET:-}
@@ -229,6 +233,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
+      MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
       REDIS_URL: redis://redis:6379
       ORCHESTRATION_WORKER_CONCURRENCY: ${ORCHESTRATION_WORKER_CONCURRENCY:-1}
       AGENT_PROJECT_ROOT: ${AGENT_PROJECT_ROOT:-/opt/sentinel-os/projects}
