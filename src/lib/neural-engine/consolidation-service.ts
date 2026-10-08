@@ -170,7 +170,8 @@ export interface EpisodeCluster {
 /**
  * Group candidates into clusters that could support one generalization.
  *
- * Grouped by (agent, direction of outcome) and then by wording similarity: five
+ * Grouped by (agent, direction of outcome) and then by wording similarity,
+ * order-independently: five
  * failures by one agent on one recurring problem are a pattern; a success and a
  * failure are not the same claim and must never be merged into one. Distinct
  * experience ids are the unit of evidence, so the same episode can never
@@ -185,27 +186,38 @@ export function clusterEpisodes(candidates: ConsolidationCandidate[]): EpisodeCl
 
   const clusters: EpisodeCluster[] = [];
   for (const members of byAgentDirection.values()) {
-    const buckets: Array<{ tokens: Set<string>; members: ConsolidationCandidate[] }> = [];
-    for (const candidate of members) {
-      const tokens = objectiveTokens(candidate.objective);
-      const match = buckets.find((bucket) => tokenSimilarity(bucket.tokens, tokens) >= SIMILARITY_THRESHOLD);
-      if (match) {
-        match.members.push(candidate);
-        for (const token of tokens) match.tokens.add(token);
-      } else {
-        buckets.push({ tokens: new Set(tokens), members: [candidate] });
+    // Connected components over pairwise wording similarity. An earlier version
+    // compared each episode against a bucket's growing *union* of tokens: the
+    // union only gets bigger, so similarity fell as the bucket filled, and
+    // whether three near-identical reports clustered depended on the order they
+    // arrived in (equal-priority rows come back from the database in arbitrary
+    // order). Linking on pairs makes the outcome a property of the episodes, not
+    // of their ordering.
+    const tokens = members.map((member) => objectiveTokens(member.objective));
+    const parent = members.map((_, index) => index);
+    const find = (index: number): number => {
+      while (parent[index] !== index) { parent[index] = parent[parent[index]]; index = parent[index]; }
+      return index;
+    };
+    for (let i = 0; i < members.length; i += 1) {
+      for (let j = i + 1; j < members.length; j += 1) {
+        if (tokenSimilarity(tokens[i], tokens[j]) >= SIMILARITY_THRESHOLD) parent[find(j)] = find(i);
       }
     }
+    const components = new Map<number, number[]>();
+    members.forEach((_, index) => components.set(find(index), [...(components.get(find(index)) ?? []), index]));
 
-    for (const bucket of buckets) {
-      const experienceIds = [...new Set(bucket.members.map((m) => m.experienceId))];
+    for (const indexes of components.values()) {
+      const bucketMembers = indexes.map((index) => members[index]);
+      const experienceIds = [...new Set(bucketMembers.map((m) => m.experienceId))].sort();
       if (experienceIds.length < MIN_EPISODES_FOR_GENERALIZATION) continue;
+      const bucketTokens = new Set(indexes.flatMap((index) => [...tokens[index]]));
       clusters.push({
-        agentId: bucket.members[0].agentId,
-        domain: [...bucket.tokens].sort().slice(0, 4).join("-") || "general",
-        succeeded: bucket.members[0].succeeded,
+        agentId: bucketMembers[0].agentId,
+        domain: [...bucketTokens].sort().slice(0, 4).join("-") || "general",
+        succeeded: bucketMembers[0].succeeded,
         experienceIds,
-        meanScore: bucket.members.reduce((sum, m) => sum + m.observedScore, 0) / bucket.members.length,
+        meanScore: bucketMembers.reduce((sum, m) => sum + m.observedScore, 0) / bucketMembers.length,
       });
     }
   }

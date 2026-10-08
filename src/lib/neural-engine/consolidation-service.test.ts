@@ -102,6 +102,41 @@ describe("clustering", () => {
     expect(new Set(clusters.map((c) => c.succeeded))).toEqual(new Set([true, false]));
   });
 
+  it("clusters the same episodes whatever order the database returns them in", () => {
+    // Regression: these three reports are pairwise similar, but comparing each
+    // against a bucket's growing token union dropped the third below threshold
+    // when the first two arrived first. Equal-priority rows have no defined
+    // order, so the same data clustered in some runs and not others.
+    const objectives = [
+      "codex keeps breaking the prisma migration step",
+      "prisma migration step breaking again",
+      "breaking prisma migration once more",
+    ];
+    const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    for (const order of permutations) {
+      const clusters = clusterEpisodes(order.map((i) => ({
+        ...base, agentId: "codex", experienceId: `e${i}`, objective: objectives[i],
+        succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3,
+      })));
+      expect(clusters, `order ${order.join("")}`).toHaveLength(1);
+      expect(clusters[0].experienceIds).toEqual(["e0", "e1", "e2"]);
+    }
+  });
+
+  it("keeps unrelated problems from the same agent in separate clusters", () => {
+    const failing = (id: string, objective: string) => ({ ...base, experienceId: id, objective, succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3 });
+    const clusters = clusterEpisodes([
+      failing("m1", "prisma migration step breaking"),
+      failing("b1", "billing invoice exporter timing out"),
+      failing("m2", "breaking prisma migration step again"),
+      failing("b2", "invoice exporter billing timing out again"),
+      failing("m3", "prisma migration breaking once more"),
+      failing("b3", "billing exporter invoice timing out"),
+    ]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters.map((c) => c.experienceIds).sort()).toEqual([["b1", "b2", "b3"], ["m1", "m2", "m3"]]);
+  });
+
   it("recognises episodes describing the same problem despite differing wording", () => {
     const a = objectiveTokens("Fix the failing prisma migration");
     const b = objectiveTokens("prisma migration failing again");
