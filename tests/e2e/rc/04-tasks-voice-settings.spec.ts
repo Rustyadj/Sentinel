@@ -14,6 +14,9 @@ test("owner opens the live Task detail view for a workspace task", async ({ brow
 
   await page.goto(`/tasks/${taskId}`);
   await expect(page.getByRole("heading", { name: "RC pour the north wall" })).toBeVisible();
+  // One app shell, not two: tasks/layout.tsx already provides it, and PR #41's own [id]/layout.tsx used to nest a second.
+  await expect(page.getByPlaceholder(/Search nodes, concepts/)).toHaveCount(1);
+  await expect(page.getByText("Control plane")).toHaveCount(1);
   await expect(page.getByText("Ownership")).toBeVisible();
   await expect(page.getByText("Repository")).toBeVisible();
   await expect(page.getByText("No orchestration events recorded for this task yet.")).toBeVisible();

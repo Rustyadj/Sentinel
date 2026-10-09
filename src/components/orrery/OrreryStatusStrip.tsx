@@ -27,7 +27,7 @@ export function OrreryStatusStrip({ notices, onRetry }: { notices: ReturnType<ty
   if (!notices.length) return null;
   const hasError = notices.some((n) => n.tone === "error");
   return (
-    <div data-orrery-ui role="status" aria-live="polite" className="pointer-events-none absolute left-1/2 top-3.5 z-[4] flex -translate-x-1/2 flex-col items-center gap-1.5 px-3">
+    <div data-orrery-ui role="status" aria-live="polite" className="pointer-events-none absolute left-3.5 right-3.5 top-3.5 z-[4] flex flex-col items-center gap-1.5 lg:left-[calc(min(468px,40%)+1.75rem)] xl:right-[calc(300px+1.75rem)]">
       {notices.map((notice) => (
         <div
           key={notice.id}

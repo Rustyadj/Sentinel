@@ -41,7 +41,12 @@ test("a chat reply streams in progressively and reaches the agent", async ({ bro
 test("the model picker lists the agent's real options and saves a different choice", async ({ browser }) => {
   const { page, context } = await signedIn(browser, "owner");
   await openChat(page);
-  const picker = page.getByRole("button", { name: /deepseek|gpt-|claude-/ }).first();
+  // The chip names the model of the agent this conversation is with — Lisa, not whichever agent happened to be active first.
+  const card = page.getByRole("complementary", { name: "Agent activity" }).getByRole("listitem").filter({ hasText: "Hermes Lisa" }).first();
+  const lisaModel = ((await card.innerText()).match(/[\w./-]*(?:deepseek|gpt|claude)[\w./-]*/) ?? [])[0];
+  expect(lisaModel, "Lisa's card names her model").toBeTruthy();
+  const picker = page.getByRole("button", { name: lisaModel });
+  await expect(picker).toBeVisible();
   await picker.click();
   const options = page.getByRole("radio");
   await expect(options.first()).toBeVisible();

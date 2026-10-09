@@ -40,20 +40,24 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string | undefined>(activeAgentId);
   const [settings, setSettings] = useState<ModelSettings | null>(null);
+  /** Which agent `settings` were read for: they say nothing about any other agent. */
+  const [settingsFor, setSettingsFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const agent = agents.find((a) => a.id === agentId) ?? agents.find((a) => a.id === activeAgentId);
-  const shownModel = settings?.config.runtimeModelId ?? agent?.model ?? "Model";
+  // Closed, the chip is about the agent the conversation is with, whatever the popover last looked at (it used to keep
+  // showing the agent that was active when the page mounted). Open, it follows the tab the user picked.
+  const agent = agents.find((a) => a.id === (open ? agentId : activeAgentId)) ?? agents.find((a) => a.id === activeAgentId);
+  const shownModel = (settingsFor === agent?.id ? settings?.config.runtimeModelId : undefined) ?? agent?.model ?? "Model";
 
   const load = useCallback(async (id: string) => {
-    setLoading(true); setError(null); setSettings(null);
+    setLoading(true); setError(null); setSettings(null); setSettingsFor(null);
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(id)}/model`, { cache: "no-store" });
       if (!res.ok) throw new Error(await readError(res));
-      setSettings((await res.json()) as ModelSettings);
+      setSettings((await res.json()) as ModelSettings); setSettingsFor(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load model settings");
     } finally {
@@ -78,7 +82,7 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await readError(res));
-      setSettings((await res.json()) as ModelSettings);
+      setSettings((await res.json()) as ModelSettings); setSettingsFor(agent.id);
       onChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save model settings");
