@@ -1,0 +1,108 @@
+# An isolated, disposable copy of Sentinel for verifying a release candidate in a real browser.
+#
+#   SENTINEL_RELEASE_SHA=<sha> docker compose -f deploy/verify/docker-compose.yml up -d
+#   ... run the suite (npm run test:rc) ...
+#   docker compose -f deploy/verify/docker-compose.yml down -v
+#
+# It uses the release's own images (sentinel-os-{app,migrate,worker}:<sha>, built by the root compose file),
+# its own Postgres/Redis on a private network, a fake Hermes dashboard instead of a real agent, no Docker
+# socket and no host mounts. Nothing here can reach production data, spend model credits, or call an
+# external tool. The only published ports are bound to 127.0.0.1.
+name: sentinel-rc-verify
+
+x-env: &env
+  DATABASE_URL: postgresql://rc:rc-disposable@postgres:5432/rc
+  REDIS_URL: redis://redis:6379
+  SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:?set SENTINEL_RELEASE_SHA to the release sha}
+  HERMES_ENDPOINT: http://fake-hermes:4900
+  HERMES_SESSION_TOKEN: rc-fake-token
+  HERMES_NATHAN2_ENDPOINT: ""
+  HERMES_LISA_USERNAME: ""
+  HERMES_LISA_PASSWORD: ""
+  AGENT_CONFIG_DIR: /opt/sentinel-os/agents
+  AGENT_LOG_DIR: /opt/sentinel-os/logs
+  AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment: { POSTGRES_USER: rc, POSTGRES_PASSWORD: rc-disposable, POSTGRES_DB: rc }
+    ports: ["127.0.0.1:55510:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U rc -d rc"], interval: 3s, timeout: 3s, retries: 20 }
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 128mb --maxmemory-policy noeviction
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 3s, timeout: 3s, retries: 20 }
+
+  migrate:
+    image: sentinel-os-migrate:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    command: npx prisma@6 migrate deploy
+    environment: { DATABASE_URL: "postgresql://rc:rc-disposable@postgres:5432/rc" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  fake-hermes:
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    working_dir: /app
+    command: node /app/fake-hermes.mjs
+    environment: { PORT: "4900" }
+    volumes: ["../../tests/e2e/support/fake-hermes.mjs:/app/fake-hermes.mjs:ro"]
+    ports: ["127.0.0.1:4900:4900"]
+    healthcheck: { test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4900/__calls').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""], interval: 3s, timeout: 3s, retries: 20 }
+
+  app:
+    image: sentinel-os-app:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    ports: ["127.0.0.1:3100:3000"]
+    environment:
+      <<: *env
+      NODE_ENV: production
+      AUTH_SECRET: rc-verify-only-secret-rc-verify-only-secret
+      AUTH_URL: http://127.0.0.1:3100
+      AUTH_TRUST_HOST: "true"
+      OPENAI_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      SYSTEM_ONE_MODE: "off"
+      SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA}
+    volumes: [agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      fake-hermes: { condition: service_healthy }
+    healthcheck: { test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"], interval: 5s, timeout: 5s, retries: 30, start_period: 20s }
+
+  orchestration-worker:
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    command: node_modules/.bin/tsx src/workers/orchestration-worker.ts
+    environment:
+      <<: *env
+      ORCHESTRATION_WORKER_CONCURRENCY: "2"
+      SENTINEL_INTERRUPT_RETRY_MS: "50"
+    volumes: [agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      fake-hermes: { condition: service_healthy }
+    healthcheck: { test: ["CMD-SHELL", "test -f /tmp/worker-heartbeat && test $$(( $$(date +%s) - $$(stat -c %Y /tmp/worker-heartbeat) )) -lt 60"], interval: 5s, timeout: 5s, retries: 20, start_period: 30s }
+
+  learning-worker:
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    command: node_modules/.bin/tsx src/workers/learning-worker.ts
+    environment: *env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck: { test: ["CMD-SHELL", "test -f /tmp/worker-heartbeat && test $$(( $$(date +%s) - $$(stat -c %Y /tmp/worker-heartbeat) )) -lt 60"], interval: 5s, timeout: 5s, retries: 20, start_period: 30s }
+
+volumes:
+  agent_configs:
+  agent_logs:
+  projects:

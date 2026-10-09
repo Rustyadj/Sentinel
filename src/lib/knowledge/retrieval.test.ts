@@ -12,6 +12,8 @@ describe("project memory isolation", () => {
       // superseded version never appears beside the belief that replaced it.
       shadowOnly: false,
       validTo: null,
+      // Retention: a memory past its deadline is gone for every question.
+      AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }] }],
     });
     expect(filters.note).toEqual({ projectId: "project-a" });
     expect(filters.decision).toEqual({

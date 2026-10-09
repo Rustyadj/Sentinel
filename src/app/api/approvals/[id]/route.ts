@@ -4,17 +4,34 @@ import { decideApproval } from "@/lib/workspaces";
 import { accessErrorResponse, requireWorkspacePermission } from "@/lib/workspaces/authorization";
 import { resumeAfterApproval, resumeMissionAfterApproval } from "@/lib/orchestration/orchestrator";
 import { resolveGuardianReview } from "@/lib/learning/guardian";
+import { HttpError, errorResponse as botErrorResponse, requireBotAdmin } from "@/lib/bots/api";
+import { resolveBotTaskApproval } from "@/lib/bots/tasks";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Context) {
   try {
     const { id } = await params;
-    const approval = await db.approvalRequest.findUniqueOrThrow({ where: { id }, select: { workspaceId: true, taskId: true, payload: true } });
+    const approval = await db.approvalRequest.findUniqueOrThrow({ where: { id }, select: { workspaceId: true, taskId: true, payload: true, type: true, status: true } });
     const user = await requireWorkspacePermission(approval.workspaceId, "approval.review");
     const body = (await req.json()) as { status?: "approved" | "rejected"; decisionNote?: string };
     if (body.status !== "approved" && body.status !== "rejected") {
       return NextResponse.json({ error: "status must be approved or rejected" }, { status: 400 });
+    }
+    // A bot's tool approval is not a plain status flip: approving starts the continuation task and
+    // closes the waiting one, rejecting closes it. Deciding it here without that left the bot task
+    // WAITING forever behind an approval that no longer showed as pending. It goes through the same
+    // resolver the bot task API uses, under the same rule (workspace owner/admin).
+    const botPayload = approval.payload as Record<string, unknown> | null;
+    if (approval.type === "bot_tool_call" && typeof botPayload?.runId === "string") {
+      try {
+        const admin = await requireBotAdmin(approval.workspaceId);
+        if (approval.status !== "pending") throw new HttpError("This approval has already been decided", 409);
+        await resolveBotTaskApproval(botPayload.runId, body.status === "approved" ? "approve" : "deny", { userId: admin.id, isAdmin: true });
+        return NextResponse.json(await db.approvalRequest.findUniqueOrThrow({ where: { id } }));
+      } catch (error) {
+        return botErrorResponse(error);
+      }
     }
     // Guardian tier-2 ("hold") task gates stash the originating GuardianDecision
     // id on this same ApprovalRequest instead of building a second review
