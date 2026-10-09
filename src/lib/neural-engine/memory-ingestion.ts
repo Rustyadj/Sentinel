@@ -33,8 +33,8 @@ export interface RememberInput {
   projectId?: string | null;
   /** Attributes the memory to a Sentinel bot. Required for scope "bot"; recorded at any scope. */
   botId?: string | null;
-  /** The memory stops being retrievable at this time (bitemporal validTo). Used for bot retention. */
-  validTo?: Date | null;
+  /** Retention deadline: the memory stays current and readable until then, and is not retrievable after. Used for bot retention. */
+  expiresAt?: Date | null;
   workspaceId?: string | null;
   tags?: string[];
   /** When the described event happened, for episodic ordering. */
@@ -115,7 +115,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
         projectId,
         workspaceId,
         botId,
-        validTo: input.validTo ?? null,
+        expiresAt: input.expiresAt ?? null,
         importanceScore: verdict.suggestedImportance,
         confidence: verdict.signals.confidence,
         provenanceClass: input.speaker === "user" ? "USER_PROVIDED" : "OBSERVED",

@@ -318,6 +318,11 @@ export function excludeFromRetrieval(options: RetrievalExclusionOptions = {}): P
   const base: Prisma.MemoryWhereInput = {
     state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] },
     shadowOnly: false,
+    // Retention, not supersession: a memory with a deadline is current and readable
+    // until it passes, then gone for every question, historical ones included. It
+    // is an AND entry so a caller spreading this next to its own OR cannot drop it;
+    // a caller that also supplies its own AND must merge, not overwrite.
+    AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
   };
   const intent = options.temporalIntent ?? "current";
   if (!includesSupersededMemories(intent)) {

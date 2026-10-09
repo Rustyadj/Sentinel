@@ -85,6 +85,16 @@ export async function redisReleaseLease(key: string, owner: string): Promise<voi
   } catch { /* release is best effort; lease expiry is the fallback */ }
 }
 
+/** Unconditional delete, for a lease whose owner is known to be gone. Prefer redisReleaseLease. */
+export async function redisDeleteKey(key: string): Promise<void> {
+  try {
+    const client = getRedis();
+    if (!client) return;
+    if (client.status === "wait") await client.connect();
+    await client.del(key);
+  } catch { /* expiry is the fallback */ }
+}
+
 export async function redisKeys(pattern: string): Promise<string[]> {
   try {
     const client = getRedis();

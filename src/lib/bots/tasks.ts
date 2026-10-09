@@ -13,7 +13,8 @@ import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { enqueueOrchestrationRun } from "@/lib/orchestration/queue";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { BotRunLog } from "./events";
-import { evaluateDelegation, type DelegationParent } from "./policy";
+import { activeCatalog, loadCatalog } from "./catalog";
+import { approvalKey, evaluateDelegation, resolveObservedTool, type DelegationParent } from "./policy";
 import { toBotRecord } from "./service";
 import { delegateTaskSchema, toBotTaskStatus, type BotTaskStatus, type DelegateTaskInput } from "./schema";
 
@@ -92,16 +93,24 @@ export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, 
   const bot = toBotRecord(row);
 
   // --- who may ask ---------------------------------------------------------
+  // The caller key is always the authenticated caller. A `parentTaskId` is only a
+  // claim about lineage: it lets a bot that is executing a task delegate on that
+  // task's behalf, and it is honoured solely when the authenticated caller IS
+  // that bot. Anyone else naming a parent task (a user, an MCP client, an agent,
+  // a different bot) is refused rather than silently demoted, so a client can
+  // never borrow a running bot's identity or its allowedChildBots.
   let parent: DelegationParent | null = null;
   let parentRun: OrchestrationRun | null = null;
   if (input.parentTaskId) {
+    if (caller.kind !== "bot") throw new BotTaskError("parentTaskId can only be supplied by the bot that is executing that task.", 403);
     parentRun = await db.orchestrationRun.findFirst({ where: { id: input.parentTaskId, userId: caller.userId, botId: { not: null } } });
     if (!parentRun || !["running", "waiting"].includes(parentRun.status)) throw new BotTaskError("Parent task not found or not running", 404);
+    if (parentRun.botId !== caller.botId) throw new BotTaskError("parentTaskId can only be supplied by the bot that is executing that task.", 403);
     const parentBotRow = await db.bot.findUnique({ where: { id: parentRun.botId! } });
     if (!parentBotRow) throw new BotTaskError("Parent bot no longer exists", 404);
     parent = { bot: { id: parentBotRow.id, status: parentBotRow.status, delegationPolicy: toBotRecord(parentBotRow).delegationPolicy }, chain: await delegationChain(parentRun) };
   }
-  const key = options.originKey ?? (parent ? `bot:${parent.bot.id}` : callerKey(caller));
+  const key = options.originKey ?? callerKey(caller);
   if (mode === "delegate") {
     const decision = evaluateDelegation({ target: { id: bot.id, status: bot.status, delegationPolicy: bot.delegationPolicy }, callerKey: key, parent });
     if (!decision.allowed) throw new BotTaskError(decision.reason, 403);
@@ -298,6 +307,23 @@ export async function cancelBotTask(taskId: string, viewer: TaskViewer) {
 }
 
 /**
+ * The canonical `<serverId>:<catalog tool>` keys an approval grants. New approvals
+ * carry them. An approval created before that (or by hand) only has the name the
+ * runtime reported, so it is resolved against the catalog now rather than trusted
+ * as-is: `mcp_<slug>_<tool>` is not a name evaluateToolAccess would ever look up.
+ */
+async function approvedKeysFor(payload: Record<string, unknown>, workspaceId: string | null): Promise<string[]> {
+  if (Array.isArray(payload.approvalKeys) && payload.approvalKeys.length) return payload.approvalKeys.map(String);
+  const tool = String(payload.tool ?? "");
+  const serverId = typeof payload.serverId === "string" ? payload.serverId : null;
+  if (workspaceId) {
+    const resolved = resolveObservedTool(tool, activeCatalog(await loadCatalog(workspaceId))).filter((candidate) => !serverId || candidate.serverId === serverId);
+    if (resolved.length) return resolved.map((candidate) => approvalKey(candidate.serverId, candidate.toolName));
+  }
+  return serverId ? [approvalKey(serverId, tool)] : [];
+}
+
+/**
  * Resolve the approval a WAITING task stopped for. Approving starts a NEW task
  * (a child of the waiting one) that may use that one tool; the waiting task is
  * closed, because a runtime session that has been interrupted cannot be resumed
@@ -322,7 +348,7 @@ export async function resolveBotTaskApproval(taskId: string, decision: "approve"
     projectId: run.projectId ?? undefined, modelRole: (["primary", "fast", "reasoning", "vision"].includes(String(request.modelRole)) ? request.modelRole : "primary") as "primary",
   }, { kind: "user", userId: run.userId }, {
     mode: request.mode === "test" ? "test" : "delegate", originKey: run.originKey ?? `user:${run.userId}`,
-    approvedTools: [...new Set([...(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []), `${String(payload.serverId)}:${String(payload.tool)}`])],
+    approvedTools: [...new Set([...(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []), ...(await approvedKeysFor(payload, run.workspaceId))])],
   });
   await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: `Approved and continued as task ${child.id}.` } });
   await db.orchestrationRun.update({ where: { id: child.id }, data: { parentRunId: run.id } });

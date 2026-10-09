@@ -286,6 +286,10 @@ model Memory {
   supersededById String?
   changeReason   String?
 
+  /// Retention deadline. Not a bitemporal field: the memory is still the current
+  /// belief until this passes, then it is no longer retrievable. NULL = never.
+  expiresAt DateTime?
+
   preferenceEvidence       UserPreferenceEvidence[]
   retrievals               MemoryRetrieval[]
   embeddings               MemoryEmbedding[]
@@ -304,6 +308,7 @@ model Memory {
   @@index([volatility])
   @@index([eventTime])
   @@index([validTo])
+  @@index([expiresAt])
   @@map("memories")
 }
 

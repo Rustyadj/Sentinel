@@ -103,10 +103,11 @@ describe("bot memory READ scopes", () => {
 
   it("governance still applies: quarantined, expired and archived bot memory is not read", async () => {
     const quarantined = await mem({ scope: "bot", botId: botA.id, state: "quarantined", content: "Quarantined bot note: hurricane ICF framing is a myth." });
-    const expired = await mem({ scope: "bot", botId: botA.id, validTo: new Date(Date.now() - 86_400_000), content: "Expired bot note: hurricane ICF framing rule from last year." });
+    const expired = await mem({ scope: "bot", botId: botA.id, expiresAt: new Date(Date.now() - 86_400_000), content: "Expired bot note: hurricane ICF framing rule from last year." });
+    const superseded = await mem({ scope: "bot", botId: botA.id, validTo: new Date(Date.now() - 86_400_000), content: "Superseded bot note: hurricane ICF framing rule replaced." });
     const archived = await mem({ scope: "bot", botId: botA.id, archived: true, content: "Archived bot note: hurricane ICF framing old draft." });
     const { text } = await retrievedFor(botA, { readScopes: ["bot"], maxItems: 20 });
-    for (const row of [quarantined, expired, archived]) expect(text).not.toContain(row.content.slice(0, 20));
+    for (const row of [quarantined, expired, superseded, archived]) expect(text).not.toContain(row.content.slice(0, 20));
     expect(seen(text)).toEqual(["botA"]);
   });
 
@@ -128,8 +129,39 @@ describe("bot memory WRITE scopes", () => {
     const row = await db.memory.findUniqueOrThrow({ where: { id: write.memoryId! } });
     expect(row).toMatchObject({ scope: "bot", botId: botA.id, owner: owner.id, source: `bot:${botA.id}` });
     expect(row.tags).toEqual(expect.arrayContaining(["reel", `bot:${botA.slug}`, "run:w1"]));
-    const days = (row.validTo!.getTime() - Date.now()) / 86_400_000;
+    // Retention is its own deadline. validTo means "superseded", and every current-truth read excludes it.
+    expect(row.validTo).toBeNull();
+    const days = (row.expiresAt!.getTime() - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(29); expect(days).toBeLessThan(31);
+  });
+
+  it("a retained memory is readable until it expires, and not after", async () => {
+    const policy = withPolicy(botA, { writeScopes: ["bot"], readScopes: ["bot"], retentionDays: 30 });
+    const fact = "The Titan ICF retention probe says hurricane ICF framing reels must open on the storm-surge shot.";
+    const write = await writeBotMemory(policy, { userId: owner.id, runId: "ret-1", content: fact });
+    expect(write.accepted, JSON.stringify(write)).toBe(true);
+
+    const fresh = await readBotMemory(policy, { userId: owner.id, query: QUERY, runId: "ret-read-1" });
+    expect(fresh.text).toContain("retention probe");
+
+    // 31 days on, the same row is past its deadline.
+    await db.memory.update({ where: { id: write.memoryId! }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    const expired = await readBotMemory(policy, { userId: owner.id, query: QUERY, runId: "ret-read-2" });
+    expect(expired.text).not.toContain("retention probe");
+  });
+
+  it("a retention deadline never makes a superseded, quarantined, forgotten or shadow memory readable", async () => {
+    const future = new Date(Date.now() + 30 * 86_400_000);
+    const rows = {
+      superseded: await mem({ scope: "bot", botId: botA.id, expiresAt: future, validTo: new Date(Date.now() - 1_000), supersededById: "newer", content: "Governance probe superseded: hurricane ICF framing." }),
+      quarantined: await mem({ scope: "bot", botId: botA.id, expiresAt: future, state: "quarantined", content: "Governance probe quarantined: hurricane ICF framing." }),
+      forgotten: await mem({ scope: "bot", botId: botA.id, expiresAt: future, state: "forgotten", content: "Governance probe forgotten: hurricane ICF framing." }),
+      shadow: await mem({ scope: "bot", botId: botA.id, expiresAt: future, shadowOnly: true, content: "Governance probe shadow: hurricane ICF framing." }),
+      current: await mem({ scope: "bot", botId: botA.id, expiresAt: future, content: "Governance probe current: hurricane ICF framing is retained." }),
+    };
+    const { text } = await retrievedFor(botA, { readScopes: ["bot"], maxItems: 30 });
+    expect(text).toContain("Governance probe current");
+    for (const name of ["superseded", "quarantined", "forgotten", "shadow"] as const) expect(text, name).not.toContain(rows[name].content.slice(0, 26));
   });
 
   it("denies a scope the policy does not grant, before anything is stored", async () => {

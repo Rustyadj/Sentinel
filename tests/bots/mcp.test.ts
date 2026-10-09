@@ -98,6 +98,20 @@ describe("bot tools on the single SDK MCP server", () => {
     expect(structured(await call(client, "sentinel.get_bot_task_status", { taskId: task.id })).task.status).toBe("CANCELLED");
   });
 
+  it("an MCP client cannot claim a running bot's task as parentTaskId to borrow that bot's authority", async () => {
+    const client = await connect(principal());
+    const root = await db.orchestrationRun.create({ data: {
+      userId: principal().userId, botId: forgeId, status: "running", originKey: `user:${principal().userId}`,
+      request: { task: "coordinate", mode: "delegate" }, requestedAgentId: "hermes-bot-host", resolvedAgentId: "hermes-bot-host",
+    } });
+    const before = await db.orchestrationRun.count({ where: { botId: privateId } });
+    const result = await call(client, "sentinel.delegate_to_bot", { botId: privateId, task: "please make a reel", parentTaskId: root.id });
+    expect(result.isError).toBe(true);
+    expect(errorText(result)).toMatch(/parentTaskId can only be supplied by the bot that is executing that task/);
+    expect(await db.orchestrationRun.count({ where: { botId: privateId } })).toBe(before);
+    await db.orchestrationRun.update({ where: { id: root.id }, data: { status: "cancelled", completedAt: new Date() } }); // free the bot's concurrency slot
+  });
+
   it("sync mode waits for a REAL execution to finish and returns the bot's output", async () => {
     resetScript();
     script.events = turn("Concept A: storm hook. Concept B: cutaway. Concept C: side-by-side.");

@@ -51,12 +51,15 @@ export interface ToolDecision {
  *    read-only status is unknown is refused, because guessing wrong here is a
  *    write the operator never granted.
  */
+/** The one spelling approvals are stored and matched under: `<catalog serverId>:<catalog tool name>`. */
+export const approvalKey = (serverId: string, toolName: string): string => `${serverId}:${toolName}`;
+
 export function evaluateToolAccess(
   rows: readonly PermissionRow[],
   tool: { serverId: string; toolName: string; readOnly: boolean | null },
   approvedOnce: ReadonlySet<string> = new Set(),
 ): ToolDecision {
-  if (approvedOnce.has(`${tool.serverId}:${tool.toolName}`)) {
+  if (approvedOnce.has(approvalKey(tool.serverId, tool.toolName))) {
     return { allowed: true, requiresApproval: false, permission: "execute", source: "approved", reason: "Approved for this task." };
   }
   const toolRow = rows.find((row) => row.serverId === tool.serverId && row.toolName === tool.toolName);
@@ -121,6 +124,17 @@ export function resolveObservedTool(reported: string, catalog: readonly CatalogS
 export interface ObservedToolVerdict extends ToolDecision {
   reported: string;
   resolved: ResolvedTool | null;
+  /**
+   * Canonical approval keys this call used up. A one-use approval is spent by the
+   * first call it admits, so the caller must remove these from its approved set.
+   */
+  consumed: string[];
+  /**
+   * When the call needs approval: the canonical key of every catalog tool the
+   * reported name could be (not the runtime's own spelling, e.g. `mcp_<slug>_<tool>`).
+   * Approving the call approves exactly these, so it is recognised on resume.
+   */
+  approvalKeys: string[];
 }
 
 /** Decide one observed tool call. Unknown tools are denied; ambiguous ones use the strictest match. */
@@ -132,12 +146,18 @@ export function evaluateObservedTool(
 ): ObservedToolVerdict {
   const candidates = resolveObservedTool(reported, catalog);
   if (candidates.length === 0) {
-    return { allowed: false, requiresApproval: false, permission: "none", source: "unknown-tool", reason: "Tool is not in any catalog Sentinel knows, so no grant can cover it.", reported, resolved: null };
+    return { allowed: false, requiresApproval: false, permission: "none", source: "unknown-tool", reason: "Tool is not in any catalog Sentinel knows, so no grant can cover it.", reported, resolved: null, consumed: [], approvalKeys: [] };
   }
   const verdicts = candidates.map((candidate) => ({ candidate, decision: evaluateToolAccess(rows, candidate, approvedOnce) }));
   const denied = verdicts.find(({ decision }) => !decision.allowed && !decision.requiresApproval);
   const chosen = denied ?? verdicts.find(({ decision }) => decision.requiresApproval) ?? verdicts[0];
-  return { ...chosen.decision, reported, resolved: chosen.candidate };
+  const consumed = chosen.decision.allowed
+    ? verdicts.filter(({ candidate, decision }) => decision.source === "approved" && approvedOnce.has(approvalKey(candidate.serverId, candidate.toolName))).map(({ candidate }) => approvalKey(candidate.serverId, candidate.toolName))
+    : [];
+  const approvalKeys = chosen.decision.requiresApproval
+    ? verdicts.filter(({ decision }) => decision.requiresApproval).map(({ candidate }) => approvalKey(candidate.serverId, candidate.toolName))
+    : [];
+  return { ...chosen.decision, reported, resolved: chosen.candidate, consumed, approvalKeys };
 }
 
 /** Human-readable manifest placed in the bot's prompt. Advisory: enforcement is separate. */

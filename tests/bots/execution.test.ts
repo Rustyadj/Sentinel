@@ -5,7 +5,8 @@ vi.mock("@/lib/agents/runtime/service", async () => (await import("./fake-runtim
 vi.mock("@/lib/orchestration/queue", () => ({ enqueueOrchestrationRun: vi.fn().mockResolvedValue(undefined) }));
 
 import { db } from "@/lib/db";
-import { executeOrchestrationRun } from "@/lib/orchestration/executor";
+import { executeOrchestrationRun, reconcileUnconfirmedInterruptions } from "@/lib/orchestration/executor";
+import { redisKeys } from "@/lib/redis";
 import { HERMES_BUILTIN_SERVER_ID } from "@/lib/bots/catalog";
 import { createBot, disableBot, type BotRecord } from "@/lib/bots/service";
 import { cancelBotTask, delegateToBot, getBotTask, resolveBotTaskApproval, type BotCaller } from "@/lib/bots/tasks";
@@ -17,7 +18,7 @@ const asOwner = (): BotCaller => ({ kind: "user", userId: owner.id });
 const viewer = () => ({ userId: owner.id, isAdmin: true as const });
 
 beforeAll(async () => { ({ owner, workspace } = await makeWorkspace()); });
-beforeEach(() => resetScript());
+beforeEach(() => { resetScript(); process.env.SENTINEL_INTERRUPT_RETRY_MS = "0"; });
 
 async function activeBot(over: Partial<CreateBotInput> = {}, grants: GrantToolInput[] = []): Promise<BotRecord> {
   return createBot(botInput(workspace.id, { status: "active", systemPrompt: "You are the test bot. Be terse.", ...over }), owner.id, { toolGrants: grants });
@@ -112,6 +113,120 @@ describe("a bot task end to end (real executor, queue lease, DB; scripted runtim
     expect(child.parentTaskId).toBe(waiting.id);
     expect(child.toolCalls[0]).toMatchObject({ tool: "terminal", decision: "allowed" });
     expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } })).status).toBe("approved");
+  });
+
+  it("an approval is stored and matched under the catalog tool name, not the runtime's mcp_<slug>_<tool> spelling", async () => {
+    const server = await db.mcpServerRegistration.create({ data: {
+      workspaceId: workspace.id, slug: "creative-provider", name: "Creative provider", url: "https://provider.example/mcp", enabled: true, status: "connected",
+      tools: [{ name: "generate_video", readOnly: false, destructive: false }],
+    } });
+    const bot = await activeBot({}, [{ serverId: server.id, toolName: "generate_video", permission: "approval" }]);
+    script.events = [...turn("plan").slice(0, 2), ...toolCall("mcp_creative_provider_generate_video")];
+    const waiting = await runToEnd(bot.id, "Render the hook.");
+    expect(waiting.status).toBe("WAITING");
+    const approval = await db.approvalRequest.findFirstOrThrow({ where: { type: "bot_tool_call", status: "pending", payload: { path: ["runId"], equals: waiting.id } } });
+    expect(approval.payload).toMatchObject({ serverId: server.id, tool: "generate_video", reportedTool: "mcp_creative_provider_generate_video", approvalKeys: [`${server.id}:generate_video`] });
+
+    resetScript();
+    script.events = [...toolCall("mcp_creative_provider_generate_video"), ...turn("rendered")];
+    const resumed = await resolveBotTaskApproval(waiting.id, "approve", viewer());
+    const run = await db.orchestrationRun.findUniqueOrThrow({ where: { id: resumed.resumedTaskId! } });
+    expect((run.request as { approvedTools: string[] }).approvedTools).toEqual([`${server.id}:generate_video`]);
+    await executeOrchestrationRun(resumed.resumedTaskId!, "test-worker-canonical");
+    const child = await getBotTask(resumed.resumedTaskId!, viewer());
+    // It runs: the approval was recognised, rather than bouncing back to WAITING for the same tool.
+    expect(child.status).toBe("COMPLETED");
+    expect(child.toolCalls[0]).toMatchObject({ tool: "mcp_creative_provider_generate_video", decision: "allowed" });
+  });
+
+  it("recognises an approval recorded before canonical names existed by resolving it against the catalog", async () => {
+    const server = await db.mcpServerRegistration.create({ data: {
+      workspaceId: workspace.id, slug: "legacy-provider", name: "Legacy provider", url: "https://legacy.example/mcp", enabled: true, status: "connected",
+      tools: [{ name: "publish_post", readOnly: false, destructive: false }],
+    } });
+    const bot = await activeBot({}, [{ serverId: server.id, toolName: "publish_post", permission: "approval" }]);
+    script.events = toolCall("mcp_legacy_provider_publish_post");
+    const waiting = await runToEnd(bot.id, "Post it.");
+    const approval = await db.approvalRequest.findFirstOrThrow({ where: { type: "bot_tool_call", status: "pending", payload: { path: ["runId"], equals: waiting.id } } });
+    // Shape written by the previous release: the reported name only.
+    await db.approvalRequest.update({ where: { id: approval.id }, data: { payload: { runId: waiting.id, botId: bot.id, serverId: server.id, tool: "mcp_legacy_provider_publish_post" } } });
+    const resumed = await resolveBotTaskApproval(waiting.id, "approve", viewer());
+    const run = await db.orchestrationRun.findUniqueOrThrow({ where: { id: resumed.resumedTaskId! } });
+    expect((run.request as { approvedTools: string[] }).approvedTools).toEqual([`${server.id}:publish_post`]);
+  });
+
+  it("spends a one-use approval on its first call: the second invocation needs a fresh approval", async () => {
+    const bot = await activeBot({}, [{ serverId: HERMES_BUILTIN_SERVER_ID, toolName: "terminal", permission: "approval" }]);
+    script.events = toolCall("terminal");
+    const waiting = await runToEnd(bot.id, "Build twice.");
+    resetScript();
+    // The resumed session calls the approved tool twice in one turn.
+    script.events = [...toolCall("terminal"), ...toolCall("terminal"), ...turn("built twice").slice(1)];
+    const resumed = await resolveBotTaskApproval(waiting.id, "approve", viewer());
+    await executeOrchestrationRun(resumed.resumedTaskId!, "test-worker-oneuse");
+    const child = await getBotTask(resumed.resumedTaskId!, viewer());
+
+    expect(child.toolCalls.map((call) => call.decision)).toEqual(["allowed", "approval"]);
+    expect(child.status).toBe("WAITING");
+    expect(script.cancelled).toBe(1);                       // the second call was interrupted before it could run
+    // ...and it asks again, as its own approval request.
+    const again = await db.approvalRequest.findFirstOrThrow({ where: { type: "bot_tool_call", status: "pending", payload: { path: ["runId"], equals: child.id } } });
+    expect(again.payload).toMatchObject({ tool: "terminal" });
+  });
+
+  it("does not park or release a task whose runtime would not confirm it stopped", async () => {
+    const bot = await activeBot({}, [{ serverId: HERMES_BUILTIN_SERVER_ID, toolName: "terminal", permission: "approval" }]);
+    script.events = [...turn("plan").slice(0, 2), ...toolCall("terminal")];
+    script.cancelFailures = Infinity;
+    const queued = await delegateToBot(bot.id, { task: "Run the build." }, asOwner());
+    await executeOrchestrationRun(queued.id, "test-worker-unconfirmed");
+
+    const task = await getBotTask(queued.id, viewer());
+    expect(script.cancelled).toBe(3);                               // retried, then gave up
+    expect(task.status).toBe("RUNNING");                            // still in flight, not WAITING / FAILED / CANCELLED
+    expect(task.finishedAt).toBeNull();
+    expect(task.waitingFor).toBeNull();
+    expect(task.error).toMatch(/did not confirm/);
+    expect(task.events.filter((event) => event.type === "approval_requested")).toHaveLength(0);
+    expect(await db.approvalRequest.count({ where: { type: "bot_tool_call", payload: { path: ["runId"], equals: queued.id } } })).toBe(0);
+    const attempt = await db.executionAttempt.findFirstOrThrow({ where: { orchestrationRunId: queued.id } });
+    expect(attempt.status).toBe("running");
+    expect(attempt.completedAt).toBeNull();
+    // It keeps counting against the bot's concurrency, and its lease is still held.
+    expect(await db.orchestrationRun.count({ where: { botId: bot.id, status: { in: ["queued", "running", "cancelling"] }, id: queued.id } })).toBe(1);
+    expect((await redisKeys(`*orchestration:owner:${queued.id}`)).length).toBe(1);
+    // A redelivered job must not turn it into a fabricated "cancelled".
+    await executeOrchestrationRun(queued.id, "test-worker-redelivery").catch(() => undefined);
+    expect((await getBotTask(queued.id, viewer())).status).toBe("RUNNING");
+    // The user cannot cancel their way out of it either: it is already being cancelled.
+    await expect(cancelBotTask(queued.id, viewer())).rejects.toThrow(/cannot be cancelled/);
+
+    // The runtime still will not confirm: reconcile leaves it open and records the check.
+    script.cancelFailures = Infinity;
+    expect(await reconcileUnconfirmedInterruptions()).toMatchObject({ resolved: 0 });
+    expect((await getBotTask(queued.id, viewer())).status).toBe("RUNNING");
+
+    // Once the runtime confirms, the task becomes what it would have been: WAITING with its approval card.
+    script.cancelFailures = 0;
+    const outcome = await reconcileUnconfirmedInterruptions();
+    expect(outcome.resolved).toBeGreaterThanOrEqual(1);
+    const parked = await getBotTask(queued.id, viewer());
+    expect(parked.status).toBe("WAITING");
+    expect(parked.waitingFor?.tool).toBe("terminal");
+    expect((await redisKeys(`*orchestration:owner:${queued.id}`)).length).toBe(0);
+  });
+
+  it("a cancel() that throws is unconfirmed too", async () => {
+    const bot = await activeBot({}, [read("read_file")]);
+    script.events = toolCall("terminal");
+    script.cancelFailures = 1; script.cancelThrows = true;
+    const queued = await delegateToBot(bot.id, { task: "Try a forbidden tool." }, asOwner());
+    await executeOrchestrationRun(queued.id, "test-worker-throws");
+    // The first cancel threw, the retry confirmed: halted normally, as a violation.
+    const task = await getBotTask(queued.id, viewer());
+    expect(task.status).toBe("FAILED");
+    expect(task.error).toMatch(/policy_violation: terminal is not permitted/);
+    expect(script.cancelled).toBe(2);
   });
 
   it("denying an approval closes the task", async () => {
@@ -276,22 +391,50 @@ describe("bot-to-bot delegation", () => {
     const parent = await activeBot({ name: "Parent", delegationPolicy: { allowedCallers: ["user"], allowedChildBots: [child.id], canDelegate: true, maxDepth: 1 } });
     await db.bot.update({ where: { id: child.id }, data: { delegationPolicy: { allowedCallers: [`bot:${parent.id}`], allowedChildBots: [], canDelegate: false, maxDepth: 1 } } });
 
+    const asBot = (botId: string): BotCaller => ({ kind: "bot", userId: owner.id, botId });
     const root = await delegateToBot(parent.id, { task: "coordinate the work" }, asOwner());
     // Not running yet: a queued task cannot delegate.
-    await expect(delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, asOwner())).rejects.toThrow(/not found or not running/);
+    await expect(delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, asBot(parent.id))).rejects.toThrow(/not found or not running/);
     await db.orchestrationRun.update({ where: { id: root.id }, data: { status: "running" } });
 
-    const sub = await delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, asOwner());
+    const sub = await delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, asBot(parent.id));
     expect(sub).toMatchObject({ botId: child.id, parentTaskId: root.id, origin: `bot:${parent.id}` });
     expect((await getBotTask(root.id, viewer())).events.some((event) => event.type === "delegated" && event.data.childTaskId === sub.id)).toBe(true);
 
     // The child may not delegate onward (canDelegate false), nor back up the chain.
     await db.orchestrationRun.update({ where: { id: sub.id }, data: { status: "running" } });
     await db.bot.update({ where: { id: parent.id }, data: { delegationPolicy: { allowedCallers: ["user", `bot:${child.id}`], allowedChildBots: [child.id], canDelegate: true, maxDepth: 1 } } });
-    await expect(delegateToBot(parent.id, { task: "loop back up", parentTaskId: sub.id }, asOwner())).rejects.toThrow(/not permitted to delegate/);
+    await expect(delegateToBot(parent.id, { task: "loop back up", parentTaskId: sub.id }, asBot(child.id))).rejects.toThrow(/not permitted to delegate/);
     // A bot not on the parent's list is refused.
     const stranger = await activeBot({ name: "Stranger", delegationPolicy: { allowedCallers: [`bot:${parent.id}`], allowedChildBots: [], canDelegate: false, maxDepth: 1 } });
-    await expect(delegateToBot(stranger.id, { task: "not my child", parentTaskId: root.id }, asOwner())).rejects.toThrow(/allowed child bots/);
+    await expect(delegateToBot(stranger.id, { task: "not my child", parentTaskId: root.id }, asBot(parent.id))).rejects.toThrow(/allowed child bots/);
+  });
+
+  it("does not let a caller borrow a running bot's identity by naming its task as parentTaskId", async () => {
+    const child = await activeBot({ name: "Guarded child", delegationPolicy: { allowedCallers: [], allowedChildBots: [], canDelegate: false, maxDepth: 1 } });
+    const parent = await activeBot({ name: "Delegating parent", delegationPolicy: { allowedCallers: ["user"], allowedChildBots: [child.id], canDelegate: true, maxDepth: 1 } });
+    // The child accepts the parent bot as a caller and nobody else, including this user and this client.
+    await db.bot.update({ where: { id: child.id }, data: { delegationPolicy: { allowedCallers: [`bot:${parent.id}`], allowedChildBots: [], canDelegate: false, maxDepth: 1 } } });
+    const root = await delegateToBot(parent.id, { task: "coordinate the work" }, asOwner());
+    await db.orchestrationRun.update({ where: { id: root.id }, data: { status: "running" } });
+    const before = await db.orchestrationRun.count({ where: { botId: child.id } });
+
+    const impostors: BotCaller[] = [
+      asOwner(),
+      { kind: "client", userId: owner.id, clientId: "mcp-client-1" },
+      { kind: "agent", userId: owner.id, agentId: "hermes-lisa" },
+      { kind: "bot", userId: owner.id, botId: child.id }, // a different bot cannot claim the parent's task either
+    ];
+    for (const impostor of impostors) {
+      await expect(delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, impostor), impostor.kind).rejects.toMatchObject({ status: 403 });
+    }
+    expect(await db.orchestrationRun.count({ where: { botId: child.id } })).toBe(before);
+
+    // Without the borrowed lineage the same callers are judged as themselves, and refused by the child's own allowedCallers.
+    await expect(delegateToBot(child.id, { task: "sub task please" }, asOwner())).rejects.toThrow(/not in this bot's allowed callers/);
+    // Only the executing bot, authenticated as itself, is accepted.
+    const sub = await delegateToBot(child.id, { task: "sub task please", parentTaskId: root.id }, { kind: "bot", userId: owner.id, botId: parent.id });
+    expect(sub.origin).toBe(`bot:${parent.id}`);
   });
 
   it("a bot cannot be reached by an agent that is only allowed to reach a different bot", async () => {
