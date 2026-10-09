@@ -38,11 +38,14 @@ case "$1" in
     cid="$2"; name="${cid#cid-}"; sha="$(sha_of "$name")"; fmt="$4"
     health=healthy
     [ "${FAKE_UNHEALTHY:-}" = "$name" ] && [ "$sha" = "${FAKE_UNHEALTHY_SHA:-$sha}" ] && health=unhealthy
+    legacy=0; [ -n "${FAKE_LEGACY_SHA:-}" ] && [ "$sha" = "$FAKE_LEGACY_SHA" ] && legacy=1
+    # A revision from before tagged images: untagged image, no label, no healthcheck, workers never told their revision.
+    [ "$legacy" = 1 ] && [ "$name" != app ] && health=none
     case "$fmt" in
       *Config.Env*)    override_var="FAKE_ENV_COMMIT_$(echo "$name" | tr - _)"
-                       echo "PATH=/usr/bin"; echo "SENTINEL_COMMIT=${!override_var:-$sha}"; exit 0 ;;
-      *Labels*)        echo "$sha"; exit 0 ;;
-      *Config.Image*)  case "$name" in app) echo "sentinel-os-app:$sha" ;; *) echo "sentinel-os-worker:$sha" ;; esac; exit 0 ;;
+                       echo "PATH=/usr/bin"; c="${!override_var:-$sha}"; [ "$legacy" = 1 ] && [ "$name" != app ] && c=unknown; echo "SENTINEL_COMMIT=$c"; exit 0 ;;
+      *Labels*)        [ "$legacy" = 1 ] && echo "" || echo "$sha"; exit 0 ;;
+      *Config.Image*)  if [ "$legacy" = 1 ]; then echo "sentinel-os-$name"; else case "$name" in app) echo "sentinel-os-app:$sha" ;; *) echo "sentinel-os-worker:$sha" ;; esac; fi; exit 0 ;;
       *Health*)        echo "$health"; exit 0 ;;
     esac ;;
 esac

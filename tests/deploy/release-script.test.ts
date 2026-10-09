@@ -25,7 +25,7 @@ const setRunning = (sha: string) => { for (const s of ["app", "learning-worker",
 function run(args: string[], env: Record<string, string> = {}) {
   const result = spawnSync("bash", [SCRIPT, ...args], {
     cwd: app, encoding: "utf8",
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, APP_DIR: app, FAKE_STATE: fake, SENTINEL_HEALTH_ATTEMPTS: "2", SENTINEL_HEALTH_INTERVAL: "0", ...env },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, APP_DIR: app, FAKE_STATE: fake, FAKE_LEGACY_SHA: shaOld, SENTINEL_HEALTH_ATTEMPTS: "2", SENTINEL_HEALTH_INTERVAL: "0", ...env },
   });
   return { status: result.status, out: `${result.stdout}${result.stderr}` };
 }
@@ -41,7 +41,10 @@ beforeEach(() => {
   // The workflow streams the script out of the release commit, so the commits must carry it.
   mkdirSync(join(app, "scripts/deploy"), { recursive: true });
   writeFileSync(join(app, "scripts/deploy/release.sh"), readFileSync(SCRIPT));
+  // What production runs today predates tagged images; the release being deployed is tagged.
+  writeFileSync(join(app, "docker-compose.yml"), "services:\n  app:\n    build: .\n");
   shaOld = commit(app, "old"); git(app, "push", "-q", "origin", "HEAD:main");
+  writeFileSync(join(app, "docker-compose.yml"), "services:\n  app:\n    image: sentinel-os-app:${SENTINEL_RELEASE_SHA:-local}\n");
   shaNew = commit(app, "new"); git(app, "push", "-q", "origin", "HEAD:main");
   git(app, "checkout", "-q", "--detach", shaOld);
   writeFileSync(join(app, ".env"), "AUTH_SECRET=SUPER-SECRET-VALUE\n");   // untracked, as on the host
@@ -161,6 +164,18 @@ describe("rollback", () => {
     expect(calls().some((c) => c.startsWith("compose run"))).toBe(false);
   });
 
+  it("can roll back to a revision from before tagged images, and still insists the app is on it", () => {
+    setRunning(shaNew);
+    const rolled = run(["rollback", shaOld]);
+    expect(rolled.status, rolled.out).toBe(0);
+    expect(rolled.out).toMatch(/predates tagged images/);
+    // A legacy target is only as provable as its app: if the app reports another revision, it fails.
+    setRunning(shaNew);
+    const lie = run(["rollback", shaOld], { FAKE_VERSION_LIE: shaNew });
+    expect(lie.status).not.toBe(0);
+    expect(lie.out).toMatch(/api\/version reports/);
+  });
+
   it("refuses a revision that is not in the checkout", () => {
     const { status, out } = run(["rollback", "0".repeat(40)]);
     expect(status).not.toBe(0);
@@ -185,7 +200,7 @@ describe("the workflow's deploy step", () => {
     chmodSync(join(bin, "ssh"), 0o755);
     const result = spawnSync("bash", ["-c", step.run], {
       cwd: root, encoding: "utf8",
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root, FAKE_STATE: fake, SENTINEL_HEALTH_ATTEMPTS: "2", SENTINEL_HEALTH_INTERVAL: "0",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root, FAKE_STATE: fake, FAKE_LEGACY_SHA: shaOld, SENTINEL_HEALTH_ATTEMPTS: "2", SENTINEL_HEALTH_INTERVAL: "0",
         VPS_HOST: "h", VPS_USER: "u", VPS_SSH_PORT: "22", VPS_APP_DIR: app, RELEASE_SHA: shaNew },
     });
     expect(`${result.stdout}${result.stderr}`).toContain(`deployed immutable release ${shaNew}`);

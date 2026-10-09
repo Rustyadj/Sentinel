@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:rc": "playwright test -c playwright.rc.config.ts",
     "bench:memory": "tsx bench/memory/run.ts",
     "probe:mcp": "node scripts/mcp-live-probe.mjs",
     "probe:mcp:production": "node scripts/mcp-live-probe.mjs --base https://sentinel.srv1427612.hstgr.cloud --discovery-only",

@@ -7,7 +7,7 @@
 //   (none)         streams a short reply, then completes
 //   [tool:NAME]    announces a call to the tool NAME (and its completion) before replying
 //   [slow]         keeps streaming every 300ms (up to a minute) until interrupted
-//   [stubborn]     refuses session.interrupt (the runtime "cannot confirm it stopped")
+//   [stubborn]     refuses session.interrupt (the runtime "cannot confirm it stopped") until POST /__unstick
 //   [fail]         ends the turn with an error event
 // GET /__calls returns what the fake saw (prompts, tools, interrupts), so a test can prove what ran.
 import http from "node:http";
@@ -22,6 +22,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ticket: "fake-ticket" }));
   } else if (req.url === "/__calls") {
     res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(calls));
+  } else if (req.url === "/__unstick" && req.method === "POST") {
+    // The runtime recovers: sessions that refused to be interrupted will now accept it.
+    for (const session of sessions.values()) session.stubborn = false;
+    res.writeHead(204).end();
   } else if (req.url === "/__reset" && req.method === "POST") {
     calls.prompts = []; calls.tools = []; calls.interrupts = []; calls.refusedInterrupts = 0;
     res.writeHead(204).end();
@@ -66,8 +70,10 @@ wss.on("connection", (ws) => {
       case "prompt.submit": {
         const s = sessions.get(p.session_id);
         if (!s) return fail(4001, "session not found");
-        const text = String(p.text ?? "");
-        calls.prompts.push(text);
+        const full = String(p.text ?? "");
+        calls.prompts.push(full);
+        // A bot's prompt ends with its task; memory injected earlier in the prompt can quote old tasks, markers included.
+        const text = full.trimEnd().split("\n").pop() ?? "";
         s.stubborn = text.includes("[stubborn]");
         s.interrupted = false;
         reply({ status: "streaming" });
@@ -82,7 +88,7 @@ wss.on("connection", (ws) => {
           event("tool.complete", sid, { name: m[1], args: { path: "/x" }, result: { ok: true } });
         }
         if (text.includes("[fail]")) { await sleep(100); return event("error", sid, { message: "scripted failure" }); }
-        const words = text.includes("[slow]") ? Array.from({ length: 200 }, (_, i) => `tick${i} `) : ["Fake ", "Hermes ", "reply: ", text.replace(/\[[^\]]*\]/g, "").trim().slice(0, 60) || "ok", "."];
+        const words = text.includes("[slow]") ? Array.from({ length: 200 }, (_, i) => `tick${i} `) : ["Fake ", "Hermes ", "reply: ", text.replace(/\[[^\]]*\]/g, "").trim().slice(0, 240) || "ok", "."];
         for (const w of words) {
           if (s.interrupted) return;
           await sleep(text.includes("[slow]") ? 300 : 150);

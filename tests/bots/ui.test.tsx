@@ -67,10 +67,11 @@ describe("Bots screen", () => {
   });
 
   it("names what failed and offers Retry, keeping the layout", async () => {
-    handlers.push((url) => (url.startsWith("/api/bots?") ? { status: 403, body: { error: "Forbidden: requires owner or admin" } } : undefined));
+    handlers.push((url) => (url.startsWith("/api/bots?") ? { status: 500, body: { error: "Unexpected error" } } : undefined));
     render(<BotsPage workspaces={WS} />);
-    expect(await screen.findByText(/Could not load bots: Forbidden: requires owner or admin/)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not load bots: Unexpected error/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create bot/i })).toBeInTheDocument();
   });
 
   it("deleting needs an explicit second click naming the bot", async () => {
@@ -144,5 +145,15 @@ describe("Create bot wizard", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Scratch" } });
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+  });
+});
+
+describe("Bots page for someone who cannot manage bots", () => {
+  it("says so plainly and offers no Create button, instead of a button above a Forbidden error", async () => {
+    handlers.push((url) => (url.startsWith("/api/bots?") ? { status: 403, body: { error: "Forbidden: requires owner or admin" } } : undefined));
+    render(<BotsPage workspaces={WS} />);
+    expect(await screen.findByText(/Bot Studio is for workspace owners and admins/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create bot/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Could not load bots/)).not.toBeInTheDocument();
   });
 });

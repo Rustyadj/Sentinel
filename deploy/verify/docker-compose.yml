@@ -17,6 +17,12 @@ x-env: &env
   HERMES_ENDPOINT: http://fake-hermes:4900
   HERMES_SESSION_TOKEN: rc-fake-token
   HERMES_NATHAN2_ENDPOINT: ""
+  # Runtimes are bound to a workspace by id (as production does through its .env); the seed creates it with this id.
+  HERMES_LISA_WORKSPACE_ID: rc-ws-alpha
+  HERMES_NATHAN2_WORKSPACE_ID: rc-ws-alpha
+  CLAUDE_CODE_WORKSPACE_ID: rc-ws-alpha
+  CODEX_WORKSPACE_ID: rc-ws-alpha
+  GEMINI_WORKSPACE_ID: rc-ws-alpha
   HERMES_LISA_USERNAME: ""
   HERMES_LISA_PASSWORD: ""
   AGENT_CONFIG_DIR: /opt/sentinel-os/agents
@@ -56,12 +62,12 @@ services:
   app:
     image: sentinel-os-app:${SENTINEL_RELEASE_SHA}
     pull_policy: never
-    ports: ["127.0.0.1:3100:3000"]
+    ports: ["127.0.0.1:3190:3000"]
     environment:
       <<: *env
       NODE_ENV: production
       AUTH_SECRET: rc-verify-only-secret-rc-verify-only-secret
-      AUTH_URL: http://127.0.0.1:3100
+      AUTH_URL: http://127.0.0.1:3190
       AUTH_TRUST_HOST: "true"
       OPENAI_API_KEY: ""
       OPENROUTER_API_KEY: ""

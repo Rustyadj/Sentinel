@@ -45,8 +45,15 @@ running_commit() {
   docker inspect "$cid" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^SENTINEL_COMMIT=//p' | head -n1
 }
 
+# A revision from before this script existed (e.g. what production runs today) neither tags its images with
+# the revision nor passes the revision to the workers or gives them healthchecks. Rolling BACK to one is still
+# legitimate; it just cannot be proven as strictly as a release built from this compose file.
+tagged_release() { grep -q 'image: sentinel-os-app:\${SENTINEL_RELEASE_SHA' docker-compose.yml 2>/dev/null; }
+
 verify_running() {
-  local sha="$1" ok=0 service cid health commit label image
+  local sha="$1" ok=0 service cid health commit label image strict=0
+  tagged_release && strict=1
+  [ "$strict" -eq 1 ] || log "note: $sha predates tagged images; verifying the app's revision and health, and that each service is up"
   for service in "${SERVICES[@]}"; do
     cid="$(compose ps -q "$service" | head -n1)"
     if [ -z "$cid" ]; then log "FAIL $service: no container"; ok=1; continue; fi
@@ -54,11 +61,17 @@ verify_running() {
     label="$(docker inspect "$cid" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
     image="$(docker inspect "$cid" --format '{{.Config.Image}}')"
     health="$(docker inspect "$cid" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"
-    [ "$commit" = "$sha" ] || { log "FAIL $service: SENTINEL_COMMIT is '$commit', expected $sha"; ok=1; }
-    [ "$label"  = "$sha" ] || { log "FAIL $service: image revision label is '$label', expected $sha"; ok=1; }
-    case "$image" in *":$sha") ;; *) log "FAIL $service: image '$image' is not tagged with $sha"; ok=1 ;; esac
-    [ "$health" = "healthy" ] || { log "FAIL $service: health is '$health'"; ok=1; }
-    [ "$ok" -eq 0 ] && log "ok   $service @ ${sha:0:7} (healthy)"
+    if [ "$strict" -eq 1 ] || [ "$service" = app ]; then
+      [ "$commit" = "$sha" ] || { log "FAIL $service: SENTINEL_COMMIT is '$commit', expected $sha"; ok=1; }
+    fi
+    if [ "$strict" -eq 1 ]; then
+      [ "$label"  = "$sha" ] || { log "FAIL $service: image revision label is '$label', expected $sha"; ok=1; }
+      case "$image" in *":$sha") ;; *) log "FAIL $service: image '$image' is not tagged with $sha"; ok=1 ;; esac
+      [ "$health" = "healthy" ] || { log "FAIL $service: health is '$health'"; ok=1; }
+    else
+      case "$health" in healthy|none) ;; *) log "FAIL $service: health is '$health'"; ok=1 ;; esac
+    fi
+    [ "$ok" -eq 0 ] && log "ok   $service @ ${sha:0:7} ($health)"
   done
   # The app also states its own revision over HTTP.
   local reported
@@ -68,14 +81,17 @@ verify_running() {
 }
 
 wait_ready() {
-  local attempt service cid health pending
+  local attempt service cid health state pending
   for attempt in $(seq 1 "$HEALTH_ATTEMPTS"); do
     pending=""
     curl --noproxy '*' --fail --silent --max-time 5 "$HEALTH_URL/api/health" >/dev/null 2>&1 || pending="$pending app-health"
     curl --noproxy '*' --fail --silent --max-time 5 "$HEALTH_URL/api/ready"  >/dev/null 2>&1 || pending="$pending app-ready"
     for service in "${SERVICES[@]}"; do
       cid="$(compose ps -q "$service" | head -n1)"
-      health="$([ -n "$cid" ] && docker inspect "$cid" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' || echo missing)"
+      if [ -z "$cid" ]; then pending="$pending $service(missing)"; continue; fi
+      health="$(docker inspect "$cid" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"
+      # A revision without a healthcheck for this service can only be required to be running.
+      if [ "$health" = none ] && ! tagged_release; then continue; fi
       [ "$health" = "healthy" ] || pending="$pending $service($health)"
     done
     [ -z "$pending" ] && return 0
