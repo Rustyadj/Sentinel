@@ -71,6 +71,8 @@ async function readableObjects(where: object, request: ScopedGraphRequest, take:
     where: {
       AND: [
         where,
+        // The current graph. A superseded object is history, not a node.
+        { validTo: null },
         ...(request.types?.length ? [{ type: { in: request.types } }] : []),
         ...(request.since ? [{ createdAt: { gte: request.since } }] : []),
       ],
@@ -93,7 +95,7 @@ async function expand(seedIds: string[], allowedIds: Set<string>, depth: number,
 
   for (let level = 0; level < depth && frontier.length > 0 && included.size < limit; level += 1) {
     const records = await db.knowledgeEdge.findMany({
-      where: { OR: [{ fromObjectId: { in: frontier } }, { toObjectId: { in: frontier } }] },
+      where: { validTo: null, OR: [{ fromObjectId: { in: frontier } }, { toObjectId: { in: frontier } }] },
       orderBy: [{ weight: "desc" }, { createdAt: "desc" }],
       take: limit * 4,
     });
@@ -143,7 +145,7 @@ export async function getScopedGraph(request: ScopedGraphRequest): Promise<Scope
     truncated = pool.length > seed.length;
     const records = seed.length
       ? await db.knowledgeEdge.findMany({
-          where: { fromObjectId: { in: seed }, toObjectId: { in: seed } },
+          where: { validTo: null, fromObjectId: { in: seed }, toObjectId: { in: seed } },
           orderBy: [{ weight: "desc" }, { createdAt: "desc" }],
           take: limit * 8,
         })
@@ -162,7 +164,7 @@ export async function getScopedGraph(request: ScopedGraphRequest): Promise<Scope
 
   const outside = await db.knowledgeEdge.groupBy({
     by: ["fromObjectId"],
-    where: { fromObjectId: { in: [...includedIds] } },
+    where: { validTo: null, fromObjectId: { in: [...includedIds] } },
     _count: { _all: true },
   }).catch(() => [] as { fromObjectId: string; _count: { _all: number } }[]);
   const totalDegree = new Map(outside.map((row) => [row.fromObjectId, row._count._all]));

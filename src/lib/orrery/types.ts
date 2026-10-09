@@ -46,8 +46,15 @@ export interface OrreryApproval {
 }
 
 export interface OrreryActivity {
-  /** ISO instant to pass back as `since` on the next poll. */
+  /**
+   * ISO instant to pass back as `since` on the next poll. It deliberately lags the
+   * clock (rows can commit after the instant they are stamped with) and stops at the
+   * last row returned when a source hit its cap, so a busy window is paged through
+   * rather than skipped. Boundary rows are sent again; clients de-duplicate on id.
+   */
   cursor: string;
+  /** True when a source hit its row cap and older, still-unseen rows may remain behind `cursor`. */
+  truncated: boolean;
   events: OrreryEvent[];
   agents: OrreryAgentState[];
   runs: OrreryRun[];

@@ -15,6 +15,7 @@ import { ActivityPanel, type PanelAgent } from "@/components/orrery/ActivityPane
 import { AttentionCards } from "@/components/orrery/AttentionCards";
 import { ModelPicker } from "@/components/orrery/ModelPicker";
 import { useOrreryData } from "@/components/orrery/useOrreryData";
+import { OrreryStatusStrip, orreryNotices } from "@/components/orrery/OrreryStatusStrip";
 import { CANONICAL_VOICE_AGENT_IDS } from "@/lib/voice/agent-voice-config";
 import type { OrreryEvent } from "@/lib/orrery/types";
 import { cn } from "@/lib/utils";
@@ -111,6 +112,11 @@ export function ChatSurface() {
     };
   }), [agents, isWorking, latestByAgent, workingAgentId, isStreaming]);
 
+  const notices = useMemo(
+    () => orreryNotices({ ready: orrery.status === "ready", graph: orrery.graphHealth, activity: orrery.activityHealth, partial: orrery.partial, activityTruncated: orrery.activityTruncated }),
+    [orrery.status, orrery.graphHealth, orrery.activityHealth, orrery.partial, orrery.activityTruncated],
+  );
+
   const globeMessage = orrery.status === "error"
     ? orrery.error
     : orrery.status === "ready" && (orrery.model?.nodeCount ?? 0) === 0
@@ -186,6 +192,7 @@ export function ChatSurface() {
         dimmed={focusChat}
         offsetX={focusChat ? 0 : 80}
       >
+        <OrreryStatusStrip notices={notices} onRetry={orrery.retry} />
         <section
           data-orrery-ui
           aria-label="Conversation"
