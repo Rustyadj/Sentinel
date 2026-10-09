@@ -40,9 +40,7 @@ cd "$APP_DIR"
 [ -d .git ] || die "$APP_DIR is not a git checkout"
 case "$(cd "$APP_DIR" && pwd -P)" in ""|"/"|"$HOME") die "refusing unsafe APP_DIR" ;; esac
 
-# Extra compose files (the restore override) go through here, so every call sees the same project definition.
-COMPOSE_EXTRA=()
-compose() { docker compose ${COMPOSE_EXTRA[@]+"${COMPOSE_EXTRA[@]}"} "$@"; }
+compose() { docker compose "$@"; }
 
 # The revision a container is actually running, from its own environment — not from the checkout,
 # which can disagree with it (a hand-built override, or a checkout moved after a build).
@@ -165,7 +163,8 @@ cmd_restore() {
     services+=("$service"); [ "$service" = app ] && want_app="$commit"
   done < "$dir/snapshot.tsv"
   [ "${#services[@]}" -gt 0 ] || { log "ERROR: the snapshot contains no services"; return 1; }
-  COMPOSE_EXTRA=(-f docker-compose.yml -f "$dir/restore.compose.yml")
+  # Layer the override onto whatever compose file(s) this host uses (COMPOSE_FILE is path-list separated).
+  export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}${COMPOSE_PATH_SEPARATOR:-:}$dir/restore.compose.yml"
   compose up -d --no-deps --remove-orphans "${services[@]}" || { log "ERROR: docker compose could not re-create the services from their snapshot images"; return 1; }
   while IFS=$'\t' read -r service image tag commit; do
     running="$(docker inspect "$(compose ps -q "$service" | head -n1)" --format '{{.Image}}' 2>/dev/null || true)"
@@ -262,6 +261,9 @@ cmd_deploy() {
   log "deployed immutable release $release to app and both workers"
   log "to roll back: release.sh restore $dir"
 }
+
+# Tests and rehearsals can load the functions without running a command.
+[ -z "${RELEASE_SH_SOURCE_ONLY:-}" ] || return 0 2>/dev/null || exit 0
 
 case "${1:-}" in
   deploy)   shift; cmd_deploy "$@" ;;

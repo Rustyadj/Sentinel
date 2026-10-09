@@ -11,9 +11,9 @@ tag_dir="$S/tags"; mkdir -p "$tag_dir"
 case "$1" in
   compose)
     shift
-    # Leading "-f file" pairs (the restore override) are part of the project definition, not the verb.
+    # The restore override arrives through COMPOSE_FILE (a path list), as it does for real docker compose.
     override=""
-    while [ "${1:-}" = "-f" ]; do [ "$(basename "$2")" = "restore.compose.yml" ] && override="$2"; shift 2; done
+    case "${COMPOSE_FILE:-}" in *restore.compose.yml*) override="${COMPOSE_FILE##*:}" ;; esac
     verb="$1"; shift
     case "$verb" in
       config)
