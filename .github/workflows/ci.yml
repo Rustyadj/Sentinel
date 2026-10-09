@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main, production/sentinel-operational-hardening]
+  # A deliberate, human-started deploy of the head of main. It runs every check below first, and the
+  # `production` environment's protection rules (required reviewers) still apply.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -59,10 +62,44 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    env:
+      SENTINEL_RELEASE_SHA: ${{ github.sha }}
+      AUTH_SECRET: ci-only-secret-ci-only-secret-ci-only
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - run: docker build --target runner -t sentinel-os:ci .
+      # The deployed unit is the app, the migration job and BOTH workers, all from one revision.
+      - name: Compose file resolves (output suppressed because it would print the environment)
+        run: docker compose config --quiet
+      - name: Build every image the release deploys
+        run: docker compose build app migrate learning-worker orchestration-worker
+      - name: Every image carries the release revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in sentinel-os-app sentinel-os-migrate sentinel-os-worker; do
+            label="$(docker image inspect "$image:$GITHUB_SHA" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+            commit="$(docker image inspect "$image:$GITHUB_SHA" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^SENTINEL_COMMIT=//p')"
+            echo "$image label=$label commit=$commit"
+            test "$commit" = "$GITHUB_SHA"
+            # the migrate image is the builder stage, which carries no label of its own
+            if [ "$image" != sentinel-os-migrate ]; then test "$label" = "$GITHUB_SHA"; fi
+          done
+      - name: No host credentials or runtime state inside any image
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in sentinel-os-app sentinel-os-migrate sentinel-os-worker; do
+            docker run --rm --entrypoint sh "$image:$GITHUB_SHA" -c '
+              ! find / -xdev \( -name .credentials.json -o -name .claude.json -o -path "*/runtime-agents" -o -path "*/runtime-projects" \) -not -path "/proc/*" 2>/dev/null | grep -q .
+            ' || { echo "::error::$image contains host runtime credentials or state"; exit 1; }
+          done
+      - name: Worker image can run the bind-mounted CLIs (glibc) and starts as non-root
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker run --rm --entrypoint id "sentinel-os-worker:$GITHUB_SHA" -u)" = 1001
+          docker run --rm --entrypoint sh "sentinel-os-worker:$GITHUB_SHA" -c 'ldd --version >/dev/null && test -x /app/node_modules/.bin/tsx && test -L /usr/local/bin/claude && test -x /usr/local/bin/codex'
 
   smoke:
     runs-on: ubuntu-latest
@@ -91,9 +128,46 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
+  # The release candidate in a real browser: the app, the migration job and both workers built from THIS commit,
+  # run against their own database and a fake Hermes dashboard, then driven as an owner, a member and an outsider
+  # (tests/e2e/rc). No model credits, no external tools, no production data. This is the authenticated check the
+  # unauthenticated shell smoke cannot give.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: verify
+    env:
+      SENTINEL_RELEASE_SHA: ${{ github.sha }}
+      AUTH_SECRET: ci-only-secret-ci-only-secret-ci-only
+      COMPOSE_FILE: deploy/verify/docker-compose.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Build the release images
+        run: COMPOSE_FILE=docker-compose.yml docker compose build app migrate learning-worker orchestration-worker
+      - name: Start the isolated stack (waits for every healthcheck)
+        run: docker compose up -d --wait --wait-timeout 300
+      - name: Seed people, workspaces and graph
+        run: DATABASE_URL=postgresql://rc:rc-disposable@127.0.0.1:55510/rc npx tsx scripts/verify/seed-rc.ts
+      - name: Release-candidate browser suite
+        run: npm run test:rc
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: rc-browser-evidence, path: "test-results/", retention-days: 14 }
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200 app orchestration-worker learning-worker fake-hermes
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   deploy-gate:
     if: always()
-    needs: [verify, docker, smoke]
+    needs: [verify, docker, smoke, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Block deployment unless every required check passed
@@ -101,9 +175,18 @@ jobs:
           test "${{ needs.verify.result }}" = success
           test "${{ needs.docker.result }}" = success
           test "${{ needs.smoke.result }}" = success
+          test "${{ needs.browser.result }}" = success
 
+  # Production deploys only when it is asked for, and only from main:
+  #   * workflow_dispatch — someone started it on purpose; or
+  #   * a push to main, and only while the repository variable SENTINEL_AUTODEPLOY is "true".
+  # Without that opt-in a merge to main runs every check and deploys nothing. Neither path replaces the
+  # `production` environment's required-reviewer rule; that is the approval, and this is the second lock.
   deploy-production:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && vars.SENTINEL_AUTODEPLOY == 'true'))
     needs: deploy-gate
     runs-on: ubuntu-latest
     environment: production
@@ -115,6 +198,8 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
       VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
       RELEASE_SHA: ${{ github.sha }}
     steps:
       - name: Validate deployment configuration
@@ -124,82 +209,38 @@ jobs:
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
           test -n "$VPS_APP_DIR"
-          test -n "${{ secrets.VPS_SSH_KEY }}"
-          test -n "${{ secrets.VPS_KNOWN_HOSTS }}"
+          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_KNOWN_HOSTS"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
 
       - name: Configure pinned SSH identity
         shell: bash
         run: |
           set -euo pipefail
+          umask 077
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > "$HOME/.ssh/sentinel_deploy"
-          chmod 600 "$HOME/.ssh/sentinel_deploy"
-          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/sentinel_deploy"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
 
+      # The deploy logic lives in scripts/deploy/release.sh and is streamed from the release commit itself, so
+      # the script that deploys a revision is that revision's own. It backs up and verifies the backup, builds
+      # the app, migration job and both workers at this sha, migrates, starts them, waits for readiness, proves
+      # every running container is this sha, and rolls every service back to the previously running revision
+      # if any of that fails.
       - name: Back up and deploy the exact green commit
         shell: bash
         run: |
           set -euo pipefail
           PORT="${VPS_SSH_PORT:-22}"
           APP_DIR_B64="$(printf '%s' "$VPS_APP_DIR" | base64 -w0)"
-          ssh -i "$HOME/.ssh/sentinel_deploy" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
-            "SENTINEL_RELEASE_SHA='$RELEASE_SHA' SENTINEL_APP_DIR_B64='$APP_DIR_B64' bash -se" <<'REMOTE'
+          ssh -i "$HOME/.ssh/sentinel_deploy" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" 'bash -se' <<REMOTE
           set -Eeuo pipefail
-
-          APP_DIR="$(printf '%s' "$SENTINEL_APP_DIR_B64" | base64 -d)"
-          case "$APP_DIR" in
-            ""|"/"|"$HOME") echo "Refusing unsafe VPS_APP_DIR: $APP_DIR" >&2; exit 1 ;;
+          APP_DIR="\$(printf '%s' '$APP_DIR_B64' | base64 -d)"
+          case "\$APP_DIR" in
+            ""|"/"|"\$HOME") echo "Refusing unsafe VPS_APP_DIR" >&2; exit 1 ;;
           esac
-          test -d "$APP_DIR/.git"
-          cd "$APP_DIR"
-
-          PREVIOUS_SHA="$(git rev-parse HEAD)"
-          BACKUP_DIR="$APP_DIR/backups/releases/$(date -u +%Y%m%dT%H%M%SZ)-$SENTINEL_RELEASE_SHA"
-          mkdir -p "$BACKUP_DIR/agents"
-
-          git fetch --prune origin main
-          git cat-file -e "$SENTINEL_RELEASE_SHA^{commit}"
-          test "$(git rev-parse "origin/main^{commit}")" = "$SENTINEL_RELEASE_SHA"
-
-          docker compose config --quiet
-          docker compose exec -T postgres pg_dump -U hermes -d hermesos --format=custom > "$BACKUP_DIR/postgres.dump"
-          docker compose exec -T redis redis-cli SAVE >/dev/null
-          docker compose cp redis:/data/dump.rdb "$BACKUP_DIR/redis.rdb"
-          docker compose cp app:/opt/sentinel-os/agents/. "$BACKUP_DIR/agents/"
-          printf '%s\n' "$PREVIOUS_SHA" > "$BACKUP_DIR/previous-sha"
-
-          wait_for_health() {
-            for attempt in $(seq 1 30); do
-              if curl --fail --silent --show-error http://127.0.0.1:3000/api/health >/dev/null \
-                && curl --fail --silent --show-error http://127.0.0.1:3000/api/ready >/dev/null; then
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-
-          rollback() {
-            trap - ERR
-            echo "Deployment failed; restoring application revision $PREVIOUS_SHA" >&2
-            git checkout --detach "$PREVIOUS_SHA"
-            export SENTINEL_RELEASE_SHA="$PREVIOUS_SHA"
-            docker compose build --pull app migrate
-            docker compose up -d --remove-orphans
-            wait_for_health
-          }
-          trap rollback ERR
-
-          git checkout --detach "$SENTINEL_RELEASE_SHA"
-          export SENTINEL_RELEASE_SHA
-          docker compose config --quiet
-          docker compose build --pull app migrate
-          docker compose run --rm migrate
-          docker compose up -d --remove-orphans
-          wait_for_health
-          trap - ERR
-
-          test "$(git rev-parse HEAD)" = "$SENTINEL_RELEASE_SHA"
-          echo "Deployed immutable release $SENTINEL_RELEASE_SHA"
+          cd "\$APP_DIR"
+          git fetch --quiet --prune origin main
+          git cat-file -e '$RELEASE_SHA^{commit}'
+          git show '$RELEASE_SHA:scripts/deploy/release.sh' | APP_DIR="\$APP_DIR" bash -s -- deploy '$RELEASE_SHA'
           REMOTE

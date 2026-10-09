@@ -3,6 +3,83 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-009 — One release revision drives the app, the migration job and both workers
+
+**Date:** 2026-10-09
+**Status:** Accepted
+
+**Decision.** Deploy, verify and roll back are one script (`scripts/deploy/release.sh`) that builds
+`app`, `migrate`, `learning-worker` and `orchestration-worker` at a single sha, tags every image
+`sentinel-os-<service>:<sha>`, and calls the release deployed only when each running container reports that
+sha (env, image label, tag, health) and `/api/version` agrees. Any failure after services were replaced rolls
+all of them back to the *exact images that were running*, pinned under `sentinel-os-rollback-*` tags before anything
+was replaced — not rebuilt from the previous revision, whose compose file may not even define every service. Rollback never
+runs or reverts a migration; migrations stay additive. Production deploys on `workflow_dispatch`, or on a push to
+main while the repository variable `SENTINEL_AUTODEPLOY` is `true`, in addition to the `production`
+environment's reviewers.
+
+**Why.** The previous deploy rebuilt `app` and `migrate` only. The workers kept running images from days
+earlier, with no revision, no CLI mounts (11 claude-code runs failed `binary_missing`), no route to the
+Hermes dashboards, and credentials baked into their image layers. A deploy that can leave half the system
+on old code and call itself green is not a gate.
+
+**Rejected.** *A per-release checkout directory* — compose binds `./runtime-agents` and `./runtime-projects`
+relative to the project directory, so moving it moves the credentials and agent data with it. *Tagging only
+the app image.* *Making the workers `latest`.*
+
+**Consequences.** Production today (an app built from an override of PR #41's commit, workers from another compose file)
+can be restored exactly. Rebuilding from a revision that predates tagged images is verified by its app revision and
+health only, and the script says so.
+
+## ADR-008 — Retention is `memories.expiresAt`, not `validTo`
+
+**Date:** 2026-10-09
+**Status:** Accepted
+
+**Decision.** A bot memory kept for N days gets `expiresAt = now + N days`. `validTo` keeps its bitemporal
+meaning, "this belief was superseded". `excludeFromRetrieval()` hides a memory past `expiresAt` for every
+question, historical ones included, and never makes a superseded, quarantined, forgotten or shadow memory
+visible because it has a deadline.
+
+**Why.** Retention was written into `validTo`, which every current-truth read treats as superseded, so a
+memory kept for 30 days was invisible from the moment it was written.
+
+**Rejected.** *Teaching every `validTo: null` filter about future dates* (a dozen sites, and a replacement
+with a future `validFrom` legitimately closes its predecessor in the future).
+
+**Consequences.** Migration `20261008000000_memory_expiry` adds a nullable column and moves bot rows that
+carried a future `validTo` and no successor. The previous revision ignores the column, so rollback is safe;
+under it retained memories fall back to its (broken) behaviour.
+
+## ADR-007 — A runtime that will not confirm it stopped keeps its task open
+
+**Date:** 2026-10-09
+**Status:** Accepted
+
+**Decision.** When Sentinel interrupts a bot's session (a denied tool, an approval gate, a user cancel) and the
+runtime does not confirm, after bounded retries, the task stays in flight (`cancelling`, shown as running) with
+its execution lease held. No approval is created, nothing is parked as waiting, and no replacement session can
+start. A reconciler on the orchestration worker re-asks, and only a confirmation moves the task to what it
+would have been.
+
+**Why.** Marking such a task halted or waiting releases ownership while the original session may still be
+running the very tool that was refused, and approving a waiting task would start a second session beside it.
+
+**Rejected.** *Failing the task immediately* (still releases ownership). *Retrying forever in the executor*
+(pins a worker slot).
+
+## ADR-006 — `parentTaskId` is lineage, never authority
+
+**Date:** 2026-10-09
+**Status:** Accepted
+
+**Decision.** Delegation is judged against the authenticated caller. `parentTaskId` is honoured only when that
+caller is the bot executing the named task; any other caller naming it is refused with 403.
+
+**Why.** Honouring it for any caller let an MCP client inherit a running bot's identity and its
+`allowedChildBots` by naming that bot's task. **Consequence:** bot-to-bot delegation over MCP needs a
+bot-bound credential, which does not exist yet; until then it is unavailable, not unsafe.
+
 ## ADR-005 — Hermes bots are governed personas on existing runtimes, not new processes
 
 **Date:** 2026-09-30

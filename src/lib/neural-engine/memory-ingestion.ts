@@ -20,6 +20,7 @@
 // sweep that may not run for hours.
 
 import { db } from "@/lib/db";
+import { notExpired } from "@/lib/learning/memory-governance";
 import { classifyForIngestion, type IngestionVerdict, memoryTypeForLane } from "./ingestion-gate";
 import { assertWritableMemoryScope } from "@/lib/knowledge/memory-scope";
 import { reconsolidateMemory, defaultMode, type ReconsolidationMode } from "./reconsolidation-engine";
@@ -33,8 +34,8 @@ export interface RememberInput {
   projectId?: string | null;
   /** Attributes the memory to a Sentinel bot. Required for scope "bot"; recorded at any scope. */
   botId?: string | null;
-  /** The memory stops being retrievable at this time (bitemporal validTo). Used for bot retention. */
-  validTo?: Date | null;
+  /** Retention deadline: the memory stays current and readable until then, and is not retrievable after. Used for bot retention. */
+  expiresAt?: Date | null;
   workspaceId?: string | null;
   tags?: string[];
   /** When the described event happened, for episodic ordering. */
@@ -85,6 +86,8 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
       ...(scope === "bot" ? { botId } : {}),
       archived: false,
       validTo: null,
+      // A memory past its retention deadline is gone: it must not make the same fact look like a duplicate.
+      AND: [notExpired()],
     },
     select: { content: true },
     orderBy: { createdAt: "desc" },
@@ -115,7 +118,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
         projectId,
         workspaceId,
         botId,
-        validTo: input.validTo ?? null,
+        expiresAt: input.expiresAt ?? null,
         importanceScore: verdict.suggestedImportance,
         confidence: verdict.signals.confidence,
         provenanceClass: input.speaker === "user" ? "USER_PROVIDED" : "OBSERVED",

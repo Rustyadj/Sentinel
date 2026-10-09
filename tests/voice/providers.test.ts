@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createVoiceProvider } from "@/lib/voice/providers/index";
 import { BrowserSpeechProvider } from "@/lib/voice/providers/browserSpeech";
 import { MockVoiceProvider } from "@/lib/voice/providers/mock";
+import { OpenAIRealtimeProvider } from "@/lib/voice/providers/openaiRealtime";
 
 const STORAGE_KEY = "sentinel.voice.provider";
 
@@ -17,8 +18,22 @@ describe("createVoiceProvider — production default", () => {
     delete process.env.NEXT_PUBLIC_VOICE_PROVIDER;
   });
 
-  it("defaults to the real browser speech provider when nothing is configured", () => {
+  it("defaults to the OpenAI Realtime (GPT-Live) provider when nothing is configured", () => {
     delete process.env.NEXT_PUBLIC_VOICE_PROVIDER;
+    const provider = createVoiceProvider();
+    expect(provider).toBeInstanceOf(OpenAIRealtimeProvider);
+    expect(provider).not.toBeInstanceOf(MockVoiceProvider);
+  });
+
+  it("falls back to the realtime provider for an unrecognised selection, never mock", () => {
+    window.localStorage.setItem(STORAGE_KEY, "not-a-provider");
+    const provider = createVoiceProvider();
+    expect(provider).toBeInstanceOf(OpenAIRealtimeProvider);
+    expect(provider).not.toBeInstanceOf(MockVoiceProvider);
+  });
+
+  it("still offers browser speech as an explicit opt-in", () => {
+    window.localStorage.setItem(STORAGE_KEY, "browser_stt");
     expect(createVoiceProvider()).toBeInstanceOf(BrowserSpeechProvider);
   });
 

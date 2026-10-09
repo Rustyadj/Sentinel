@@ -15,6 +15,7 @@ import {
   X,
   LogOut,
   Plug,
+  Mic,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
@@ -34,6 +35,7 @@ const SETTINGS_SECTIONS = [
   { id: "memory", label: "Memory", icon: Brain },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "security", label: "Security", icon: Shield },
+  { id: "voice", label: "Voice", icon: Mic },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "api", label: "API Keys", icon: Key },
   { id: "integrations", label: "Integrations", icon: Plug },
@@ -77,6 +79,7 @@ export default function SettingsPage() {
           {activeSection === "appearance" && <AppearanceSettings />}
           {activeSection === "security" && <SecuritySettings />}
           {activeSection === "api" && <APIKeySettings />}
+          {activeSection === "voice" && <VoiceSettings />}
           {activeSection === "notifications" && <NotificationSettings />}
           {activeSection === "integrations" && <McpDiagnosticsPanel />}
         </div>
@@ -297,6 +300,7 @@ function VoiceSettings() {
         description="OpenAI Realtime uses GPT-Realtime-2.1 Mini by default, GPT Live for captions, and escalates complex turns to the full 2.1 model. Browser Speech uses built-in recognition only."
       >
         <select
+          aria-label="Speech provider"
           value={provider}
           onChange={(e) => handleChange(e.target.value as VoiceProviderOption)}
           className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"

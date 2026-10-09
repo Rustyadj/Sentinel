@@ -41,4 +41,11 @@ describe("AttentionCards", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Missing permission: approval.review");
     expect(onDecided).not.toHaveBeenCalled();
   });
+
+  it("lists approvals above runs, so what is waiting on a person is never scrolled out of reach", () => {
+    render(<AttentionCards runs={[run]} approvals={[approval]} agents={agents} followId={null} onFollow={vi.fn()} onDecided={vi.fn()} />);
+    const articles = screen.getAllByRole("article");
+    expect(articles[0]).toHaveTextContent("Prod deploy");
+    expect(articles[1]).toHaveTextContent("Review PR21");
+  });
 });

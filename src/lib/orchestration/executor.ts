@@ -4,12 +4,38 @@ import { getAdapterForRuntime } from "@/lib/agents/runtime/service";
 import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { assertConcurrentDispatchAllowed } from "@/lib/agents/coexecution-policy";
-import { acquireExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
+import { acquireExecutionOwnership, holdExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
 import { UnrecoverableError } from "bullmq";
 import { buildMemoryContext, withMemoryContext } from "@/lib/neural-engine/memory-context";
-import { loadBotExecution } from "@/lib/bots/execution";
+import { loadBotExecution, type PendingInterruption } from "@/lib/bots/execution";
+import { redisAcquireLease, redisReleaseLease } from "@/lib/redis";
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
+
+type RuntimeAdapter = Awaited<ReturnType<typeof getAdapterForRuntime>>["adapter"];
+
+/**
+ * Ask the runtime to stop a session and only report success on its confirmation.
+ * A refusal or a thrown error is "unconfirmed", never "stopped": the session
+ * may still be executing a tool. Retried a few times because a cancel that races
+ * a runtime reconnect usually lands on the second try.
+ */
+export async function interruptSession(adapter: RuntimeAdapter, sessionId: string): Promise<{ success: boolean; message: string }> {
+  const attempts = 3;
+  const delayMs = Number(process.env.SENTINEL_INTERRUPT_RETRY_MS ?? 1_000);
+  let message = "no reason given";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const result = await adapter.cancel(sessionId);
+      if (result.success) return { success: true, message: "" };
+      message = result.message ?? message;
+    } catch (error) {
+      message = error instanceof Error ? error.message : "cancel threw";
+    }
+    if (attempt < attempts && delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+  }
+  return { success: false, message };
+}
 
 /** Executes through the canonical runtime adapter layer. No CLI, Hermes, or
  * OpenClaw adapter is recreated here. `runtimeJobId` records the durable
@@ -19,6 +45,8 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   if (!await acquireExecutionOwnership(runId, workerId)) throw new Error("Execution ownership is held by another worker or Redis is unavailable.");
   let sessionId: string | null = null;
   let ownershipLost = false;
+  // Set when the runtime could not be confirmed stopped: the lease is then held, not released.
+  let keepOwnership = false;
   let adapterForLease: Awaited<ReturnType<typeof getAdapterForRuntime>>["adapter"] | null = null;
   const renewal = setInterval(() => { void renewExecutionOwnership(runId, workerId).then(async (renewed) => {
     if (renewed || ownershipLost) return;
@@ -29,6 +57,9 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   const run = await db.orchestrationRun.findUniqueOrThrow({ where: { id: runId } });
   if (run.status === "cancelled") return;
   if (run.status === "cancelling") {
+    // A session that was told to stop and never confirmed it is owned by the reconciler. Marking it cancelled here
+    // would record a stop nobody saw.
+    if ((run.result as { interruptUnconfirmed?: unknown } | null)?.interruptUnconfirmed) { keepOwnership = true; return; }
     await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date() } });
     return;
   }
@@ -158,8 +189,14 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
         // the task as WAITING.
         const halt = await botExec.observe(event);
         if (halt) {
-          const interrupted = await adapter.cancel(session.id);
-          if (!interrupted.success) await botExec.recordFailure(`Interrupting the runtime after ${halt.tool} was not confirmed: ${interrupted.message ?? "no reason given"}.`);
+          const interrupted = await interruptSession(adapter, session.id);
+          if (!interrupted.success) {
+            // The session may still be running the very tool that was just refused. Parking the task as waiting (or
+            // failed) would release it and let an approval start a second session beside the first. Keep it tracked.
+            keepOwnership = true;
+            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "halt", halt }, workerId, session.id, attempt.id, started, text, interrupted.message));
+            return;
+          }
           await botExec.halted(halt, { attemptId: attempt.id, startedAtMs: started, text });
           return;
         }
@@ -168,8 +205,15 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
       // The local worker is the process owner. Adapter cancellation is only
       // requested here; success is reported only after the adapter confirms it.
       if (current?.status === "cancelling" || current?.status === "cancelled") {
-        const cancelled = await adapter.cancel(session.id);
-        if (!cancelled.success) throw new Error(`Cancellation not confirmed: ${cancelled.message}`);
+        const cancelled = await interruptSession(adapter, session.id);
+        if (!cancelled.success) {
+          if (botExec) {
+            keepOwnership = true;
+            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "cancel" }, workerId, session.id, attempt.id, started, text, cancelled.message));
+            return;
+          }
+          throw new Error(`Cancellation not confirmed: ${cancelled.message}`);
+        }
         await db.$transaction([
           db.executionAttempt.update({ where: { id: attempt.id }, data: { status: "cancelled", completedAt: new Date(), latencyMs: Date.now() - started } }),
           db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date() } }),
@@ -206,7 +250,8 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   }
   } finally {
     clearInterval(renewal);
-    await releaseExecutionOwnership(runId, workerId);
+    if (keepOwnership) await holdExecutionOwnership(runId, workerId);
+    else await releaseExecutionOwnership(runId, workerId);
   }
 }
 
@@ -230,4 +275,68 @@ export async function cancelOrchestrationRun(runId: string, userId: string): Pro
   }
   await writeAuditLog({ workspaceId: run.workspaceId, projectId: run.projectId, userId, action: "orchestration.run.cancel_requested", entityType: "orchestration_run", entityId: run.id, details: { priorStatus: run.status } });
   return { accepted: true, status, projectId: run.projectId, workspaceId: run.workspaceId };
+}
+
+function pendingInterruption(cause: PendingInterruption["cause"], workerId: string, sessionId: string, attemptId: string, startedAtMs: number, text: string, message: string): PendingInterruption {
+  const now = new Date().toISOString();
+  return { cause, workerId, sessionId, attemptId, startedAtMs, text, firstUnconfirmedAt: now, lastCheckedAt: now, checks: 1, lastMessage: message };
+}
+
+/**
+ * Re-ask the runtime about sessions that were told to stop and never confirmed it.
+ * Only a confirmation moves a task forward: a halted task becomes WAITING/FAILED
+ * exactly as it would have, a cancelled one becomes CANCELLED, and the lease is
+ * released. Until then the task stays in flight. Run periodically by the
+ * orchestration worker; safe to run concurrently (a per-run lease serialises it).
+ */
+export async function reconcileUnconfirmedInterruptions(limit = 20): Promise<{ checked: number; resolved: number; errors: number }> {
+  const candidates = await db.orchestrationRun.findMany({ where: { botId: { not: null }, status: "cancelling" }, orderBy: { updatedAt: "asc" }, take: 200 });
+  const pending = candidates.filter((run) => (run.result as { interruptUnconfirmed?: unknown } | null)?.interruptUnconfirmed).slice(0, limit);
+  let resolved = 0; let errors = 0;
+  for (const run of pending) {
+    const reconcileKey = `sentinel:orchestration:reconcile:${run.id}`;
+    if (!await redisAcquireLease(reconcileKey, orchestrationWorkerId(), 60)) continue;
+    const record = (run.result as unknown as { interruptUnconfirmed: PendingInterruption }).interruptUnconfirmed;
+    // Whatever goes wrong is recorded on the run itself (and logged), never swallowed: a task that stays open
+    // because its reconciliation keeps failing has to say why to whoever looks at it.
+    const noteFailure = async (message: string) => {
+      errors += 1;
+      console.error(`[reconcile] run ${run.id}: ${message}`);
+      await db.orchestrationRun.update({ where: { id: run.id }, data: { result: json({ ...(run.result as object), interruptUnconfirmed: { ...record, lastCheckedAt: new Date().toISOString(), checks: record.checks + 1, lastMessage: message } }) } }).catch(() => undefined);
+    };
+    try {
+      if (!run.resolvedAgentId) { await noteFailure("the run has no runtime to ask"); continue; }
+      const { adapter } = await getAdapterForRuntime(run.resolvedAgentId);
+      const outcome = await interruptSession(adapter, record.sessionId);
+      if (!outcome.success) {
+        await db.orchestrationRun.update({ where: { id: run.id }, data: { result: json({ ...(run.result as object), interruptUnconfirmed: { ...record, lastCheckedAt: new Date().toISOString(), checks: record.checks + 1, lastMessage: outcome.message } }) } });
+        continue;
+      }
+      const context = { attemptId: record.attemptId, startedAtMs: record.startedAtMs, text: record.text };
+      const botExec = await loadBotExecution({ ...run, status: "running" });
+      if (record.cause.kind === "halt" && botExec) {
+        await botExec.halted(record.cause.halt, context);
+      } else if (record.cause.kind === "cancel") {
+        await db.$transaction([
+          db.executionAttempt.update({ where: { id: record.attemptId }, data: { status: "cancelled", completedAt: new Date(), latencyMs: Date.now() - record.startedAtMs } }),
+          db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: null, result: json({ text: record.text }) } }),
+        ]);
+      } else {
+        const message = "The runtime confirmed the session stopped, but the bot could not be loaded to finish the task.";
+        await db.$transaction([
+          db.executionAttempt.update({ where: { id: record.attemptId }, data: { status: "failed", error: message, completedAt: new Date() } }),
+          db.orchestrationRun.update({ where: { id: run.id }, data: { status: "failed", error: message, completedAt: new Date() } }),
+        ]);
+      }
+      // Compare-and-delete against the worker that held it: if that hold lapsed and another worker now owns the run,
+      // its lease is not ours to revoke.
+      await releaseExecutionOwnership(run.id, record.workerId);
+      resolved += 1;
+    } catch (error) {
+      await noteFailure(error instanceof Error ? error.message : String(error));
+    } finally {
+      await redisReleaseLease(reconcileKey, orchestrationWorkerId());
+    }
+  }
+  return { checked: pending.length, resolved, errors };
 }

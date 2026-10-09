@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Copy, Plus, Power, Trash2, FlaskConical, Activity as ActivityIcon, Pencil } from "lucide-react";
 import { BotAvatar, Button, Empty, Notice, Pill, Select, statusTone } from "./bits";
-import { api, errorMessage, MEMORY_SCOPE_LABEL } from "./client";
+import { api, ApiError, errorMessage, MEMORY_SCOPE_LABEL } from "./client";
 import { CreateBotWizard } from "./CreateBotWizard";
 
 interface Summary {
@@ -24,6 +24,8 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
   const [bots, setBots] = useState<Summary[] | null>(null);
   const [health, setHealth] = useState<Record<string, { ready: boolean } | null>>({});
   const [error, setError] = useState<string | null>(null);
+  // Managing bots is for workspace owners and admins. A member is told so, and offered nothing they cannot do.
+  const [forbidden, setForbidden] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -32,12 +34,16 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
   const load = useCallback(async () => {
     if (!workspaceId) return;
     setError(null);
+    setForbidden(false);
     try {
       const data = await api<{ bots: Summary[] }>(`/api/bots?workspaceId=${workspaceId}`);
       setBots(data.bots);
       const meta = await api<{ hosts: { agentId: string; health: { ready: boolean } | null }[] }>(`/api/bots/meta?workspaceId=${workspaceId}&health=1`).catch(() => null);
       if (meta) setHealth(Object.fromEntries(meta.hosts.map((host) => [host.agentId, host.health])));
-    } catch (e) { setBots(null); setError(errorMessage(e)); }
+    } catch (e) {
+      setBots(null);
+      if (e instanceof ApiError && e.status === 403) setForbidden(true); else setError(errorMessage(e));
+    }
   }, [workspaceId]);
 
   // Fetch on mount and on workspace change.
@@ -64,7 +70,7 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
         </div>
         <div className="flex items-center gap-2">
           {workspaces.length > 1 ? <Select aria-label="Workspace" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} className="h-8 w-[180px] py-0">{workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select> : null}
-          <Button variant="primary" onClick={() => setCreating(true)} disabled={!workspaceId}><Plus className="h-4 w-4" aria-hidden />Create bot</Button>
+          {forbidden ? null : <Button variant="primary" onClick={() => setCreating(true)} disabled={!workspaceId}><Plus className="h-4 w-4" aria-hidden />Create bot</Button>}
         </div>
       </header>
 
@@ -73,8 +79,9 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
         {error ? <Notice action={<Button onClick={() => void load()}>Retry</Button>}>Could not load bots: {error}</Notice> : null}
       </div>
 
+      {forbidden ? <div className="mt-6"><Empty title="Bot Studio is for workspace owners and admins">You can hand work to a bot through an agent or the registry, but creating and configuring bots needs an owner or admin of this workspace.</Empty></div> : null}
       {!workspaceId ? <div className="mt-6"><Empty title="No workspace">You are not a member of any workspace, so there is nowhere to create a bot.</Empty></div> : null}
-      {workspaceId && bots === null && !error ? (
+      {workspaceId && bots === null && !error && !forbidden ? (
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading bots">
           {[0, 1, 2].map((i) => <div key={i} className="h-[230px] animate-pulse rounded-lg border border-[--border] bg-[--card]" />)}
         </div>

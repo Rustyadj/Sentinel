@@ -31,6 +31,7 @@ import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay"
 import { runCoOccurrenceSelfImprovement } from "@/lib/learning/self-improvement";
 import { runConsolidationCycle } from "@/lib/neural-engine/consolidation-service";
 import { QUEUE_PREFIX } from "@/lib/queue-prefix";
+import { startWorkerHeartbeat } from "./heartbeat";
 
 const requestedConcurrency = Number(process.env.LEARNING_WORKER_CONCURRENCY ?? 2);
 const CONCURRENCY = Number.isFinite(requestedConcurrency)
@@ -130,6 +131,7 @@ function startWorker() {
 }
 
 async function main() {
+  const stopHeartbeat = startWorkerHeartbeat("learning-worker");
   const worker = startWorker();
 
   const scheduled = await scheduleRecurringJobs();
@@ -143,6 +145,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[learning-worker] received ${signal}, closing gracefully…`);
+    stopHeartbeat();
     await worker.close();
     await closeLearningQueues();
     process.exit(0);

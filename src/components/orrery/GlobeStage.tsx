@@ -70,6 +70,8 @@ export function GlobeStage({ model, emptyMessage, handleRef, agents, followId, o
         ref={canvasRef}
         aria-label="Knowledge graph globe"
         role="img"
+        data-nodes={model?.nodeCount ?? 0}
+        data-edges={model?.edgeCount ?? 0}
         className={cn("absolute inset-0 h-full w-full transition-opacity duration-300", dimmed ? "opacity-40" : "opacity-100")}
       />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(1,4,10,.72)_0,rgba(1,4,10,.35)_520px,transparent_760px),linear-gradient(270deg,rgba(1,4,10,.6)_0,transparent_360px)] max-lg:bg-[rgba(1,4,10,.6)]" />

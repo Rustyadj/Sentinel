@@ -30,6 +30,8 @@ Configure the protected GitHub `production` environment with `VPS_HOST`, `VPS_US
 8. Require HTTP 200 from both `/api/health` and `/api/ready`; `/api/ready` includes DB, Redis, and every registered agent. If either fails, restore and rebuild the previous application SHA automatically.
 9. Exercise Mission Control, Chat, Organization, and Agents with an owner and a member account.
 
+> Deploy, verify, rollback and the pre-release migration check are now `scripts/deploy/release.sh` and `scripts/deploy/validate-migrations.sh`; see [RELEASE.md](RELEASE.md). Where the steps below disagree with it, RELEASE.md wins.
+
 ## Backups and restore
 
 - PostgreSQL: nightly `pg_dump --format=custom`, encrypted off-host, with a weekly test restore.

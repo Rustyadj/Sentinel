@@ -32,6 +32,11 @@ async function waitFor<T>(check: () => Promise<T | null | undefined>, timeoutMs 
   }
 }
 
+// Each step polls for up to 8s (waitFor) and a test makes several of them, but vitest's default test timeout is 5s, so on a
+// contended CI database the test was killed by the timeout long before its own polling budget was spent (the failure was
+// "took 5005ms", not a missing node). The timeout is stated here to match the budget the test already declares.
+const SYNC_TEST_TIMEOUT_MS = 60_000;
+
 describe("syncGraphForEvent (via emitCollaborationEvent)", () => {
   it("creates a Task node and belongs_to/assigned_to edges when a task event carries a taskId", async () => {
     const user = await makeUser();
@@ -69,7 +74,7 @@ describe("syncGraphForEvent (via emitCollaborationEvent)", () => {
       db.knowledgeEdge.findFirst({ where: { fromObjectId: taskNode!.id, toObjectId: creatorNode!.id, type: "created_by" } }),
     );
     expect(createdByEdge).toBeTruthy();
-  });
+  }, SYNC_TEST_TIMEOUT_MS);
 
   it("creates a Decision node and belongs_to/created_by/references edges when decision.created carries a decisionId", async () => {
     const user = await makeUser();
@@ -114,7 +119,7 @@ describe("syncGraphForEvent (via emitCollaborationEvent)", () => {
       db.knowledgeEdge.findFirst({ where: { fromObjectId: decisionNode!.id, toObjectId: taskNode!.id, type: "references" } }),
     );
     expect(referencesEdge).toBeTruthy();
-  });
+  }, SYNC_TEST_TIMEOUT_MS);
 
   it("does not create any graph node for an unrelated event type, or when a room has no owning user", async () => {
     const room = await db.chatRoom.create({ data: { name: `graph-sync-no-user-${Date.now()}-${Math.random()}` } });
