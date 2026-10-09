@@ -123,6 +123,20 @@ describe("clustering", () => {
     }
   });
 
+  it("does not let a chain of pairwise-similar reports merge episodes that share little with each other", () => {
+    // alpha-bravo-charlie ~ alpha-bravo-delta ~ bravo-delta-echo, but the first and last share one word in five.
+    const failing = (id: string, objective: string) => ({ ...base, experienceId: id, objective, succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3 });
+    const episodes = [
+      failing("a1", "alpha bravo charlie"), failing("a2", "alpha bravo charlie"), failing("b1", "alpha bravo delta"),
+      failing("c1", "bravo delta echo"), failing("c2", "bravo delta echo"),
+    ];
+    for (const order of [episodes, [...episodes].reverse(), [episodes[3], episodes[0], episodes[4], episodes[2], episodes[1]]]) {
+      const clusters = clusterEpisodes(order);
+      expect(clusters).toHaveLength(1);                          // the c-pair alone (2) is below the threshold
+      expect(clusters[0].experienceIds).toEqual(["a1", "a2", "b1"]);
+    }
+  });
+
   it("keeps unrelated problems from the same agent in separate clusters", () => {
     const failing = (id: string, objective: string) => ({ ...base, experienceId: id, objective, succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3 });
     const clusters = clusterEpisodes([

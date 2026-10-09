@@ -314,6 +314,15 @@ export interface RetrievalExclusionOptions {
   temporalIntent?: TemporalIntent;
 }
 
+/**
+ * A memory is live until its retention deadline passes. Anything that decides whether a memory still counts — retrieval,
+ * duplicate detection, supersession — must ask this, or an expired memory keeps blocking and being compared against
+ * content that is meant to be gone.
+ */
+export function notExpired(now: Date = new Date()): Prisma.MemoryWhereInput {
+  return { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+}
+
 export function excludeFromRetrieval(options: RetrievalExclusionOptions = {}): Prisma.MemoryWhereInput {
   const base: Prisma.MemoryWhereInput = {
     state: { notIn: [...RETRIEVAL_EXCLUDED_STATES] },
@@ -322,7 +331,7 @@ export function excludeFromRetrieval(options: RetrievalExclusionOptions = {}): P
     // until it passes, then gone for every question, historical ones included. It
     // is an AND entry so a caller spreading this next to its own OR cannot drop it;
     // a caller that also supplies its own AND must merge, not overwrite.
-    AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
+    AND: [notExpired()],
   };
   const intent = options.temporalIntent ?? "current";
   if (!includesSupersededMemories(intent)) {

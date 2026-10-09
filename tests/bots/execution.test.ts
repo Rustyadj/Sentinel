@@ -6,7 +6,7 @@ vi.mock("@/lib/orchestration/queue", () => ({ enqueueOrchestrationRun: vi.fn().m
 
 import { db } from "@/lib/db";
 import { executeOrchestrationRun, reconcileUnconfirmedInterruptions } from "@/lib/orchestration/executor";
-import { redisKeys } from "@/lib/redis";
+import { redisGet, redisKeys, redisSet } from "@/lib/redis";
 import { HERMES_BUILTIN_SERVER_ID } from "@/lib/bots/catalog";
 import { createBot, disableBot, type BotRecord } from "@/lib/bots/service";
 import { cancelBotTask, delegateToBot, getBotTask, resolveBotTaskApproval, type BotCaller } from "@/lib/bots/tasks";
@@ -214,6 +214,33 @@ describe("a bot task end to end (real executor, queue lease, DB; scripted runtim
     expect(parked.status).toBe("WAITING");
     expect(parked.waitingFor?.tool).toBe("terminal");
     expect((await redisKeys(`*orchestration:owner:${queued.id}`)).length).toBe(0);
+  });
+
+  it("the reconciler never revokes a lease some other worker now holds, and says why when it cannot finish", async () => {
+    const bot = await activeBot({}, [{ serverId: HERMES_BUILTIN_SERVER_ID, toolName: "terminal", permission: "approval" }]);
+    script.events = toolCall("terminal");
+    script.cancelFailures = Infinity;
+    const queued = await delegateToBot(bot.id, { task: "Run it." }, asOwner());
+    await executeOrchestrationRun(queued.id, "worker-that-held-it");
+    expect((await getBotTask(queued.id, viewer())).status).toBe("RUNNING");
+
+    // The first worker's hold lapsed and a different worker took the lease.
+    const leaseKey = (await redisKeys(`*orchestration:owner:${queued.id}`))[0];
+    await redisSet(leaseKey, "a-different-worker", 600);
+    // A run whose runtime cannot be resolved is reported on the run, not skipped in silence.
+    await db.orchestrationRun.update({ where: { id: queued.id }, data: { resolvedAgentId: null } });
+    const failing = await reconcileUnconfirmedInterruptions();
+    expect(failing.errors).toBeGreaterThanOrEqual(1);
+    const recorded = (await db.orchestrationRun.findUniqueOrThrow({ where: { id: queued.id } })).result as { interruptUnconfirmed: { lastMessage: string; checks: number } };
+    expect(recorded.interruptUnconfirmed.lastMessage).toMatch(/no runtime to ask/);
+    expect(recorded.interruptUnconfirmed.checks).toBeGreaterThan(1);
+
+    // Once it can finish, it releases only a lease that is still the original worker's.
+    await db.orchestrationRun.update({ where: { id: queued.id }, data: { resolvedAgentId: HOST.agentId } });
+    script.cancelFailures = 0;
+    expect((await reconcileUnconfirmedInterruptions()).resolved).toBeGreaterThanOrEqual(1);
+    expect((await getBotTask(queued.id, viewer())).status).toBe("WAITING");
+    expect(await redisGet(leaseKey)).toBe("a-different-worker");
   });
 
   it("a cancel() that throws is unconfirmed too", async () => {

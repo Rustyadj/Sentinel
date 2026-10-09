@@ -122,6 +122,20 @@ describe("getOrreryActivity", () => {
       expect(result.cursor).toBe(rows[79].occurredAt.toISOString());
     });
 
+    it("pages experiences on the column each is matched by: old-started rows that completed in the window do not break the cursor", async () => {
+      const since = minutesAgo(5);
+      const longRunning = Array.from({ length: 80 }, (_, i) => ({
+        id: `old${i}`, agentId: "codex", objective: `long task ${i}`, knowledgeUsed: [],
+        startedAt: minutesAgo(600 + i), completedAt: new Date(since.getTime() + (i + 1) * 1000),
+      }));
+      db.experience.findMany.mockImplementation(async (args: { where: Record<string, unknown> }) => ("completedAt" in args.where ? longRunning : []));
+      const result = await getOrreryActivity("user-1", since);
+      expect(result.truncated).toBe(true);
+      // The cursor stops at the last COMPLETION returned, so the next poll continues from there rather than skipping the rest.
+      expect(result.cursor).toBe(longRunning[79].completedAt.toISOString());
+      expect(new Date(result.cursor).getTime()).toBeGreaterThan(since.getTime() + 1);
+    });
+
     it("never repeats a window it cannot page any finer", async () => {
       const at = minutesAgo(2);
       db.agentRuntimeEvent.findMany.mockResolvedValue(Array.from({ length: 80 }, (_, i) => runtimeEvent(i, at)));

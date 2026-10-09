@@ -11,6 +11,7 @@ const MAX_ROWS = 80;
 /** Rows can become visible a moment after the time they carry; re-offer this much history on every poll. */
 export const CURSOR_OVERLAP_MS = 5_000;
 const MAX_TEXT = 140;
+const EXPERIENCE_SELECT = { id: true, agentId: true, objective: true, knowledgeUsed: true, startedAt: true, completedAt: true } as const;
 
 const clip = (value: string) => {
   const flat = value.replace(/\s+/g, " ").trim();
@@ -50,7 +51,7 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
   const from = since ?? new Date(now.getTime() - DEFAULT_WINDOW_MS);
   const workspaceIds = await getAccessibleWorkspaceIds(userId);
 
-  const [sessions, runtimeEvents, runs, experiences, approvalRows, agents] = await Promise.all([
+  const [sessions, runtimeEvents, runs, startedExperiences, completedExperiences, approvalRows, agents] = await Promise.all([
     db.agentSession.findMany({
       where: { userId, OR: [{ status: { in: ACTIVE_SESSION } }, { lastActivityAt: { gte: from } }] },
       orderBy: { lastActivityAt: "desc" },
@@ -69,14 +70,10 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
       take: MAX_ROWS,
       select: { id: true, status: true, resolvedAgentId: true, request: true, retrievedObjectIds: true, startedAt: true, completedAt: true, queuedAt: true, error: true, updatedAt: true },
     }),
-    workspaceIds.length
-      ? db.experience.findMany({
-          where: { workspaceId: { in: workspaceIds }, OR: [{ startedAt: { gte: from } }, { completedAt: { gte: from } }] },
-          orderBy: { startedAt: "asc" },
-          take: MAX_ROWS,
-          select: { id: true, agentId: true, objective: true, knowledgeUsed: true, startedAt: true, completedAt: true },
-        })
-      : Promise.resolve([]),
+    // Two reads, each paged on the column it filters by. One read ordered by startedAt but matched on either column
+    // returned old-started rows first and made the cursor (the last startedAt) meaningless for the completed ones.
+    workspaceIds.length ? db.experience.findMany({ where: { workspaceId: { in: workspaceIds }, startedAt: { gte: from } }, orderBy: { startedAt: "asc" }, take: MAX_ROWS, select: EXPERIENCE_SELECT }) : Promise.resolve([]),
+    workspaceIds.length ? db.experience.findMany({ where: { workspaceId: { in: workspaceIds }, completedAt: { gte: from } }, orderBy: { completedAt: "asc" }, take: MAX_ROWS, select: EXPERIENCE_SELECT }) : Promise.resolve([]),
     workspaceIds.length
       ? db.approvalRequest.findMany({
           where: { workspaceId: { in: workspaceIds }, status: "pending" },
@@ -132,6 +129,7 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
       events.push({ id: `run:${r.id}:end`, at: r.completedAt.toISOString(), agentId: r.resolvedAgentId, verb: failed ? "fail" : "done", text: failed && r.error ? clip(r.error) : title, nodeIds: [] });
     }
   }
+  const experiences = [...new Map([...startedExperiences, ...completedExperiences].map((x) => [x.id, x])).values()];
   for (const x of experiences) {
     if (x.startedAt >= from) {
       events.push({ id: `exp:${x.id}:start`, at: x.startedAt.toISOString(), agentId: x.agentId, verb: x.knowledgeUsed.length ? "recall" : "start", text: clip(x.objective), nodeIds: x.knowledgeUsed.slice(0, 6) });
@@ -187,7 +185,9 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
   let cursorAt = now.getTime() - CURSOR_OVERLAP_MS;
   const capped: Date[] = [];
   if (runtimeEvents.length >= MAX_ROWS) capped.push(runtimeEvents[runtimeEvents.length - 1].occurredAt);
-  if (experiences.length >= MAX_ROWS) capped.push(experiences[experiences.length - 1].startedAt);
+  if (startedExperiences.length >= MAX_ROWS) capped.push(startedExperiences[startedExperiences.length - 1].startedAt);
+  const lastCompleted = completedExperiences[completedExperiences.length - 1]?.completedAt;
+  if (completedExperiences.length >= MAX_ROWS && lastCompleted) capped.push(lastCompleted);
   for (const edge of capped) cursorAt = Math.min(cursorAt, edge.getTime());
   // Never move backwards past where the caller already was. If a full page ends exactly at the
   // caller's cursor the window cannot be paged any finer, so step past it rather than repeat it forever.

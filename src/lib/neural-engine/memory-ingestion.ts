@@ -20,6 +20,7 @@
 // sweep that may not run for hours.
 
 import { db } from "@/lib/db";
+import { notExpired } from "@/lib/learning/memory-governance";
 import { classifyForIngestion, type IngestionVerdict, memoryTypeForLane } from "./ingestion-gate";
 import { assertWritableMemoryScope } from "@/lib/knowledge/memory-scope";
 import { reconsolidateMemory, defaultMode, type ReconsolidationMode } from "./reconsolidation-engine";
@@ -85,6 +86,8 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
       ...(scope === "bot" ? { botId } : {}),
       archived: false,
       validTo: null,
+      // A memory past its retention deadline is gone: it must not make the same fact look like a duplicate.
+      AND: [notExpired()],
     },
     select: { content: true },
     orderBy: { createdAt: "desc" },

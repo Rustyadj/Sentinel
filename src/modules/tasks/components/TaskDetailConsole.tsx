@@ -69,6 +69,8 @@ function LiveSessionPanel({ sessionId }: { sessionId: string }) {
   const [lines, setLines] = useState<LiveLine[]>([]);
   const [connected, setConnected] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  // A monotonic local counter: the stream's own sequence can be absent, and replayed after a reconnect.
+  const lineSeq = useRef(0);
 
   useEffect(() => {
     const source = new EventSource(`/api/agent-sessions/${sessionId}/events`);
@@ -82,7 +84,7 @@ function LiveSessionPanel({ sessionId }: { sessionId: string }) {
           if (payload.type === "stdout" || payload.type === "stderr" || payload.type === "assistant_delta") return;
           setLines((prev) => [
             ...prev.slice(-199),
-            { id: `${payload.sequence ?? prev.length}`, type: payload.type, text: summarizeRuntimeEvent(payload.type, payload.data ?? {}), at: new Date().toISOString() },
+            { id: `${lineSeq.current++}`, type: payload.type, text: summarizeRuntimeEvent(payload.type, payload.data ?? {}), at: new Date().toISOString() },
           ]);
         } catch {
           // malformed event payload — skip rather than break the stream

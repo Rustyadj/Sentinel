@@ -52,6 +52,8 @@ export interface PendingInterruption extends HaltContext {
   /** Why the session was being stopped: a policy halt, or a cancellation the user asked for. */
   cause: { kind: "halt"; halt: Halt } | { kind: "cancel" };
   sessionId: string;
+  /** The worker that holds the execution lease for this run. Only it may be released by the reconciler. */
+  workerId: string;
   firstUnconfirmedAt: string;
   lastCheckedAt: string;
   checks: number;

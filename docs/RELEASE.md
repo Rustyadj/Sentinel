@@ -69,14 +69,24 @@ Production deploys from CI only on `workflow_dispatch`, or on a push to `main` w
 
 ## Rolling back
 
+Every deploy first pins the exact images the app and both workers are running (`snapshot.tsv`, `restore.compose.yml` in
+`backups/releases/<time>-<sha>/`). Rolling back re-creates the containers from those images:
+
 ```bash
-git show <previous-sha>:scripts/deploy/release.sh | APP_DIR="$PWD" bash -s -- rollback <previous-sha>
+git show <release-sha>:scripts/deploy/release.sh | APP_DIR="$PWD" bash -s -- restore backups/releases/<time>-<sha>
 ```
 
-Rebuilds (or reuses) every image at `<previous-sha>`, restarts app and both workers on it, and verifies. It never runs or
-reverts a migration. `previous-sha` is in the latest `backups/releases/*/release.json`. A revision from before this
-script (what production runs today) predates tagged images, so a rollback *to* it is verified by the app's revision and
-health, and the script says so.
+The same thing runs automatically if a deploy fails after services were replaced. It does not depend on the previous
+revision's compose file or source, which matters today: production's app was built from a hand-made override of PR #41's
+commit, its workers from a different compose file, and the revision it reports has no orchestration worker at all. It runs
+no migration and reverts none (migrations stay additive), refuses if a snapshot image has been pruned, verifies each
+service is on its snapshot image and that the app reports the revision it had, and prints where the backups are if it
+cannot finish. Restored legacy workers get their healthcheck disabled, since the heartbeat it relies on is new.
+
+Once two releases built with this script exist, `release.sh rollback <earlier-sha>` also works: it rebuilds every service
+from that revision. It refuses a revision whose compose file lacks any of the services, rather than let `--remove-orphans`
+delete the one it does not define. Keep `docker image prune` away from `sentinel-os-rollback-*` images until the release
+has settled.
 
 ## Repository protections to enable
 

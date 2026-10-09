@@ -150,6 +150,22 @@ describe("bot memory WRITE scopes", () => {
     expect(expired.text).not.toContain("retention probe");
   });
 
+  it("an expired memory no longer blocks the same fact from being learned again", async () => {
+    const policy = withPolicy(botB, { writeScopes: ["bot"], readScopes: ["bot"], retentionDays: 30 });
+    const fact = "The Titan ICF dedupe probe: hurricane ICF framing reels must open on the shoreline drone shot.";
+    const first = await writeBotMemory(policy, { userId: owner.id, runId: "dd-1", content: fact });
+    expect(first.accepted, JSON.stringify(first)).toBe(true);
+    // While it is live, the same fact is a duplicate.
+    const duplicate = await writeBotMemory(policy, { userId: owner.id, runId: "dd-2", content: fact });
+    expect(duplicate.accepted).toBe(false);
+    expect(duplicate.reasons.join(" ")).toMatch(/duplicate/i);
+    // Once its deadline passes it is gone, and the bot may learn it afresh.
+    await db.memory.update({ where: { id: first.memoryId! }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    const again = await writeBotMemory(policy, { userId: owner.id, runId: "dd-3", content: fact });
+    expect(again.accepted, JSON.stringify(again)).toBe(true);
+    expect(again.memoryId).not.toBe(first.memoryId);
+  });
+
   it("a retention deadline never makes a superseded, quarantined, forgotten or shadow memory readable", async () => {
     const future = new Date(Date.now() + 30 * 86_400_000);
     const rows = {

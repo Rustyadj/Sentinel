@@ -93,4 +93,27 @@ describe("deciding a bot tool approval from the approvals route", () => {
     session.userId = "";
     expect((await patch(approval.id, { status: "approved" })).status).toBe(401);
   });
+
+  it("if the continuation cannot be created, nothing is decided: the approval stays pending and the task stays waiting, and a retry works", async () => {
+    const { bot, task, approval } = await waitingTask();
+    await db.bot.update({ where: { id: bot.id }, data: { status: "disabled" } });
+    const refused = await patch(approval.id, { status: "approved" });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } })).status).toBe("pending");
+    expect((await getBotTask(task.id, viewer())).status).toBe("WAITING");
+    expect(await db.orchestrationRun.count({ where: { parentRunId: task.id } })).toBe(0);
+
+    await db.bot.update({ where: { id: bot.id }, data: { status: "active" } });
+    expect((await patch(approval.id, { status: "approved" })).status).toBe(200);
+    expect(await db.orchestrationRun.count({ where: { parentRunId: task.id } })).toBe(1);
+  });
+
+  it("records the reviewer's note and an audit entry, as every other approval does", async () => {
+    const { approval } = await waitingTask();
+    expect((await patch(approval.id, { status: "rejected", decisionNote: "Not on a Friday." })).status).toBe(200);
+    const row = await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } });
+    expect(row).toMatchObject({ status: "rejected", decisionNote: "Not on a Friday.", reviewerUserId: owner.id });
+    const audit = await db.auditLog.findFirst({ where: { approvalRequestId: approval.id, action: "approval.rejected" } });
+    expect(audit?.details).toMatchObject({ decisionNote: "Not on a Friday." });
+  });
 });

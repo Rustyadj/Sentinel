@@ -12,8 +12,9 @@ what was rejected. No implementation detail — that belongs in the topic doc.
 `app`, `migrate`, `learning-worker` and `orchestration-worker` at a single sha, tags every image
 `sentinel-os-<service>:<sha>`, and calls the release deployed only when each running container reports that
 sha (env, image label, tag, health) and `/api/version` agrees. Any failure after services were replaced rolls
-all of them back to the revision that was *running*, not merely the one checked out. Rollback never runs or
-reverts a migration; migrations stay additive. Production deploys on `workflow_dispatch`, or on a push to
+all of them back to the *exact images that were running*, pinned under `sentinel-os-rollback-*` tags before anything
+was replaced — not rebuilt from the previous revision, whose compose file may not even define every service. Rollback never
+runs or reverts a migration; migrations stay additive. Production deploys on `workflow_dispatch`, or on a push to
 main while the repository variable `SENTINEL_AUTODEPLOY` is `true`, in addition to the `production`
 environment's reviewers.
 
@@ -26,8 +27,9 @@ on old code and call itself green is not a gate.
 relative to the project directory, so moving it moves the credentials and agent data with it. *Tagging only
 the app image.* *Making the workers `latest`.*
 
-**Consequences.** A revision from before this change (production today) cannot be verified as strictly when
-rolled back *to*; the script verifies its app revision and health and says so.
+**Consequences.** Production today (an app built from an override of PR #41's commit, workers from another compose file)
+can be restored exactly. Rebuilding from a revision that predates tagged images is verified by its app revision and
+health only, and the script says so.
 
 ## ADR-008 — Retention is `memories.expiresAt`, not `validTo`
 

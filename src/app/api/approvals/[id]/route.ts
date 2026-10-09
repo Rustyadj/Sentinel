@@ -27,7 +27,11 @@ export async function PATCH(req: NextRequest, { params }: Context) {
       try {
         const admin = await requireBotAdmin(approval.workspaceId);
         if (approval.status !== "pending") throw new HttpError("This approval has already been decided", 409);
-        await resolveBotTaskApproval(botPayload.runId, body.status === "approved" ? "approve" : "deny", { userId: admin.id, isAdmin: true });
+        await resolveBotTaskApproval(botPayload.runId, body.status === "approved" ? "approve" : "deny", { userId: admin.id, isAdmin: true }, { decisionNote: body.decisionNote });
+        if (body.status === "rejected") {
+          const { recordProductionFailure } = await import("@/lib/learning/production-failures");
+          await recordProductionFailure("rejected_approval", { sourceId: id, workspaceId: approval.workspaceId, userId: admin.id, context: { decisionNote: body.decisionNote, taskId: approval.taskId } }).catch(() => undefined);
+        }
         return NextResponse.json(await db.approvalRequest.findUniqueOrThrow({ where: { id } }));
       } catch (error) {
         return botErrorResponse(error);

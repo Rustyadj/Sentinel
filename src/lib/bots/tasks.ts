@@ -12,6 +12,7 @@ import { readableWorkspaceIds } from "@/lib/knowledge/memory-scope";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { enqueueOrchestrationRun } from "@/lib/orchestration/queue";
 import { writeAuditLog } from "@/lib/workspaces/audit";
+import { decideApproval } from "@/lib/workspaces/approvals";
 import { BotRunLog } from "./events";
 import { activeCatalog, loadCatalog } from "./catalog";
 import { approvalKey, evaluateDelegation, resolveObservedTool, type DelegationParent } from "./policy";
@@ -329,19 +330,33 @@ async function approvedKeysFor(payload: Record<string, unknown>, workspaceId: st
  * closed, because a runtime session that has been interrupted cannot be resumed
  * safely. Denying simply closes it.
  */
-export async function resolveBotTaskApproval(taskId: string, decision: "approve" | "deny", viewer: TaskViewer & { isAdmin: true }) {
+export async function resolveBotTaskApproval(
+  taskId: string,
+  decision: "approve" | "deny",
+  viewer: TaskViewer & { isAdmin: true },
+  options: { decisionNote?: string } = {},
+) {
   const run = await db.orchestrationRun.findFirst({ where: { id: taskId, botId: { not: null }, status: "waiting" } });
   if (!run || !run.botId) throw new BotTaskError("Task is not waiting for approval", 404);
   const approval = await db.approvalRequest.findFirst({ where: { status: "pending", payload: { path: ["runId"], equals: run.id } } });
   if (!approval) throw new BotTaskError("No pending approval for this task", 404);
   const payload = asRecord(approval.payload);
   const log = new BotRunLog(run.botId, run.id);
-  await db.approvalRequest.update({ where: { id: approval.id }, data: { status: decision === "approve" ? "approved" : "rejected", reviewerUserId: viewer.userId, decidedAt: new Date() } });
-  await log.emit("approval_resolved", `${decision === "approve" ? "Approved" : "Denied"} ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id });
+  const decide = async (status: "approved" | "rejected") => {
+    try { return await decideApproval(approval.id, status, viewer.userId, options.decisionNote); }
+    catch { throw new BotTaskError("This approval was already decided", 409); }
+  };
+
   if (decision === "deny") {
+    await decide("rejected");
+    await log.emit("approval_resolved", `Denied ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id });
     await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: "Tool use was denied." } });
     return { status: "cancelled" as const, resumedTaskId: null };
   }
+
+  // The continuation is created BEFORE the approval is decided. If it cannot be (the bot was disabled, its policy
+  // refuses, the queue is down) nothing has changed: the approval is still pending and the task still waiting, so the
+  // reviewer can retry or deny. Deciding first stranded the task behind an approval that no longer read as pending.
   const request = asRecord(run.request);
   const child = await delegateToBot(run.botId, {
     task: String(request.task ?? ""), context: typeof request.context === "string" ? request.context : undefined,
@@ -350,6 +365,14 @@ export async function resolveBotTaskApproval(taskId: string, decision: "approve"
     mode: request.mode === "test" ? "test" : "delegate", originKey: run.originKey ?? `user:${run.userId}`,
     approvedTools: [...new Set([...(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []), ...(await approvedKeysFor(payload, run.workspaceId))])],
   });
+  try {
+    await decide("approved");
+  } catch (error) {
+    // Someone decided it between our read and now: do not leave a second session queued beside theirs.
+    await db.orchestrationRun.updateMany({ where: { id: child.id, status: "queued" }, data: { status: "cancelled", completedAt: new Date(), error: "The approval was decided elsewhere." } });
+    throw error;
+  }
+  await log.emit("approval_resolved", `Approved ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id });
   await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: `Approved and continued as task ${child.id}.` } });
   await db.orchestrationRun.update({ where: { id: child.id }, data: { parentRunId: run.id } });
   return { status: "resumed" as const, resumedTaskId: child.id };

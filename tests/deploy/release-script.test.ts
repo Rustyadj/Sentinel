@@ -20,7 +20,9 @@ const commit = (cwd: string, name: string) => { writeFileSync(join(cwd, name), n
 const calls = () => (existsSync(join(fake, "calls.log")) ? readFileSync(join(fake, "calls.log"), "utf8").split("\n").filter(Boolean) : []);
 const events = () => (existsSync(join(fake, "events.log")) ? readFileSync(join(fake, "events.log"), "utf8").split("\n").filter(Boolean) : []);
 const running = (service: string) => (existsSync(join(fake, `svc.${service}.sha`)) ? readFileSync(join(fake, `svc.${service}.sha`), "utf8").trim() : null);
-const setRunning = (sha: string) => { for (const s of ["app", "learning-worker", "orchestration-worker"]) writeFileSync(join(fake, `svc.${s}.sha`), `${sha}\n`); };
+const setRunning = (sha: string) => { for (const s of ["app", "learning-worker", "orchestration-worker"]) { writeFileSync(join(fake, `svc.${s}.sha`), `${sha}\n`); writeFileSync(join(fake, `svc.${s}.img`), `sha256:img-${s}-${sha}\n`); } };
+const image = (service: string) => (existsSync(join(fake, `svc.${service}.img`)) ? readFileSync(join(fake, `svc.${service}.img`), "utf8").trim() : null);
+const SERVICES_BLOCK = "  postgres:\n    image: pgvector/pgvector:pg16\n  migrate:\n    build: .\n  learning-worker:\n    build: .\n  orchestration-worker:\n    build: .\n";
 
 function run(args: string[], env: Record<string, string> = {}) {
   const result = spawnSync("bash", [SCRIPT, ...args], {
@@ -42,9 +44,9 @@ beforeEach(() => {
   mkdirSync(join(app, "scripts/deploy"), { recursive: true });
   writeFileSync(join(app, "scripts/deploy/release.sh"), readFileSync(SCRIPT));
   // What production runs today predates tagged images; the release being deployed is tagged.
-  writeFileSync(join(app, "docker-compose.yml"), "services:\n  app:\n    build: .\n");
+  writeFileSync(join(app, "docker-compose.yml"), `services:\n  app:\n    build: .\n${SERVICES_BLOCK}`);
   shaOld = commit(app, "old"); git(app, "push", "-q", "origin", "HEAD:main");
-  writeFileSync(join(app, "docker-compose.yml"), "services:\n  app:\n    image: sentinel-os-app:${SENTINEL_RELEASE_SHA:-local}\n");
+  writeFileSync(join(app, "docker-compose.yml"), `services:\n  app:\n    image: sentinel-os-app:\${SENTINEL_RELEASE_SHA:-local}\n${SERVICES_BLOCK}`);
   shaNew = commit(app, "new"); git(app, "push", "-q", "origin", "HEAD:main");
   git(app, "checkout", "-q", "--detach", shaOld);
   writeFileSync(join(app, ".env"), "AUTH_SECRET=SUPER-SECRET-VALUE\n");   // untracked, as on the host
@@ -125,7 +127,7 @@ describe("deploy", () => {
   it("rolls EVERY service back when a worker never becomes healthy", () => {
     const { status, out } = run(["deploy", shaNew], { FAKE_UNHEALTHY: "orchestration-worker", FAKE_UNHEALTHY_SHA: shaNew });
     expect(status).not.toBe(0);
-    expect(out).toMatch(/rolling every service back/);
+    expect(out).toMatch(/restoring every service to the images that were running/);
     expect([running("app"), running("learning-worker"), running("orchestration-worker")]).toEqual([shaOld, shaOld, shaOld]);
     expect(git(app, "rev-parse", "HEAD")).toBe(shaOld);
     // the rollback did not migrate again
@@ -154,6 +156,57 @@ describe("deploy", () => {
   });
 });
 
+describe("restore (the rollback a failed deploy uses)", () => {
+  it("puts every service back on the exact images that were running, not on whatever the old source builds to", () => {
+    const deployed = run(["deploy", shaNew]);
+    expect(deployed.status, deployed.out).toBe(0);
+    const dir = readdirSync(join(app, "backups/releases")).map((d) => join(app, "backups/releases", d))[0];
+    expect(readFileSync(join(dir, "snapshot.tsv"), "utf8").trim().split("\n")).toHaveLength(3);
+    expect(readFileSync(join(dir, "restore.compose.yml"), "utf8")).toMatch(/image: sentinel-os-rollback-app:/);
+    expect(image("app")).toBe(`sha256:img-app-${shaNew}`);
+
+    const restored = run(["restore", dir]);
+    expect(restored.status, restored.out).toBe(0);
+    for (const service of ["app", "learning-worker", "orchestration-worker"]) {
+      expect(image(service)).toBe(`sha256:img-${service}-${shaOld}`);
+      expect(running(service)).toBe(shaOld);
+    }
+    expect(events().filter((e) => e === "migrated")).toHaveLength(1);       // restoring ran no migration
+  });
+
+  it("gives restored legacy workers no heartbeat healthcheck they could never satisfy", () => {
+    expect(run(["deploy", shaNew]).status).toBe(0);
+    const dir = readdirSync(join(app, "backups/releases")).map((d) => join(app, "backups/releases", d))[0];
+    // The fake reports the pre-deploy containers as legacy: no healthcheck on the workers, one on the app.
+    const override = readFileSync(join(dir, "restore.compose.yml"), "utf8");
+    expect(override).toMatch(/learning-worker:[\s\S]*healthcheck:\s+disable: true/);
+  });
+
+  it("refuses, loudly and without touching anything, when a snapshot image is gone", () => {
+    expect(run(["deploy", shaNew]).status).toBe(0);
+    const dir = readdirSync(join(app, "backups/releases")).map((d) => join(app, "backups/releases", d))[0];
+    const before = calls().length;
+    const result = run(["restore", dir], { FAKE_IMAGE_GONE: "1" });
+    expect(result.status).not.toBe(0);
+    expect(result.out).toMatch(/snapshot image .* is gone/);
+    expect(calls().slice(before).some((c) => c.startsWith("compose") && c.includes(" up "))).toBe(false);
+    expect(running("app")).toBe(shaNew);
+  });
+
+  it("when the deploy fails AND the restore cannot complete, says so and where the backups are", () => {
+    const result = run(["deploy", shaNew], { FAKE_UNHEALTHY: "orchestration-worker", FAKE_UNHEALTHY_SHA: shaNew, FAKE_RESTORE_FAIL: "1" });
+    expect(result.status).not.toBe(0);
+    expect(result.out).toMatch(/RESTORE ALSO FAILED\. Manual recovery needed/);
+    expect(result.out).toMatch(/backups\/releases\//);
+  });
+
+  it("refuses a directory that is not a deploy's snapshot", () => {
+    const result = run(["restore", join(root, "nowhere")]);
+    expect(result.status).not.toBe(0);
+    expect(result.out).toMatch(/needs a backup directory written by a deploy/);
+  });
+});
+
 describe("rollback", () => {
   it("restores app and both workers to the target revision without running a migration", () => {
     setRunning(shaNew);
@@ -174,6 +227,17 @@ describe("rollback", () => {
     const lie = run(["rollback", shaOld], { FAKE_VERSION_LIE: shaNew });
     expect(lie.status).not.toBe(0);
     expect(lie.out).toMatch(/api\/version reports/);
+  });
+
+  it("refuses to rebuild from a revision whose compose file lacks one of the services, rather than orphan-delete it", () => {
+    // Production's running revision (3b7d519) is like this: it has no orchestration worker at all.
+    writeFileSync(join(app, "docker-compose.yml"), "services:\n  app:\n    build: .\n  migrate:\n    build: .\n  learning-worker:\n    build: .\n");
+    const without = commit(app, "without-orchestration-worker"); git(app, "checkout", "-q", "--detach", shaOld);
+    setRunning(shaNew);
+    const result = run(["rollback", without]);
+    expect(result.status).not.toBe(0);
+    expect(result.out).toMatch(/no 'orchestration-worker' service; roll back with 'restore/);
+    expect(running("orchestration-worker")).toBe(shaNew);
   });
 
   it("refuses a revision that is not in the checkout", () => {

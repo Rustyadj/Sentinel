@@ -87,6 +87,31 @@ describe("graph reconciliation", () => {
   });
 });
 
+describe("overlapping graph reads", () => {
+  it("an older, slower response never overwrites a newer one", async () => {
+    // The first read is slow and carries OLD data; the second (a tab coming back to the foreground) is fast and carries NEW data.
+    const releases: Array<() => void> = [];
+    let calls = 0;
+    const payloads = [{ nodes: [node("a"), node("b"), node("c")], edges: [], partial: false }, { nodes: [node("a")], edges: [], partial: false }];
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.startsWith("/api/orrery/activity")) return new Response(JSON.stringify(world.activity), { status: 200 });
+      const mine = calls++;
+      if (mine === 0) await new Promise<void>((resolve) => releases.push(resolve));   // held open
+      return new Response(JSON.stringify(payloads[Math.min(mine, 1)]), { status: 200 });
+    }));
+    const { result } = renderHook(() => useOrreryData(() => undefined));
+    await flush();
+    expect(result.current.status).toBe("loading");                 // read #1 is still in flight
+
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.model?.nodeCount).toBe(1);                // read #2 (new data) applied
+
+    await act(async () => { releases.forEach((release) => release()); await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.model?.nodeCount).toBe(1);                // read #1 (old data) arrived late and was ignored
+  });
+});
+
 describe("failures are visible and non-destructive", () => {
   it("a failing graph refresh keeps the last good globe, reports the error and the age of the data, then recovers", async () => {
     const { result } = renderHook(() => useOrreryData(() => undefined));

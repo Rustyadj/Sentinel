@@ -1,4 +1,4 @@
-import { redisAcquireLease, redisDeleteKey, redisReleaseLease, redisRenewLease } from "@/lib/redis";
+import { redisAcquireLease, redisReleaseLease, redisRenewLease } from "@/lib/redis";
 
 const TTL_SECONDS = 90;
 const keyFor = (runId: string) => `sentinel:orchestration:owner:${runId}`;
@@ -28,9 +28,4 @@ const UNCONFIRMED_HOLD_SECONDS = 6 * 60 * 60;
  */
 export async function holdExecutionOwnership(runId: string, workerId: string) {
   return redisRenewLease(keyFor(runId), workerId, UNCONFIRMED_HOLD_SECONDS);
-}
-
-/** Release a lease whose holder is gone, after the runtime has confirmed the session ended. */
-export async function forceReleaseExecutionOwnership(runId: string) {
-  await redisDeleteKey(keyFor(runId));
 }

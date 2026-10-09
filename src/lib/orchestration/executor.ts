@@ -4,7 +4,7 @@ import { getAdapterForRuntime } from "@/lib/agents/runtime/service";
 import { asRuntimeInstance } from "@/lib/agents/runtime/config";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { assertConcurrentDispatchAllowed } from "@/lib/agents/coexecution-policy";
-import { acquireExecutionOwnership, forceReleaseExecutionOwnership, holdExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
+import { acquireExecutionOwnership, holdExecutionOwnership, orchestrationWorkerId, releaseExecutionOwnership, renewExecutionOwnership } from "./execution-ownership";
 import { UnrecoverableError } from "bullmq";
 import { buildMemoryContext, withMemoryContext } from "@/lib/neural-engine/memory-context";
 import { loadBotExecution, type PendingInterruption } from "@/lib/bots/execution";
@@ -194,7 +194,7 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
             // The session may still be running the very tool that was just refused. Parking the task as waiting (or
             // failed) would release it and let an approval start a second session beside the first. Keep it tracked.
             keepOwnership = true;
-            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "halt", halt }, session.id, attempt.id, started, text, interrupted.message));
+            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "halt", halt }, workerId, session.id, attempt.id, started, text, interrupted.message));
             return;
           }
           await botExec.halted(halt, { attemptId: attempt.id, startedAtMs: started, text });
@@ -209,7 +209,7 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
         if (!cancelled.success) {
           if (botExec) {
             keepOwnership = true;
-            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "cancel" }, session.id, attempt.id, started, text, cancelled.message));
+            await botExec.interruptionUnconfirmed(pendingInterruption({ kind: "cancel" }, workerId, session.id, attempt.id, started, text, cancelled.message));
             return;
           }
           throw new Error(`Cancellation not confirmed: ${cancelled.message}`);
@@ -277,9 +277,9 @@ export async function cancelOrchestrationRun(runId: string, userId: string): Pro
   return { accepted: true, status, projectId: run.projectId, workspaceId: run.workspaceId };
 }
 
-function pendingInterruption(cause: PendingInterruption["cause"], sessionId: string, attemptId: string, startedAtMs: number, text: string, message: string): PendingInterruption {
+function pendingInterruption(cause: PendingInterruption["cause"], workerId: string, sessionId: string, attemptId: string, startedAtMs: number, text: string, message: string): PendingInterruption {
   const now = new Date().toISOString();
-  return { cause, sessionId, attemptId, startedAtMs, text, firstUnconfirmedAt: now, lastCheckedAt: now, checks: 1, lastMessage: message };
+  return { cause, workerId, sessionId, attemptId, startedAtMs, text, firstUnconfirmedAt: now, lastCheckedAt: now, checks: 1, lastMessage: message };
 }
 
 /**
@@ -289,16 +289,23 @@ function pendingInterruption(cause: PendingInterruption["cause"], sessionId: str
  * released. Until then the task stays in flight. Run periodically by the
  * orchestration worker; safe to run concurrently (a per-run lease serialises it).
  */
-export async function reconcileUnconfirmedInterruptions(limit = 20): Promise<{ checked: number; resolved: number }> {
+export async function reconcileUnconfirmedInterruptions(limit = 20): Promise<{ checked: number; resolved: number; errors: number }> {
   const candidates = await db.orchestrationRun.findMany({ where: { botId: { not: null }, status: "cancelling" }, orderBy: { updatedAt: "asc" }, take: 200 });
   const pending = candidates.filter((run) => (run.result as { interruptUnconfirmed?: unknown } | null)?.interruptUnconfirmed).slice(0, limit);
-  let resolved = 0;
+  let resolved = 0; let errors = 0;
   for (const run of pending) {
     const reconcileKey = `sentinel:orchestration:reconcile:${run.id}`;
     if (!await redisAcquireLease(reconcileKey, orchestrationWorkerId(), 60)) continue;
     const record = (run.result as unknown as { interruptUnconfirmed: PendingInterruption }).interruptUnconfirmed;
+    // Whatever goes wrong is recorded on the run itself (and logged), never swallowed: a task that stays open
+    // because its reconciliation keeps failing has to say why to whoever looks at it.
+    const noteFailure = async (message: string) => {
+      errors += 1;
+      console.error(`[reconcile] run ${run.id}: ${message}`);
+      await db.orchestrationRun.update({ where: { id: run.id }, data: { result: json({ ...(run.result as object), interruptUnconfirmed: { ...record, lastCheckedAt: new Date().toISOString(), checks: record.checks + 1, lastMessage: message } }) } }).catch(() => undefined);
+    };
     try {
-      if (!run.resolvedAgentId) continue;
+      if (!run.resolvedAgentId) { await noteFailure("the run has no runtime to ask"); continue; }
       const { adapter } = await getAdapterForRuntime(run.resolvedAgentId);
       const outcome = await interruptSession(adapter, record.sessionId);
       if (!outcome.success) {
@@ -321,13 +328,15 @@ export async function reconcileUnconfirmedInterruptions(limit = 20): Promise<{ c
           db.orchestrationRun.update({ where: { id: run.id }, data: { status: "failed", error: message, completedAt: new Date() } }),
         ]);
       }
-      await forceReleaseExecutionOwnership(run.id);
+      // Compare-and-delete against the worker that held it: if that hold lapsed and another worker now owns the run,
+      // its lease is not ours to revoke.
+      await releaseExecutionOwnership(run.id, record.workerId);
       resolved += 1;
-    } catch {
-      // Left as it was; the next pass tries again.
+    } catch (error) {
+      await noteFailure(error instanceof Error ? error.message : String(error));
     } finally {
       await redisReleaseLease(reconcileKey, orchestrationWorkerId());
     }
   }
-  return { checked: pending.length, resolved };
+  return { checked: pending.length, resolved, errors };
 }

@@ -186,32 +186,28 @@ export function clusterEpisodes(candidates: ConsolidationCandidate[]): EpisodeCl
 
   const clusters: EpisodeCluster[] = [];
   for (const members of byAgentDirection.values()) {
-    // Connected components over pairwise wording similarity. An earlier version
-    // compared each episode against a bucket's growing *union* of tokens: the
-    // union only gets bigger, so similarity fell as the bucket filled, and
-    // whether three near-identical reports clustered depended on the order they
-    // arrived in (equal-priority rows come back from the database in arbitrary
-    // order). Linking on pairs makes the outcome a property of the episodes, not
-    // of their ordering.
-    const tokens = members.map((member) => objectiveTokens(member.objective));
-    const parent = members.map((_, index) => index);
-    const find = (index: number): number => {
-      while (parent[index] !== index) { parent[index] = parent[parent[index]]; index = parent[index]; }
-      return index;
-    };
-    for (let i = 0; i < members.length; i += 1) {
-      for (let j = i + 1; j < members.length; j += 1) {
-        if (tokenSimilarity(tokens[i], tokens[j]) >= SIMILARITY_THRESHOLD) parent[find(j)] = find(i);
-      }
+    // Complete-linkage over pairwise wording similarity: an episode joins a cluster only if it is similar enough to EVERY
+    // member of it, and episodes are taken in a canonical order (objective text, then id) rather than the order the
+    // database happened to return them. Two failure modes this replaces:
+    //   * comparing each episode against a bucket's growing token UNION lowered similarity as the bucket filled, so whether
+    //     three near-identical reports clustered depended on row order (equal-priority rows have no defined order in
+    //     Postgres) — the CI flake;
+    //   * linking on any single similar pair (single linkage) fixes the order problem but lets a chain A~B~C merge A and C,
+    //     which share little wording, into one confident "generalization".
+    const ordered = members
+      .map((member) => ({ member, tokens: objectiveTokens(member.objective) }))
+      .sort((a, b) => a.member.objective.localeCompare(b.member.objective) || a.member.experienceId.localeCompare(b.member.experienceId));
+    const buckets: Array<Array<(typeof ordered)[number]>> = [];
+    for (const entry of ordered) {
+      const home = buckets.find((bucket) => bucket.every((other) => tokenSimilarity(other.tokens, entry.tokens) >= SIMILARITY_THRESHOLD));
+      if (home) home.push(entry); else buckets.push([entry]);
     }
-    const components = new Map<number, number[]>();
-    members.forEach((_, index) => components.set(find(index), [...(components.get(find(index)) ?? []), index]));
 
-    for (const indexes of components.values()) {
-      const bucketMembers = indexes.map((index) => members[index]);
+    for (const bucket of buckets) {
+      const bucketMembers = bucket.map((entry) => entry.member);
       const experienceIds = [...new Set(bucketMembers.map((m) => m.experienceId))].sort();
       if (experienceIds.length < MIN_EPISODES_FOR_GENERALIZATION) continue;
-      const bucketTokens = new Set(indexes.flatMap((index) => [...tokens[index]]));
+      const bucketTokens = new Set(bucket.flatMap((entry) => [...entry.tokens]));
       clusters.push({
         agentId: bucketMembers[0].agentId,
         domain: [...bucketTokens].sort().slice(0, 4).join("-") || "general",

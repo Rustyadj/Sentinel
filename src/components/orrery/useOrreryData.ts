@@ -86,6 +86,8 @@ export function useOrreryData(onEvents: (events: OrreryEvent[]) => void): Orrery
   const attempted = useRef(new Set<string>());
   const seen = useRef(new Set<string>());
   const cursor = useRef<string | undefined>(undefined);
+  // The 45s timer, a tab returning to the foreground and Retry can all start a graph read. Only the newest one may apply.
+  const graphReadSeq = useRef(0);
   const onEventsRef = useRef(onEvents);
   const pollNow = useRef<() => void>(() => undefined);
   const loadNow = useRef<() => void>(() => undefined);
@@ -116,22 +118,23 @@ export function useOrreryData(onEvents: (events: OrreryEvent[]) => void): Orrery
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      const seq = ++graphReadSeq.current;
       try {
         const payload = await getJson<ScopedPayload>(`/api/graph/scoped?limit=${GRAPH_LIMIT}`);
-        if (cancelled) return;
+        if (cancelled || seq !== graphReadSeq.current) return;   // a newer read started; this answer is stale
         applyBaseRead(store.current, payload);
         attempted.current.clear();
         // A partial read cannot prove a focus node is gone, so ask about each one.
         if (payload.partial) {
           await Promise.all([...store.current.focus.keys()].slice(0, FOCUS_RECHECK_LIMIT).map((id) => readFocus(id)));
-          if (cancelled) return;
+          if (cancelled || seq !== graphReadSeq.current) return;
         }
         rebuild();
         setPartial(Boolean(payload.partial));
         setStatus("ready");
         setGraphHealth(ok());
       } catch (e) {
-        if (cancelled) return;
+        if (cancelled || seq !== graphReadSeq.current) return;
         setGraphHealth((prev) => failed(prev, messageOf(e, "Graph unavailable")));
         setStatus((s) => (s === "ready" ? s : "error"));
       }
