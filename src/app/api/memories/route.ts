@@ -66,6 +66,6 @@ export async function POST(req: NextRequest) {
     tags: body.tags ?? [], projectId: body.scope === "project" ? body.projectId : null,
     confidence: body.confidence ?? 1, importanceScore: body.importanceScore ?? 0.5, source: body.source,
   }, select: SELECT });
-  await syncMemoryToGraph(memory, user.id).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
+  await syncMemoryToGraph(memory).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
   return NextResponse.json(memory, { status: 201 });
 }

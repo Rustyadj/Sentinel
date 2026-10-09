@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         updatedAt: true,
       },
     });
-    await syncMemoryToGraph(memory, user.id).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
+    await syncMemoryToGraph(memory).catch((err) => console.error("[memories] graph sync failed (non-fatal):", err));
 
     return NextResponse.json(memory);
   } catch (err) {
