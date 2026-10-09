@@ -45,7 +45,7 @@ test("the model picker lists the agent's real options and saves a different choi
   const card = page.getByRole("complementary", { name: "Agent activity" }).getByRole("listitem").filter({ hasText: "Hermes Lisa" }).first();
   const lisaModel = ((await card.innerText()).match(/[\w./-]*(?:deepseek|gpt|claude)[\w./-]*/) ?? [])[0];
   expect(lisaModel, "Lisa's card names her model").toBeTruthy();
-  const picker = page.getByRole("button", { name: lisaModel });
+  const picker = page.getByRole("button", { name: lisaModel, exact: true });
   await expect(picker).toBeVisible();
   await picker.click();
   const options = page.getByRole("radio");

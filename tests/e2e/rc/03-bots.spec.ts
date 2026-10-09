@@ -130,7 +130,8 @@ test("an approval-gated tool parks the task WAITING; approving continues it once
   await owner.screenshot({ path: "test-results/rc-evidence/bot-waiting-approval.png" });
   await approve.click();
 
-  const waiting = (await api<{ tasks: { id: string; status: string; task: string }[] }>(owner, "GET", `/api/bots/${seed().bots.forge}/tasks?limit=20`)).body.tasks.find((t) => t.task?.startsWith("Run the build please"))!;
+  // The continuation repeats the parent's task text, so take the OLDEST match: that is the one that was parked.
+  const waiting = (await api<{ tasks: { id: string; status: string; task: string }[] }>(owner, "GET", `/api/bots/${seed().bots.forge}/tasks?limit=50`)).body.tasks.filter((t) => t.task?.startsWith("Run the build please")).at(-1)!;
   const continued = await expect.poll(async () => child(owner, waiting.id), { timeout: 30_000 }).not.toBeNull().then(() => child(owner, waiting.id));
   const done = await waitFor(owner, continued!.id, "COMPLETED");
   expect(done.toolCalls[0]).toMatchObject({ tool: "terminal", decision: "allowed" });
