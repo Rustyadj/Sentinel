@@ -12,11 +12,11 @@ import { readableWorkspaceIds } from "@/lib/knowledge/memory-scope";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { enqueueOrchestrationRun } from "@/lib/orchestration/queue";
 import { writeAuditLog } from "@/lib/workspaces/audit";
-import { decideApproval } from "@/lib/workspaces/approvals";
+import { ApprovalAlreadyDecidedError, decideApprovalIn } from "@/lib/workspaces/approvals";
 import { BotRunLog } from "./events";
 import { activeCatalog, loadCatalog } from "./catalog";
 import { approvalKey, evaluateDelegation, resolveObservedTool, type DelegationParent } from "./policy";
-import { toBotRecord } from "./service";
+import { toBotRecord, type BotRecord } from "./service";
 import { delegateTaskSchema, toBotTaskStatus, type BotTaskStatus, type DelegateTaskInput } from "./schema";
 
 export class BotTaskError extends Error {
@@ -76,13 +76,33 @@ async function delegationChain(run: OrchestrationRun): Promise<string[]> {
 export interface DelegateOptions {
   /** "test" is an admin exercising the bot: allowed for draft/disabled bots and not gated by allowedCallers. */
   mode?: "delegate" | "test";
-  /** Bot task ids whose tools the requester has already approved. Only set by resume. */
+  /** Canonical tool keys the requester has already approved for this task. Only set by resume. */
   approvedTools?: string[];
   /** Continue an already-authorised task as this caller (an approval resume) instead of the requester. */
   originKey?: string;
 }
 
-export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, caller: BotCaller, options: DelegateOptions = {}) {
+/** One one-use tool permission handed to a new task. `sourceRunId` marks an unspent grant carried forward from the parent. */
+export interface GrantSpec { key: string; approvalRequestId?: string; sourceRunId?: string }
+
+interface AdmittedTask {
+  bot: BotRecord;
+  input: DelegateTaskInput;
+  mode: "delegate" | "test";
+  key: string;
+  projectId: string | null;
+  parentRun: OrchestrationRun | null;
+  caller: BotCaller;
+}
+
+/**
+ * Everything that decides whether a task may exist: caller identity, delegation
+ * policy, scope, host health, limits, idempotency. It reads and refuses; it writes
+ * nothing. Splitting it from the insert lets an approval continuation run these
+ * checks BEFORE it commits to a decision, and then create the task inside the
+ * decision's own transaction.
+ */
+async function admitTask(botId: string, rawInput: DelegateTaskInput, caller: BotCaller, options: DelegateOptions): Promise<{ existingId: string } | { admitted: AdmittedTask }> {
   const parsed = delegateTaskSchema.safeParse(rawInput);
   if (!parsed.success) throw new BotTaskError(parsed.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; "));
   const input = parsed.data;
@@ -142,36 +162,59 @@ export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, 
 
   if (input.idempotencyKey) {
     const existing = await db.orchestrationRun.findFirst({ where: { botId: bot.id, originKey: key, idempotencyKey: input.idempotencyKey } });
-    if (existing) return getBotTask(existing.id, { userId: caller.userId, isAdmin: false });
+    if (existing) return { existingId: existing.id };
   }
+  return { admitted: { bot, input, mode, key, projectId, parentRun, caller } };
+}
 
-  const run = await db.orchestrationRun.create({
+/** Insert the task row and its one-use grants through `client` (the decision's transaction, for a continuation). */
+async function insertTaskRun(client: Prisma.TransactionClient, task: AdmittedTask, grants: readonly GrantSpec[], parentRunId?: string) {
+  const { bot, input, mode, key, projectId, parentRun, caller } = task;
+  const unique = [...new Map(grants.map((grant) => [grant.key, grant])).values()];
+  const run = await client.orchestrationRun.create({
     data: {
       userId: caller.userId, workspaceId: bot.workspaceId, projectId, botId: bot.id, originKey: key,
-      parentRunId: parentRun?.id ?? null, idempotencyKey: input.idempotencyKey ?? null,
+      parentRunId: parentRunId ?? parentRun?.id ?? null, idempotencyKey: input.idempotencyKey ?? null,
       request: {
         task: input.task, context: input.context ?? null, modelRole: input.modelRole, mode, botName: bot.name,
-        ...(options.approvedTools?.length ? { approvedTools: options.approvedTools } : {}),
+        // A record of what was issued. The authority is the BotToolGrant rows: they are what gets spent, and what a continuation inherits.
+        ...(unique.length ? { approvedTools: unique.map((grant) => grant.key), grantsVersion: 2 } : {}),
       } as Prisma.InputJsonValue,
       requestedAgentId: bot.runtimeAgentId, resolvedAgentId: bot.runtimeAgentId,
       routingDecision: { kind: "bot", botId: bot.id, host: bot.runtimeAgentId, reason: `Delegated to bot ${bot.name}.` } as Prisma.InputJsonValue,
       contextSnapshot: { scope: { workspaceId: bot.workspaceId, projectId } } as Prisma.InputJsonValue,
     },
   });
+  if (unique.length) {
+    await client.botToolGrant.createMany({ data: unique.map((grant) => ({ runId: run.id, key: grant.key, approvalRequestId: grant.approvalRequestId ?? null, sourceRunId: grant.sourceRunId ?? null })) });
+  }
+  return run;
+}
+
+async function recordQueued(run: OrchestrationRun, task: AdmittedTask): Promise<void> {
+  const { bot, key, mode, input, parentRun, caller } = task;
   await new BotRunLog(bot.id, run.id).emit("queued", `Task queued by ${key}.`, { caller: key, mode, modelRole: input.modelRole });
   if (parentRun?.botId) await new BotRunLog(parentRun.botId, parentRun.id).emit("delegated", `Delegated to ${bot.name}.`, { childTaskId: run.id, childBotId: bot.id });
   await writeAuditLog({
-    workspaceId: bot.workspaceId, projectId, userId: caller.userId, actorType: caller.kind === "user" ? "user" : "agent",
+    workspaceId: bot.workspaceId, projectId: run.projectId, userId: caller.userId, actorType: caller.kind === "user" ? "user" : "agent",
     agentId: caller.kind === "agent" ? caller.agentId : null, action: "bot.task.queued", entityType: "orchestration_run", entityId: run.id,
     details: { botId: bot.id, caller: key, mode },
   });
+}
+
+export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, caller: BotCaller, options: DelegateOptions = {}) {
+  const admission = await admitTask(botId, rawInput, caller, options);
+  if ("existingId" in admission) return getBotTask(admission.existingId, { userId: caller.userId, isAdmin: false });
+  const { admitted } = admission;
+  const run = await insertTaskRun(db, admitted, (options.approvedTools ?? []).map((key) => ({ key })));
+  await recordQueued(run, admitted);
   try {
     await enqueueOrchestrationRun(run.id);
   } catch (error) {
     // The run row exists but nothing will ever pick it up. Say so, rather than leaving a task that reads QUEUED forever.
     const message = error instanceof Error ? error.message : "Queue unavailable";
     await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "failed", error: `Could not be queued: ${message}`, completedAt: new Date() } });
-    await new BotRunLog(bot.id, run.id).emit("error", `Could not be queued: ${message}`);
+    await new BotRunLog(admitted.bot.id, run.id).emit("error", `Could not be queued: ${message}`);
     throw new BotTaskError(`The task could not be queued: ${message}`, 503);
   }
   return getBotTask(run.id, { userId: caller.userId, isAdmin: false });
@@ -293,10 +336,14 @@ export async function cancelBotTask(taskId: string, viewer: TaskViewer) {
   const run = await db.orchestrationRun.findFirst({ where: { id: taskId, botId: { not: null }, ...(viewer.isAdmin ? {} : { userId: viewer.userId }) } });
   if (!run || !run.botId) throw new BotTaskError("Task not found", 404);
   if (run.status === "waiting") {
-    await db.$transaction([
-      db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date() } }),
-      db.approvalRequest.updateMany({ where: { status: "pending", payload: { path: ["runId"], equals: run.id } }, data: { status: "rejected", decidedAt: new Date(), decisionNote: "Task was cancelled." } }),
-    ]);
+    // Conditional on `waiting`: an approval that won the race has already closed this task and queued its continuation.
+    const closed = await db.$transaction(async (tx) => {
+      const won = await tx.orchestrationRun.updateMany({ where: { id: run.id, status: "waiting" }, data: { status: "cancelled", completedAt: new Date() } });
+      if (won.count === 0) return false;
+      await tx.approvalRequest.updateMany({ where: { status: "pending", payload: { path: ["runId"], equals: run.id } }, data: { status: "rejected", decidedAt: new Date(), decisionNote: "Task was cancelled." } });
+      return true;
+    });
+    if (!closed) throw new BotTaskError("Task cannot be cancelled (its approval was just decided).", 409);
     await new BotRunLog(run.botId, run.id).emit("cancelled", "Cancelled while waiting for approval.");
     return { taskId, status: "cancelled" as const, acknowledged: true };
   }
@@ -308,20 +355,93 @@ export async function cancelBotTask(taskId: string, viewer: TaskViewer) {
 }
 
 /**
- * The canonical `<serverId>:<catalog tool>` keys an approval grants. New approvals
- * carry them. An approval created before that (or by hand) only has the name the
- * runtime reported, so it is resolved against the catalog now rather than trusted
- * as-is: `mcp_<slug>_<tool>` is not a name evaluateToolAccess would ever look up.
+ * The canonical `<serverId>:<catalog tool>` keys an approval grants, checked against the
+ * workspace's live catalog. New approvals carry them; a key the catalog no longer has
+ * (server removed or disabled since) grants nothing, so the reviewer is told rather than
+ * handed an approval that can never match. An approval created before canonical names
+ * (or by hand) only has the name the runtime reported: it is resolved against the catalog
+ * now, and refused when that is ambiguous, because guessing which of two servers' tools
+ * was meant would grant the wrong one.
  */
 async function approvedKeysFor(payload: Record<string, unknown>, workspaceId: string | null): Promise<string[]> {
-  if (Array.isArray(payload.approvalKeys) && payload.approvalKeys.length) return payload.approvalKeys.map(String);
+  if (!workspaceId) throw new BotTaskError("This approval has no workspace, so its tool cannot be resolved.", 409);
+  const catalog = activeCatalog(await loadCatalog(workspaceId));
+  const known = new Set(catalog.flatMap((server) => server.tools.map((tool) => approvalKey(server.id, tool.name))));
+  if (Array.isArray(payload.approvalKeys) && payload.approvalKeys.length) {
+    const keys = [...new Set(payload.approvalKeys.map(String))].filter((key) => known.has(key));
+    if (!keys.length) throw new BotTaskError("The tool this approval covers is no longer available. Deny it and run the task again.", 409);
+    return keys;
+  }
   const tool = String(payload.tool ?? "");
   const serverId = typeof payload.serverId === "string" ? payload.serverId : null;
-  if (workspaceId) {
-    const resolved = resolveObservedTool(tool, activeCatalog(await loadCatalog(workspaceId))).filter((candidate) => !serverId || candidate.serverId === serverId);
-    if (resolved.length) return resolved.map((candidate) => approvalKey(candidate.serverId, candidate.toolName));
+  const resolved = resolveObservedTool(tool, catalog).filter((candidate) => !serverId || candidate.serverId === serverId);
+  if (resolved.length === 1) return [approvalKey(resolved[0].serverId, resolved[0].toolName)];
+  throw new BotTaskError(resolved.length ? "This approval names a tool that more than one server exposes, so it cannot be resolved safely. Deny it and run the task again." : "This approval does not name a tool in the catalog. Deny it and run the task again.", 409);
+}
+
+/** A lost race on the approval or on the waiting task is a conflict. Anything else is a real failure and is not disguised as one. */
+const asConflict = (error: unknown): never => {
+  if (error instanceof ApprovalAlreadyDecidedError) throw new BotTaskError("This approval was already decided", 409);
+  throw error;
+};
+
+interface ContinuationMarker { runId: string; pendingEnqueue: boolean; enqueuedAt?: string; error?: string }
+const continuationOf = (payload: Record<string, unknown>): ContinuationMarker | null => {
+  const marker = asRecord(payload.continuation);
+  return typeof marker.runId === "string" ? { runId: marker.runId, pendingEnqueue: marker.pendingEnqueue === true, ...(typeof marker.error === "string" ? { error: marker.error } : {}) } : null;
+};
+
+async function writeMarker(approvalId: string, marker: ContinuationMarker): Promise<void> {
+  const current = await db.approvalRequest.findUnique({ where: { id: approvalId }, select: { payload: true } });
+  if (!current) return;
+  await db.approvalRequest.update({ where: { id: approvalId }, data: { payload: { ...asRecord(current.payload), continuation: marker } as unknown as Prisma.InputJsonValue } });
+}
+
+/**
+ * Put an already-committed continuation on the queue. The decision and the child row are durable
+ * before this runs; if the queue is down the child simply stays `queued` and the approval keeps
+ * `continuation.pendingEnqueue`, which retryBotContinuations (run by the worker, and on a repeat
+ * approve) picks up. Nothing here can start work: only a job on the queue does, and BullMQ's
+ * jobId = run id makes a repeated add a no-op.
+ */
+async function enqueueContinuation(approvalId: string, runId: string): Promise<{ enqueued: boolean; error?: string }> {
+  try {
+    await enqueueOrchestrationRun(runId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Queue unavailable";
+    await writeMarker(approvalId, { runId, pendingEnqueue: true, error: message }).catch(() => undefined);
+    return { enqueued: false, error: message };
   }
-  return serverId ? [approvalKey(serverId, tool)] : [];
+  await writeMarker(approvalId, { runId, pendingEnqueue: false, enqueuedAt: new Date().toISOString() }).catch(() => undefined);
+  return { enqueued: true };
+}
+
+/**
+ * Enqueue approved continuations whose first enqueue failed. A continuation whose task has since
+ * been cancelled or finished is settled without enqueuing. Safe to call concurrently and repeatedly.
+ */
+export async function retryBotContinuations(options: { limit?: number; approvalId?: string } = {}): Promise<{ checked: number; enqueued: number; settled: number; failed: number }> {
+  const approvals = await db.approvalRequest.findMany({
+    where: { type: "bot_tool_call", status: "approved", ...(options.approvalId ? { id: options.approvalId } : {}), payload: { path: ["continuation", "pendingEnqueue"], equals: true } },
+    take: options.limit ?? 20, orderBy: { decidedAt: "asc" },
+  });
+  const totals = { checked: approvals.length, enqueued: 0, settled: 0, failed: 0 };
+  for (const approval of approvals) {
+    const marker = continuationOf(asRecord(approval.payload));
+    if (!marker) continue;
+    const child = await db.orchestrationRun.findUnique({ where: { id: marker.runId }, select: { id: true, status: true, botId: true } });
+    if (!child || child.status !== "queued") {
+      await writeMarker(approval.id, { runId: marker.runId, pendingEnqueue: false, error: child ? `Not enqueued: task is ${child.status}.` : "Not enqueued: task no longer exists." });
+      totals.settled += 1;
+      continue;
+    }
+    const outcome = await enqueueContinuation(approval.id, child.id);
+    if (outcome.enqueued) {
+      totals.enqueued += 1;
+      if (child.botId) await new BotRunLog(child.botId, child.id).emit("queued", "Continuation queued after an earlier queue failure.").catch(() => undefined);
+    } else totals.failed += 1;
+  }
+  return totals;
 }
 
 /**
@@ -329,6 +449,16 @@ async function approvedKeysFor(payload: Record<string, unknown>, workspaceId: st
  * (a child of the waiting one) that may use that one tool; the waiting task is
  * closed, because a runtime session that has been interrupted cannot be resumed
  * safely. Denying simply closes it.
+ *
+ * Atomicity. The decision, the closing of the waiting task, and the creation of the
+ * continuation are ONE transaction, each guarded by a conditional update:
+ *  - the approval flips only from `pending` and the task only from `waiting`, so of any
+ *    number of simultaneous decisions exactly one wins and the rest roll back, creating nothing;
+ *  - the continuation row is committed together with the approval, so a continuation can never
+ *    exist for an approval that was not approved, and an approval is never approved without one;
+ *  - the continuation is enqueued only after that commit, so a worker cannot pick it up while
+ *    the decision is still pending. If the enqueue fails the child stays `queued` with a durable
+ *    `pendingEnqueue` marker and is retried; it never runs unqueued and the approval is not stranded.
  */
 export async function resolveBotTaskApproval(
   taskId: string,
@@ -337,45 +467,73 @@ export async function resolveBotTaskApproval(
   options: { decisionNote?: string } = {},
 ) {
   const run = await db.orchestrationRun.findFirst({ where: { id: taskId, botId: { not: null }, status: "waiting" } });
-  if (!run || !run.botId) throw new BotTaskError("Task is not waiting for approval", 404);
-  const approval = await db.approvalRequest.findFirst({ where: { status: "pending", payload: { path: ["runId"], equals: run.id } } });
+  if (!run || !run.botId) {
+    // An approve that already committed but could not be queued: repeating it re-queues, rather than reporting "not waiting".
+    if (decision === "approve") {
+      const decided = await db.approvalRequest.findFirst({ where: { type: "bot_tool_call", status: "approved", payload: { path: ["runId"], equals: taskId } } });
+      const marker = decided ? continuationOf(asRecord(decided.payload)) : null;
+      if (decided && marker?.pendingEnqueue) {
+        await retryBotContinuations({ approvalId: decided.id });
+        const after = continuationOf(asRecord((await db.approvalRequest.findUniqueOrThrow({ where: { id: decided.id } })).payload));
+        return { status: "resumed" as const, resumedTaskId: marker.runId, enqueued: after?.pendingEnqueue === false };
+      }
+    }
+    throw new BotTaskError("Task is not waiting for approval", 404);
+  }
+  const approval = await db.approvalRequest.findFirst({ where: { status: "pending", type: "bot_tool_call", ...(run.workspaceId ? { workspaceId: run.workspaceId } : {}), payload: { path: ["runId"], equals: run.id } } });
   if (!approval) throw new BotTaskError("No pending approval for this task", 404);
   const payload = asRecord(approval.payload);
   const log = new BotRunLog(run.botId, run.id);
-  const decide = async (status: "approved" | "rejected") => {
-    try { return await decideApproval(approval.id, status, viewer.userId, options.decisionNote); }
-    catch { throw new BotTaskError("This approval was already decided", 409); }
-  };
 
   if (decision === "deny") {
-    await decide("rejected");
+    try {
+      await db.$transaction(async (tx) => {
+        await decideApprovalIn(tx, approval.id, "rejected", viewer.userId, options.decisionNote);
+        const closed = await tx.orchestrationRun.updateMany({ where: { id: run.id, status: "waiting" }, data: { status: "cancelled", completedAt: new Date(), error: "Tool use was denied." } });
+        if (closed.count === 0) throw new ApprovalAlreadyDecidedError();
+      });
+    } catch (error) { return asConflict(error); }
     await log.emit("approval_resolved", `Denied ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id });
-    await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: "Tool use was denied." } });
-    return { status: "cancelled" as const, resumedTaskId: null };
+    return { status: "cancelled" as const, resumedTaskId: null, enqueued: false };
   }
 
-  // The continuation is created BEFORE the approval is decided. If it cannot be (the bot was disabled, its policy
-  // refuses, the queue is down) nothing has changed: the approval is still pending and the task still waiting, so the
-  // reviewer can retry or deny. Deciding first stranded the task behind an approval that no longer read as pending.
+  // Every check that can refuse the continuation runs BEFORE anything is decided. If one does (the bot was disabled,
+  // its policy refuses, the tool left the catalog) nothing has changed: the approval is still pending and the task still
+  // waiting, so the reviewer can retry or deny.
   const request = asRecord(run.request);
-  const child = await delegateToBot(run.botId, {
+  const approvedKeys = await approvedKeysFor(payload, run.workspaceId);
+  const admission = await admitTask(run.botId, {
     task: String(request.task ?? ""), context: typeof request.context === "string" ? request.context : undefined,
     projectId: run.projectId ?? undefined, modelRole: (["primary", "fast", "reasoning", "vision"].includes(String(request.modelRole)) ? request.modelRole : "primary") as "primary",
-  }, { kind: "user", userId: run.userId }, {
-    mode: request.mode === "test" ? "test" : "delegate", originKey: run.originKey ?? `user:${run.userId}`,
-    approvedTools: [...new Set([...(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []), ...(await approvedKeysFor(payload, run.workspaceId))])],
-  });
+  }, { kind: "user", userId: run.userId }, { mode: request.mode === "test" ? "test" : "delegate", originKey: run.originKey ?? `user:${run.userId}` });
+  if ("existingId" in admission) throw new BotTaskError("The continuation already exists.", 409);
+
+  let child: OrchestrationRun;
   try {
-    await decide("approved");
-  } catch (error) {
-    // Someone decided it between our read and now: do not leave a second session queued beside theirs.
-    await db.orchestrationRun.updateMany({ where: { id: child.id, status: "queued" }, data: { status: "cancelled", completedAt: new Date(), error: "The approval was decided elsewhere." } });
-    throw error;
+    child = await db.$transaction(async (tx) => {
+      await decideApprovalIn(tx, approval.id, "approved", viewer.userId, options.decisionNote);
+      // Inherit only what the waiting task did not spend. The original request's approvedTools is a record of what
+      // was issued, not of what is left: copying it would hand an already-used permission to the continuation.
+      const unspent = await tx.botToolGrant.findMany({ where: { runId: run.id, consumedAt: null }, select: { key: true } });
+      const grants: GrantSpec[] = [
+        ...unspent.map((grant) => ({ key: grant.key, sourceRunId: run.id })),
+        ...approvedKeys.map((key) => ({ key, approvalRequestId: approval.id })),
+      ];
+      const created = await insertTaskRun(tx, admission.admitted, grants, run.id);
+      const closed = await tx.orchestrationRun.updateMany({ where: { id: run.id, status: "waiting" }, data: { status: "cancelled", completedAt: new Date(), error: `Approved and continued as task ${created.id}.` } });
+      if (closed.count === 0) throw new ApprovalAlreadyDecidedError();
+      await tx.approvalRequest.update({ where: { id: approval.id }, data: { payload: { ...payload, continuation: { runId: created.id, pendingEnqueue: true } satisfies ContinuationMarker } as unknown as Prisma.InputJsonValue } });
+      return created;
+    });
+  } catch (error) { return asConflict(error); }
+
+  await log.emit("approval_resolved", `Approved ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id, continuationTaskId: child.id });
+  await recordQueued(child, admission.admitted).catch(() => undefined);
+  const outcome = await enqueueContinuation(approval.id, child.id);
+  if (!outcome.enqueued) {
+    await new BotRunLog(run.botId, child.id).emit("warning", `Approved, but the continuation could not be queued yet (${outcome.error}). It will be retried.`).catch(() => undefined);
   }
-  await log.emit("approval_resolved", `Approved ${String(payload.tool ?? "tool")}.`, { decision, approvalRequestId: approval.id });
-  await db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelled", completedAt: new Date(), error: `Approved and continued as task ${child.id}.` } });
-  await db.orchestrationRun.update({ where: { id: child.id }, data: { parentRunId: run.id } });
-  return { status: "resumed" as const, resumedTaskId: child.id };
+  return { status: "resumed" as const, resumedTaskId: child.id, enqueued: outcome.enqueued, ...(outcome.error ? { warning: `Approved. The continuation is waiting to be queued: ${outcome.error}` } : {}) };
 }
 
 export type { BotTaskStatus };

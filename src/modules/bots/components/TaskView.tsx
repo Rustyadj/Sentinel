@@ -54,7 +54,7 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
         </span>
       </div>
       {error ? <Notice>{error}</Notice> : null}
-      {task.status === "WAITING" ? <Notice tone="warn">Stopped before using {task.waitingFor?.tool}. Approving starts a new task that may use it once.</Notice> : null}
+      {task.status === "WAITING" ? <Notice tone="warn">Sentinel interrupted the session when {task.waitingFor?.tool} was called; the tool may already have started. Approving starts a new task that may use it once.</Notice> : null}
       {task.error ? <Notice>{task.error}</Notice> : null}
 
       <dl className="divide-y divide-[--border] rounded-lg border border-[--border] px-3">

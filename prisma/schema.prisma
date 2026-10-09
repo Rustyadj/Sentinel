@@ -2271,6 +2271,7 @@ model OrchestrationRun {
   childRuns      OrchestrationRun[]  @relation("OrchestrationRunHierarchy")
   attempts       ExecutionAttempt[]
   artifacts      ExecutionArtifact[]
+  toolGrants     BotToolGrant[]
 
   @@unique([externalClientId, idempotencyKey])
   @@index([userId, createdAt])
@@ -2279,6 +2280,28 @@ model OrchestrationRun {
   @@index([status, queuedAt])
   @@index([botId, createdAt])
   @@map("orchestration_runs")
+}
+
+/// A one-use tool approval held by one bot task. Created when a reviewer approves
+/// the tool; spent (consumedAt set) by the first call it admits. Consumption is a
+/// conditional update on this row, so it survives a restart and cannot be spent
+/// twice. A continuation inherits only the parent's UNSPENT rows.
+model BotToolGrant {
+  id                String    @id @default(cuid())
+  runId             String
+  /// Canonical `<serverId>:<catalog tool name>`.
+  key               String
+  approvalRequestId String?
+  /// The run this grant was carried forward from, when it was not approved for this run directly.
+  sourceRunId       String?
+  createdAt         DateTime  @default(now())
+  consumedAt        DateTime?
+
+  run OrchestrationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, key])
+  @@index([runId, consumedAt])
+  @@map("bot_tool_grants")
 }
 
 model ExecutionAttempt {

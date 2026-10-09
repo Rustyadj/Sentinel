@@ -5,7 +5,8 @@
 // permitted, and what to record afterwards.
 //
 // Enforcement note, because it is easy to overstate: Hermes calls its tools
-// itself, so Sentinel cannot veto a call before it happens. It sees each call as
+// itself, so Sentinel cannot veto a call before it happens. This is detect-and-halt,
+// not pre-execution enforcement, and no wording here or in the UI may say otherwise. It sees each call as
 // the runtime announces it, and on a denied one interrupts the session and fails
 // the task. The prompt manifest asks the bot not to try; this is what happens if
 // it does anyway. The call that triggered the halt may already be under way.
@@ -90,6 +91,19 @@ async function failRun(run: OrchestrationRun, log: BotRunLog | null, message: st
 }
 
 /**
+ * The one-use tool approvals this task still holds, read from BotToolGrant rows (the authority:
+ * they are spent durably and inherited by continuations). A task queued by the release before
+ * grants existed has only `request.approvedTools`; those are written out as rows the first time
+ * it loads. skipDuplicates means a row that was already spent is never resurrected by a reload.
+ */
+async function loadUnspentGrants(runId: string, request: Record<string, unknown>): Promise<string[]> {
+  if (request.grantsVersion !== 2 && Array.isArray(request.approvedTools) && request.approvedTools.length) {
+    await db.botToolGrant.createMany({ data: [...new Set(request.approvedTools.map(String))].map((key) => ({ runId, key })), skipDuplicates: true });
+  }
+  return (await db.botToolGrant.findMany({ where: { runId, consumedAt: null }, select: { key: true } })).map((grant) => grant.key);
+}
+
+/**
  * Returns null after failing the run itself when the bot cannot execute (gone,
  * or disabled for a real delegation). The executor then returns without
  * throwing: a throw would hand the run to the queue's retry handling, which
@@ -107,7 +121,7 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
   const task = String(request.task ?? "");
   const rows: PermissionRow[] = row.toolPermissions.map(toGrant);
   const catalog: CatalogServer[] = activeCatalog(await loadCatalog(bot.workspaceId));
-  const approvedOnce = new Set<string>(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []);
+  const approvedOnce = new Set<string>(await loadUnspentGrants(run.id, request));
   const role = (["primary", "fast", "reasoning", "vision"].includes(String(request.modelRole)) ? request.modelRole : "primary") as "primary" | "fast" | "reasoning" | "vision";
   const requestedModel = selectBotModel(bot.modelConfig, role);
   const modelOverride: ModelOverride | undefined = requestedModel ? { model: requestedModel, ...(bot.modelConfig.effort !== undefined ? { effort: bot.modelConfig.effort } : {}), authorized: true } : undefined;
@@ -163,11 +177,21 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
           if (!name || pending.has(name)) return null;
           pending.add(name);
           toolCalls += 1;
-          const verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          let verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          // An approval is for ONE use: admitting this call spends it, durably, so neither a restart nor the
+          // continuation of this task can spend it again. The spend is a conditional update on the grant row;
+          // if another caller spent it first (count 0) this call is NOT admitted by it, and is evaluated again without.
+          for (let round = 0; verdict.allowed && verdict.consumed.length && round < 4; round += 1) {
+            let lost = false;
+            for (const key of verdict.consumed) {
+              approvedOnce.delete(key);
+              const spent = await db.botToolGrant.updateMany({ where: { runId: run.id, key, consumedAt: null }, data: { consumedAt: new Date() } });
+              if (spent.count === 0) lost = true;
+            }
+            if (!lost) break;
+            verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          }
           const resolved: ResolvedTool | null = verdict.resolved;
-          // An approval is for ONE use: admitting this call spends it, so the next
-          // invocation of the same tool has to be approved again.
-          for (const key of verdict.consumed) approvedOnce.delete(key);
           const details = { tool: name, server: resolved?.serverName ?? null, serverId: resolved?.serverId ?? null, permission: verdict.permission, source: verdict.source, reason: verdict.reason };
           if (verdict.allowed) { await log.emit("tool_allowed", `${name} allowed.`, details); return null; }
           const risk = resolved ? (catalog.find((server) => server.id === resolved.serverId)?.tools.find((tool) => tool.name === resolved.toolName)?.risk ?? "normal") : "normal";
@@ -205,7 +229,7 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
         const approval = await db.approvalRequest.create({
           data: {
             workspaceId: run.workspaceId!, projectId: run.projectId, type: "bot_tool_call", risk: halt.risk === "high" ? "high" : "medium",
-            title: `${bot.name} wants to use ${halt.tool}`, description: `Bot task ${run.id} stopped before using ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Approve to continue as a new task that may use it once.`,
+            title: `${bot.name} wants to use ${halt.tool}`, description: `Bot task ${run.id} called ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Sentinel saw the call as the runtime started it and then interrupted the session, so the tool may already have begun running. Approve to continue as a new task that may use it once.`,
             requesterUserId: run.userId,
             // Stored under the catalog's names, not the runtime's spelling (Hermes reports MCP tools as
             // `mcp_<slug>_<tool>`): evaluateToolAccess matches on `<serverId>:<catalog tool>`, so an
