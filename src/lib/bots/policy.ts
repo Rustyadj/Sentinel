@@ -79,7 +79,7 @@ export function evaluateToolAccess(
     case "execute":
       return { allowed: true, requiresApproval: false, permission: "execute", source, reason: "Execute grant." };
     case "approval":
-      return { allowed: false, requiresApproval: true, permission: "approval", source, reason: "Requires approval before each use." };
+      return { allowed: false, requiresApproval: true, permission: "approval", source, reason: "Requires a one-use approval for each call." };
   }
 }
 

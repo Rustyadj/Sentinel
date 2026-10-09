@@ -1,0 +1,8 @@
+# Applied migrations whose recorded production checksum is KNOWN to differ from the file in git, and why.
+# validate-migrations.sh refuses every checksum mismatch not listed here. An entry only counts when ALL hold:
+#   - the migration name, the checksum production recorded and the checksum of the file now all match this line
+#     (so any further edit of the file, or a different production record, invalidates the entry);
+#   - the evidence is non-empty;
+#   - the baseline revision already carried the identical file (the difference predates the release being validated).
+# Format:  <migration> <recorded checksum> <current file sha256> <evidence: ticket / commit / what changed>
+# None are currently known.

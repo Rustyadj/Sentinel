@@ -27,27 +27,44 @@ export async function createApproval(input: { workspaceId: string; projectId?: s
   return approval;
 }
 
-export async function decideApproval(id: string, status: Extract<ApprovalStatus, "approved" | "rejected">, reviewerUserId: string, decisionNote?: string) {
-  return db.$transaction(async (tx) => {
-    const current = await tx.approvalRequest.findUniqueOrThrow({ where: { id } });
-    if (current.status !== "pending") throw new Error("Only pending approvals can be decided");
-    const approval = await tx.approvalRequest.update({
-      where: { id },
-      data: { status, reviewerUserId, decisionNote, decidedAt: new Date() },
-    });
-    await tx.auditLog.create({
-      data: {
-        workspaceId: approval.workspaceId,
-        projectId: approval.projectId,
-        approvalRequestId: approval.id,
-        userId: reviewerUserId,
-        actorType: "user",
-        action: `approval.${status}`,
-        entityType: "approvalRequest",
-        entityId: approval.id,
-        details: { previousStatus: current.status, status, decisionNote: decisionNote ?? null },
-      },
-    });
-    return approval;
+export class ApprovalAlreadyDecidedError extends Error {
+  constructor() { super("Only pending approvals can be decided"); this.name = "ApprovalAlreadyDecidedError"; }
+}
+
+/**
+ * Decide an approval inside the caller's transaction. The decision is a single
+ * conditional UPDATE (`status = 'pending'`), not a read followed by an update by
+ * id: under READ COMMITTED two concurrent deciders would both read "pending" and
+ * both succeed. With the predicate in the UPDATE the second one blocks on the row
+ * lock, re-evaluates it after the first commits, matches nothing, and loses.
+ * Exactly one decision wins; the loser gets ApprovalAlreadyDecidedError.
+ */
+export async function decideApprovalIn(tx: Prisma.TransactionClient, id: string, status: Extract<ApprovalStatus, "approved" | "rejected">, reviewerUserId: string, decisionNote?: string) {
+  const won = await tx.approvalRequest.updateMany({
+    where: { id, status: "pending" },
+    data: { status, reviewerUserId, decisionNote, decidedAt: new Date() },
   });
+  if (won.count === 0) {
+    await tx.approvalRequest.findUniqueOrThrow({ where: { id }, select: { id: true } });
+    throw new ApprovalAlreadyDecidedError();
+  }
+  const approval = await tx.approvalRequest.findUniqueOrThrow({ where: { id } });
+  await tx.auditLog.create({
+    data: {
+      workspaceId: approval.workspaceId,
+      projectId: approval.projectId,
+      approvalRequestId: approval.id,
+      userId: reviewerUserId,
+      actorType: "user",
+      action: `approval.${status}`,
+      entityType: "approvalRequest",
+      entityId: approval.id,
+      details: { previousStatus: "pending", status, decisionNote: decisionNote ?? null },
+    },
+  });
+  return approval;
+}
+
+export async function decideApproval(id: string, status: Extract<ApprovalStatus, "approved" | "rejected">, reviewerUserId: string, decisionNote?: string) {
+  return db.$transaction((tx) => decideApprovalIn(tx, id, status, reviewerUserId, decisionNote));
 }

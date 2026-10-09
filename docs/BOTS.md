@@ -14,6 +14,8 @@ bots in the registry and delegate work to them. Admin UI: `/bots`.
    against the bot's grants.
 3. Denied tool: session interrupted, task FAILED (`policy_violation`). Approval-gated tool: session
    interrupted, task WAITING with an `ApprovalRequest`; approving starts a child task that may use it once.
+   Sentinel learns of a call from the runtime's `tool_started` event and interrupts after that. It does not
+   stop the call first: the tool that triggered the halt may already have started (see Known limits).
 4. After success: usage and cost (only when the model has a price), assets found in the output
    (unverified links), and an offer to memory at the bot's write scope (the ingestion gate may decline).
 
@@ -33,8 +35,30 @@ Statuses shown to callers: QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLE
 - **Skills**: Hermes `SKILL.md`, stored as text and never executed. Install is propose, review, approve
   against the reviewed SHA-256; only approved skills can be assigned.
 
+## Tool approvals
+- **Atomic.** Deciding the approval, closing the waiting task and creating the continuation are one
+  transaction (`resolveBotTaskApproval`). The approval flips only from `pending` and the task only from
+  `waiting`, each by a conditional update, so of any number of simultaneous decisions exactly one wins and
+  the rest change nothing (HTTP 409). The generic `decideApproval` is conditional the same way.
+- **Enqueue after commit.** The continuation is queued only once the decision has committed, so a worker
+  can never start it while the approval is undecided. If the queue is down the approval is still approved,
+  the child stays `queued`, and `approval.payload.continuation.pendingEnqueue` records that it still has to
+  be queued. The orchestration worker retries these every 30 s (`retryBotContinuations`); repeating the
+  approve also retries. Nothing runs unqueued. Check: `payload->'continuation'->>'pendingEnqueue' = 'true'`.
+- **One use, durably.** Each approved tool is a `BotToolGrant` row (`<serverId>:<catalog tool>`), spent by a
+  conditional update when the first call it admits is observed. A continuation inherits only the parent's
+  UNSPENT rows plus the newly approved tool; `request.approvedTools` is only a record of what was issued.
+  Approve A, use A, wait for B, approve B: A needs a fresh approval. A run queued before grants existed
+  (`approvedTools` with no rows) is converted once when it loads; a waiting legacy parent passes nothing on.
+- **Canonical names.** Approvals are stored and matched under catalog names. An approval that only has the
+  runtime's spelling is resolved against the catalog; if that is ambiguous or the tool is gone it is refused
+  (409) and stays pending, so it can be denied.
+
 ## Known limits
-- Tool enforcement is detect-and-halt (see decisions.md). A denied call may already be under way.
+- **Tool enforcement is detect-and-halt, not pre-execution.** Hermes runs its own tools. Sentinel sees
+  `tool_started`, then interrupts the session. The tool that triggered the halt may already have begun, and
+  an interrupt the runtime does not confirm leaves the task `cancelling` (in flight) until it does. An
+  approval says "Sentinel interrupted the session when X was called", never "stopped before X".
 - Per-task token budgets are checked after the task; Hermes reports usage only at the end.
 - Temperature is not offered: Hermes `session.create` takes model and reasoning effort only.
 - Hermes hosts add their own prompt and tool schema to every session (about 19k input tokens in the live check).
