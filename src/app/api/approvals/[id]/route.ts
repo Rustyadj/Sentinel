@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decideApproval } from "@/lib/workspaces";
-import { accessErrorResponse, requireWorkspacePermission } from "@/lib/workspaces/authorization";
+import { requireUser } from "@/lib/current-user";
+import { accessErrorResponse, requireWorkspacePermission, WorkspaceAccessError } from "@/lib/workspaces/authorization";
 import { resumeAfterApproval, resumeMissionAfterApproval } from "@/lib/orchestration/orchestrator";
 import { resolveGuardianReview } from "@/lib/learning/guardian";
 import { HttpError, errorResponse as botErrorResponse, requireBotAdmin } from "@/lib/bots/api";
@@ -12,7 +13,11 @@ type Context = { params: Promise<{ id: string }> };
 export async function PATCH(req: NextRequest, { params }: Context) {
   try {
     const { id } = await params;
-    const approval = await db.approvalRequest.findUniqueOrThrow({ where: { id }, select: { workspaceId: true, taskId: true, payload: true, type: true, status: true } });
+    // Who is asking comes before whether the approval exists: an anonymous caller gets 401 either way, never a 500
+    // that tells them an id was not found.
+    await requireUser().catch(() => { throw new WorkspaceAccessError("Unauthorized", 401); });
+    const approval = await db.approvalRequest.findUnique({ where: { id }, select: { workspaceId: true, taskId: true, payload: true, type: true, status: true } });
+    if (!approval) throw new WorkspaceAccessError("Approval not found", 404);
     const user = await requireWorkspacePermission(approval.workspaceId, "approval.review");
     const body = (await req.json()) as { status?: "approved" | "rejected"; decisionNote?: string };
     if (body.status !== "approved" && body.status !== "rejected") {

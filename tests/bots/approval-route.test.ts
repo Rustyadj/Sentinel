@@ -92,6 +92,9 @@ describe("deciding a bot tool approval from the approvals route", () => {
     const { approval } = await waitingTask();
     session.userId = "";
     expect((await patch(approval.id, { status: "approved" })).status).toBe(401);
+    expect((await patch("no-such-approval", { status: "approved" })).status).toBe(401);   // not a 500 that reveals the id is unknown
+    session.userId = owner.id;
+    expect((await patch("no-such-approval", { status: "approved" })).status).toBe(404);
   });
 
   it("if the continuation cannot be created, nothing is decided: the approval stays pending and the task stays waiting, and a retry works", async () => {
