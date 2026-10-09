@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import { db } from "@/lib/db";
 import { executeOrchestrationRun, reconcileUnconfirmedInterruptions } from "@/lib/orchestration/executor";
+import { retryBotContinuations } from "@/lib/bots/tasks";
 import { orchestrationWorkerId } from "@/lib/orchestration/execution-ownership";
 import { ORCHESTRATION_QUEUE_NAME, ORCHESTRATION_JOB_OPTIONS, type OrchestrationJobPayload } from "@/lib/orchestration/queue";
 import { QUEUE_PREFIX } from "@/lib/queue-prefix";
@@ -30,9 +31,13 @@ worker.on("failed", async (job, error) => {
 // Sessions the runtime never confirmed stopped stay open until a later check gets that confirmation.
 const reconciler = setInterval(() => { void reconcileUnconfirmedInterruptions().catch((error) => console.error("[orchestration-worker] reconcile failed", error instanceof Error ? error.message : error)); }, 60_000);
 reconciler.unref();
+// Approved bot continuations whose enqueue failed (queue outage) are durable `queued` rows with a pending marker; this puts them on the queue.
+const continuationRetry = setInterval(() => { void retryBotContinuations().catch((error) => console.error("[orchestration-worker] continuation retry failed", error instanceof Error ? error.message : error)); }, 30_000);
+continuationRetry.unref();
 
 async function shutdown() {
   clearInterval(reconciler);
+  clearInterval(continuationRetry);
   stopHeartbeat();
   await worker.close();
   await db.$disconnect();
