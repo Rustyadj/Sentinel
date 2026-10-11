@@ -43,6 +43,20 @@ http:
         - sentinel-security-headers
       service: sentinel-mcp
 
+    # ── Telnyx media bridge ─────────────────────────────────────────────────
+    # Telnyx opens a bidirectional media WebSocket to wss://<host>/telephony/media
+    # for every live call. It authenticates with an HMAC token in the query
+    # string (TELNYX_MEDIA_TOKEN_SECRET), so no cookie/session middleware applies.
+    # The webhook (/api/telephony/telnyx/webhook) stays on the normal app router.
+    sentinel-telnyx-media:
+      rule: "Host(`sentinel.srv1427612.hstgr.cloud`) && PathPrefix(`/telephony/media`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      priority: 150
+      service: sentinel-telnyx-bridge
+
     sentinel-legacy-hermes:
       rule: "Host(`sentinel.srv1427612.hstgr.cloud`) && PathPrefix(`/legacy/hermes`)"
       entrypoints:
@@ -102,6 +116,16 @@ http:
           # runtime state, and an unauthenticated runtime must not remove the
           # whole app from the load balancer.
           path: /api/health
+          interval: 15s
+          timeout: 5s
+
+    sentinel-telnyx-bridge:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://127.0.0.1:4870"
+        healthCheck:
+          path: /healthz
           interval: 15s
           timeout: 5s
 

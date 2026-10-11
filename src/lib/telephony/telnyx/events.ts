@@ -3,19 +3,26 @@ import { z } from "zod";
 const phone = z.object({ phone_number: z.string() });
 
 const smsPayload = z.object({
+  id: z.string().optional(),
   direction: z.string().optional(),
   from: phone,
-  text: z.string().default(""),
+  to: z.array(phone).default([]),
+  text: z.string().nullish().transform((v) => v ?? ""),
+  media: z.array(z.object({ url: z.string() })).default([]),
+});
+
+const deliveryPayload = z.object({
+  id: z.string(),
+  to: z.array(z.object({ status: z.string().optional() })).default([]),
 });
 
 const callPayload = z.object({
   call_control_id: z.string(),
+  call_session_id: z.string().optional(),
   from: z.string().optional(),
+  to: z.string().optional(),
   direction: z.string().optional(),
-});
-
-const transcriptionPayload = callPayload.extend({
-  transcription_data: z.object({ transcript: z.string(), is_final: z.boolean().optional() }),
+  hangup_cause: z.string().optional(),
 });
 
 const envelope = z.object({
@@ -23,11 +30,10 @@ const envelope = z.object({
 });
 
 export type TelnyxEvent =
-  | { kind: "sms"; id: string; from: string; text: string }
-  | { kind: "call.initiated"; id: string; callControlId: string; from: string | undefined }
-  | { kind: "call.answered"; id: string; callControlId: string; from: string | undefined }
-  | { kind: "call.transcription"; id: string; callControlId: string; from: string | undefined; transcript: string; isFinal: boolean }
-  | { kind: "call.hangup"; id: string; callControlId: string }
+  | { kind: "sms"; id: string; messageId: string | undefined; from: string; to: string | undefined; text: string; mediaUrls: string[] }
+  | { kind: "sms.status"; id: string; messageId: string; status: string }
+  | { kind: "call.initiated"; id: string; callControlId: string; sessionId: string | undefined; from: string | undefined; to: string | undefined }
+  | { kind: "call.hangup"; id: string; callControlId: string; cause: string | undefined }
   | { kind: "ignored"; id: string; type: string };
 
 /** Parses a webhook body into the small set of events Sentinel acts on. Throws on a malformed envelope. */
@@ -38,32 +44,24 @@ export function parseTelnyxEvent(body: unknown): TelnyxEvent {
   switch (data.event_type) {
     case "message.received": {
       const p = smsPayload.parse(data.payload);
-      return { kind: "sms", id: data.id, from: p.from.phone_number, text: p.text };
+      return {
+        kind: "sms", id: data.id, messageId: p.id, from: p.from.phone_number,
+        to: p.to[0]?.phone_number, text: p.text, mediaUrls: p.media.map((m) => m.url),
+      };
+    }
+    case "message.finalized": {
+      const p = deliveryPayload.parse(data.payload);
+      return { kind: "sms.status", id: data.id, messageId: p.id, status: p.to[0]?.status ?? "unknown" };
     }
     case "call.initiated": {
       const p = callPayload.parse(data.payload);
-      // Outbound legs we place ourselves are not inbound calls to screen.
+      // Legs we dial ourselves are tracked by our own row, not screened as inbound.
       if (p.direction && p.direction !== "incoming") return ignored;
-      return { kind: "call.initiated", id: data.id, callControlId: p.call_control_id, from: p.from };
-    }
-    case "call.answered": {
-      const p = callPayload.parse(data.payload);
-      return { kind: "call.answered", id: data.id, callControlId: p.call_control_id, from: p.from };
+      return { kind: "call.initiated", id: data.id, callControlId: p.call_control_id, sessionId: p.call_session_id, from: p.from, to: p.to };
     }
     case "call.hangup": {
       const p = callPayload.parse(data.payload);
-      return { kind: "call.hangup", id: data.id, callControlId: p.call_control_id };
-    }
-    case "call.transcription": {
-      const p = transcriptionPayload.parse(data.payload);
-      return {
-        kind: "call.transcription",
-        id: data.id,
-        callControlId: p.call_control_id,
-        from: p.from,
-        transcript: p.transcription_data.transcript,
-        isFinal: p.transcription_data.is_final ?? true,
-      };
+      return { kind: "call.hangup", id: data.id, callControlId: p.call_control_id, cause: p.hangup_cause };
     }
     default:
       return ignored;

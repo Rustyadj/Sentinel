@@ -1,85 +1,115 @@
-import { redisAcquireLease, redisDel, redisGet, redisSet } from "@/lib/redis";
+import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { redisAcquireLease } from "@/lib/redis";
+import { resolveAgentVoiceConfig } from "@/lib/voice/agent-voice-config";
 import { runVoiceReasoningTurn } from "@/lib/voice/reasoning-bridge";
 import { writeAuditLog } from "@/lib/workspaces/audit";
+import { acceptInboundCall, countActiveCalls, statusForHangup } from "../calls/service";
+import { ensurePhoneRoom } from "../bridge/phone-room";
 import * as telnyx from "./client";
-import { isAllowedCaller, type TelnyxConfig } from "./config";
+import { isTrustedNumber, normalizeE164, type TelnyxConfig } from "./config";
 import type { TelnyxEvent } from "./events";
 
 const EVENT_DEDUPE_TTL_SECONDS = 24 * 60 * 60;
-/** Upper bound on a call; the screened-call marker expires with it. */
-const CALL_TTL_SECONDS = 4 * 60 * 60;
-
 const SMS_STYLE = "[Reply by SMS: be concise, plain text, no markdown.]";
-const VOICE_STYLE = "[Spoken phone call: answer in one to three short sentences, no markdown, no lists.]";
-const GREETING = "Sentinel here. How can I help?";
-const FAILURE_SPEECH = "Sorry, I hit a problem answering that. Please try again.";
 
-const callKey = (id: string) => `telnyx:call:${id}`;
-
-/** Telnyx redelivers on timeouts. Redis is required: with no Redis the event is dropped rather than risk replying twice. */
+/** Telnyx redelivers on timeouts. Redis is required: with no Redis the event is dropped rather than risk acting twice. */
 async function firstDelivery(eventId: string): Promise<boolean> {
   return redisAcquireLease(`telnyx:event:${eventId}`, "1", EVENT_DEDUPE_TTL_SECONDS);
 }
 
-async function ask(config: TelnyxConfig, request: string, style: string, channel: "sms" | "voice") {
-  const result = await runVoiceReasoningTurn({
-    agentId: config.agentId,
-    userId: config.ownerUserId,
-    request: `${style}\n${request}`,
-  });
-  await writeAuditLog({
-    userId: config.ownerUserId,
-    agentId: config.agentId,
-    action: `telephony.${channel}_turn`,
-    entityType: "TelnyxChannel",
-    details: { toolCalls: result.toolCalls, latencyMs: result.latencyMs },
-  }).catch(() => {});
-  return result.answer;
+function agentForNumber(config: TelnyxConfig, dialed: string | undefined): string {
+  return (dialed && config.numberRoutes[normalizeE164(dialed)]) || config.agentId;
 }
 
 async function handleSms(config: TelnyxConfig, event: Extract<TelnyxEvent, { kind: "sms" }>) {
-  if (!isAllowedCaller(config, event.from)) {
-    logger.warn("telnyx.sms_rejected", { eventId: event.id });
+  const from = normalizeE164(event.from);
+  const trusted = isTrustedNumber(config, from);
+  const voice = resolveAgentVoiceConfig(agentForNumber(config, event.to));
+  if (!voice) {
+    logger.error("telnyx.sms_no_agent", { eventId: event.id });
     return;
   }
-  const text = event.text.trim();
-  if (!text) return;
+
+  // Stored whatever the sender, so the owner can see who texted; only trusted senders reach the agent.
+  const hasContent = event.text.trim() || event.mediaUrls.length > 0;
+  if (!hasContent) return;
   try {
-    const answer = await ask(config, text, SMS_STYLE, "sms");
-    await telnyx.sendSms(config, event.from, answer || "I have no answer for that yet.");
+    await db.phoneMessage.create({
+      data: {
+        userId: config.ownerUserId, agentId: voice.agentId, direction: "inbound", counterparty: from,
+        fromNumber: from, toNumber: normalizeE164(event.to ?? config.fromNumber), text: event.text,
+        mediaUrls: event.mediaUrls, telnyxMessageId: event.messageId ?? null,
+        status: "received", trust: trusted ? "trusted" : "screened",
+      },
+    });
   } catch (error) {
-    logger.error("telnyx.sms_failed", { eventId: event.id, error: String(error) });
-    await telnyx.sendSms(config, event.from, "Sorry, I hit a problem. Please try again.").catch(() => {});
+    // A repeated telnyxMessageId means this message was already stored and handled.
+    if ((error as { code?: string }).code === "P2002") return;
+    throw error;
   }
+
+  if (!trusted) {
+    logger.warn("telnyx.sms_screened", { eventId: event.id });
+    return;
+  }
+
+  const roomId = await ensurePhoneRoom(config.ownerUserId, voice.agentId);
+  const attachments = event.mediaUrls.length > 0 ? `\n[Attachments: ${event.mediaUrls.join(" ")}]` : "";
+  const outcome = await runVoiceReasoningTurn({
+    agentId: voice.agentId,
+    userId: config.ownerUserId,
+    roomId,
+    request: `${SMS_STYLE}\n${event.text.trim()}${attachments}`,
+  });
+  const reply = outcome.answer || "I have no answer for that yet.";
+  const sent = await telnyx.sendSms(config, from, reply);
+  await db.phoneMessage.create({
+    data: {
+      userId: config.ownerUserId, agentId: voice.agentId, direction: "outbound", counterparty: from,
+      fromNumber: config.fromNumber, toNumber: from, text: reply, telnyxMessageId: sent.data?.id ?? null, status: "sent",
+    },
+  });
+  await writeAuditLog({
+    userId: config.ownerUserId, agentId: voice.agentId, action: "telephony.sms_turn", entityType: "PhoneMessage",
+    details: { toolCalls: outcome.toolCalls },
+  }).catch(() => {});
 }
 
 async function handleCallInitiated(config: TelnyxConfig, event: Extract<TelnyxEvent, { kind: "call.initiated" }>) {
-  if (!isAllowedCaller(config, event.from)) {
+  const from = event.from ? normalizeE164(event.from) : "";
+  const to = normalizeE164(event.to ?? config.fromNumber);
+  const trusted = isTrustedNumber(config, from);
+
+  if (!from || (!trusted && config.unknownCallers === "reject")) {
     logger.warn("telnyx.call_rejected", { eventId: event.id });
-    await telnyx.hangupCall(config, event.callControlId).catch(() => {});
+    await telnyx.rejectCall(config, event.callControlId).catch(() => {});
     return;
   }
-  // Later events (transcription) are trusted via this marker, not via fields in their own payload.
-  await redisSet(callKey(event.callControlId), event.from!, CALL_TTL_SECONDS);
-  await telnyx.answerCall(config, event.callControlId);
-}
-
-async function handleCallAnswered(config: TelnyxConfig, event: Extract<TelnyxEvent, { kind: "call.answered" }>) {
-  if (!(await redisGet(callKey(event.callControlId)))) return;
-  await telnyx.startTranscription(config, event.callControlId);
-  await telnyx.speak(config, event.callControlId, GREETING);
-}
-
-async function handleTranscription(config: TelnyxConfig, event: Extract<TelnyxEvent, { kind: "call.transcription" }>) {
-  if (!event.isFinal || !event.transcript.trim()) return;
-  if (!(await redisGet(callKey(event.callControlId)))) return;
+  if ((await countActiveCalls()) >= config.maxConcurrentCalls) {
+    logger.warn("telnyx.call_busy", { eventId: event.id });
+    await telnyx.rejectCall(config, event.callControlId).catch(() => {});
+    return;
+  }
   try {
-    const answer = await ask(config, event.transcript.trim(), VOICE_STYLE, "voice");
-    await telnyx.speak(config, event.callControlId, answer || FAILURE_SPEECH);
+    await acceptInboundCall(config, { callControlId: event.callControlId, sessionId: event.sessionId, from, to }, trusted);
   } catch (error) {
-    logger.error("telnyx.voice_failed", { eventId: event.id, error: String(error) });
-    await telnyx.speak(config, event.callControlId, FAILURE_SPEECH).catch(() => {});
+    logger.error("telnyx.call_accept_failed", { eventId: event.id, error: String(error) });
+    await telnyx.rejectCall(config, event.callControlId).catch(() => {});
+  }
+}
+
+async function handleHangup(event: Extract<TelnyxEvent, { kind: "call.hangup" }>) {
+  const call = await db.phoneCall.findUnique({ where: { telnyxCallControlId: event.callControlId } });
+  if (!call) return;
+  const status = statusForHangup(event.cause, Boolean(call.answeredAt));
+  // The bridge finalizes answered calls; this settles calls that never connected media.
+  await db.phoneCall.updateMany({
+    where: { id: call.id, status: { in: ["queued", "ringing", "active"] }, answeredAt: null },
+    data: { status, endedAt: new Date(), endReason: event.cause ?? "hangup" },
+  });
+  if (call.answeredAt) {
+    await db.phoneCall.updateMany({ where: { id: call.id, endReason: null }, data: { endReason: event.cause ?? "hangup" } });
   }
 }
 
@@ -90,12 +120,16 @@ export async function handleTelnyxEvent(config: TelnyxConfig, event: TelnyxEvent
   try {
     switch (event.kind) {
       case "sms": return await handleSms(config, event);
+      case "sms.status":
+        await db.phoneMessage.updateMany({ where: { telnyxMessageId: event.messageId }, data: { status: event.status } });
+        return;
       case "call.initiated": return await handleCallInitiated(config, event);
-      case "call.answered": return await handleCallAnswered(config, event);
-      case "call.transcription": return await handleTranscription(config, event);
-      case "call.hangup": return await redisDel(callKey(event.callControlId));
+      case "call.hangup": return await handleHangup(event);
     }
   } catch (error) {
     logger.error("telnyx.event_failed", { eventId: event.id, kind: event.kind, error: String(error) });
+    if (event.kind === "sms") {
+      await telnyx.sendSms(config, normalizeE164(event.from), "Sorry, I hit a problem. Please try again.").catch(() => {});
+    }
   }
 }

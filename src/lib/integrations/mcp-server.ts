@@ -11,6 +11,7 @@ import { resolveScope } from "@/lib/orchestration/scope";
 import { listPermittedContext, resolveMcpContext } from "@/lib/integrations/mcp-context";
 import { getRegistryBot, listRegistryBots } from "@/lib/bots/registry";
 import { BotTaskError, cancelBotTask, delegateToBot, getBotTask, type BotCaller } from "@/lib/bots/tasks";
+import { registerTelephonyTools } from "@/lib/telephony/mcp-tools";
 import type { McpScope } from "./oauth";
 
 export interface McpPrincipal {
@@ -376,6 +377,12 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
       throw error;
     }
   });
+  registerTelephonyTools(server, {
+    userId: principal.userId,
+    requireScope: (scope) => requireScope(principal, scope),
+    toolResult,
+  });
+
   return server;
 }
 

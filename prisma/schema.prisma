@@ -3403,3 +3403,102 @@ model BotRunEvent {
   @@index([botId, occurredAt])
   @@map("bot_run_events")
 }
+
+// ── Telephony (Telnyx) ───────────────────────────────────────────────────────
+// Standalone tables, like VoiceSessionTelemetry: no foreign keys, so a phone
+// record can never block deleting a user/room and the migration is purely
+// additive. Ownership is always enforced by userId in queries.
+
+model PhoneCall {
+  id                  String    @id @default(cuid())
+  userId              String
+  agentId             String
+  /// "inbound" | "outbound"
+  direction           String
+  /// queued | ringing | active | completed | failed | no_answer | busy | rejected
+  status              String    @default("queued")
+  /// "trusted" callers reach the agent's full runtime; "screened" callers get message-taking only.
+  trust               String    @default("trusted")
+  fromNumber          String
+  toNumber            String
+  contactName         String?
+  /// What an outbound call is for, as the user stated it.
+  purpose             String?
+  /// Client-supplied key; (userId, idempotencyKey) makes call creation replay-safe.
+  idempotencyKey      String?
+  telnyxCallControlId String?   @unique
+  telnyxCallSessionId String?
+  /// Chat room the call's turns are recorded in, so voice and typed chat share one history.
+  roomId              String?
+  liveSessionId       String?
+  startedAt           DateTime  @default(now())
+  answeredAt          DateTime?
+  endedAt             DateTime?
+  durationSeconds     Int?
+  endReason           String?
+  summary             String?
+  /// Facts, decisions and follow-ups extracted at hang-up.
+  outcome             Json?
+  toolCallCount       Int       @default(0)
+
+  turns PhoneCallTurn[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, startedAt])
+  @@index([userId, agentId])
+  @@index([toNumber])
+  @@map("phone_calls")
+}
+
+model PhoneCallTurn {
+  id        String   @id @default(cuid())
+  callId    String
+  /// caller | agent
+  role      String
+  text      String
+  offsetMs  Int?
+  createdAt DateTime @default(now())
+
+  call PhoneCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId, createdAt])
+  @@map("phone_call_turns")
+}
+
+model PhoneMessage {
+  id              String   @id @default(cuid())
+  userId          String
+  agentId         String
+  /// inbound | outbound
+  direction       String
+  /// The other party's number; groups messages into a thread.
+  counterparty    String
+  fromNumber      String
+  toNumber        String
+  text            String
+  mediaUrls       String[] @default([])
+  telnyxMessageId String?  @unique
+  /// queued | sent | delivered | failed | received
+  status          String   @default("received")
+  trust           String   @default("trusted")
+  createdAt       DateTime @default(now())
+
+  @@index([userId, counterparty, createdAt])
+  @@map("phone_messages")
+}
+
+model PhoneContact {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  /// E.164
+  number    String
+  /// When true the agent may place calls to this contact without per-call restrictions beyond rate limits.
+  callable  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, number])
+  @@index([userId, name])
+  @@map("phone_contacts")
+}
