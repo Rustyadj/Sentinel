@@ -117,7 +117,7 @@ test("delegation: naming a running bot task as parentTaskId does not borrow its 
   await waitFor(owner, running, "CANCELLED");
 });
 
-test("an approval-gated tool parks the task WAITING; approving continues it once, in the UI", async () => {
+test("an approval-gated tool call interrupts the session and parks the task WAITING; approving continues it once, in the UI", async () => {
   await resetFakeHermes(owner.request);
   await openBots(owner);
   await owner.getByRole("link", { name: "RC Forge" }).first().click();
@@ -126,7 +126,10 @@ test("an approval-gated tool parks the task WAITING; approving continues it once
   await owner.getByRole("button", { name: "Run test" }).click();
   const approve = owner.getByRole("button", { name: /Approve terminal and continue/ });
   await expect(approve).toBeVisible({ timeout: 60_000 });
-  await expect(owner.getByText(/Stopped before using terminal/)).toBeVisible();
+  // Sentinel detects the call after the runtime has started it and interrupts the session; it does not claim the
+  // tool was stopped before it ran (docs/BOTS.md).
+  await expect(owner.getByText("Sentinel interrupted the session when terminal was called; the tool may already have started.", { exact: false })).toBeVisible();
+  await expect(owner.getByText(/Stopped before/)).toHaveCount(0);
   await owner.screenshot({ path: "test-results/rc-evidence/bot-waiting-approval.png" });
   await approve.click();
 
