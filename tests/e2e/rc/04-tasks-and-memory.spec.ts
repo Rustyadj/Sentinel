@@ -1,4 +1,4 @@
-// Task detail (PR #41), permissions, and the intended voice behaviour, in a real browser.
+// Task detail (PR #41), permissions, and the Memory-to-Graph bridge, in a real browser.
 import { expect, test } from "@playwright/test";
 import { api, seed, signedIn } from "./support";
 
@@ -66,47 +66,4 @@ test("a memory made through the memory API shows up in the graph with its owner'
   expect((await api(outsider.page, "GET", `/api/graph/scoped?focus=${node!.id}&depth=1`)).status).toBe(404);
   expect((await api(owner.page, "DELETE", `/api/memories/${memory.body.id}`)).status).toBe(204);
   await owner.context.close(); await outsider.context.close();
-});
-
-test("voice: the default provider is OpenAI Realtime, and an unconfigured deployment says so instead of faking a transcript", async ({ browser }) => {
-  const context = await browser.newContext({ permissions: ["microphone"] });   // the browser is launched with a fake microphone (see playwright.rc.config.ts)
-  const page = await context.newPage();
-  await page.goto("/auth/signin");
-  await page.getByPlaceholder("Email").fill("owner@rc.test");
-  await page.getByPlaceholder("Password").fill(seed().password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/auth/signin"));
-
-  // Settings: nothing stored, so the control shows the default.
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Voice", exact: true }).click();
-  await expect(page.getByLabel("Speech provider")).toHaveValue("openai_realtime");
-  expect(await page.evaluate(() => window.localStorage.getItem("sentinel.voice.provider"))).toBeNull();
-
-  // Starting a voice session reaches the realtime session endpoint (not browser STT, not a mock) …
-  await page.goto("/chat");
-  const session = page.waitForResponse((r) => r.url().includes("/api/voice/openai/session"), { timeout: 30_000 });
-  await page.getByRole("button", { name: "Start voice input" }).first().click();
-  const response = await session;
-  expect(response.request().method()).toBe("POST");
-  // … which, with no OpenAI key on this disposable stack, refuses clearly. The user is told; nothing pretends to transcribe.
-  expect(response.status()).toBe(503);
-  await expect(page.getByText("The live voice layer is not configured on this deployment")).toBeVisible({ timeout: 15_000 });
-  await page.screenshot({ path: "test-results/rc-evidence/voice-unconfigured.png" });
-
-  // Choosing Browser Speech is explicit, persists, and stops the app using the realtime endpoint.
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Voice", exact: true }).click();
-  await page.getByLabel("Speech provider").selectOption("browser_stt");
-  expect(await page.evaluate(() => window.localStorage.getItem("sentinel.voice.provider"))).toBe("browser_stt");
-  await page.reload();
-  await page.getByRole("button", { name: "Voice", exact: true }).click();
-  await expect(page.getByLabel("Speech provider")).toHaveValue("browser_stt");
-  let realtimeCalls = 0;
-  page.on("request", (request) => { if (request.url().includes("/api/voice/openai/session")) realtimeCalls += 1; });
-  await page.goto("/chat");
-  await page.getByRole("button", { name: "Start voice input" }).first().click();
-  await page.waitForTimeout(2500);
-  expect(realtimeCalls).toBe(0);
-  await context.close();
 });

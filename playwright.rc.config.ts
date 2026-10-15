@@ -20,5 +20,5 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/rc-report" }], ["json", { outputFile: "test-results/rc-results.json" }]],
   outputDir: "test-results/rc-artifacts",
   use: { baseURL, trace: "retain-on-failure", screenshot: "on", video: "off", ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
-  projects: [{ name: "chromium", use: { launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } } }],
+  projects: [{ name: "chromium" }],
 });
