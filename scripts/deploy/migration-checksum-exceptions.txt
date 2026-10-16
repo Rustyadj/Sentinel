@@ -5,4 +5,5 @@
 #   - the evidence is non-empty;
 #   - the baseline revision already carried the identical file (the difference predates the release being validated).
 # Format:  <migration> <recorded checksum> <current file sha256> <evidence: ticket / commit / what changed>
-# None are currently known.
+20260704000000_knowledge_engine_foundation manual ce58874c99643c116596cb3b8ecc8f9a9fb9555d600416821af924e1a1e55fce marked applied by hand via prisma migrate resolve on 2026-07-05 (checksum recorded as 'manual'); file unchanged since 61b6a4c
+20260705010000_workspace_operating_model ec6d3a66645d57e517d3c2d67225a81e42c0486c1e900b4122c045b0061ee368 97de1ee99340d3308e12a665d979dc6ab33c0e5a2d93bde415ec4d443bfb91ac c2ee1d3 made duplicated CREATE/ADD statements conditional; prod never ran this SQL (failed 2026-07-06 x2, marked applied by hand 2026-07-12 with applied_steps_count=0)
