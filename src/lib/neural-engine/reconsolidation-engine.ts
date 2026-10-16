@@ -17,6 +17,7 @@
 //     indistinguishable from a real supersession while resting on nothing.
 
 import { db } from "@/lib/db";
+import { notExpired } from "@/lib/learning/memory-governance";
 import {
   assessContradiction,
   type ComparableMemory,
@@ -151,6 +152,7 @@ export async function reconsolidateMemory(
       // Already-closed memories cannot be superseded again; the detector
       // rejects them too, this just avoids fetching them.
       validTo: null,
+      AND: [notExpired()],
       createdAt: { lt: incoming.createdAt },
     },
     select: COMPARABLE_SELECT,

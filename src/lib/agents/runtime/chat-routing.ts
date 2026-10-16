@@ -122,8 +122,12 @@ export async function routeRuntimeChat(input: {
     entityId: session.id,
     details: { runtimeId: runtime.id, promptLength: input.userContent.length, source: "chat" },
   });
+  // Merge, never replace: the session's metadata carries the model it was pinned to when it started, and the
+  // Hermes adapter refuses to send on a session without it ("Session model provenance missing"). Overwriting
+  // it here made every typed chat turn after the first session fail.
+  const priorMetadata = session.metadata && typeof session.metadata === "object" && !Array.isArray(session.metadata) ? (session.metadata as Record<string, unknown>) : {};
   await runtimeSessionStore.update(session.id, {
-    metadata: { lastTask: input.userContent.slice(0, 160), source: "chat" },
+    metadata: { ...priorMetadata, lastTask: input.userContent.slice(0, 160), source: "chat" },
   });
   await runtimeSessionStore.append(session.id, "status", {
     phase: "task_submitted",

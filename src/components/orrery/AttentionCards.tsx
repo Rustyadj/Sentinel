@@ -49,6 +49,38 @@ export function AttentionCards({ runs, approvals, agents, followId, onFollow, on
 
   return (
     <div className="max-h-[42%] shrink-0 space-y-2 overflow-y-auto border-t border-[--glass-border] px-3 py-2.5" aria-label="Runs and approvals">
+      {/* Approvals first: they are what is waiting on a person, and they must not scroll out of reach behind the runs. */}
+      {approvals.map((a) => {
+        const requester = agentOf(a.requesterAgentId);
+        return (
+          <article key={a.id} className="rounded-lg border border-[--status-busy]/30 bg-[--status-busy]/[0.06] p-3">
+            <header className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-wider text-[--status-busy]">
+              <AlertTriangle className="h-3 w-3" />Approval needed
+              <span className="ml-auto text-[--muted-foreground]">{a.risk} risk</span>
+            </header>
+            <p className="mt-1.5 text-[13px] font-medium leading-snug">{a.title}</p>
+            <p className="mt-0.5 font-mono text-[11px] text-[--muted-foreground]">
+              {a.type}{requester ? ` · requested by ${requester.name}` : ""}
+            </p>
+            {a.description ? <p className="mt-1 line-clamp-2 text-[12px] text-[--muted-foreground]">{a.description}</p> : null}
+            <div className="mt-2.5 flex gap-2">
+              <button
+                type="button" disabled={pending === a.id} onClick={() => void decide(a.id, "approved")}
+                className="rounded-md bg-[--primary] px-3 py-1 text-[12px] font-medium text-[--primary-foreground] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50"
+              >
+                Approve
+              </button>
+              <button
+                type="button" disabled={pending === a.id} onClick={() => void decide(a.id, "rejected")}
+                className="rounded-md border border-[--glass-border] px-3 py-1 text-[12px] text-[--muted-foreground] transition-colors hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50"
+              >
+                Reject
+              </button>
+            </div>
+            {errors[a.id] ? <p role="alert" className="mt-2 text-[12px] text-[--destructive]">{errors[a.id]}</p> : null}
+          </article>
+        );
+      })}
       {runs.map((run) => {
         const agent = agentOf(run.agentId);
         const watching = followId === run.agentId;
@@ -83,37 +115,6 @@ export function AttentionCards({ runs, approvals, agents, followId, onFollow, on
         );
       })}
 
-      {approvals.map((a) => {
-        const requester = agentOf(a.requesterAgentId);
-        return (
-          <article key={a.id} className="rounded-lg border border-[--status-busy]/30 bg-[--status-busy]/[0.06] p-3">
-            <header className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-wider text-[--status-busy]">
-              <AlertTriangle className="h-3 w-3" />Approval needed
-              <span className="ml-auto text-[--muted-foreground]">{a.risk} risk</span>
-            </header>
-            <p className="mt-1.5 text-[13px] font-medium leading-snug">{a.title}</p>
-            <p className="mt-0.5 font-mono text-[11px] text-[--muted-foreground]">
-              {a.type}{requester ? ` · requested by ${requester.name}` : ""}
-            </p>
-            {a.description ? <p className="mt-1 line-clamp-2 text-[12px] text-[--muted-foreground]">{a.description}</p> : null}
-            <div className="mt-2.5 flex gap-2">
-              <button
-                type="button" disabled={pending === a.id} onClick={() => void decide(a.id, "approved")}
-                className="rounded-md bg-[--primary] px-3 py-1 text-[12px] font-medium text-[--primary-foreground] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50"
-              >
-                Approve
-              </button>
-              <button
-                type="button" disabled={pending === a.id} onClick={() => void decide(a.id, "rejected")}
-                className="rounded-md border border-[--glass-border] px-3 py-1 text-[12px] text-[--muted-foreground] transition-colors hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50"
-              >
-                Reject
-              </button>
-            </div>
-            {errors[a.id] ? <p role="alert" className="mt-2 text-[12px] text-[--destructive]">{errors[a.id]}</p> : null}
-          </article>
-        );
-      })}
     </div>
   );
 }

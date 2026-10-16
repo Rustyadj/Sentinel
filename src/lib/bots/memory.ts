@@ -89,7 +89,7 @@ export async function writeBotMemory(
       workspaceId: scope === "workspace" ? args.workspaceId : null,
       botId: bot.id,
       tags: [...new Set([...(args.tags ?? []), `bot:${bot.slug}`, `run:${args.runId}`])],
-      validTo: retentionDays ? new Date(Date.now() + retentionDays * 86_400_000) : null,
+      expiresAt: retentionDays ? new Date(Date.now() + retentionDays * 86_400_000) : null,
       skipReconsolidation: bot.memoryPolicy.consolidation === "off",
     });
   } catch (error) {

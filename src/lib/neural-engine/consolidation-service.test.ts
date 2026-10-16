@@ -102,6 +102,55 @@ describe("clustering", () => {
     expect(new Set(clusters.map((c) => c.succeeded))).toEqual(new Set([true, false]));
   });
 
+  it("clusters the same episodes whatever order the database returns them in", () => {
+    // Regression: these three reports are pairwise similar, but comparing each
+    // against a bucket's growing token union dropped the third below threshold
+    // when the first two arrived first. Equal-priority rows have no defined
+    // order, so the same data clustered in some runs and not others.
+    const objectives = [
+      "codex keeps breaking the prisma migration step",
+      "prisma migration step breaking again",
+      "breaking prisma migration once more",
+    ];
+    const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    for (const order of permutations) {
+      const clusters = clusterEpisodes(order.map((i) => ({
+        ...base, agentId: "codex", experienceId: `e${i}`, objective: objectives[i],
+        succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3,
+      })));
+      expect(clusters, `order ${order.join("")}`).toHaveLength(1);
+      expect(clusters[0].experienceIds).toEqual(["e0", "e1", "e2"]);
+    }
+  });
+
+  it("does not let a chain of pairwise-similar reports merge episodes that share little with each other", () => {
+    // alpha-bravo-charlie ~ alpha-bravo-delta ~ bravo-delta-echo, but the first and last share one word in five.
+    const failing = (id: string, objective: string) => ({ ...base, experienceId: id, objective, succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3 });
+    const episodes = [
+      failing("a1", "alpha bravo charlie"), failing("a2", "alpha bravo charlie"), failing("b1", "alpha bravo delta"),
+      failing("c1", "bravo delta echo"), failing("c2", "bravo delta echo"),
+    ];
+    for (const order of [episodes, [...episodes].reverse(), [episodes[3], episodes[0], episodes[4], episodes[2], episodes[1]]]) {
+      const clusters = clusterEpisodes(order);
+      expect(clusters).toHaveLength(1);                          // the c-pair alone (2) is below the threshold
+      expect(clusters[0].experienceIds).toEqual(["a1", "a2", "b1"]);
+    }
+  });
+
+  it("keeps unrelated problems from the same agent in separate clusters", () => {
+    const failing = (id: string, objective: string) => ({ ...base, experienceId: id, objective, succeeded: false, observedScore: 0.1, predictionError: 0, priority: 0.3 });
+    const clusters = clusterEpisodes([
+      failing("m1", "prisma migration step breaking"),
+      failing("b1", "billing invoice exporter timing out"),
+      failing("m2", "breaking prisma migration step again"),
+      failing("b2", "invoice exporter billing timing out again"),
+      failing("m3", "prisma migration breaking once more"),
+      failing("b3", "billing exporter invoice timing out"),
+    ]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters.map((c) => c.experienceIds).sort()).toEqual([["b1", "b2", "b3"], ["m1", "m2", "m3"]]);
+  });
+
   it("recognises episodes describing the same problem despite differing wording", () => {
     const a = objectiveTokens("Fix the failing prisma migration");
     const b = objectiveTokens("prisma migration failing again");

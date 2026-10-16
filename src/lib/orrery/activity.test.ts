@@ -15,7 +15,7 @@ vi.mock("@/lib/db", () => ({ db }));
 vi.mock("@/lib/agents/permissions", () => ({ getAccessibleWorkspaceIds: vi.fn(async () => ["ws-1"]) }));
 vi.mock("@/lib/workspaces/authorization", () => ({ userHasWorkspacePermission: permission }));
 
-import { getOrreryActivity } from "./activity";
+import { CURSOR_OVERLAP_MS, getOrreryActivity } from "./activity";
 
 const NOW = new Date();
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
@@ -93,5 +93,54 @@ describe("getOrreryActivity", () => {
     const allowed = await getOrreryActivity("user-1");
     expect(allowed.approvals).toEqual([expect.objectContaining({ id: "a1", risk: "high" })]);
     expect(allowed.events).toEqual([expect.objectContaining({ id: "appr:a1", verb: "wait", agentId: "codex" })]);
+  });
+
+  describe("cursor", () => {
+    const runtimeEvent = (n: number, at: Date) => ({ id: `ev${n}`, type: "tool_started", occurredAt: at, payload: {}, session: { id: "s1", agentId: "codex", chatRoomId: null } });
+
+    it("lags the clock so a row that commits a moment late is offered again, not lost", async () => {
+      const before = Date.now();
+      const result = await getOrreryActivity("user-1");
+      expect(new Date(result.cursor).getTime()).toBeLessThanOrEqual(Date.now() - CURSOR_OVERLAP_MS);
+      expect(new Date(result.cursor).getTime()).toBeGreaterThanOrEqual(before - CURSOR_OVERLAP_MS - 1);
+      expect(result.truncated).toBe(false);
+    });
+
+    it("reads from the cursor inclusively, so rows stamped at the boundary are re-sent", async () => {
+      const since = minutesAgo(1);
+      await getOrreryActivity("user-1", since);
+      expect(db.agentRuntimeEvent.findMany.mock.calls[0][0].where.occurredAt).toEqual({ gte: since });
+    });
+
+    it("pages a busy window: a full page stops the cursor at the last row returned instead of jumping to now", async () => {
+      const first = minutesAgo(4);
+      const rows = Array.from({ length: 80 }, (_, i) => runtimeEvent(i, new Date(first.getTime() + i * 1000)));
+      db.agentRuntimeEvent.findMany.mockResolvedValue(rows);
+      const result = await getOrreryActivity("user-1", minutesAgo(5));
+      expect(result.truncated).toBe(true);
+      expect(result.events).toHaveLength(80);
+      expect(result.cursor).toBe(rows[79].occurredAt.toISOString());
+    });
+
+    it("pages experiences on the column each is matched by: old-started rows that completed in the window do not break the cursor", async () => {
+      const since = minutesAgo(5);
+      const longRunning = Array.from({ length: 80 }, (_, i) => ({
+        id: `old${i}`, agentId: "codex", objective: `long task ${i}`, knowledgeUsed: [],
+        startedAt: minutesAgo(600 + i), completedAt: new Date(since.getTime() + (i + 1) * 1000),
+      }));
+      db.experience.findMany.mockImplementation(async (args: { where: Record<string, unknown> }) => ("completedAt" in args.where ? longRunning : []));
+      const result = await getOrreryActivity("user-1", since);
+      expect(result.truncated).toBe(true);
+      // The cursor stops at the last COMPLETION returned, so the next poll continues from there rather than skipping the rest.
+      expect(result.cursor).toBe(longRunning[79].completedAt.toISOString());
+      expect(new Date(result.cursor).getTime()).toBeGreaterThan(since.getTime() + 1);
+    });
+
+    it("never repeats a window it cannot page any finer", async () => {
+      const at = minutesAgo(2);
+      db.agentRuntimeEvent.findMany.mockResolvedValue(Array.from({ length: 80 }, (_, i) => runtimeEvent(i, at)));
+      const result = await getOrreryActivity("user-1", at);
+      expect(new Date(result.cursor).getTime()).toBe(at.getTime() + 1);
+    });
   });
 });

@@ -8,7 +8,10 @@ const ACTIVE_RUN = ["queued", "running", "waiting"];
 const STALE_ACTIVITY_MS = 10 * 60_000;
 const DEFAULT_WINDOW_MS = 15 * 60_000;
 const MAX_ROWS = 80;
+/** Rows can become visible a moment after the time they carry; re-offer this much history on every poll. */
+export const CURSOR_OVERLAP_MS = 5_000;
 const MAX_TEXT = 140;
+const EXPERIENCE_SELECT = { id: true, agentId: true, objective: true, knowledgeUsed: true, startedAt: true, completedAt: true } as const;
 
 const clip = (value: string) => {
   const flat = value.replace(/\s+/g, " ").trim();
@@ -48,33 +51,29 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
   const from = since ?? new Date(now.getTime() - DEFAULT_WINDOW_MS);
   const workspaceIds = await getAccessibleWorkspaceIds(userId);
 
-  const [sessions, runtimeEvents, runs, experiences, approvalRows, agents] = await Promise.all([
+  const [sessions, runtimeEvents, runs, startedExperiences, completedExperiences, approvalRows, agents] = await Promise.all([
     db.agentSession.findMany({
-      where: { userId, OR: [{ status: { in: ACTIVE_SESSION } }, { lastActivityAt: { gt: from } }] },
+      where: { userId, OR: [{ status: { in: ACTIVE_SESSION } }, { lastActivityAt: { gte: from } }] },
       orderBy: { lastActivityAt: "desc" },
       take: MAX_ROWS,
       select: { id: true, agentId: true, status: true, startedAt: true, lastActivityAt: true, chatRoomId: true, metadata: true },
     }),
     db.agentRuntimeEvent.findMany({
-      where: { occurredAt: { gt: from }, type: { in: Object.keys(RUNTIME_VERB) }, session: { userId } },
+      where: { occurredAt: { gte: from }, type: { in: Object.keys(RUNTIME_VERB) }, session: { userId } },
       orderBy: { occurredAt: "asc" },
       take: MAX_ROWS,
       select: { id: true, type: true, payload: true, occurredAt: true, session: { select: { id: true, agentId: true, chatRoomId: true } } },
     }),
     db.orchestrationRun.findMany({
-      where: { userId, OR: [{ status: { in: ACTIVE_RUN } }, { updatedAt: { gt: from } }] },
+      where: { userId, OR: [{ status: { in: ACTIVE_RUN } }, { updatedAt: { gte: from } }] },
       orderBy: { updatedAt: "desc" },
       take: MAX_ROWS,
       select: { id: true, status: true, resolvedAgentId: true, request: true, retrievedObjectIds: true, startedAt: true, completedAt: true, queuedAt: true, error: true, updatedAt: true },
     }),
-    workspaceIds.length
-      ? db.experience.findMany({
-          where: { workspaceId: { in: workspaceIds }, OR: [{ startedAt: { gt: from } }, { completedAt: { gt: from } }] },
-          orderBy: { startedAt: "asc" },
-          take: MAX_ROWS,
-          select: { id: true, agentId: true, objective: true, knowledgeUsed: true, startedAt: true, completedAt: true },
-        })
-      : Promise.resolve([]),
+    // Two reads, each paged on the column it filters by. One read ordered by startedAt but matched on either column
+    // returned old-started rows first and made the cursor (the last startedAt) meaningless for the completed ones.
+    workspaceIds.length ? db.experience.findMany({ where: { workspaceId: { in: workspaceIds }, startedAt: { gte: from } }, orderBy: { startedAt: "asc" }, take: MAX_ROWS, select: EXPERIENCE_SELECT }) : Promise.resolve([]),
+    workspaceIds.length ? db.experience.findMany({ where: { workspaceId: { in: workspaceIds }, completedAt: { gte: from } }, orderBy: { completedAt: "asc" }, take: MAX_ROWS, select: EXPERIENCE_SELECT }) : Promise.resolve([]),
     workspaceIds.length
       ? db.approvalRequest.findMany({
           where: { workspaceId: { in: workspaceIds }, status: "pending" },
@@ -122,24 +121,25 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
     if (!r.resolvedAgentId) continue;
     const request = asRecord(r.request);
     const title = clip(firstString(request.objective, request.task, request.prompt, request.title, request.message) ?? "Orchestration run");
-    if (r.startedAt && r.startedAt > from) {
+    if (r.startedAt && r.startedAt >= from) {
       events.push({ id: `run:${r.id}:start`, at: r.startedAt.toISOString(), agentId: r.resolvedAgentId, verb: "start", text: title, nodeIds: r.retrievedObjectIds.slice(0, 6) });
     }
-    if (r.completedAt && r.completedAt > from) {
+    if (r.completedAt && r.completedAt >= from) {
       const failed = r.status === "failed" || r.status === "error";
       events.push({ id: `run:${r.id}:end`, at: r.completedAt.toISOString(), agentId: r.resolvedAgentId, verb: failed ? "fail" : "done", text: failed && r.error ? clip(r.error) : title, nodeIds: [] });
     }
   }
+  const experiences = [...new Map([...startedExperiences, ...completedExperiences].map((x) => [x.id, x])).values()];
   for (const x of experiences) {
-    if (x.startedAt > from) {
+    if (x.startedAt >= from) {
       events.push({ id: `exp:${x.id}:start`, at: x.startedAt.toISOString(), agentId: x.agentId, verb: x.knowledgeUsed.length ? "recall" : "start", text: clip(x.objective), nodeIds: x.knowledgeUsed.slice(0, 6) });
     }
-    if (x.completedAt && x.completedAt > from) {
+    if (x.completedAt && x.completedAt >= from) {
       events.push({ id: `exp:${x.id}:end`, at: x.completedAt.toISOString(), agentId: x.agentId, verb: "done", text: clip(x.objective), nodeIds: [] });
     }
   }
   for (const a of reviewable) {
-    if (a.requesterAgentId && a.createdAt > from) {
+    if (a.requesterAgentId && a.createdAt >= from) {
       const node = a.taskId ? nodeFor.get(`task:${a.taskId}`) : undefined;
       events.push({ id: `appr:${a.id}`, at: a.createdAt.toISOString(), agentId: a.requesterAgentId, verb: "wait", text: clip(`Approval needed · ${a.title}`), nodeIds: node ? [node] : [] });
     }
@@ -179,8 +179,24 @@ export async function getOrreryActivity(userId: string, since?: Date): Promise<O
       }),
   ].slice(0, 6);
 
+  // Where the next poll resumes. Normally just behind the clock; when a capped,
+  // oldest-first source returned a full page, only as far as that page reached, so
+  // the remainder is delivered next time instead of being skipped.
+  let cursorAt = now.getTime() - CURSOR_OVERLAP_MS;
+  const capped: Date[] = [];
+  if (runtimeEvents.length >= MAX_ROWS) capped.push(runtimeEvents[runtimeEvents.length - 1].occurredAt);
+  if (startedExperiences.length >= MAX_ROWS) capped.push(startedExperiences[startedExperiences.length - 1].startedAt);
+  const lastCompleted = completedExperiences[completedExperiences.length - 1]?.completedAt;
+  if (completedExperiences.length >= MAX_ROWS && lastCompleted) capped.push(lastCompleted);
+  for (const edge of capped) cursorAt = Math.min(cursorAt, edge.getTime());
+  // Never move backwards past where the caller already was. If a full page ends exactly at the
+  // caller's cursor the window cannot be paged any finer, so step past it rather than repeat it forever.
+  if (since && cursorAt <= since.getTime()) cursorAt = capped.length ? since.getTime() + 1 : Math.max(cursorAt, since.getTime());
+  const truncated = capped.length > 0 || runs.length >= MAX_ROWS || sessions.length >= MAX_ROWS;
+
   return {
-    cursor: now.toISOString(),
+    cursor: new Date(cursorAt).toISOString(),
+    truncated,
     events,
     agents: agents.map(({ id }) => ({ agentId: id, state: working.has(id) ? "working" : "idle", nodeId: nodeFor.get(`agent:${id}`) ?? null })),
     runs: runCards,

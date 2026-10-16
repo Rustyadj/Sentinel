@@ -11,6 +11,18 @@ dist/
 build/
 backups/
 
+# Runtime state that exists only on a deployed host. runtime-agents/home holds the
+# Claude Code / Codex CLI credentials (.credentials.json, auth.json) and is bind-mounted
+# at run time; `COPY . .` in the builder and worker stages used to bake it into image
+# layers. runtime-projects/ is agent working data.
+runtime-agents/
+runtime-projects/
+**/.credentials.json
+**/.claude.json
+**/auth.json
+*.dump
+*.rdb
+
 # Environment files — never bake secrets into the image
 .env
 .env.local

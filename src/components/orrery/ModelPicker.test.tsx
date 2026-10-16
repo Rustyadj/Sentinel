@@ -34,4 +34,31 @@ describe("ModelPicker", () => {
     await userEvent.click(screen.getByRole("button"));
     expect(await screen.findByRole("alert")).toHaveTextContent(/admins/i);
   });
+
+  it("shows the model of the agent the conversation is with, and follows it when that changes", async () => {
+    const two = [
+      { id: "codex", name: "Codex", color: "#7dd3fc", model: "gpt-6-astra" },
+      { id: "hermes-lisa", name: "Hermes Lisa", color: "#a78bfa", model: "deepseek/deepseek-v4.1-flash" },
+    ];
+    // The chip used to keep showing whichever agent was active when the page mounted.
+    const { rerender } = render(<ModelPicker agents={two} activeAgentId="codex" />);
+    expect(screen.getByRole("button", { name: /gpt-6-astra/ })).toBeInTheDocument();
+    rerender(<ModelPicker agents={two} activeAgentId="hermes-lisa" />);
+    expect(screen.getByRole("button", { name: /deepseek\/deepseek-v4.1-flash/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /gpt-6-astra/ })).not.toBeInTheDocument();
+  });
+
+  it("does not show one agent's saved model as another's after switching agents", async () => {
+    const two = [
+      { id: "codex", name: "Codex", color: "#7dd3fc", model: "gpt-6-astra" },
+      { id: "hermes-lisa", name: "Hermes Lisa", color: "#a78bfa", model: "deepseek/deepseek-v4.1-flash" },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(settings("gpt-5.6-sol")), { status: 200 })));
+    const { rerender } = render(<ModelPicker agents={two} activeAgentId="codex" />);
+    await userEvent.click(screen.getByRole("button", { name: /gpt-6-astra/ }));      // loads Codex's real setting
+    await screen.findByRole("radio", { name: /gpt-5.6-sol/ });
+    await userEvent.keyboard("{Escape}");
+    rerender(<ModelPicker agents={two} activeAgentId="hermes-lisa" />);
+    expect(screen.getByRole("button", { name: /deepseek/ })).toBeInTheDocument();     // not Codex's loaded gpt-5.6-sol
+  });
 });

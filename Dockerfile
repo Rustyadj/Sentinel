@@ -90,6 +90,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 
+LABEL org.opencontainers.image.revision=$SENTINEL_COMMIT
+
 USER nextjs
 
 EXPOSE 3000
@@ -97,3 +99,42 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
+
+
+# ── Stage 4: Background workers ───────────────────────────────────────────────
+# The learning and orchestration workers run TypeScript through tsx and, for
+# orchestration, execute the same bind-mounted `claude`/`codex` CLI binaries as
+# the app. Those binaries are glibc-linked, so this stage is Debian like `runner`
+# — it used to be the Alpine `builder` stage, where every claude-code run failed
+# with "binary_missing" (no mount) and could not have executed even with one.
+# Same non-root uid/gid as `runner`, so the shared runtime-home mount is owned
+# consistently. Built once and used by both workers, from the same release.
+FROM node:20-bookworm-slim AS worker
+
+ARG SENTINEL_COMMIT=unknown
+ARG SENTINEL_BUILT_AT=unknown
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 1001 nodejs \
+ && useradd  --system --uid 1001 --gid nodejs --create-home nextjs \
+ && mkdir /app && chown nextjs:nodejs /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV SENTINEL_COMMIT=$SENTINEL_COMMIT
+ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
+
+RUN ln -s /opt/runtime-bin/claude /usr/local/bin/claude \
+ && printf '#!/bin/sh\nexec /opt/runtime-bin/codex "$@"\n' > /usr/local/bin/codex \
+ && chmod +x /usr/local/bin/codex
+
+LABEL org.opencontainers.image.revision=$SENTINEL_COMMIT
+
+# Install and generate as the runtime user, so nothing needs a recursive chown afterwards
+# (which would copy the whole of node_modules into another image layer).
+USER nextjs
+WORKDIR /app
+COPY --chown=nextjs:nodejs package.json package-lock.json ./
+RUN npm ci
+COPY --chown=nextjs:nodejs . .
+RUN npx prisma@6 generate

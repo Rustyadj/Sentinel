@@ -5,7 +5,8 @@
 // permitted, and what to record afterwards.
 //
 // Enforcement note, because it is easy to overstate: Hermes calls its tools
-// itself, so Sentinel cannot veto a call before it happens. It sees each call as
+// itself, so Sentinel cannot veto a call before it happens. This is detect-and-halt,
+// not pre-execution enforcement, and no wording here or in the UI may say otherwise. It sees each call as
 // the runtime announces it, and on a denied one interrupts the session and fails
 // the task. The prompt manifest asks the bot not to try; this is what happens if
 // it does anyway. The call that triggered the halt may already be under way.
@@ -29,14 +30,36 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
 
 export interface Halt {
   kind: "violation" | "approval";
+  /** The name the runtime reported. For display and the audit trail only. */
   tool: string;
+  /** The catalog's own name for the tool, when it resolved to one. This is what approvals are stored and matched under. */
+  catalogTool?: string | null;
   server: string | null;
   serverId: string | null;
+  /** Canonical `<serverId>:<catalog tool>` keys that approving this halt approves. Empty for a violation. */
+  approvalKeys?: string[];
   reason: string;
   risk: "normal" | "high";
 }
 
 export interface HaltContext { attemptId: string; startedAtMs: number; text: string }
+
+/**
+ * A runtime session that Sentinel asked to stop and could not confirm stopped.
+ * It may still be executing, so the task is neither halted nor parked: it stays
+ * tracked, holding its lease, until a later attempt gets a confirmation.
+ */
+export interface PendingInterruption extends HaltContext {
+  /** Why the session was being stopped: a policy halt, or a cancellation the user asked for. */
+  cause: { kind: "halt"; halt: Halt } | { kind: "cancel" };
+  sessionId: string;
+  /** The worker that holds the execution lease for this run. Only it may be released by the reconciler. */
+  workerId: string;
+  firstUnconfirmedAt: string;
+  lastCheckedAt: string;
+  checks: number;
+  lastMessage: string;
+}
 
 export interface ModelOverride { model: string; effort?: import("@/lib/agents/model-policy").EffortLevel | null; authorized: true }
 
@@ -50,6 +73,8 @@ export interface BotExecution {
   noteFallback(from: string | null, to: string): Promise<void>;
   observe(event: RuntimeEvent): Promise<Halt | null>;
   halted(halt: Halt, context: HaltContext): Promise<void>;
+  /** The runtime did not confirm it stopped. Keep the task tracked as in-flight; do not halt, park or release it. */
+  interruptionUnconfirmed(pending: PendingInterruption): Promise<void>;
   attemptFields(): { usage: Prisma.InputJsonValue; cost: number | null; model?: string };
   finish(text: string, succeeded: boolean): Promise<void>;
   /** An error the runtime reported inside an otherwise normal-looking turn (Hermes does this for provider errors). */
@@ -63,6 +88,19 @@ const mediaType = (ext: string) => (/^(png|jpe?g|webp|gif)$/i.test(ext) ? "image
 async function failRun(run: OrchestrationRun, log: BotRunLog | null, message: string): Promise<void> {
   await db.orchestrationRun.updateMany({ where: { id: run.id, status: { in: ["queued", "running"] } }, data: { status: "failed", error: message, completedAt: new Date() } });
   if (log) await log.emit("error", message);
+}
+
+/**
+ * The one-use tool approvals this task still holds, read from BotToolGrant rows (the authority:
+ * they are spent durably and inherited by continuations). A task queued by the release before
+ * grants existed has only `request.approvedTools`; those are written out as rows the first time
+ * it loads. skipDuplicates means a row that was already spent is never resurrected by a reload.
+ */
+async function loadUnspentGrants(runId: string, request: Record<string, unknown>): Promise<string[]> {
+  if (request.grantsVersion !== 2 && Array.isArray(request.approvedTools) && request.approvedTools.length) {
+    await db.botToolGrant.createMany({ data: [...new Set(request.approvedTools.map(String))].map((key) => ({ runId, key })), skipDuplicates: true });
+  }
+  return (await db.botToolGrant.findMany({ where: { runId, consumedAt: null }, select: { key: true } })).map((grant) => grant.key);
 }
 
 /**
@@ -83,7 +121,7 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
   const task = String(request.task ?? "");
   const rows: PermissionRow[] = row.toolPermissions.map(toGrant);
   const catalog: CatalogServer[] = activeCatalog(await loadCatalog(bot.workspaceId));
-  const approvedOnce = new Set<string>(Array.isArray(request.approvedTools) ? request.approvedTools.map(String) : []);
+  const approvedOnce = new Set<string>(await loadUnspentGrants(run.id, request));
   const role = (["primary", "fast", "reasoning", "vision"].includes(String(request.modelRole)) ? request.modelRole : "primary") as "primary" | "fast" | "reasoning" | "vision";
   const requestedModel = selectBotModel(bot.modelConfig, role);
   const modelOverride: ModelOverride | undefined = requestedModel ? { model: requestedModel, ...(bot.modelConfig.effort !== undefined ? { effort: bot.modelConfig.effort } : {}), authorized: true } : undefined;
@@ -139,14 +177,27 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
           if (!name || pending.has(name)) return null;
           pending.add(name);
           toolCalls += 1;
-          const verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          let verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          // An approval is for ONE use: admitting this call spends it, durably, so neither a restart nor the
+          // continuation of this task can spend it again. The spend is a conditional update on the grant row;
+          // if another caller spent it first (count 0) this call is NOT admitted by it, and is evaluated again without.
+          for (let round = 0; verdict.allowed && verdict.consumed.length && round < 4; round += 1) {
+            let lost = false;
+            for (const key of verdict.consumed) {
+              approvedOnce.delete(key);
+              const spent = await db.botToolGrant.updateMany({ where: { runId: run.id, key, consumedAt: null }, data: { consumedAt: new Date() } });
+              if (spent.count === 0) lost = true;
+            }
+            if (!lost) break;
+            verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+          }
           const resolved: ResolvedTool | null = verdict.resolved;
           const details = { tool: name, server: resolved?.serverName ?? null, serverId: resolved?.serverId ?? null, permission: verdict.permission, source: verdict.source, reason: verdict.reason };
           if (verdict.allowed) { await log.emit("tool_allowed", `${name} allowed.`, details); return null; }
           const risk = resolved ? (catalog.find((server) => server.id === resolved.serverId)?.tools.find((tool) => tool.name === resolved.toolName)?.risk ?? "normal") : "normal";
-          if (verdict.requiresApproval) return { kind: "approval", tool: name, server: details.server, serverId: details.serverId, reason: verdict.reason, risk };
+          if (verdict.requiresApproval) return { kind: "approval", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, approvalKeys: verdict.approvalKeys, reason: verdict.reason, risk };
           await log.emit("tool_denied", `${name} denied: ${verdict.reason}`, details);
-          return { kind: "violation", tool: name, server: details.server, serverId: details.serverId, reason: verdict.reason, risk };
+          return { kind: "violation", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, reason: verdict.reason, risk };
         }
         case "tool_completed": {
           const name = asString(data.name);
@@ -178,8 +229,12 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
         const approval = await db.approvalRequest.create({
           data: {
             workspaceId: run.workspaceId!, projectId: run.projectId, type: "bot_tool_call", risk: halt.risk === "high" ? "high" : "medium",
-            title: `${bot.name} wants to use ${halt.tool}`, description: `Bot task ${run.id} stopped before using ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Approve to continue as a new task that may use it once.`,
-            requesterUserId: run.userId, payload: json({ runId: run.id, botId: bot.id, serverId: halt.serverId, tool: halt.tool }),
+            title: `${bot.name} wants to use ${halt.tool}`, description: `Bot task ${run.id} called ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Sentinel saw the call as the runtime started it and then interrupted the session, so the tool may already have begun running. Approve to continue as a new task that may use it once.`,
+            requesterUserId: run.userId,
+            // Stored under the catalog's names, not the runtime's spelling (Hermes reports MCP tools as
+            // `mcp_<slug>_<tool>`): evaluateToolAccess matches on `<serverId>:<catalog tool>`, so an
+            // approval recorded under the reported name would never be recognised on resume.
+            payload: json({ runId: run.id, botId: bot.id, serverId: halt.serverId, tool: halt.catalogTool ?? halt.tool, reportedTool: halt.tool, approvalKeys: halt.approvalKeys ?? [] }),
           },
         });
         await log.emit("approval_requested", `${halt.tool} needs approval; task is waiting.`, { tool: halt.tool, server: halt.server, serverId: halt.serverId, reason: halt.reason, approvalRequestId: approval.id });
@@ -194,6 +249,18 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
       await db.$transaction([
         db.executionAttempt.update({ where: { id: context.attemptId }, data: { status: "failed", error: message, completedAt: new Date(), latencyMs, output: json({ text: context.text }), validation: json({ passed: false, reason: message }) } }),
         db.orchestrationRun.update({ where: { id: run.id }, data: { status: "failed", error: message, completedAt: new Date(), result: json({ text: context.text, halted: true }) } }),
+      ]);
+    },
+
+    async interruptionUnconfirmed(pending) {
+      const what = pending.cause.kind === "halt" ? `stopping the session after ${pending.cause.halt.tool}` : "cancelling the session";
+      const message = `The runtime did not confirm ${what}: ${pending.lastMessage}. The session may still be executing, so the task stays open until it is confirmed stopped.`;
+      await log.emit("error", message, { sessionId: pending.sessionId, cause: pending.cause.kind, tool: pending.cause.kind === "halt" ? pending.cause.halt.tool : null, checks: pending.checks });
+      await db.$transaction([
+        db.executionAttempt.update({ where: { id: pending.attemptId }, data: { validation: json({ passed: false, reason: "Runtime interruption unconfirmed; session may still be running." }) } }),
+        // `cancelling` is in-flight everywhere (concurrency, co-execution) and is never finalized by a retry, so
+        // the run keeps its slot and nothing can start a second session for it.
+        db.orchestrationRun.update({ where: { id: run.id }, data: { status: "cancelling", error: message, result: json({ text: pending.text, interruptUnconfirmed: pending }) } }),
       ]);
     },
 

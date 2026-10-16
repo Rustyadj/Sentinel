@@ -104,6 +104,47 @@ export async function syncTaskToGraph(task: TaskGraphInput, actingUserId: string
   });
 }
 
+export interface MemoryGraphInput {
+  id: string;
+  content: string;
+  scope: string;
+  owner: string;
+  source: string;
+  tags: string[];
+  projectId: string | null;
+  archived?: boolean;
+}
+
+/**
+ * Bridges a plain Memory row (the pgvector-backed one behind /memory and
+ * /api/memories — not a Learning Core entity) into the same canonical
+ * graph Task/Decision/Agent already land in. Without this, durable memory
+ * was invisible to the graph: creating a memory left no trace an operator
+ * or agent could navigate to from anywhere else in Sentinel.
+ *
+ * The node belongs to the memory's OWNER, not to whoever happens to be editing:
+ * a project member patching a teammate's memory must not mint a node that the
+ * teammate's user-scoped graph can no longer see, or that the editor now owns.
+ * Returns the node id, or null when the memory is archived and has no node.
+ */
+export async function syncMemoryToGraph(memory: MemoryGraphInput): Promise<string | null> {
+  // An archived memory is out of circulation everywhere else; it must not stay navigable from the graph.
+  if (memory.archived) {
+    await removeEntityFromGraph("memory", memory.id);
+    return null;
+  }
+  return syncEntityToGraph({
+    type: "Memory" as KnowledgeObjectType,
+    title: memory.content.length > 140 ? `${memory.content.slice(0, 137)}...` : memory.content,
+    sourceType: "memory",
+    sourceId: memory.id,
+    scope: (memory.scope === "project" && memory.projectId ? "project" : "user") as KnowledgeScope,
+    projectId: memory.scope === "project" ? memory.projectId : null,
+    ownerUserId: memory.owner,
+    metadata: { source: memory.source, tags: memory.tags },
+  });
+}
+
 export interface WorkflowGraphInput {
   id: string;
   name: string;

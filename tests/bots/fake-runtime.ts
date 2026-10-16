@@ -15,12 +15,16 @@ export const script = {
   startCalls: [] as Array<Record<string, unknown>>,
   prompts: [] as string[],
   cancelled: 0,
+  /** Number of upcoming cancel() calls the runtime refuses (success: false). Infinity = never confirms. */
+  cancelFailures: 0,
+  /** Make cancel() throw instead of returning success: false. */
+  cancelThrows: false,
   ready: true,
   verified: true,
 };
 
 export function resetScript() {
-  script.events = []; script.startErrors = []; script.startCalls = []; script.prompts = []; script.cancelled = 0; script.ready = true; script.verified = true;
+  script.events = []; script.startErrors = []; script.startCalls = []; script.prompts = []; script.cancelled = 0; script.cancelFailures = 0; script.cancelThrows = false; script.ready = true; script.verified = true;
 }
 
 let sessionCounter = 0;
@@ -43,7 +47,15 @@ export const adapter = {
       yield { type: event.type, sessionId: input.sessionId, sequence, timestamp: new Date().toISOString(), data: event.data };
     }
   },
-  cancel: async () => { script.cancelled += 1; return { success: true }; },
+  cancel: async () => {
+    script.cancelled += 1;
+    if (script.cancelFailures > 0) {
+      script.cancelFailures -= 1;
+      if (script.cancelThrows) throw new Error("runtime socket closed");
+      return { success: false, message: "runtime did not acknowledge the cancel" };
+    }
+    return { success: true };
+  },
 };
 
 const view = () => ({ ...HOST, executionVerified: script.verified });
