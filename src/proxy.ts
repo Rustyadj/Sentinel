@@ -49,6 +49,10 @@ export const proxy = auth;
 // so a live conversation reports a mysterious failure instead of asking the
 // user to sign in again.
 //
+// api/telephony serves two callers the page gate would break: Telnyx's webhook
+// (no session; the route verifies the Ed25519 signature itself and answers 401)
+// and the dialer UI's fetches (each route calls requireUser() and returns JSON 401).
+//
 // The exclusion is `mcp/` and bare `mcp`, not just `mcp/authorize`, because
 // /mcp is itself an MCP endpoint — the conventional mount point, aliasing
 // /api/mcp. Listing only the consent page left POST /mcp being answered with a
@@ -59,6 +63,6 @@ export const proxy = auth;
 // the one path nobody had listed.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/voice|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/voice|api/telephony|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };

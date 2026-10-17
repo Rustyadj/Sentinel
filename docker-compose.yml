@@ -103,6 +103,22 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       SENTINEL_DEFAULT_UI: ${SENTINEL_DEFAULT_UI:-true}
+      TELNYX_API_KEY: ${TELNYX_API_KEY:-}
+      TELNYX_PUBLIC_KEY: ${TELNYX_PUBLIC_KEY:-}
+      TELNYX_FROM_NUMBER: ${TELNYX_FROM_NUMBER:-}
+      TELNYX_OWNER_USER_ID: ${TELNYX_OWNER_USER_ID:-}
+      TELNYX_AGENT_ID: ${TELNYX_AGENT_ID:-}
+      TELNYX_ALLOWED_NUMBERS: ${TELNYX_ALLOWED_NUMBERS:-}
+      TELNYX_CONNECTION_ID: ${TELNYX_CONNECTION_ID:-}
+      TELNYX_MEDIA_WS_URL: ${TELNYX_MEDIA_WS_URL:-}
+      TELNYX_MEDIA_TOKEN_SECRET: ${TELNYX_MEDIA_TOKEN_SECRET:-}
+      TELNYX_BRIDGE_SECRET: ${TELNYX_BRIDGE_SECRET:-}
+      TELNYX_NUMBER_ROUTES: ${TELNYX_NUMBER_ROUTES:-}
+      TELNYX_UNKNOWN_CALLERS: ${TELNYX_UNKNOWN_CALLERS:-}
+      TELNYX_MAX_CONCURRENT_CALLS: ${TELNYX_MAX_CONCURRENT_CALLS:-}
+      TELNYX_MAX_CALL_SECONDS: ${TELNYX_MAX_CALL_SECONDS:-}
+      TELNYX_OUTBOUND_CALLS_PER_HOUR: ${TELNYX_OUTBOUND_CALLS_PER_HOUR:-}
+      TELNYX_ALLOWED_COUNTRY_CODES: ${TELNYX_ALLOWED_COUNTRY_CODES:-}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
       SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA:-unknown}
       SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
@@ -207,6 +223,60 @@ services:
       redis:
         condition: service_healthy
     # Traefik routing is managed via /etc/traefik/dynamic/sentinel.yml on the host
+
+  # Telnyx media bridge -- terminates Telnyx's bidirectional media WebSocket and
+  # relays μ-law audio to a GPT-Live session per call. It holds audio and call
+  # state only: every substantive turn is sent to the app's internal
+  # /api/telephony/turn, where the agent's own runtime, memory, tools and
+  # permissions live (the same split as the LiveKit voice worker). Traefik
+  # routes wss://<host>/telephony/media here; see deploy/traefik/sentinel.yml.
+  # `command` invokes tsx directly so SIGTERM reaches the process and live
+  # calls are closed gracefully rather than hard-killed.
+  telnyx-bridge:
+    build:
+      context: .
+      target: builder
+    command: node_modules/.bin/tsx src/workers/telnyx-bridge.ts
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      REDIS_URL: redis://redis:6379
+      SENTINEL_INTERNAL_URL: http://app:3000
+      TELNYX_BRIDGE_PORT: "4870"
+      TELNYX_API_KEY: ${TELNYX_API_KEY:-}
+      TELNYX_PUBLIC_KEY: ${TELNYX_PUBLIC_KEY:-}
+      TELNYX_FROM_NUMBER: ${TELNYX_FROM_NUMBER:-}
+      TELNYX_OWNER_USER_ID: ${TELNYX_OWNER_USER_ID:-}
+      TELNYX_AGENT_ID: ${TELNYX_AGENT_ID:-}
+      TELNYX_ALLOWED_NUMBERS: ${TELNYX_ALLOWED_NUMBERS:-}
+      TELNYX_CONNECTION_ID: ${TELNYX_CONNECTION_ID:-}
+      TELNYX_MEDIA_WS_URL: ${TELNYX_MEDIA_WS_URL:-}
+      TELNYX_MEDIA_TOKEN_SECRET: ${TELNYX_MEDIA_TOKEN_SECRET:-}
+      TELNYX_BRIDGE_SECRET: ${TELNYX_BRIDGE_SECRET:-}
+      TELNYX_NUMBER_ROUTES: ${TELNYX_NUMBER_ROUTES:-}
+      TELNYX_MAX_CONCURRENT_CALLS: ${TELNYX_MAX_CONCURRENT_CALLS:-}
+      TELNYX_MAX_CALL_SECONDS: ${TELNYX_MAX_CALL_SECONDS:-}
+      TELNYX_ALLOWED_COUNTRY_CODES: ${TELNYX_ALLOWED_COUNTRY_CODES:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "127.0.0.1:4870:4870"
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4870/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      app:
+        condition: service_healthy
 
   # Learning Core worker — BullMQ consumer for the recurring jobs registered
   # in src/lib/learning/queue.ts (degradation sweep, knowledge-gap analysis,
