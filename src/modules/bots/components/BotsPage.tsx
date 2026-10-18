@@ -66,7 +66,7 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">Bots</h1>
-          <p className="mt-1 max-w-[60ch] text-[13px] leading-5 text-[--muted-foreground]">Specialised Hermes agents with their own instructions, tools and memory. Other agents find them here and hand them work.</p>
+          <p className="mt-1 max-w-[60ch] text-[13px] leading-5 text-(--muted-foreground)">Specialised Hermes agents with their own instructions, tools and memory. Other agents find them here and hand them work.</p>
         </div>
         <div className="flex items-center gap-2">
           {workspaces.length > 1 ? <Select aria-label="Workspace" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} className="h-8 w-[180px] py-0">{workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select> : null}
@@ -83,7 +83,7 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
       {!workspaceId ? <div className="mt-6"><Empty title="No workspace">You are not a member of any workspace, so there is nowhere to create a bot.</Empty></div> : null}
       {workspaceId && bots === null && !error && !forbidden ? (
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading bots">
-          {[0, 1, 2].map((i) => <div key={i} className="h-[230px] animate-pulse rounded-lg border border-[--border] bg-[--card]" />)}
+          {[0, 1, 2].map((i) => <div key={i} className="h-[230px] animate-pulse rounded-lg border border-(--border) bg-(--card)" />)}
         </div>
       ) : null}
       {bots && bots.length === 0 ? <div className="mt-6"><Empty title="No bots in this workspace yet" action={<Button variant="primary" onClick={() => setCreating(true)}>Create the first bot</Button>}>Describe what you want one to do, or start from a template. A new bot can use no tools until you grant them.</Empty></div> : null}
@@ -95,38 +95,38 @@ export function BotsPage({ workspaces }: { workspaces: { id: string; name: strin
             const hostLabel = !s.host.enabled ? "Host disabled" : !s.host.executionVerified ? "Host not verified" : host === undefined ? "Checking host" : host?.ready ? "Hermes ready" : "Hermes not ready";
             const hostTone = hostLabel === "Hermes ready" ? "good" : hostLabel === "Checking host" ? "neutral" : "warn";
             return (
-              <li key={s.bot.id} className="group relative flex flex-col rounded-lg border border-[--border] bg-[--card] p-4 transition-colors hover:border-[--primary]/40 focus-within:border-[--primary]/40">
+              <li key={s.bot.id} className="group relative flex flex-col rounded-lg border border-(--border) bg-(--card) p-4 transition-colors hover:border-(--primary)/40 focus-within:border-(--primary)/40">
                 <div className="flex items-start gap-3">
                   <BotAvatar icon={s.bot.avatar} color={s.bot.color} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h2 className="truncate text-[15px] font-semibold"><Link href={`/bots/${s.bot.id}`} className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-[--ring]">{s.bot.name}</Link></h2>
+                      <h2 className="truncate text-[15px] font-semibold"><Link href={`/bots/${s.bot.id}`} className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-(--ring)">{s.bot.name}</Link></h2>
                       <Pill tone={statusTone(s.bot.status)}>{s.bot.status === "active" ? "Enabled" : s.bot.status === "draft" ? "Draft" : "Disabled"}</Pill>
                     </div>
-                    <p className="text-[12px] text-[--muted-foreground]">{s.bot.role}</p>
+                    <p className="text-[12px] text-(--muted-foreground)">{s.bot.role}</p>
                   </div>
                 </div>
-                <p className="mt-3 line-clamp-2 min-h-[40px] text-[13px] leading-5 text-[--muted-foreground]">{s.bot.description || "No description yet."}</p>
+                <p className="mt-3 line-clamp-2 min-h-[40px] text-[13px] leading-5 text-(--muted-foreground)">{s.bot.description || "No description yet."}</p>
                 <dl className="mt-3 space-y-1 text-[12px]">
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Model</dt><dd className="truncate">{s.bot.modelConfig.primary ?? "Host default"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Host</dt><dd><Pill tone={hostTone}>{hostLabel}</Pill></dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Skills</dt><dd className="truncate">{s.skills.filter((k) => k.enabled).map((k) => k.name).join(", ") || "None"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Tools</dt><dd className="truncate">{s.servers.map((v) => `${v.name} (${v.tools === "all" ? "all" : v.tools})`).join(", ") || "None granted"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Memory</dt><dd className="truncate">{s.memory.enabled ? `Reads ${s.memory.read.map((x) => MEMORY_SCOPE_LABEL[x] ?? x).join(", ") || "nothing"}` : "Off"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Last active</dt><dd>{s.lastActiveAt ? formatDistanceToNow(new Date(s.lastActiveAt), { addSuffix: true }) : "Never"}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-[--muted-foreground]">Today</dt><dd>{s.usageToday.tasks ? `${s.usageToday.tokens.toLocaleString()} tokens${s.usageToday.pricedTasks ? `, $${s.usageToday.costUsd.toFixed(2)}` : ", not priced"}` : "No tasks"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Model</dt><dd className="truncate">{s.bot.modelConfig.primary ?? "Host default"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Host</dt><dd><Pill tone={hostTone}>{hostLabel}</Pill></dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Skills</dt><dd className="truncate">{s.skills.filter((k) => k.enabled).map((k) => k.name).join(", ") || "None"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Tools</dt><dd className="truncate">{s.servers.map((v) => `${v.name} (${v.tools === "all" ? "all" : v.tools})`).join(", ") || "None granted"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Memory</dt><dd className="truncate">{s.memory.enabled ? `Reads ${s.memory.read.map((x) => MEMORY_SCOPE_LABEL[x] ?? x).join(", ") || "nothing"}` : "Off"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Last active</dt><dd>{s.lastActiveAt ? formatDistanceToNow(new Date(s.lastActiveAt), { addSuffix: true }) : "Never"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-(--muted-foreground)">Today</dt><dd>{s.usageToday.tasks ? `${s.usageToday.tokens.toLocaleString()} tokens${s.usageToday.pricedTasks ? `, $${s.usageToday.costUsd.toFixed(2)}` : ", not priced"}` : "No tasks"}</dd></div>
                 </dl>
                 {s.currentTask ? <p className="mt-3 truncate rounded-md bg-sky-500/10 px-2 py-1 text-[12px] text-sky-300">Working: {s.currentTask.task}</p> : null}
                 <div className="relative z-10 mt-3 flex flex-wrap gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100">
-                  <Link href={`/bots/${s.bot.id}?tab=test`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"><FlaskConical className="h-3.5 w-3.5" aria-hidden />Test</Link>
-                  <Link href={`/bots/${s.bot.id}`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"><Pencil className="h-3.5 w-3.5" aria-hidden />Edit</Link>
-                  <Link href={`/bots/${s.bot.id}?tab=activity`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"><ActivityIcon className="h-3.5 w-3.5" aria-hidden />Activity</Link>
-                  <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]" disabled={busy === s.bot.id + "duplicate"} onClick={() => act(s.bot.id, "duplicate")}><Copy className="h-3.5 w-3.5" aria-hidden />Duplicate</button>
-                  <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]" disabled={busy === s.bot.id + "enable" || busy === s.bot.id + "disable"} onClick={() => act(s.bot.id, s.bot.status === "active" ? "disable" : "enable")}><Power className="h-3.5 w-3.5" aria-hidden />{s.bot.status === "active" ? "Disable" : "Enable"}</button>
+                  <Link href={`/bots/${s.bot.id}?tab=test`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"><FlaskConical className="h-3.5 w-3.5" aria-hidden />Test</Link>
+                  <Link href={`/bots/${s.bot.id}`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"><Pencil className="h-3.5 w-3.5" aria-hidden />Edit</Link>
+                  <Link href={`/bots/${s.bot.id}?tab=activity`} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"><ActivityIcon className="h-3.5 w-3.5" aria-hidden />Activity</Link>
+                  <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)" disabled={busy === s.bot.id + "duplicate"} onClick={() => act(s.bot.id, "duplicate")}><Copy className="h-3.5 w-3.5" aria-hidden />Duplicate</button>
+                  <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)" disabled={busy === s.bot.id + "enable" || busy === s.bot.id + "disable"} onClick={() => act(s.bot.id, s.bot.status === "active" ? "disable" : "enable")}><Power className="h-3.5 w-3.5" aria-hidden />{s.bot.status === "active" ? "Disable" : "Enable"}</button>
                   {confirmDelete === s.bot.id ? (
                     <span className="inline-flex items-center gap-1"><Button variant="danger" className="h-7 px-2 text-[12px]" busy={busy === s.bot.id + "delete"} onClick={() => remove(s.bot.id)}>Delete {s.bot.name}</Button><Button variant="ghost" className="h-7 px-2 text-[12px]" onClick={() => setConfirmDelete(null)}>Keep</Button></span>
                   ) : (
-                    <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-red-400 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]" onClick={() => setConfirmDelete(s.bot.id)}><Trash2 className="h-3.5 w-3.5" aria-hidden />Delete</button>
+                    <button className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-red-400 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)" onClick={() => setConfirmDelete(s.bot.id)}><Trash2 className="h-3.5 w-3.5" aria-hidden />Delete</button>
                   )}
                 </div>
               </li>

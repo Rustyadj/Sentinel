@@ -7,7 +7,7 @@ import type { ScopedGraph, ScopedNode } from "./useGraphData";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
-  loading: () => <p className="p-6 text-[13px] text-[--muted-foreground]">Preparing canvas…</p>,
+  loading: () => <p className="p-6 text-[13px] text-(--muted-foreground)">Preparing canvas…</p>,
 });
 
 interface CanvasNode {
@@ -112,6 +112,9 @@ export function GraphCanvas({ graph, focusId, selectedId, onSelect, onExpand }: 
   }, [focusId, data.nodes.length, reducedMotion]);
 
   const paintNode = useCallback((node: CanvasNode, ctx: CanvasRenderingContext2D, scale: number) => {
+    // The force simulation hands nodes over before their first tick; there is
+    // nothing to draw until they have a position.
+    if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
     const radius = node.radius;
     const active = node.id === selectedId || node.id === focusId;
     const hovered = node.id === hoveredId;

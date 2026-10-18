@@ -39,7 +39,7 @@ export function MissionBrief({ data }: { data: MissionControlData }) {
                 className={cn(
                   "inline-flex h-9 items-center gap-2 rounded-md border px-3.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-violet-300/70",
                   primary
-                    ? "border-violet-400/70 bg-violet-600 text-white shadow-[0_7px_20px_rgba(109,74,255,0.24)] hover:bg-violet-500"
+                    ? "border-violet-400/70 bg-(--primary) text-(--primary-foreground) shadow-[0_7px_20px_rgba(109,74,255,0.24)] hover:bg-(--primary-soft)"
                     : "border-white/[0.14] bg-white/[0.025] text-[#d9e0ea] hover:border-violet-400/35 hover:bg-violet-500/10"
                 )}
               >

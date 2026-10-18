@@ -48,7 +48,7 @@ export function ContinueWork({ items, sourceState }: { items: ContinueItem[]; so
               )}
             >
               {tab.label}
-              {activeTab === tab.id ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-violet-500" /> : null}
+              {activeTab === tab.id ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-(--primary)" /> : null}
             </button>
           ))}
         </div>

@@ -59,14 +59,14 @@ export function GraphSurface() {
       {history.length > 0 ? (
         <button
           onClick={goBack}
-          className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[13px] text-[--muted-foreground] transition-colors hover:bg-[--muted] hover:text-[--foreground]"
+          className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[13px] text-(--muted-foreground) transition-colors hover:bg-(--muted) hover:text-(--foreground)"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Back
         </button>
       ) : null}
-      <span className="text-[15px] font-medium">Graph</span>
+      <h1 className="font-display text-[17px] font-semibold tracking-tight">Graph</h1>
       {focusId ? (
-        <button onClick={() => { setFocusId(null); setHistory([]); }} className="rounded-lg px-2 py-1.5 text-[13px] text-[--muted-foreground] hover:text-[--foreground]">
+        <button onClick={() => { setFocusId(null); setHistory([]); }} className="rounded-lg px-2 py-1.5 text-[13px] text-(--muted-foreground) hover:text-(--foreground)">
           Clear focus
         </button>
       ) : null}

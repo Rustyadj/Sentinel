@@ -61,25 +61,25 @@ export function TaskCard({ task, agent, dragging, onDragStart, onDragEnd, onOpen
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }}
       className={cn(
-        "group flex cursor-grab gap-2.5 rounded-lg border border-[--canvas-card-border] bg-[--canvas-card] p-3 text-left shadow-sm transition-all active:cursor-grabbing",
-        "hover:border-[--primary]/40 hover:shadow-md",
+        "group flex cursor-grab gap-2.5 rounded-lg border border-(--canvas-card-border) bg-(--canvas-card) p-3 text-left shadow-sm transition-all active:cursor-grabbing",
+        "hover:border-(--primary)/40 hover:shadow-md",
         dragging && "opacity-40"
       )}
     >
       <span className={cn("mt-0.5 w-1 shrink-0 rounded-full self-stretch", PRIORITY_BAR[priority])} aria-hidden />
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="text-[13px] font-medium leading-snug text-[--canvas-card-foreground]">{task.title}</p>
+        <p className="text-[13px] font-medium leading-snug text-(--canvas-card-foreground)">{task.title}</p>
 
         {task.tags.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {task.tags.map((tag) => (
-              <span key={tag} className="rounded-full bg-[--muted] px-2 py-0.5 text-[10px] text-[--muted-foreground]">{tag}</span>
+              <span key={tag} className="rounded-full bg-(--muted) px-2 py-0.5 text-[10px] text-(--muted-foreground)">{tag}</span>
             ))}
           </div>
         ) : null}
 
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[10px] text-[--muted-foreground]">
+          <div className="flex items-center gap-1.5 text-[10px] text-(--muted-foreground)">
             {task.dueDate ? (
               <span className={cn("flex items-center gap-1", isOverdue && "text-rose-400")}>
                 <Calendar className="h-3 w-3" />{formatDueDate(task.dueDate)}
@@ -90,7 +90,7 @@ export function TaskCard({ task, agent, dragging, onDragStart, onDragEnd, onOpen
           </div>
 
           {agent ? (
-            <span className="flex items-center gap-1 rounded-full bg-[--muted] py-0.5 pl-1.5 pr-2 text-[10px] text-[--muted-foreground]" title={`${agent.name} · ${agent.status}`}>
+            <span className="flex items-center gap-1 rounded-full bg-(--muted) py-0.5 pl-1.5 pr-2 text-[10px] text-(--muted-foreground)" title={`${agent.name} · ${agent.status}`}>
               <span className="relative flex h-2.5 w-2.5 items-center justify-center">
                 <span className={cn("h-1.5 w-1.5 rounded-full", AGENT_STATUS_DOT[agent.status] ?? "bg-slate-500", (agent.status === "online" || agent.status === "busy") && "animate-pulse")} />
               </span>
@@ -98,7 +98,7 @@ export function TaskCard({ task, agent, dragging, onDragStart, onDragEnd, onOpen
               {agent.name}
             </span>
           ) : task.assignee ? (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[--muted] text-[9px] font-medium text-[--muted-foreground]" title={task.assignee}>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-(--muted) text-[9px] font-medium text-(--muted-foreground)" title={task.assignee}>
               {initials(task.assignee)}
             </span>
           ) : null}

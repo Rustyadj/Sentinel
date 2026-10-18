@@ -16,7 +16,7 @@ export function AiSecurityPanel() {
   }, []);
   return <div className="h-full overflow-y-auto p-4">
     <h2 className="text-lg font-semibold">AI Security / Agent Security</h2>
-    <p className="my-2 text-sm text-[--muted-foreground]">Adversarial runs, prompt injection, memory poisoning, tool-boundary tests, Guardian interventions, and regression suites on Sentinel’s canonical graph.</p>
+    <p className="my-2 text-sm text-(--muted-foreground)">Adversarial runs, prompt injection, memory poisoning, tool-boundary tests, Guardian interventions, and regression suites on Sentinel’s canonical graph.</p>
     <div className="h-[700px]"><LensOverview lens="cybersecurity" stats={null} initialDemoMode={false} /></div>
     {error && <p role="alert">{error}</p>}
     <div className="mt-4 grid gap-4 md:grid-cols-2">

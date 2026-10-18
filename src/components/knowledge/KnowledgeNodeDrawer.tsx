@@ -28,7 +28,7 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
 
   return (
     <div
-      className={immersive ? "absolute bottom-4 right-4 top-16 z-30 w-64 overflow-y-auto rounded-lg border border-white/10 bg-[#07101c]/90 shadow-2xl backdrop-blur-xl" : "absolute top-0 right-0 bottom-0 w-64 bg-[--card] border-l border-[--border] z-10 overflow-y-auto"}
+      className={immersive ? "absolute bottom-4 right-4 top-16 z-30 w-64 overflow-y-auto rounded-lg border border-white/10 bg-[#07101c]/90 shadow-2xl backdrop-blur-xl" : "absolute top-0 right-0 bottom-0 w-64 bg-(--card) border-l border-(--border) z-10 overflow-y-auto"}
       style={{
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
         transition: "transform 0.2s ease",
@@ -38,7 +38,7 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
       {node && (
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-start gap-2 p-3 border-b border-[--border]">
+          <div className="flex items-start gap-2 p-3 border-b border-(--border)">
             <div className="flex-1 min-w-0">
               <span
                 className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium mb-1"
@@ -49,13 +49,13 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
               >
                 {node.type}
               </span>
-              <div className="text-xs font-medium text-[--foreground] truncate">
+              <div className="text-xs font-medium text-(--foreground) truncate">
                 {node.title}
               </div>
             </div>
             <button
               onClick={onClose}
-              className="shrink-0 text-[--muted-foreground] hover:text-[--foreground] transition-colors text-sm leading-none"
+              className="shrink-0 text-(--muted-foreground) hover:text-(--foreground) transition-colors text-sm leading-none"
             >
               ✕
             </button>
@@ -66,10 +66,10 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
             {/* Summary */}
             {node.summary && (
               <div>
-                <div className="text-[10px] font-medium text-[--muted-foreground] uppercase tracking-wider mb-1">
+                <div className="text-[10px] font-medium text-(--muted-foreground) uppercase tracking-wider mb-1">
                   Summary
                 </div>
-                <p className="text-xs text-[--foreground] leading-relaxed">
+                <p className="text-xs text-(--foreground) leading-relaxed">
                   {node.summary}
                 </p>
               </div>
@@ -77,23 +77,23 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
 
             {/* Metadata */}
             <div>
-              <div className="text-[10px] font-medium text-[--muted-foreground] uppercase tracking-wider mb-1.5">
+              <div className="text-[10px] font-medium text-(--muted-foreground) uppercase tracking-wider mb-1.5">
                 Details
               </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between gap-2">
-                  <span className="text-[10px] text-[--muted-foreground]">Scope</span>
-                  <span className="text-[10px] text-[--foreground] font-mono">{node.scope}</span>
+                  <span className="text-[10px] text-(--muted-foreground)">Scope</span>
+                  <span className="text-[10px] text-(--foreground) font-mono">{node.scope}</span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-[10px] text-[--muted-foreground]">Created</span>
-                  <span className="text-[10px] text-[--foreground]">
+                  <span className="text-[10px] text-(--muted-foreground)">Created</span>
+                  <span className="text-[10px] text-(--foreground)">
                     {new Date(node.createdAt).toLocaleDateString()}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-[10px] text-[--muted-foreground]">Type</span>
-                  <span className="text-[10px] text-[--foreground]">{node.type}</span>
+                  <span className="text-[10px] text-(--muted-foreground)">Type</span>
+                  <span className="text-[10px] text-(--foreground)">{node.type}</span>
                 </div>
               </div>
             </div>
@@ -101,7 +101,7 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
             {/* Type-specific fields */}
             {node.type === "Decision" && node.metadata.status != null && (
               <div>
-                <div className="text-[10px] font-medium text-[--muted-foreground] uppercase tracking-wider mb-1">
+                <div className="text-[10px] font-medium text-(--muted-foreground) uppercase tracking-wider mb-1">
                   Status
                 </div>
                 {(() => {
@@ -133,10 +133,10 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
 
             {node.type === "Memory" && node.metadata.content != null && (
               <div>
-                <div className="text-[10px] font-medium text-[--muted-foreground] uppercase tracking-wider mb-1">
+                <div className="text-[10px] font-medium text-(--muted-foreground) uppercase tracking-wider mb-1">
                   Content
                 </div>
-                <p className="text-[11px] text-[--muted-foreground] leading-relaxed line-clamp-5">
+                <p className="text-[11px] text-(--muted-foreground) leading-relaxed line-clamp-5">
                   {String(node.metadata.content)}
                 </p>
               </div>
@@ -144,10 +144,10 @@ export function KnowledgeNodeDrawer({ node, onClose, immersive = false }: Knowle
 
             {node.type === "Agent" && node.metadata.role != null && (
               <div>
-                <div className="text-[10px] font-medium text-[--muted-foreground] uppercase tracking-wider mb-1">
+                <div className="text-[10px] font-medium text-(--muted-foreground) uppercase tracking-wider mb-1">
                   Role
                 </div>
-                <p className="text-xs text-[--foreground] leading-relaxed">
+                <p className="text-xs text-(--foreground) leading-relaxed">
                   {String(node.metadata.role)}
                 </p>
               </div>

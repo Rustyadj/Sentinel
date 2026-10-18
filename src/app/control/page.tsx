@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/current-user";
 import { loadControlPlane } from "@/lib/control-plane/service";
+import { AppShell } from "@/components/shell/AppShell";
 import { ControlPlane } from "@/modules/control-plane/components/ControlPlane";
 
 export const metadata = {
@@ -14,5 +15,11 @@ export default async function ControlPlanePage() {
   await requireUser();
   const data = await loadControlPlane();
 
-  return <ControlPlane data={data} />;
+  return (
+    <AppShell title="Control">
+      <div className="h-full overflow-y-auto">
+        <ControlPlane data={data} />
+      </div>
+    </AppShell>
+  );
 }

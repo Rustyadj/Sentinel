@@ -318,7 +318,7 @@ function LeftPanel({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
-    <div className="w-56 flex flex-col h-full bg-[--sidebar] border-r border-[#181b22] overflow-hidden shrink-0">
+    <div className="w-56 flex flex-col h-full bg-(--sidebar) border-r border-[#181b22] overflow-hidden shrink-0">
       <div className="px-3 py-3 border-b border-[#181b22]">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-[#c8cdd8] flex items-center gap-1.5">
@@ -672,7 +672,7 @@ export function StudioPage() {
                     "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors",
                     saved
                       ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/25"
-                      : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground)"
                   )}
                 >
                   {saving ? (
@@ -753,7 +753,7 @@ export function StudioPage() {
             <button
               onClick={() => generate(prompt)}
               disabled={!prompt.trim() || generating}
-              className="w-8 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 flex items-center justify-center transition-colors shrink-0"
+              className="w-8 h-8 rounded-xl bg-(--primary) hover:bg-(--primary-soft) disabled:opacity-40 flex items-center justify-center transition-colors shrink-0"
             >
               {generating ? (
                 <Loader2 className="w-4 h-4 text-white animate-spin" />

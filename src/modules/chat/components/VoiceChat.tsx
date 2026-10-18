@@ -47,8 +47,8 @@ export function VoiceChatButton({
       aria-label={label}
       title={label}
       className={cn(
-        "flex shrink-0 items-center justify-center gap-1.5 border border-[--border] bg-[--muted] text-[--foreground] outline-none transition-colors",
-        "hover:bg-[--accent] focus-visible:ring-2 focus-visible:ring-[--primary]/60 disabled:cursor-not-allowed disabled:opacity-40",
+        "flex shrink-0 items-center justify-center gap-1.5 border border-(--border) bg-(--muted) text-(--foreground) outline-none transition-colors",
+        "hover:bg-(--accent) focus-visible:ring-2 focus-visible:ring-(--primary)/60 disabled:cursor-not-allowed disabled:opacity-40",
         variant === "pill" ? "rounded-lg px-2.5 py-1.5 text-xs font-medium" : "h-8 w-8 rounded-xl",
       )}
     >
@@ -148,11 +148,11 @@ export function VoiceChatOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={`Voice chat with ${agent.name}`}
-      className="fixed inset-0 z-[80] flex flex-col items-center justify-between bg-[--background] px-6 pb-10 pt-12"
+      className="fixed inset-0 z-[80] flex flex-col items-center justify-between bg-(--background) px-6 pb-10 pt-12"
     >
       <div className="text-center">
-        <div className="text-sm font-medium text-[--foreground]">{agent.name}</div>
-        <div className="mt-1 text-xs text-[--muted-foreground]" role="status" aria-live="polite">
+        <div className="text-sm font-medium text-(--foreground)">{agent.name}</div>
+        <div className="mt-1 text-xs text-(--muted-foreground)" role="status" aria-live="polite">
           {failed ? STATUS_LABEL.error : muted && !connecting ? "Muted" : STATUS_LABEL[status]}
         </div>
       </div>
@@ -178,7 +178,7 @@ export function VoiceChatOverlay({
             style={{ backgroundColor: failed ? "#7f1d1d" : agent.color + "55" }}
           >
             {connecting || status === "thinking" ? (
-              <Loader2 className="h-8 w-8 animate-spin text-[--foreground] motion-reduce:animate-none" />
+              <Loader2 className="h-8 w-8 animate-spin text-(--foreground) motion-reduce:animate-none" />
             ) : (
               agent.avatar
             )}
@@ -188,7 +188,7 @@ export function VoiceChatOverlay({
         <p
           className={cn(
             "min-h-12 max-w-md text-center text-sm leading-6",
-            failed ? "text-red-300" : "text-[--muted-foreground]",
+            failed ? "text-red-300" : "text-(--muted-foreground)",
           )}
         >
           {failed ? error : caption || (active && !muted ? "Go ahead, I'm listening." : "")}
@@ -206,7 +206,7 @@ export function VoiceChatOverlay({
               setMuted(false);
               setAttempt((n) => n + 1);
             }}
-            className="rounded-full border border-[--border] bg-[--muted] px-5 py-3 text-sm font-medium text-[--foreground] outline-none hover:bg-[--accent] focus-visible:ring-2 focus-visible:ring-[--primary]/60"
+            className="rounded-full border border-(--border) bg-(--muted) px-5 py-3 text-sm font-medium text-(--foreground) outline-none hover:bg-(--accent) focus-visible:ring-2 focus-visible:ring-(--primary)/60"
           >
             Try again
           </button>
@@ -218,9 +218,9 @@ export function VoiceChatOverlay({
             aria-pressed={muted}
             aria-label={muted ? "Unmute microphone" : "Mute microphone"}
             className={cn(
-              "flex h-14 w-14 items-center justify-center rounded-full border border-[--border] outline-none transition-colors",
-              "focus-visible:ring-2 focus-visible:ring-[--primary]/60 disabled:opacity-40",
-              muted ? "bg-[--foreground] text-[--background]" : "bg-[--muted] text-[--foreground] hover:bg-[--accent]",
+              "flex h-14 w-14 items-center justify-center rounded-full border border-(--border) outline-none transition-colors",
+              "focus-visible:ring-2 focus-visible:ring-(--primary)/60 disabled:opacity-40",
+              muted ? "bg-(--foreground) text-(--background)" : "bg-(--muted) text-(--foreground) hover:bg-(--accent)",
             )}
           >
             {muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}

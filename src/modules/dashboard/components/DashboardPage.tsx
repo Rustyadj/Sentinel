@@ -42,8 +42,8 @@ export function DashboardPage() {
     <div className="p-6 space-y-6 max-w-7xl">
       {/* Page header */}
       <div>
-        <h1 className="text-xl font-semibold text-[--foreground]">Mission Control</h1>
-        <p className="text-sm text-[--muted-foreground] mt-0.5">
+        <h1 className="text-xl font-semibold text-(--foreground)">Mission Control</h1>
+        <p className="text-sm text-(--muted-foreground) mt-0.5">
           System overview · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
       </div>
@@ -91,7 +91,7 @@ export function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Agent Roster</CardTitle>
-              <Link href="/agents" className="text-xs text-[--primary] flex items-center gap-1 hover:underline">
+              <Link href="/agents" className="text-xs text-(--primary) flex items-center gap-1 hover:underline">
                 Manage <ArrowUpRight className="w-3 h-3" />
               </Link>
             </CardHeader>
@@ -161,7 +161,7 @@ export function DashboardPage() {
                 <Link
                   key={label}
                   href={href}
-                  className="flex items-center gap-2.5 p-3 rounded-lg border border-[--border] hover:border-[--primary]/40 hover:bg-[--accent] transition-colors group"
+                  className="flex items-center gap-2.5 p-3 rounded-lg border border-(--border) hover:border-(--primary)/40 hover:bg-(--accent) transition-colors group"
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
@@ -169,7 +169,7 @@ export function DashboardPage() {
                   >
                     <Icon className="w-4 h-4" style={{ color }} />
                   </div>
-                  <span className="text-sm text-[--foreground] group-hover:text-[--primary] transition-colors">
+                  <span className="text-sm text-(--foreground) group-hover:text-(--primary) transition-colors">
                     {label}
                   </span>
                 </Link>
@@ -182,7 +182,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[--muted-foreground]" />
+              <Clock className="w-4 h-4 text-(--muted-foreground)" />
               Recent Activity
             </CardTitle>
           </CardHeader>
@@ -197,14 +197,14 @@ export function DashboardPage() {
                     <CheckCircle2 className="w-3 h-3" style={{ color: item.color }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-[--foreground] truncate">
+                    <div className="text-xs font-medium text-(--foreground) truncate">
                       {item.agent}
                     </div>
-                    <div className="text-[11px] text-[--muted-foreground] truncate">
+                    <div className="text-[11px] text-(--muted-foreground) truncate">
                       {item.action}
                     </div>
                   </div>
-                  <span className="text-[10px] text-[--muted-foreground] shrink-0">
+                  <span className="text-[10px] text-(--muted-foreground) shrink-0">
                     {formatDistanceToNow(item.time, { addSuffix: true })}
                   </span>
                 </div>
@@ -248,9 +248,9 @@ function StatCard({
             {trend}
           </div>
         </div>
-        <div className="text-2xl font-bold text-[--foreground]">{value}</div>
-        <div className="text-xs text-[--muted-foreground] mt-0.5">{label}</div>
-        <div className="text-[11px] text-[--muted-foreground] mt-1 opacity-70">{sub}</div>
+        <div className="text-2xl font-bold text-(--foreground)">{value}</div>
+        <div className="text-xs text-(--muted-foreground) mt-0.5">{label}</div>
+        <div className="text-[11px] text-(--muted-foreground) mt-1 opacity-70">{sub}</div>
       </CardContent>
     </Card>
   );
@@ -265,7 +265,7 @@ function AgentRow({ agent }: { agent: import("@/types").Agent }) {
   };
 
   return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-[--border] last:border-0">
+    <div className="flex items-center gap-3 py-2.5 border-b border-(--border) last:border-0">
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
         style={{ backgroundColor: agent.color + "22" }}
@@ -274,19 +274,19 @@ function AgentRow({ agent }: { agent: import("@/types").Agent }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[--foreground] truncate">{agent.name}</span>
+          <span className="text-sm font-medium text-(--foreground) truncate">{agent.name}</span>
           <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 hidden sm:inline-flex">
             {agent.model}
           </Badge>
         </div>
-        <div className="text-xs text-[--muted-foreground] truncate">{agent.role}</div>
+        <div className="text-xs text-(--muted-foreground) truncate">{agent.role}</div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <div
           className="w-2 h-2 rounded-full"
           style={{ backgroundColor: STATUS_COLORS[agent.status] }}
         />
-        <span className="text-xs text-[--muted-foreground]">
+        <span className="text-xs text-(--muted-foreground)">
           {statusLabel[agent.status]}
         </span>
       </div>
@@ -313,8 +313,8 @@ function StatusRow({
   return (
     <div className="flex items-center gap-2">
       <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", config.dot)} />
-      <span className="text-xs text-[--foreground] flex-1">{label}</span>
-      <span className="text-[10px] text-[--muted-foreground]">{latency}</span>
+      <span className="text-xs text-(--foreground) flex-1">{label}</span>
+      <span className="text-[10px] text-(--muted-foreground)">{latency}</span>
       <span className={cn("text-[10px] font-medium", config.color)}>{config.label}</span>
     </div>
   );
@@ -332,10 +332,10 @@ function ResourceBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-[--foreground]">{label}</span>
-        <span className="text-xs text-[--muted-foreground]">{value}%</span>
+        <span className="text-xs text-(--foreground)">{label}</span>
+        <span className="text-xs text-(--muted-foreground)">{value}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-[--muted] overflow-hidden">
+      <div className="h-1.5 rounded-full bg-(--muted) overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${value}%`, backgroundColor: color }}

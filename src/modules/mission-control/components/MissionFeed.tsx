@@ -25,7 +25,7 @@ export function MissionFeed({ items, sourceState }: { items: MissionFeedItem[]; 
     >
       <div className="flex gap-1 overflow-x-auto border-b border-white/[0.07] p-2" role="toolbar" aria-label="Mission feed filters">
         {filters.map((filter) => (
-          <button key={filter.id} type="button" aria-pressed={scope === filter.id} onClick={() => setScope(filter.id)} className={cn("h-8 shrink-0 rounded-md border px-3 text-[9px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60", scope === filter.id ? "border-violet-400/55 bg-violet-600 text-white" : "border-white/[0.09] bg-white/[0.025] text-[#a6b1c1] hover:text-white")}>{filter.label}</button>
+          <button key={filter.id} type="button" aria-pressed={scope === filter.id} onClick={() => setScope(filter.id)} className={cn("h-8 shrink-0 rounded-md border px-3 text-[9px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60", scope === filter.id ? "border-violet-400/55 bg-(--primary) text-(--primary-foreground)" : "border-white/[0.09] bg-white/[0.025] text-[#a6b1c1] hover:text-white")}>{filter.label}</button>
         ))}
       </div>
       {filtered.length === 0 ? <UnavailableState source={sourceState} emptyMessage="No events in this feed yet." /> : (

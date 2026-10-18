@@ -55,32 +55,32 @@ export function GuardianView() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-lg font-semibold text-[--foreground] flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-[--primary]" /> Guardian
+        <h1 className="text-lg font-semibold text-(--foreground) flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-(--primary)" /> Guardian
         </h1>
-        <label className="flex items-center gap-1.5 text-[10px] text-[--muted-foreground]">
+        <label className="flex items-center gap-1.5 text-[10px] text-(--muted-foreground)">
           <input type="checkbox" checked={blockedOnly} onChange={(e) => setBlockedOnly(e.target.checked)} />
           blocked only
         </label>
       </div>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <p className="text-sm text-(--muted-foreground) mb-6">
         Independent monitoring role — Tier 1 observes asynchronously, Tier 2 holds for review, Tier 3
         always requires human approval and can never be bypassed by trust or Guardian confidence.
         Guardian can never approve its own privilege elevation.
       </p>
 
       {!loaded ? (
-        <div className="text-xs text-[--muted-foreground]">Loading…</div>
+        <div className="text-xs text-(--muted-foreground)">Loading…</div>
       ) : error ? (
         <div className="text-xs text-red-400 border border-red-500/20 rounded-lg p-6 text-center">{error}</div>
       ) : decisions.length === 0 ? (
-        <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
+        <div className="text-xs text-(--muted-foreground) border border-dashed border-(--sidebar-border) rounded-lg p-6 text-center">
           No Guardian decisions recorded yet.
         </div>
       ) : (
         <div className="space-y-1.5">
           {decisions.map((d) => (
-            <div key={d.id} className="rounded-lg border border-[--sidebar-border] bg-[--card] p-3">
+            <div key={d.id} className="rounded-lg border border-(--sidebar-border) bg-(--card) p-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${MODE_COLOR[d.mode] ?? MODE_COLOR.observe}`}>
                   Tier {d.tier} · {d.mode}
@@ -88,13 +88,13 @@ export function GuardianView() {
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${DECISION_COLOR[d.guardianDecision] ?? DECISION_COLOR.hold}`}>
                   {d.guardianDecision}
                 </span>
-                <span className="text-[10px] text-[--muted-foreground]">by {d.actor}</span>
+                <span className="text-[10px] text-(--muted-foreground)">by {d.actor}</span>
               </div>
-              <p className="text-xs text-[--foreground] mt-1.5">{d.action}</p>
+              <p className="text-xs text-(--foreground) mt-1.5">{d.action}</p>
               {d.reasonCodes.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {d.reasonCodes.map((code) => (
-                    <span key={code} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-[--muted-foreground]">
+                    <span key={code} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-(--muted-foreground)">
                       {code}
                     </span>
                   ))}

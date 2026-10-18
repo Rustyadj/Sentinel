@@ -41,7 +41,7 @@ export function WorkspaceListView({ agentId, tenantWorkspaces }: {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Agent Workspaces</h1>
-          <p className="text-xs text-[--muted-foreground]">
+          <p className="text-xs text-(--muted-foreground)">
             Persistent, isolated computers. Stopping a runtime never deletes its data.
           </p>
         </div>
@@ -51,10 +51,10 @@ export function WorkspaceListView({ agentId, tenantWorkspaces }: {
       </div>
 
       {creating ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] p-3">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) p-3">
           <Input className="w-56" placeholder="workspace name" value={name} onChange={(event) => setName(event.target.value)} />
           <Input className="w-56" placeholder="agent id" value={newAgentId} onChange={(event) => setNewAgentId(event.target.value)} />
-          <select className="h-9 rounded-md border border-[--border] bg-transparent px-2 text-sm" value={tenantWorkspaceId} onChange={(event) => setTenantWorkspaceId(event.target.value)}>
+          <select className="h-9 rounded-md border border-(--border) bg-transparent px-2 text-sm" value={tenantWorkspaceId} onChange={(event) => setTenantWorkspaceId(event.target.value)}>
             {tenantWorkspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
           </select>
           <Button size="sm" disabled={busy || !name.trim() || !newAgentId.trim() || !tenantWorkspaceId} onClick={() => void create()}>
@@ -66,24 +66,24 @@ export function WorkspaceListView({ agentId, tenantWorkspaces }: {
       <ErrorNote error={error} />
       <ErrorNote error={workspaces.error} />
 
-      <div className="rounded-md border border-[--border]">
+      <div className="rounded-md border border-(--border)">
         {workspaces.loading ? <EmptyNote>Loading…</EmptyNote> : null}
         {workspaces.data?.workspaces.length === 0 ? <EmptyNote>No agent workspaces yet.</EmptyNote> : null}
         {workspaces.data?.workspaces.map((workspace) => (
           <Link
             key={workspace.id}
             href={`/agent-workspaces/${workspace.id}`}
-            className="flex flex-wrap items-center gap-3 border-b border-[--border] px-3 py-2.5 text-xs last:border-b-0 hover:bg-[--accent]"
+            className="flex flex-wrap items-center gap-3 border-b border-(--border) px-3 py-2.5 text-xs last:border-b-0 hover:bg-(--accent)"
           >
             <span className="w-48 truncate font-medium">{workspace.name}</span>
-            <span className="w-40 truncate font-mono text-[--muted-foreground]">{workspace.agentId}</span>
+            <span className="w-40 truncate font-mono text-(--muted-foreground)">{workspace.agentId}</span>
             {workspace.isDefault ? <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">default computer</span> : null}
             <StateBadge state={workspace.state} />
-            <span className="min-w-0 flex-1 truncate text-[--muted-foreground]">
+            <span className="min-w-0 flex-1 truncate text-(--muted-foreground)">
               {workspace.runtime?.containerName ?? workspace.volumeName ?? "not provisioned"}
             </span>
-            <span className="text-[--muted-foreground]">{workspace.runtimeType}</span>
-            <span className="w-28 text-right text-[--muted-foreground]">active {relativeTime(workspace.lastActiveAt)}</span>
+            <span className="text-(--muted-foreground)">{workspace.runtimeType}</span>
+            <span className="w-28 text-right text-(--muted-foreground)">active {relativeTime(workspace.lastActiveAt)}</span>
           </Link>
         ))}
       </div>

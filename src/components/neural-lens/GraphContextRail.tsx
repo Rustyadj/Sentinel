@@ -107,7 +107,7 @@ export function GraphContextRail({
               aria-selected={activeTab === id}
               role="tab"
               className={cn(
-                "relative py-2 text-[9.5px] font-medium uppercase tracking-[0.18em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[--ring]",
+                "relative py-2 text-[9.5px] font-medium uppercase tracking-[0.18em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-(--ring)",
                 activeTab === id ? "text-white/85" : "text-white/35 hover:text-white/60",
               )}
             >
@@ -227,7 +227,7 @@ function OverviewTab({
             <button
               type="button"
               onClick={() => onLensChange(null)}
-              className="rounded px-1 text-[9px] uppercase tracking-[0.14em] text-violet-300 transition-colors hover:text-violet-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+              className="rounded px-1 text-[9px] uppercase tracking-[0.14em] text-violet-300 transition-colors hover:text-violet-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
             >
               Clear
             </button>
@@ -332,7 +332,7 @@ function DetailsTab({
           type="button"
           onClick={onClearSelection}
           aria-label="Clear selection"
-          className="rounded p-0.5 text-white/35 transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+          className="rounded p-0.5 text-white/35 transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -356,7 +356,7 @@ function DetailsTab({
                 type="button"
                 onClick={() => onFocusEntity(entity.label)}
                 title={`${selected.label} → ${formatRelationshipType(entity.relationship)} → ${entity.label}`}
-                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[10.5px] text-white/55 transition-colors hover:bg-white/[0.05] hover:text-white/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[10.5px] text-white/55 transition-colors hover:bg-white/[0.05] hover:text-white/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
               >
                 <span className="h-1 w-1 shrink-0 rounded-full bg-white/25" />
                 <span className="truncate">{entity.label}</span>
@@ -376,7 +376,7 @@ function DetailsTab({
         <button
           type="button"
           onClick={onOpenModule}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded border border-white/[0.09] py-1.5 text-[10.5px] text-white/70 transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded border border-white/[0.09] py-1.5 text-[10.5px] text-white/70 transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
         >
           <ExternalLink className="h-3 w-3" />
           Open module
@@ -458,7 +458,7 @@ function IconButton({
       aria-label={label}
       className={cn(
         "flex h-7 w-7 items-center justify-center rounded text-white/50 transition-colors",
-        "hover:bg-white/[0.07] hover:text-white/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+        "hover:bg-white/[0.07] hover:text-white/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
         "disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent",
         bordered ? "border border-white/[0.09]" : "",
       )}

@@ -20,7 +20,7 @@ export function WorkspaceCard({
   return (
     <div
       className={cn(
-        "rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] text-[--canvas-card-foreground] flex flex-col",
+        "rounded-xl border border-(--canvas-card-border) bg-(--canvas-card) text-(--canvas-card-foreground) flex flex-col",
         className
       )}
     >
@@ -35,13 +35,13 @@ export function WorkspaceCard({
                     style={{ backgroundColor: accent }}
                   />
                 )}
-                <h3 className="text-sm font-semibold text-[--canvas-card-foreground] leading-tight">
+                <h3 className="text-sm font-semibold text-(--canvas-card-foreground) leading-tight">
                   {title}
                 </h3>
               </div>
             )}
             {description && (
-              <p className="text-xs text-[--muted-foreground] mt-0.5">{description}</p>
+              <p className="text-xs text-(--muted-foreground) mt-0.5">{description}</p>
             )}
           </div>
           {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
@@ -85,9 +85,9 @@ export function StatCard({
 }: StatCardProps) {
   const accent = color ?? "var(--primary)";
   return (
-    <div className="card-hover rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] px-4 py-4 flex flex-col gap-2">
+    <div className="card-hover rounded-xl border border-(--canvas-card-border) bg-(--canvas-card) px-4 py-4 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-xs text-[--muted-foreground] font-medium">{label}</span>
+        <span className="text-xs text-(--muted-foreground) font-medium">{label}</span>
         {Icon && (
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
@@ -113,7 +113,7 @@ export function StatCard({
               {trend}
             </span>
           )}
-          {sub && <span className="text-[--muted-foreground]">{sub}</span>}
+          {sub && <span className="text-(--muted-foreground)">{sub}</span>}
         </div>
       )}
     </div>

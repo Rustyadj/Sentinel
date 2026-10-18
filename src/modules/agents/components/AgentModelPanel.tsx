@@ -34,7 +34,7 @@ export function AgentModelPanel({ agentId }: { agentId: string }) {
   }
   const supportedEfforts = settings?.options.find(option => option.id === model)?.efforts ?? [];
   const last = settings?.lastSession?.metadata;
-  return <section className="min-w-0 rounded-xl border border-[--border] bg-[--card] p-4" aria-label="Agent model configuration">
+  return <section className="min-w-0 rounded-xl border border-(--border) bg-(--card) p-4" aria-label="Agent model configuration">
     <h3 className="text-sm font-medium">Model</h3>
     {error && <p role="alert" className="my-2 text-sm text-red-400">{error}</p>}
     {settings ? <>
@@ -48,11 +48,11 @@ export function AgentModelPanel({ agentId }: { agentId: string }) {
         <dt>Last session actual</dt><dd>{String(last?.actualModel ?? "Not reported")} / {String(last?.actualEffort ?? "Not reported")}</dd>
       </dl>
       {last?.actualModel && last.actualModel !== last.requestedModel ? <p role="status" className="mb-3 text-xs text-amber-400">The runtime reported a different model from the request.</p> : null}
-      <label className="block text-xs">Model<input aria-label="Model" list={`models-${agentId}`} value={model} onChange={e => setModel(e.target.value)} className="my-2 w-full rounded border border-[--border] bg-[--background] p-2" /></label>
+      <label className="block text-xs">Model<input aria-label="Model" list={`models-${agentId}`} value={model} onChange={e => setModel(e.target.value)} className="my-2 w-full rounded border border-(--border) bg-(--background) p-2" /></label>
       <datalist id={`models-${agentId}`}>{settings.options.map(option => <option key={option.id} value={option.id}>{option.state}</option>)}</datalist>
-      {supportedEfforts.length > 0 && <label className="block text-xs">Effort<select aria-label="Effort" value={effort} onChange={e => setEffort(e.target.value)} className="my-2 w-full rounded border border-[--border] bg-[--background] p-2"><option value="">Runtime default</option>{supportedEfforts.map(value => <option key={value}>{value}</option>)}</select></label>}
-      <p className="my-3 text-xs text-[--muted-foreground]">Applies to new sessions. Running and historical sessions retain their original configuration. Unverified models require a successful runtime execution; unavailable models require you to choose a fallback.</p>
-      <div className="flex flex-wrap gap-3"><button disabled={saving} onClick={() => void save()} className="rounded border border-[--border] px-3 py-2 text-xs">{saving ? "Saving…" : "Save"}</button><button disabled={saving} onClick={() => void save(true)} className="rounded border border-[--border] px-3 py-2 text-xs">Reset to Sentinel default</button></div>
+      {supportedEfforts.length > 0 && <label className="block text-xs">Effort<select aria-label="Effort" value={effort} onChange={e => setEffort(e.target.value)} className="my-2 w-full rounded border border-(--border) bg-(--background) p-2"><option value="">Runtime default</option>{supportedEfforts.map(value => <option key={value}>{value}</option>)}</select></label>}
+      <p className="my-3 text-xs text-(--muted-foreground)">Applies to new sessions. Running and historical sessions retain their original configuration. Unverified models require a successful runtime execution; unavailable models require you to choose a fallback.</p>
+      <div className="flex flex-wrap gap-3"><button disabled={saving} onClick={() => void save()} className="rounded border border-(--border) px-3 py-2 text-xs">{saving ? "Saving…" : "Save"}</button><button disabled={saving} onClick={() => void save(true)} className="rounded border border-(--border) px-3 py-2 text-xs">Reset to Sentinel default</button></div>
     </> : <p className="mt-2 text-xs">Loading model configuration…</p>}
   </section>;
 }

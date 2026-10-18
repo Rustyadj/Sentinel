@@ -19,13 +19,13 @@ interface OverviewData {
 
 function StatCard({ label, value, breakdown }: { label: string; value: string | number; breakdown?: Record<string, number> }) {
   return (
-    <div className="rounded-lg border border-[--sidebar-border] bg-[--card] p-4">
-      <div className="text-2xl font-semibold text-[--foreground]">{value}</div>
-      <div className="text-xs text-[--muted-foreground] mt-1">{label}</div>
+    <div className="rounded-lg border border-(--sidebar-border) bg-(--card) p-4">
+      <div className="text-2xl font-semibold text-(--foreground)">{value}</div>
+      <div className="text-xs text-(--muted-foreground) mt-1">{label}</div>
       {breakdown && Object.keys(breakdown).length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {Object.entries(breakdown).map(([key, count]) => (
-            <span key={key} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-[--muted-foreground]">
+            <span key={key} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-(--muted-foreground)">
               {key.replaceAll("_", " ")}: {count}
             </span>
           ))}
@@ -53,19 +53,19 @@ export function OverviewView() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <h1 className="text-lg font-semibold text-[--foreground] mb-1 flex items-center gap-2">
-        <Sparkles className="w-4 h-4 text-[--primary]" /> Learning Core
+      <h1 className="text-lg font-semibold text-(--foreground) mb-1 flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-(--primary)" /> Learning Core
       </h1>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <p className="text-sm text-(--muted-foreground) mb-6">
         Observation, evaluation, experimentation, and governance over the Neural Engine — see{" "}
-        <code className="text-[--foreground]">docs/LEARNING_CORE_ON_NEURAL_ENGINE.md</code> for what&apos;s
+        <code className="text-(--foreground)">docs/LEARNING_CORE_ON_NEURAL_ENGINE.md</code> for what&apos;s
         live vs. planned.
       </p>
 
       {!loaded ? (
-        <div className="text-xs text-[--muted-foreground]">Loading…</div>
+        <div className="text-xs text-(--muted-foreground)">Loading…</div>
       ) : error || !data ? (
-        <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
+        <div className="text-xs text-(--muted-foreground) border border-dashed border-(--sidebar-border) rounded-lg p-6 text-center">
           Couldn&apos;t load overview data.
         </div>
       ) : (
@@ -90,12 +90,12 @@ export function OverviewView() {
             <StatCard label="Learning events" value={data.learningEvents.total} />
           </div>
 
-          <div className="rounded-lg border border-[--sidebar-border] bg-[--card] p-4">
-            <h2 className="text-xs font-semibold text-[--foreground] mb-3 flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5 text-[--primary]" /> Recent learning events
+          <div className="rounded-lg border border-(--sidebar-border) bg-(--card) p-4">
+            <h2 className="text-xs font-semibold text-(--foreground) mb-3 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-(--primary)" /> Recent learning events
             </h2>
             {data.learningEvents.recent.length === 0 ? (
-              <p className="text-xs text-[--muted-foreground]">
+              <p className="text-xs text-(--muted-foreground)">
                 None yet — events emit as agents complete chat turns.
               </p>
             ) : (
@@ -108,13 +108,13 @@ export function OverviewView() {
                           ? "text-red-400"
                           : event.severity === "warning"
                             ? "text-amber-400"
-                            : "text-[--muted-foreground]"
+                            : "text-(--muted-foreground)"
                       }
                     >
                       {event.eventType}
                     </span>
-                    {event.agentId && <span className="text-[--muted-foreground]">· {event.agentId}</span>}
-                    <span className="ml-auto text-[10px] text-[--muted-foreground]">
+                    {event.agentId && <span className="text-(--muted-foreground)">· {event.agentId}</span>}
+                    <span className="ml-auto text-[10px] text-(--muted-foreground)">
                       {new Date(event.createdAt).toLocaleTimeString()}
                     </span>
                   </div>

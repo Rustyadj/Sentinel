@@ -51,7 +51,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "text-red-400 bg-red-500/10 border-red-500/20",
   high: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   medium: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  low: "text-[--muted-foreground] bg-[--muted] border-[--border]",
+  low: "text-(--muted-foreground) bg-(--muted) border-(--border)",
 };
 
 export function KanbanPage() {
@@ -61,10 +61,10 @@ export function KanbanPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-6 pb-4 border-b border-[--border] flex items-center justify-between">
+      <div className="p-6 pb-4 border-b border-(--border) flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[--foreground]">Kanban Board</h1>
-          <p className="text-sm text-[--muted-foreground] mt-0.5">
+          <h1 className="text-xl font-semibold text-(--foreground)">Kanban Board</h1>
+          <p className="text-sm text-(--muted-foreground) mt-0.5">
             {totalCards} tasks · {columns.find(c => c.id === "in-progress")?.cards.length ?? 0} in progress
           </p>
         </div>
@@ -80,8 +80,8 @@ export function KanbanPage() {
             {/* Column header */}
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: column.color }} />
-              <span className="text-sm font-medium text-[--foreground]">{column.title}</span>
-              <span className="text-xs text-[--muted-foreground] ml-auto">
+              <span className="text-sm font-medium text-(--foreground)">{column.title}</span>
+              <span className="text-xs text-(--muted-foreground) ml-auto">
                 {column.cards.length}
               </span>
               <Button size="icon" variant="ghost" className="h-6 w-6">
@@ -94,7 +94,7 @@ export function KanbanPage() {
               {column.cards.map((card) => (
                 <KanbanCardComponent key={card.id} card={card} />
               ))}
-              <button className="w-full py-2 rounded-md border border-dashed border-[--border] text-xs text-[--muted-foreground] hover:border-[--primary]/40 hover:text-[--foreground] transition-colors">
+              <button className="w-full py-2 rounded-md border border-dashed border-(--border) text-xs text-(--muted-foreground) hover:border-(--primary)/40 hover:text-(--foreground) transition-colors">
                 + Add card
               </button>
             </div>
@@ -107,10 +107,10 @@ export function KanbanPage() {
 
 function KanbanCardComponent({ card }: { card: KanbanCard }) {
   return (
-    <div className="group rounded-lg border border-[--border] bg-[--card] p-3 hover:border-[--primary]/40 transition-colors cursor-grab active:cursor-grabbing">
+    <div className="group rounded-lg border border-(--border) bg-(--card) p-3 hover:border-(--primary)/40 transition-colors cursor-grab active:cursor-grabbing">
       <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="text-sm text-[--foreground] leading-snug">{card.title}</span>
-        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[--muted-foreground] hover:text-[--foreground]">
+        <span className="text-sm text-(--foreground) leading-snug">{card.title}</span>
+        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-(--muted-foreground) hover:text-(--foreground)">
           <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
       </div>

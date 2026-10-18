@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShellStore } from "@/store/useShellStore";
 import { ENTITY_TOKEN, type EntityType } from "./primitives";
@@ -46,7 +47,13 @@ export function CommandPalette() {
     { id: "cmd-graph", group: "Commands", type: "action", label: "Open Graph", hint: "Ctrl/Cmd + Shift + G", run: () => go("/graph") },
     { id: "cmd-workspaces", group: "Commands", type: "action", label: "Open Workspaces", hint: "Ctrl/Cmd + Shift + W", run: () => go("/agent-workspaces") },
     { id: "cmd-agents", group: "Commands", type: "action", label: "Open Agents", run: () => go("/agents") },
+    { id: "cmd-bots", group: "Commands", type: "action", label: "Open Bots", run: () => go("/bots") },
+    { id: "cmd-tasks", group: "Commands", type: "action", label: "Open Tasks", run: () => go("/tasks") },
+    { id: "cmd-memory", group: "Commands", type: "action", label: "Open Memory", run: () => go("/memory") },
+    { id: "cmd-domain-workspaces", group: "Commands", type: "action", label: "Open domain workspaces", hint: "Organization, security, studio", run: () => go("/workspaces") },
     { id: "cmd-activity", group: "Commands", type: "action", label: "Open Activity", run: () => go("/activity") },
+    { id: "cmd-control", group: "Commands", type: "action", label: "Open Control", hint: "Releases and drift", run: () => go("/control") },
+    { id: "cmd-search", group: "Commands", type: "action", label: "Search everything", run: () => go("/search") },
     { id: "cmd-settings", group: "Commands", type: "action", label: "Open Settings", run: () => go("/settings") },
   ], [go]);
 
@@ -147,51 +154,68 @@ export function CommandPalette() {
     return accumulator;
   }, {});
 
+  const activeId = items[activeIndex] ? `palette-${items[activeIndex].id}` : undefined;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 pt-[12vh]"
+      className="fixed inset-0 z-[80] flex items-start justify-center bg-[rgba(4,7,8,0.62)] px-3 pt-[10vh] backdrop-blur-[2px] sm:px-4"
       onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}
     >
-      <div role="dialog" aria-modal="true" aria-label="Search and commands" className="w-full max-w-xl overflow-hidden rounded-2xl bg-[--card] shadow-[var(--shadow-lg)]">
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") { close(); return; }
-            if (event.key === "ArrowDown") { event.preventDefault(); setCursor((value) => Math.min(value + 1, items.length - 1)); }
-            if (event.key === "ArrowUp") { event.preventDefault(); setCursor((value) => Math.max(value - 1, 0)); }
-            if (event.key === "Enter") { event.preventDefault(); items[activeIndex]?.run(); }
-          }}
-          placeholder="Search agents, conversations, projects, workspaces — or run a command"
-          className="w-full bg-transparent px-4 py-3.5 text-[15px] text-[--foreground] outline-none placeholder:text-[--muted-foreground]"
-        />
-        <div className="max-h-[22rem] overflow-y-auto pb-2">
+      <div role="dialog" aria-modal="true" aria-label="Search and commands" className="animate-fade-in w-full max-w-xl overflow-hidden rounded-lg border border-(--border-strong) bg-(--panel) shadow-[var(--shadow-lg)]">
+        <div className="flex items-center gap-3 border-b border-(--border) px-4">
+          <Search aria-hidden className="h-4 w-4 shrink-0 text-(--muted-foreground)" />
+          <input
+            ref={inputRef}
+            value={query}
+            role="combobox"
+            aria-expanded
+            aria-controls="palette-results"
+            aria-activedescendant={activeId}
+            aria-label="Search Sentinel or run a command"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { close(); return; }
+              if (event.key === "ArrowDown") { event.preventDefault(); setCursor((value) => Math.min(value + 1, items.length - 1)); }
+              if (event.key === "ArrowUp") { event.preventDefault(); setCursor((value) => Math.max(value - 1, 0)); }
+              if (event.key === "Enter") { event.preventDefault(); items[activeIndex]?.run(); }
+            }}
+            placeholder="Search agents, conversations, projects, or run a command"
+            className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-(--foreground) outline-none placeholder:text-(--text-faint)"
+          />
+          <kbd className="hidden rounded border border-(--border) px-1.5 py-0.5 font-mono text-[10px] text-(--muted-foreground) sm:block">Esc</kbd>
+        </div>
+        <div id="palette-results" role="listbox" aria-label="Results" className="max-h-[min(24rem,60vh)] overflow-y-auto py-1.5">
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[13px] text-[--muted-foreground]">
-              {searching ? "Searching…" : query.trim().length < 2 ? "Type at least two characters to search." : "No matches."}
+            <p className="px-4 py-6 text-center text-[13px] text-(--muted-foreground)">
+              {searching ? "Searching…" : query.trim().length < 2 ? "Type at least two characters to search." : "No matches. Try a shorter term, or open Search for full results."}
             </p>
           ) : Object.entries(grouped).map(([group, groupItems]) => (
-            <div key={group}>
-              <p className="px-4 pb-1 pt-3 text-[11px] uppercase tracking-wide text-[--muted-foreground]">{group}</p>
+            <div key={group} role="group" aria-label={group}>
+              <p className="px-4 pb-1 pt-2.5 text-[11px] font-medium text-(--text-faint)">{group}</p>
               {groupItems.map((item) => {
                 const index = items.indexOf(item);
+                const active = index === activeIndex;
                 return (
                   <button
                     key={item.id}
+                    id={`palette-${item.id}`}
+                    role="option"
+                    aria-selected={active}
+                    tabIndex={-1}
                     onMouseEnter={() => setCursor(index)}
                     onClick={item.run}
                     className={cn(
-                      "flex w-full items-center gap-3 px-4 py-2 text-left text-[14px] text-[--foreground]",
-                      index === activeIndex && "bg-[--muted]",
+                      "relative flex w-full items-center gap-3 px-4 py-2 text-left text-[14px] text-(--foreground)",
+                      active && "bg-(--muted) before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-(--primary)",
                     )}
                   >
                     <span
+                      aria-hidden
                       className="h-1.5 w-1.5 shrink-0 rounded-full"
                       style={{ background: item.type === "action" ? ACTION_COLOR : ENTITY_TOKEN[item.type] }}
                     />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {item.hint ? <span className="shrink-0 text-[12px] text-[--muted-foreground]">{item.hint}</span> : null}
+                    {item.hint ? <span className="shrink-0 text-[12px] text-(--muted-foreground)">{item.hint}</span> : null}
                   </button>
                 );
               })}

@@ -11,6 +11,9 @@ interface ShellState {
   commandPaletteOpen: boolean;
   conversationDrawerOpen: boolean;
   inspector: InspectorTarget | null;
+  /** The navigation sheet used in place of the rail on narrow screens. */
+  mobileNavOpen: boolean;
+  setMobileNavOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   toggleCommandPalette: () => void;
   setConversationDrawerOpen: (open: boolean) => void;
@@ -27,6 +30,8 @@ export const useShellStore = create<ShellState>((set) => ({
   commandPaletteOpen: false,
   conversationDrawerOpen: false,
   inspector: null,
+  mobileNavOpen: false,
+  setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
   setConversationDrawerOpen: (open) => set({ conversationDrawerOpen: open }),

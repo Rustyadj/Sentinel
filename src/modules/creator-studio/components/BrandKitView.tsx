@@ -54,19 +54,19 @@ function ProfileForm({ brand, onSaved }: { brand: Brand; onSaved: (brand: Brand)
     }
   }
 
-  const field = "h-9 w-full rounded-lg border border-[--border] bg-[--muted] px-3 text-sm text-[--foreground] outline-none focus:border-[--primary]/50";
-  const label = "text-[10px] uppercase tracking-widest text-[--muted-foreground] mb-1 block";
+  const field = "h-9 w-full rounded-lg border border-(--border) bg-(--muted) px-3 text-sm text-(--foreground) outline-none focus:border-(--primary)/50";
+  const label = "text-[10px] uppercase tracking-widest text-(--muted-foreground) mb-1 block";
 
   return (
-    <div className="rounded-xl border border-[--border] bg-[--card] p-5">
+    <div className="rounded-xl border border-(--border) bg-(--card) p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-[--foreground] flex items-center gap-1.5">
-          <Palette className="w-4 h-4 text-[--primary]" /> Brand Profile
+        <h2 className="text-sm font-semibold text-(--foreground) flex items-center gap-1.5">
+          <Palette className="w-4 h-4 text-(--primary)" /> Brand Profile
         </h2>
         <button
           onClick={save}
           disabled={saving}
-          className="flex items-center gap-1.5 text-xs bg-[--primary] text-[--primary-foreground] rounded-lg px-3 py-1.5 disabled:opacity-60"
+          className="flex items-center gap-1.5 text-xs bg-(--primary) text-(--primary-foreground) rounded-lg px-3 py-1.5 disabled:opacity-60"
         >
           {saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
           {saving ? "Saving…" : saved ? "Saved" : "Save"}
@@ -82,14 +82,14 @@ function ProfileForm({ brand, onSaved }: { brand: Brand; onSaved: (brand: Brand)
           <div>
             <label className={label}>Primary color</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-9 w-9 rounded border border-[--border] bg-[--muted]" />
+              <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-9 w-9 rounded border border-(--border) bg-(--muted)" />
               <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className={field} />
             </div>
           </div>
           <div>
             <label className={label}>Secondary color</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-9 w-9 rounded border border-[--border] bg-[--muted]" />
+              <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-9 w-9 rounded border border-(--border) bg-(--muted)" />
               <input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className={field} />
             </div>
           </div>
@@ -143,20 +143,20 @@ function KitSlot({
   const items = assets.filter((a) => a.category === category);
 
   return (
-    <div className="rounded-lg border border-[--border] bg-[--card] p-3">
-      <div className="text-xs font-medium text-[--foreground] mb-2">
+    <div className="rounded-lg border border-(--border) bg-(--card) p-3">
+      <div className="text-xs font-medium text-(--foreground) mb-2">
         {ASSET_CATEGORY_LABELS[category as keyof typeof ASSET_CATEGORY_LABELS] ?? category}
       </div>
       {items.length === 0 ? (
-        <p className="text-[11px] text-[--muted-foreground] mb-2">None yet.</p>
+        <p className="text-[11px] text-(--muted-foreground) mb-2">None yet.</p>
       ) : (
         <div className="space-y-1 mb-2">
           {items.map((a) => (
             <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
-              <a href={a.url} target="_blank" rel="noreferrer" className="text-[--primary] hover:underline truncate">
+              <a href={a.url} target="_blank" rel="noreferrer" className="text-(--primary) hover:underline truncate">
                 {a.name}
               </a>
-              <button onClick={() => onDelete(a.id)} className="text-[--muted-foreground] hover:text-[--destructive] shrink-0">
+              <button onClick={() => onDelete(a.id)} className="text-(--muted-foreground) hover:text-(--destructive) shrink-0">
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
@@ -168,13 +168,13 @@ function KitSlot({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
-          className="w-20 h-7 rounded border border-[--border] bg-[--muted] px-1.5 text-[10px] text-[--foreground]"
+          className="w-20 h-7 rounded border border-(--border) bg-(--muted) px-1.5 text-[10px] text-(--foreground)"
         />
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="URL"
-          className="flex-1 h-7 rounded border border-[--border] bg-[--muted] px-1.5 text-[10px] text-[--foreground]"
+          className="flex-1 h-7 rounded border border-(--border) bg-(--muted) px-1.5 text-[10px] text-(--foreground)"
         />
         <button
           onClick={() => {
@@ -183,7 +183,7 @@ function KitSlot({
             setName("");
             setUrl("");
           }}
-          className="text-[--primary] shrink-0"
+          className="text-(--primary) shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -230,16 +230,16 @@ export function BrandKitView({
   if (!activeBrand) {
     return (
       <div className="p-8 max-w-2xl">
-        <h1 className="text-lg font-semibold text-[--foreground] mb-2">Brand Kit</h1>
-        <p className="text-sm text-[--muted-foreground]">Select a brand to see its kit.</p>
+        <h1 className="text-lg font-semibold text-(--foreground) mb-2">Brand Kit</h1>
+        <p className="text-sm text-(--muted-foreground)">Select a brand to see its kit.</p>
       </div>
     );
   }
 
   return (
     <div className="p-8 max-w-4xl">
-      <h1 className="text-lg font-semibold text-[--foreground] mb-1">Brand Kit</h1>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <h1 className="text-lg font-semibold text-(--foreground) mb-1">Brand Kit</h1>
+      <p className="text-sm text-(--muted-foreground) mb-6">
         {activeBrand.name}&rsquo;s visual identity and reusable creative templates.
       </p>
 
@@ -247,7 +247,7 @@ export function BrandKitView({
         <ProfileForm brand={activeBrand} onSaved={onBrandUpdated} />
       </div>
 
-      <h2 className="text-xs font-medium text-[--foreground] mb-3">Templates</h2>
+      <h2 className="text-xs font-medium text-(--foreground) mb-3">Templates</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {BRAND_KIT_CATEGORIES.map((category) => (
           <KitSlot key={category} category={category} assets={assets} onAdd={addKitAsset} onDelete={deleteKitAsset} />

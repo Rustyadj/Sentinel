@@ -3,7 +3,7 @@ import type { DataSourceState, NeuralPreviewData } from "@/lib/mission-control/t
 import { MissionPanel, PanelLink, UnavailableState } from "./MissionPanel";
 
 const nodeStyle: Record<NeuralPreviewData["nodes"][number]["kind"], { bg: string; icon: LucideIcon }> = {
-  focus: { bg: "bg-violet-500 text-white shadow-[0_0_18px_rgba(139,92,246,0.38)]", icon: BrainCircuit },
+  focus: { bg: "bg-(--primary) text-(--primary-foreground) shadow-[0_0_18px_rgba(139,92,246,0.38)]", icon: BrainCircuit },
   agent: { bg: "bg-sky-500/16 text-sky-300", icon: Bot },
   decision: { bg: "bg-amber-500/16 text-amber-300", icon: Lightbulb },
   memory: { bg: "bg-emerald-500/16 text-emerald-300", icon: GitBranch },

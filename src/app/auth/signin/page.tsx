@@ -1,7 +1,6 @@
 import { signIn } from "@/auth";
 import { AuthError } from "next-auth";
 import { Suspense } from "react";
-import { Shield, Sparkles, LockKeyhole, Cpu } from "lucide-react";
 import { CredentialsForm } from "./CredentialsForm";
 
 function GoogleIcon() {
@@ -23,114 +22,101 @@ function GitHubIcon() {
   );
 }
 
+/**
+ * The product's mark, drawn rather than described: four strata — agents,
+ * projects, tasks, memory — with the brass context line dropping through
+ * them. Static, decorative, hidden from assistive tech.
+ */
+function StrataMark() {
+  const planes = [
+    { y: 40, color: "var(--entity-agent)" },
+    { y: 104, color: "var(--entity-project)" },
+    { y: 168, color: "var(--entity-task)" },
+    { y: 232, color: "var(--entity-memory)" },
+  ];
+  const dots = [[-70, -8], [10, 14], [64, -18], [-24, 22], [92, 10], [-96, 6]];
+  return (
+    <svg viewBox="-200 0 400 300" aria-hidden className="h-auto w-full max-w-[420px]">
+      {planes.slice().reverse().map((p, k) => (
+        <g key={p.y}>
+          <path
+            d={`M -170 ${p.y} L 0 ${p.y - 34} L 170 ${p.y} L 0 ${p.y + 34} Z`}
+            fill={p.color}
+            fillOpacity={0.045}
+            stroke={p.color}
+            strokeOpacity={0.4}
+            strokeWidth={1}
+          />
+          {dots.map(([dx, dy], i) => (
+            <circle key={i} cx={dx * (0.8 + ((k + i) % 3) * 0.1)} cy={p.y + dy * 0.8} r={k === 3 ? 3.2 : 2.2} fill={p.color} fillOpacity={0.85} />
+          ))}
+        </g>
+      ))}
+      <line x1={10} y1={40 + 11} x2={10} y2={232 + 22} stroke="var(--primary)" strokeWidth={1.2} strokeDasharray="3 5" />
+      {[104, 168, 232].map((y) => (
+        <ellipse key={y} cx={10} cy={y + 11} rx={11} ry={3.6} fill="none" stroke="var(--primary)" strokeOpacity={0.6} />
+      ))}
+      <circle cx={10} cy={51} r={4.5} fill="var(--primary)" />
+    </svg>
+  );
+}
+
 export default function SignInPage({
   searchParams,
 }: {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   return (
-    <div className="sentinel-app-shell relative min-h-screen overflow-hidden bg-[--background] text-[--foreground]">
-      <div className="absolute inset-0 bg-grid opacity-25" />
-      <div className="absolute left-[-10%] top-[-16%] h-[28rem] w-[28rem] rounded-full bg-[rgba(108,124,255,0.18)] blur-3xl" />
-      <div className="absolute bottom-[-18%] right-[-12%] h-[24rem] w-[24rem] rounded-full bg-[rgba(16,185,129,0.10)] blur-3xl" />
+    <div className="sentinel-app-shell strata-ground relative min-h-screen overflow-y-auto text-(--foreground)">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center gap-10 px-4 py-10 sm:px-6 lg:flex-row lg:gap-16">
+        <section className="hidden flex-1 flex-col lg:flex">
+          <StrataMark />
+          <h1 className="mt-8 font-display text-[44px] font-semibold leading-none tracking-tight">Sentinel</h1>
+          <p className="mt-4 max-w-sm text-[15px] leading-relaxed text-(--muted-foreground)">
+            Agents, the projects they serve, the work in flight, and everything they remember — in one operating picture.
+          </p>
+        </section>
 
-      <div className="relative flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
-        <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <section className="surface-panel surface-glow hidden rounded-[30px] p-10 lg:flex lg:flex-col lg:justify-between">
-            <div>
-              <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-[rgba(108,124,255,0.24)] bg-[linear-gradient(180deg,rgba(108,124,255,0.22),rgba(108,124,255,0.10))]">
-                <Shield className="h-6 w-6 text-[--primary]" />
-              </div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[rgba(108,124,255,0.18)] bg-[rgba(108,124,255,0.08)] px-3 py-1 text-[11px] font-medium text-[--primary]">
-                <Sparkles className="h-3.5 w-3.5" />
-                Secure operator access
-              </div>
-              <h1 className="max-w-lg text-4xl font-semibold leading-tight tracking-tight text-[--foreground]">
-                Sentinel OS
-              </h1>
-              <p className="mt-4 max-w-md text-sm leading-6 text-[--muted-foreground]">
-                Mission control for agents, memory, and workflows. Authenticate once and return to the shell with full context intact.
-              </p>
+        <section className="w-full max-w-[400px] rounded-lg border border-(--border) bg-(--panel) p-6 shadow-[var(--shadow-lg)] sm:p-8">
+          <div className="mb-6">
+            <div className="mb-5 flex items-center gap-2.5 lg:hidden">
+              <span className="font-display text-[22px] font-semibold tracking-tight">Sentinel</span>
             </div>
-
-            <div className="grid gap-3">
-              <SignalRow icon={LockKeyhole} title="Credential-safe by default" text="Provider keys stay in the browser, not the server." />
-              <SignalRow icon={Cpu} title="Built for operators" text="Low-noise shell, fast module switching, deliberate control surfaces." />
-            </div>
-          </section>
-
-          <section className="surface-panel surface-glow rounded-[28px] p-6 sm:p-8 lg:p-9">
-            <div className="mb-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(108,124,255,0.24)] bg-[linear-gradient(180deg,rgba(108,124,255,0.22),rgba(108,124,255,0.10))] lg:hidden">
-                <Shield className="h-5 w-5 text-[--primary]" />
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[--muted-foreground]">
-                Sentinel OS
-              </div>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[--foreground]">
-                Sign in to Mission Control
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-[--muted-foreground]">
-                Use credentials or single sign-on to enter the control plane.
-              </p>
-            </div>
-
-            <ErrorBanner searchParams={searchParams} />
-
-            <Suspense>
-              <CredentialsForm />
-            </Suspense>
-
-            <div className="my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-[--border]" />
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[--muted-foreground]">
-                Continue with
-              </span>
-              <div className="h-px flex-1 bg-[--border]" />
-            </div>
-
-            <div className="space-y-3">
-              <OAuthButton provider="google" searchParams={searchParams}>
-                <GoogleIcon />
-                Continue with Google
-              </OAuthButton>
-              <OAuthButton provider="github" searchParams={searchParams}>
-                <GitHubIcon />
-                Continue with GitHub
-              </OAuthButton>
-            </div>
-
-            <p className="mt-6 text-center text-[11px] leading-5 text-[--muted-foreground]">
-              Your API keys stay in your browser only.
-              <br />
-              Sentinel OS does not persist provider credentials server-side.
+            <h2 className="font-display text-[24px] font-semibold tracking-tight text-(--foreground)">
+              Sign in
+            </h2>
+            <p className="mt-1.5 text-[14px] leading-6 text-(--muted-foreground)">
+              Use your Sentinel account or single sign-on.
             </p>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
+          </div>
 
-function SignalRow({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: typeof Shield;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(108,124,255,0.10)] text-[--primary]">
-          <Icon className="h-4 w-4" />
-        </div>
-        <div>
-          <div className="text-sm font-medium text-[--foreground]">{title}</div>
-          <div className="text-[12px] leading-5 text-[--muted-foreground]">{text}</div>
-        </div>
+          <ErrorBanner searchParams={searchParams} />
+
+          <Suspense>
+            <CredentialsForm />
+          </Suspense>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-(--border)" />
+            <span className="text-[12px] text-(--text-faint)">or</span>
+            <div className="h-px flex-1 bg-(--border)" />
+          </div>
+
+          <div className="space-y-2.5">
+            <OAuthButton provider="google" searchParams={searchParams}>
+              <GoogleIcon />
+              Continue with Google
+            </OAuthButton>
+            <OAuthButton provider="github" searchParams={searchParams}>
+              <GitHubIcon />
+              Continue with GitHub
+            </OAuthButton>
+          </div>
+
+          <p className="mt-6 text-center text-[12px] leading-5 text-(--text-faint)">
+            Your API keys stay in your browser only. Sentinel OS does not persist provider credentials server-side.
+          </p>
+        </section>
       </div>
     </div>
   );
@@ -162,7 +148,7 @@ function OAuthButton({
     >
       <button
         type="submit"
-        className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.02)] px-4 text-sm font-medium text-[--foreground] transition-colors hover:border-[--ring]/30 hover:bg-[--accent]"
+        className="flex h-11 w-full items-center justify-center gap-3 rounded-md border border-(--border-strong) bg-transparent px-4 text-[14px] font-medium text-(--foreground) transition-colors hover:bg-(--muted) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
       >
         {children}
       </button>
@@ -187,7 +173,7 @@ async function ErrorBanner({
   };
 
   return (
-    <div className="mb-4 rounded-2xl border border-[--destructive]/20 bg-[--destructive]/10 px-3 py-2.5 text-xs text-[--destructive]">
+    <div role="alert" className="mb-4 rounded-md border border-(--destructive)/30 bg-(--destructive)/10 px-3 py-2.5 text-[13px] text-(--destructive)">
       {messages[error] ?? messages.Default}
     </div>
   );

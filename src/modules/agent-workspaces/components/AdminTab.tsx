@@ -33,13 +33,13 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
 
   const numberField = (label: string, key: keyof typeof form, hint: string) => (
     <label className="block text-xs">
-      <span className="text-[--muted-foreground]">{label}</span>
+      <span className="text-(--muted-foreground)">{label}</span>
       <Input
         type="number"
         value={String(form[key])}
         onChange={(event) => setForm({ ...form, [key]: Number(event.target.value) })}
       />
-      <span className="text-[10px] text-[--muted-foreground]">{hint}</span>
+      <span className="text-[10px] text-(--muted-foreground)">{hint}</span>
     </label>
   );
 
@@ -47,7 +47,7 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
     <div className="space-y-4">
       <ErrorNote error={error} />
 
-      <div className="rounded-md border border-[--border] p-3">
+      <div className="rounded-md border border-(--border) p-3">
         <div className="mb-3 text-xs font-medium">Resource policy</div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {numberField("CPU", "cpus", "cores")}
@@ -59,7 +59,7 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
         </div>
         <div className="mt-3 flex items-center gap-2">
           <select
-            className="h-9 rounded-md border border-[--border] bg-transparent px-2 text-sm"
+            className="h-9 rounded-md border border-(--border) bg-transparent px-2 text-sm"
             value={form.network}
             onChange={(event) => setForm({ ...form, network: event.target.value as "none" | "bridge" })}
           >
@@ -69,11 +69,11 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
           <Button size="sm" disabled={busy} onClick={() => void guard(() => workspaceApi.update(workspace.id, { resourceLimits: form }))}>
             Save policy
           </Button>
-          <span className="text-[11px] text-[--muted-foreground]">Applied on the next runtime restart.</span>
+          <span className="text-[11px] text-(--muted-foreground)">Applied on the next runtime restart.</span>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-md border border-[--border] p-3">
+      <div className="flex flex-wrap gap-2 rounded-md border border-(--border) p-3">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void guard(() => workspaceApi.update(workspace.id, { locked: !workspace.locked }))}>
           {workspace.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
           {workspace.locked ? "Unlock workspace" : "Lock workspace"}
@@ -84,8 +84,8 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
         </Button>
       </div>
 
-      <div className="space-y-3 rounded-md border border-[--destructive]/40 p-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-[--destructive]">
+      <div className="space-y-3 rounded-md border border-(--destructive)/40 p-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-(--destructive)">
           <AlertTriangle className="h-3.5 w-3.5" /> Destructive actions
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -110,7 +110,7 @@ export function AdminTab({ detail, onChanged }: { detail: WorkspaceDetail; onCha
             Delete workspace data permanently
           </Button>
         </div>
-        <p className="text-[11px] text-[--muted-foreground]">
+        <p className="text-[11px] text-(--muted-foreground)">
           Runtime destruction and data deletion are separate operations with separate permissions.
         </p>
       </div>

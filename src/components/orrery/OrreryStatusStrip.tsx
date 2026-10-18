@@ -32,9 +32,9 @@ export function OrreryStatusStrip({ notices, onRetry }: { notices: ReturnType<ty
         <div
           key={notice.id}
           data-testid={`orrery-notice-${notice.id}`}
-          className="pointer-events-auto flex max-w-[34rem] items-start gap-2 rounded-lg border border-[--glass-border] bg-[--glass] px-3 py-1.5 text-[12px] text-[--foreground] backdrop-blur"
+          className="pointer-events-auto flex max-w-[34rem] items-start gap-2 rounded-lg border border-(--glass-border) bg-(--glass) px-3 py-1.5 text-[12px] text-(--foreground) backdrop-blur"
         >
-          {notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--status-busy]" aria-hidden /> : null}
+          {notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--status-busy)" aria-hidden /> : null}
           <span>{notice.text}</span>
         </div>
       ))}
@@ -42,7 +42,7 @@ export function OrreryStatusStrip({ notices, onRetry }: { notices: ReturnType<ty
         <button
           type="button"
           onClick={onRetry}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-[--glass-border] bg-[--glass] px-2.5 py-1 text-[12px] text-[--muted-foreground] backdrop-blur hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-(--glass-border) bg-(--glass) px-2.5 py-1 text-[12px] text-(--muted-foreground) backdrop-blur hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
         >
           <RefreshCw className="h-3 w-3" aria-hidden /> Retry now
         </button>

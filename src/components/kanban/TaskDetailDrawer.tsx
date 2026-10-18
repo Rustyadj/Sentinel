@@ -5,8 +5,8 @@ import { Loader2, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PRIORITIES, STATUS_COLUMNS, type KanbanAgent, type KanbanTask } from "./kanban-constants";
 
-const field = "h-9 w-full rounded-md border border-[--border] bg-[--muted] px-3 text-sm text-[--foreground] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]";
-const label = "block text-xs text-[--muted-foreground]";
+const field = "h-9 w-full rounded-md border border-(--border) bg-(--muted) px-3 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)";
+const label = "block text-xs text-(--muted-foreground)";
 
 interface TaskDetailDrawerProps {
   task: KanbanTask;
@@ -62,10 +62,10 @@ export function TaskDetailDrawer({ task, agents, onClose, onSave, onDelete }: Ta
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button type="button" aria-label="Close task detail" onClick={onClose} className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden border-l border-[--canvas-card-border] bg-[--canvas-card] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[--canvas-card-border] px-5 py-4">
-          <h2 className="text-sm font-semibold text-[--canvas-card-foreground]">Edit task</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-[--muted-foreground] hover:bg-[--muted] hover:text-[--foreground]">
+      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden border-l border-(--canvas-card-border) bg-(--canvas-card) shadow-2xl">
+        <div className="flex items-center justify-between border-b border-(--canvas-card-border) px-5 py-4">
+          <h2 className="text-sm font-semibold text-(--canvas-card-foreground)">Edit task</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground)">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -112,12 +112,12 @@ export function TaskDetailDrawer({ task, agents, onClose, onSave, onDelete }: Ta
           </label>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-[--canvas-card-border] px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-t border-(--canvas-card-border) px-5 py-4">
           <button type="button" onClick={handleDelete} disabled={deleting} className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-medium text-rose-400 hover:bg-rose-500/10 disabled:opacity-50">
             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             Delete task
           </button>
-          <button type="button" onClick={handleSave} disabled={saving || !form.title.trim()} className="inline-flex h-9 items-center gap-2 rounded-md bg-[--primary] px-4 text-xs font-medium text-[--primary-foreground] disabled:opacity-50">
+          <button type="button" onClick={handleSave} disabled={saving || !form.title.trim()} className="inline-flex h-9 items-center gap-2 rounded-md bg-(--primary) px-4 text-xs font-medium text-(--primary-foreground) disabled:opacity-50">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Save changes
           </button>

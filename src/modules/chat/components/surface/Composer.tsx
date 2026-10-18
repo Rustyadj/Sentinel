@@ -50,7 +50,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
       {menuOpen ? (
         <>
           <button aria-label="Close menu" className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
-          <div className="absolute bottom-[calc(100%-0.25rem)] left-4 z-20 w-64 overflow-hidden rounded-xl bg-[--card] py-1 shadow-[var(--shadow-lg)]">
+          <div className="absolute bottom-[calc(100%-0.25rem)] left-4 z-20 w-64 overflow-hidden rounded-lg border border-(--border-strong) bg-(--panel) py-1 shadow-[var(--shadow-lg)]">
             {actions.map((action) => {
               const Icon = ACTION_ICONS[action.icon];
               const available = Boolean(action.onSelect);
@@ -62,7 +62,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
                   onClick={() => { action.onSelect?.(); setMenuOpen(false); }}
                   className={cn(
                     "flex w-full items-center gap-3 px-3 py-2 text-left text-[14px]",
-                    available ? "text-[--foreground] hover:bg-[--muted]" : "cursor-not-allowed text-[--muted-foreground]",
+                    available ? "text-(--foreground) hover:bg-(--muted)" : "cursor-not-allowed text-(--muted-foreground)",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -75,13 +75,13 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
         </>
       ) : null}
 
-      <div className="flex items-end gap-2 rounded-xl border border-[--border] bg-[--card] p-2">
+      <div className="flex items-end gap-2 rounded-lg border border-(--border) bg-(--card) p-2">
         <button
           type="button"
           aria-label="Add attachment, context or tool"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((open) => !open)}
-          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[--muted-foreground] transition-colors hover:bg-[--muted] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted-foreground) transition-colors hover:bg-(--muted) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
         >
           <Plus className="h-[18px] w-[18px]" />
         </button>
@@ -96,7 +96,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (canSend) onSend(); }
           }}
-          className="max-h-[220px] min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-[1.6] text-[--foreground] outline-none placeholder:text-[--muted-foreground] disabled:opacity-60"
+          className="max-h-[220px] min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-[1.6] text-(--foreground) outline-none placeholder:text-(--muted-foreground) disabled:opacity-60"
         />
 
         {onVoice ? (
@@ -104,7 +104,7 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
             type="button"
             aria-label="Voice input"
             onClick={onVoice}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[--muted-foreground] transition-colors hover:bg-[--muted] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted-foreground) transition-colors hover:bg-(--muted) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
           >
             <Mic className="h-[18px] w-[18px]" />
           </button>
@@ -116,8 +116,8 @@ export function Composer({ value, onChange, onSend, disabled, busy, placeholder,
           disabled={!canSend}
           onClick={onSend}
           className={cn(
-            "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]",
-            canSend ? "bg-[--primary] text-[--primary-foreground]" : "bg-[--muted] text-[--muted-foreground]",
+            "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
+            canSend ? "bg-(--primary) text-(--primary-foreground)" : "bg-(--muted) text-(--muted-foreground)",
           )}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-[18px] w-[18px]" />}

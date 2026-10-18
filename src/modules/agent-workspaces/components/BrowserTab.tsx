@@ -45,10 +45,10 @@ export function BrowserTab({
 
   if (!runtime.attached) {
     return (
-      <div className="rounded-md border border-[--border] px-4 py-8 text-center">
-        <MonitorX className="mx-auto mb-3 h-7 w-7 text-[--muted-foreground]" />
+      <div className="rounded-md border border-(--border) px-4 py-8 text-center">
+        <MonitorX className="mx-auto mb-3 h-7 w-7 text-(--muted-foreground)" />
         <div className="text-sm font-medium">Browser runtime not attached</div>
-        <p className="mx-auto mt-1 max-w-xl text-xs text-[--muted-foreground]">
+        <p className="mx-auto mt-1 max-w-xl text-xs text-(--muted-foreground)">
           {runtime.reason ?? "No usable browser provider is available on this host."}
         </p>
       </div>
@@ -123,7 +123,7 @@ export function BrowserTab({
   const busy = Boolean(pending);
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) p-3">
         {!session ? (
           <Button size="sm" disabled={!canExecute || busy} onClick={() => void start()}>
             {pending === "start" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
@@ -153,16 +153,16 @@ export function BrowserTab({
             </Button>
           </>
         )}
-        <span className="ml-auto text-[11px] text-[--muted-foreground]">{runtime.provider}</span>
+        <span className="ml-auto text-[11px] text-(--muted-foreground)">{runtime.provider}</span>
       </div>
 
-      {!canExecute ? <p className="text-xs text-[--muted-foreground]">This workspace is not currently writable, so browser mutations are disabled.</p> : null}
+      {!canExecute ? <p className="text-xs text-(--muted-foreground)">This workspace is not currently writable, so browser mutations are disabled.</p> : null}
       <ErrorNote error={error} />
       {screenshotUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- authenticated blob URL, not an optimizable remote image.
-        <img src={screenshotUrl} alt={`Browser screenshot of ${session?.currentUrl ?? url}`} className="w-full rounded-md border border-[--border] bg-white" />
+        <img src={screenshotUrl} alt={`Browser screenshot of ${session?.currentUrl ?? url}`} className="w-full rounded-md border border-(--border) bg-white" />
       ) : (
-        <div className="rounded-md border border-dashed border-[--border] px-4 py-12 text-center text-xs text-[--muted-foreground]">
+        <div className="rounded-md border border-dashed border-(--border) px-4 py-12 text-center text-xs text-(--muted-foreground)">
           {session ? "Navigate to a page to capture its real screenshot." : "Start an isolated browser session when you are ready."}
         </div>
       )}

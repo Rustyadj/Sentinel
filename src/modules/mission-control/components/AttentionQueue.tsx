@@ -62,7 +62,7 @@ export function AttentionQueue({
       sourceState={sourceState}
       className="h-full"
       action={
-        <span className="rounded bg-violet-500 px-2 py-1 text-[9px] font-semibold text-white">
+        <span className="rounded bg-(--primary) px-2 py-1 text-[9px] font-semibold text-(--primary-foreground)">
           {visible.length} open
         </span>
       }
@@ -133,7 +133,7 @@ export function AttentionQueue({
                           className={cn(
                             "inline-flex h-8 items-center gap-1 rounded-md border px-2 text-[8px] font-medium capitalize outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60",
                             action === "approve"
-                              ? "border-violet-400/60 bg-violet-600 text-white"
+                              ? "border-violet-400/60 bg-(--primary) text-(--primary-foreground)"
                               : "border-white/[0.12] text-[#cbd4df]",
                           )}
                         >
@@ -209,7 +209,7 @@ export function AttentionQueue({
                               className={cn(
                                 "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[9px] font-medium capitalize outline-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-violet-400/60",
                                 action === "approve"
-                                  ? "border-violet-400/60 bg-violet-600 text-white hover:bg-violet-500"
+                                  ? "border-violet-400/60 bg-(--primary) text-(--primary-foreground) hover:bg-(--primary-soft)"
                                   : "border-white/[0.12] text-[#cbd4df] hover:border-white/25 hover:bg-white/[0.04]",
                               )}
                             >

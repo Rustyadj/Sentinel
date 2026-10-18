@@ -64,22 +64,22 @@ export function TerminalTab({ workspaceId, homePath, canExecute }: { workspaceId
 
   return (
     <div className="space-y-3">
-      <div className="h-[28rem] overflow-auto rounded-md border border-[--border] bg-black/30 p-3 font-mono text-xs">
+      <div className="h-[28rem] overflow-auto rounded-md border border-(--border) bg-black/30 p-3 font-mono text-xs">
         {entries.length === 0 && !history.loading ? <EmptyNote>No commands have been run in this workspace yet.</EmptyNote> : null}
         {entries.map((entry, index) => (
           <div key={`${entry.at}-${index}`} className="mb-3">
-            <div className="text-[--muted-foreground]">
+            <div className="text-(--muted-foreground)">
               <span className="text-emerald-400">$</span> {entry.command}
               <span className="ml-2 text-[10px]">{entry.origin}</span>
             </div>
             {entry.stdout ? <pre className="whitespace-pre-wrap break-words">{entry.stdout}</pre> : null}
-            {entry.stderr ? <pre className="whitespace-pre-wrap break-words text-[--destructive]">{entry.stderr}</pre> : null}
-            <div className="text-[10px] text-[--muted-foreground]">
+            {entry.stderr ? <pre className="whitespace-pre-wrap break-words text-(--destructive)">{entry.stderr}</pre> : null}
+            <div className="text-[10px] text-(--muted-foreground)">
               exit {entry.exitCode ?? "—"}{entry.durationMs !== null ? ` · ${entry.durationMs} ms` : ""}
             </div>
           </div>
         ))}
-        {running ? <div className="flex items-center gap-2 text-[--muted-foreground]"><Loader2 className="h-3 w-3 animate-spin" /> running…</div> : null}
+        {running ? <div className="flex items-center gap-2 text-(--muted-foreground)"><Loader2 className="h-3 w-3 animate-spin" /> running…</div> : null}
         <div ref={endRef} />
       </div>
 

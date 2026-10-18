@@ -10,7 +10,7 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
         <p className="text-xs uppercase tracking-[0.2em] text-red-300">Module unavailable</p>
         <h1 className="mt-2 text-xl font-semibold">Sentinel hit an operational error.</h1>
         <p className="mt-2 text-sm text-white/60">Your data was not changed. Retry the module or check service readiness.</p>
-        <button onClick={reset} className="mt-5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500">Retry</button>
+        <button onClick={reset} className="mt-5 rounded-lg bg-(--primary) px-4 py-2 text-sm font-medium hover:bg-(--primary-soft)">Retry</button>
       </section>
     </main>
   );

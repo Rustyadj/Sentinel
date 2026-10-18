@@ -26,7 +26,7 @@ export function ArtifactsTab({ workspaceId, canWrite }: { workspaceId: string; c
   return (
     <div className="space-y-4">
       {canWrite ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] p-3">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) p-3">
           <Input className="min-w-[18rem] flex-1 font-mono" placeholder="path to file inside the workspace" value={path} onChange={(event) => setPath(event.target.value)} />
           <Input className="w-52" placeholder="display name (optional)" value={name} onChange={(event) => setName(event.target.value)} />
           <Button size="sm" disabled={!path.trim()} onClick={() => void guard(async () => {
@@ -41,14 +41,14 @@ export function ArtifactsTab({ workspaceId, canWrite }: { workspaceId: string; c
       <ErrorNote error={error} />
       <ErrorNote error={artifacts.error} />
 
-      <div className="rounded-md border border-[--border]">
+      <div className="rounded-md border border-(--border)">
         {artifacts.data?.artifacts.length ? artifacts.data.artifacts.map((artifact) => (
-          <div key={artifact.id} className="flex flex-wrap items-center gap-3 border-b border-[--border] px-3 py-2 text-xs last:border-b-0">
+          <div key={artifact.id} className="flex flex-wrap items-center gap-3 border-b border-(--border) px-3 py-2 text-xs last:border-b-0">
             <span className="w-52 truncate font-medium">{artifact.name}</span>
-            <span className="min-w-0 flex-1 truncate font-mono text-[--muted-foreground]">{artifact.path}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-(--muted-foreground)">{artifact.path}</span>
             <span>{artifact.contentType}</span>
             <span className="tabular-nums">{formatBytes(artifact.sizeBytes)}</span>
-            <span className="text-[--muted-foreground]">{relativeTime(artifact.createdAt)}</span>
+            <span className="text-(--muted-foreground)">{relativeTime(artifact.createdAt)}</span>
             <a className="inline-flex items-center gap-1 hover:underline" href={workspaceApi.artifactDownloadUrl(workspaceId, artifact.id)}>
               <Download className="h-3.5 w-3.5" /> Download
             </a>

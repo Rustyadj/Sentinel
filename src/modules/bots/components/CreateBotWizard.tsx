@@ -99,26 +99,26 @@ export function CreateBotWizard({ workspaceId, onClose, onCreated }: { workspace
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[min(720px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-[--border] bg-[--card] text-[--foreground] shadow-[var(--shadow-lg)] focus:outline-none">
-          <div className="flex items-center justify-between border-b border-[--border] px-5 py-3">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[min(720px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-(--border) bg-(--card) text-(--foreground) shadow-[var(--shadow-lg)] focus:outline-none">
+          <div className="flex items-center justify-between border-b border-(--border) px-5 py-3">
             <div>
               <Dialog.Title className="text-[15px] font-semibold">{createdId ? "Bot created" : "Create bot"}</Dialog.Title>
-              <Dialog.Description className="text-[12px] text-[--muted-foreground]">{createdId ? "It starts as a draft. Test it before enabling." : `Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}</Dialog.Description>
+              <Dialog.Description className="text-[12px] text-(--muted-foreground)">{createdId ? "It starts as a draft. Test it before enabling." : `Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}</Dialog.Description>
             </div>
-            <Dialog.Close asChild><button aria-label="Close" className="rounded-md p-1.5 text-[--muted-foreground] hover:bg-[--accent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"><X className="h-4 w-4" /></button></Dialog.Close>
+            <Dialog.Close asChild><button aria-label="Close" className="rounded-md p-1.5 text-(--muted-foreground) hover:bg-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"><X className="h-4 w-4" /></button></Dialog.Close>
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {metaError ? <Notice>Could not load options: {metaError}</Notice> : null}
             {error ? <Notice>{error}</Notice> : null}
-            {!meta && !metaError ? <p className="text-[13px] text-[--muted-foreground]" aria-busy="true">Loading options…</p> : null}
+            {!meta && !metaError ? <p className="text-[13px] text-(--muted-foreground)" aria-busy="true">Loading options…</p> : null}
 
             {createdId ? (
               <div className="space-y-3">
                 <p className="text-[13px] leading-5">{f.name} is saved with {grants.filter((g) => g.checked).length} tool grant(s). It cannot use anything else.</p>
                 <div className="flex flex-wrap gap-2">
-                  <Link href={`/bots/${createdId}?tab=test`} className="inline-flex h-8 items-center rounded-md bg-[--primary] px-3 text-[13px] font-medium text-[--primary-foreground] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]">Test bot</Link>
-                  <Link href={`/bots/${createdId}`} className="inline-flex h-8 items-center rounded-md border border-[--border] px-3 text-[13px] hover:bg-[--accent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]">Open settings</Link>
+                  <Link href={`/bots/${createdId}?tab=test`} className="inline-flex h-8 items-center rounded-md bg-(--primary) px-3 text-[13px] font-medium text-(--primary-foreground) hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">Test bot</Link>
+                  <Link href={`/bots/${createdId}`} className="inline-flex h-8 items-center rounded-md border border-(--border) px-3 text-[13px] hover:bg-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">Open settings</Link>
                   <Button variant="ghost" onClick={onClose}>Close</Button>
                 </div>
               </div>
@@ -130,7 +130,7 @@ export function CreateBotWizard({ workspaceId, onClose, onCreated }: { workspace
                   </Field>
                   <div className="mt-2 flex items-center gap-2">
                     <Button variant="primary" busy={generating} disabled={description.trim().length < 10} onClick={generate}><Sparkles className="h-3.5 w-3.5" aria-hidden />Generate bot instructions</Button>
-                    <span className="text-[12px] text-[--muted-foreground]">Runs on a Hermes host. Takes up to a minute.</span>
+                    <span className="text-[12px] text-(--muted-foreground)">Runs on a Hermes host. Takes up to a minute.</span>
                   </div>
                 </section>
                 <section aria-label="Templates">
@@ -138,9 +138,9 @@ export function CreateBotWizard({ workspaceId, onClose, onCreated }: { workspace
                   <ul className="grid gap-2 sm:grid-cols-2">
                     {meta.templates.map((t) => (
                       <li key={t.id}>
-                        <button type="button" aria-pressed={templateId === t.id} onClick={() => pickTemplate(t)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] ${templateId === t.id ? "border-[--primary]/60 bg-[--accent]" : "border-[--border] hover:bg-[--accent]"}`}>
+                        <button type="button" aria-pressed={templateId === t.id} onClick={() => pickTemplate(t)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ${templateId === t.id ? "border-(--primary)/60 bg-(--accent)" : "border-(--border) hover:bg-(--accent)"}`}>
                           <BotAvatar icon={String(t.fields.avatar ?? "bot")} color={String(t.fields.color ?? "#7c6cf6")} size={30} />
-                          <span><span className="block text-[13px] font-medium">{t.label}</span><span className="block text-[12px] leading-4 text-[--muted-foreground]">{t.summary}</span></span>
+                          <span><span className="block text-[13px] font-medium">{t.label}</span><span className="block text-[12px] leading-4 text-(--muted-foreground)">{t.summary}</span></span>
                         </button>
                       </li>
                     ))}
@@ -169,7 +169,7 @@ export function CreateBotWizard({ workspaceId, onClose, onCreated }: { workspace
                   <Field label="Constraints" hint="One per line."><TextArea rows={5} value={consText} onChange={(e) => setConsText(e.target.value)} /></Field>
                 </div>
                 <Field label="Output preferences"><TextArea rows={2} value={f.outputPreferences} onChange={(e) => setF({ ...f, outputPreferences: e.target.value })} /></Field>
-                {f.workflow?.length ? <p className="text-[12px] text-[--muted-foreground]">Working method: {f.workflow.map((step) => step.label).join(" → ")}. Edit steps on the bot page.</p> : null}
+                {f.workflow?.length ? <p className="text-[12px] text-(--muted-foreground)">Working method: {f.workflow.map((step) => step.label).join(" → ")}. Edit steps on the bot page.</p> : null}
               </div>
             ) : meta ? (
               <div className="space-y-4">
@@ -181,32 +181,32 @@ export function CreateBotWizard({ workspaceId, onClose, onCreated }: { workspace
                 </div>
                 <section aria-label="Tool access">
                   <h3 className="text-[13px] font-medium">Tool access</h3>
-                  <p className="mb-2 text-[12px] text-[--muted-foreground]">{grants.length ? "Suggested access. Only ticked rows are granted. Everything else stays off." : "No tools. You can grant some later from the bot's Tools tab."}</p>
+                  <p className="mb-2 text-[12px] text-(--muted-foreground)">{grants.length ? "Suggested access. Only ticked rows are granted. Everything else stays off." : "No tools. You can grant some later from the bot's Tools tab."}</p>
                   <ul className="space-y-1">
                     {grants.map((g, i) => (
-                      <li key={`${g.serverId}:${g.toolName}`} className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] px-2.5 py-1.5 text-[13px]">
-                        <input type="checkbox" id={`g${i}`} checked={g.checked} onChange={(e) => setGrants(grants.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))} className="h-4 w-4 accent-[--primary]" />
-                        <label htmlFor={`g${i}`} className="min-w-0 flex-1"><code className="text-[12px]">{g.toolName === "*" ? "all tools" : g.toolName}</code> <span className="text-[--muted-foreground]">on {g.serverName ?? g.serverId}{g.why ? `: ${g.why}` : ""}</span></label>
+                      <li key={`${g.serverId}:${g.toolName}`} className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) px-2.5 py-1.5 text-[13px]">
+                        <input type="checkbox" id={`g${i}`} checked={g.checked} onChange={(e) => setGrants(grants.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))} className="h-4 w-4 accent-(--primary)" />
+                        <label htmlFor={`g${i}`} className="min-w-0 flex-1"><code className="text-[12px]">{g.toolName === "*" ? "all tools" : g.toolName}</code> <span className="text-(--muted-foreground)">on {g.serverName ?? g.serverId}{g.why ? `: ${g.why}` : ""}</span></label>
                         <Select aria-label="Permission" value={g.permission} onChange={(e) => setGrants(grants.map((x, j) => (j === i ? { ...x, permission: e.target.value } : x)))} className="h-7 w-[130px] py-0 text-[12px]"><option value="read">Read only</option><option value="execute">Execute</option><option value="approval">Needs approval</option></Select>
                       </li>
                     ))}
                   </ul>
                 </section>
                 <section aria-label="Memory">
-                  <label className="flex items-center gap-2 text-[13px] font-medium"><input type="checkbox" checked={memoryOn} onChange={(e) => setMemoryOn(e.target.checked)} className="h-4 w-4 accent-[--primary]" />Use Sentinel memory</label>
+                  <label className="flex items-center gap-2 text-[13px] font-medium"><input type="checkbox" checked={memoryOn} onChange={(e) => setMemoryOn(e.target.checked)} className="h-4 w-4 accent-(--primary)" />Use Sentinel memory</label>
                   <fieldset disabled={!memoryOn} className="mt-2 flex flex-wrap gap-x-4 gap-y-1 disabled:opacity-50">
-                    <legend className="mb-1 text-[12px] text-[--muted-foreground]">It can read</legend>
-                    {READABLE_SCOPES.filter((s) => meta.memoryScopes.includes(s)).map((s) => <label key={s} className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={readScopes.includes(s)} onChange={(e) => setReadScopes(e.target.checked ? [...readScopes, s] : readScopes.filter((x) => x !== s))} className="h-4 w-4 accent-[--primary]" />{MEMORY_SCOPE_LABEL[s]}</label>)}
+                    <legend className="mb-1 text-[12px] text-(--muted-foreground)">It can read</legend>
+                    {READABLE_SCOPES.filter((s) => meta.memoryScopes.includes(s)).map((s) => <label key={s} className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={readScopes.includes(s)} onChange={(e) => setReadScopes(e.target.checked ? [...readScopes, s] : readScopes.filter((x) => x !== s))} className="h-4 w-4 accent-(--primary)" />{MEMORY_SCOPE_LABEL[s]}</label>)}
                   </fieldset>
-                  <p className="mt-1 text-[11px] text-[--muted-foreground]">It writes only to its own private scope. Change that later on the Memory tab.</p>
+                  <p className="mt-1 text-[11px] text-(--muted-foreground)">It writes only to its own private scope. Change that later on the Memory tab.</p>
                 </section>
-                <p className="text-[12px] text-[--muted-foreground]">Only you can call it until you allow other agents on the Delegation tab. It is created as a draft.</p>
+                <p className="text-[12px] text-(--muted-foreground)">Only you can call it until you allow other agents on the Delegation tab. It is created as a draft.</p>
               </div>
             ) : null}
           </div>
 
           {!createdId ? (
-            <div className="flex items-center justify-between gap-2 border-t border-[--border] px-5 py-3">
+            <div className="flex items-center justify-between gap-2 border-t border-(--border) px-5 py-3">
               <Button variant="ghost" onClick={() => (step === 0 ? onClose() : setStep(step - 1))}>{step === 0 ? "Cancel" : "Back"}</Button>
               {step < STEPS.length - 1 ? <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>{step === 0 ? (templateId === "blank" && !f.name ? "Start blank" : "Use this") : "Next"}</Button>
                 : <Button variant="primary" busy={creating} disabled={!identityOk || !hostId} onClick={create}>Create bot</Button>}

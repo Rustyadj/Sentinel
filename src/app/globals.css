@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Sentinel — the Strata design language.
+
+   A lacquered petrol-slate ground, bone-white ink, and one brass signal used
+   for whatever is "yours right now": focus, the primary action, the selected
+   surface edge. Entity colour is mineral pigment — lapis agents, verdigris
+   projects, cinnabar tasks, amethyst memory — and appears only where it
+   encodes a type. Structure is carried by hairlines and stacked layers, never
+   by glow.
+   --------------------------------------------------------------------------- */
+
 @theme inline {
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-display-face), var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-code), ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -25,207 +40,130 @@
   --color-canvas-card-border: var(--canvas-card-border);
 }
 
-/* Sentinel Neural Space */
-.neural-space-canvas {
-  background:
-    radial-gradient(circle at 49% 48%, rgba(17, 55, 101, 0.46), transparent 39%),
-    radial-gradient(circle at 73% 24%, rgba(8, 145, 178, 0.08), transparent 28%),
-    radial-gradient(circle at 30% 66%, rgba(109, 40, 217, 0.1), transparent 31%),
-    #010711;
+/* Palette remap. Legacy screens still reach for Tailwind's violet/indigo/
+   purple (the old accent), cyan/sky (old info) and slate/gray (old neutrals).
+   Re-pointing those scales retints every one of them into Strata without
+   touching each file: the old accent becomes brass, info becomes lapis, and
+   neutrals pick up the petrol cast of the ground. */
+@theme {
+  --color-violet-50: #fbf6ea;  --color-violet-100: #f5e8c8; --color-violet-200: #eed9a8;
+  --color-violet-300: #e6c486; --color-violet-400: #dcb26b; --color-violet-500: #d4a95a;
+  --color-violet-600: #b88c3e; --color-violet-700: #946d2c; --color-violet-800: #6e5022;
+  --color-violet-900: #4a3617; --color-violet-950: #2a1f0d;
+
+  --color-indigo-50: #fbf6ea;  --color-indigo-100: #f5e8c8; --color-indigo-200: #eed9a8;
+  --color-indigo-300: #e6c486; --color-indigo-400: #dcb26b; --color-indigo-500: #d4a95a;
+  --color-indigo-600: #b88c3e; --color-indigo-700: #946d2c; --color-indigo-800: #6e5022;
+  --color-indigo-900: #4a3617; --color-indigo-950: #2a1f0d;
+
+  --color-purple-50: #f6f1fd;  --color-purple-100: #ebe0fb; --color-purple-200: #d9c8f4;
+  --color-purple-300: #c7b2ee; --color-purple-400: #b9a0e6; --color-purple-500: #a487d8;
+  --color-purple-600: #8a6cc0; --color-purple-700: #6e549c; --color-purple-800: #523f74;
+  --color-purple-900: #382b50; --color-purple-950: #221a31;
+
+  --color-sky-50: #eef4fd;  --color-sky-100: #dbe7fa; --color-sky-200: #bdd2f4;
+  --color-sky-300: #a3c0ef; --color-sky-400: #86a9e8; --color-sky-500: #6b90d6;
+  --color-sky-600: #5576bb; --color-sky-700: #435e96; --color-sky-800: #324670;
+  --color-sky-900: #22304c; --color-sky-950: #151d2f;
+
+  --color-cyan-50: #ecf8f4;  --color-cyan-100: #d3efe6; --color-cyan-200: #b0e2d3;
+  --color-cyan-300: #93d4c1; --color-cyan-400: #74c2ab; --color-cyan-500: #5aa991;
+  --color-cyan-600: #468c78; --color-cyan-700: #376f5f; --color-cyan-800: #285247;
+  --color-cyan-900: #1b3730; --color-cyan-950: #10221d;
+
+  --color-slate-50: #f4f2ec;  --color-slate-100: #e6e3da; --color-slate-200: #cfd2cc;
+  --color-slate-300: #b4bbb8; --color-slate-400: #9aa5a3; --color-slate-500: #7a8785;
+  --color-slate-600: #5d6a6a; --color-slate-700: #3d4a4c; --color-slate-800: #243134;
+  --color-slate-900: #172022; --color-slate-950: #0c1213;
 }
-
-.neural-space-canvas::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at center, transparent 30%, rgba(1, 4, 10, 0.66) 100%),
-    radial-gradient(circle, rgba(168, 220, 255, 0.8) 0 0.65px, transparent 0.9px) 0 0 / 67px 71px,
-    radial-gradient(circle, rgba(99, 102, 241, 0.72) 0 0.55px, transparent 0.85px) 24px 18px / 83px 79px,
-    radial-gradient(circle, rgba(34, 211, 238, 0.56) 0 0.45px, transparent 0.75px) 11px 36px / 101px 97px;
-  opacity: 0.52;
-  animation: sentinel-star-drift 78s linear infinite;
-}
-
-/* Graph control rail: the density slider. Styled here rather than inline
-   because range-input thumbs are only reachable through vendor pseudo-elements. */
-.sentinel-density-slider::-webkit-slider-thumb {
-  appearance: none;
-  height: 11px;
-  width: 11px;
-  border-radius: 9999px;
-  background: #c4b5fd;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 6px rgba(167, 139, 250, 0.55);
-  cursor: pointer;
-}
-
-.sentinel-density-slider::-moz-range-thumb {
-  height: 11px;
-  width: 11px;
-  border-radius: 9999px;
-  background: #c4b5fd;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  cursor: pointer;
-}
-
-/* Organization editor: a quieter neural field that keeps the hierarchy legible. */
-.org-neural-canvas {
-  background:
-    radial-gradient(circle at 51% 42%, rgba(30, 64, 175, 0.12), transparent 32%),
-    radial-gradient(circle at 76% 68%, rgba(109, 40, 217, 0.08), transparent 28%),
-    #020812;
-}
-
-.org-neural-canvas .react-flow__edge-path {
-  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.28));
-}
-
-.org-neural-canvas .react-flow__edge.animated path {
-  stroke: #a78bfa;
-  stroke-dasharray: 5 8;
-  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.62));
-}
-
-.org-neural-canvas .react-flow__connection-path {
-  stroke: #67e8f9;
-  stroke-width: 1.5;
-  filter: drop-shadow(0 0 7px rgba(103, 232, 249, 0.6));
-}
-
-.org-neural-canvas .react-flow__node {
-  font-family: inherit;
-}
-
-@keyframes sentinel-star-drift {
-  from { background-position: center, 0 0, 24px 18px, 11px 36px; }
-  to { background-position: center, 67px 71px, -59px 97px, 112px -61px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .neural-space * {
-    scroll-behavior: auto !important;
-  }
-
-  .neural-space-canvas::after {
-    animation: none;
-  }
-
-  .mission-control-page *,
-  .mission-control-page *::before,
-  .mission-control-page *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Sentinel theme tokens — the Orrery design language.
-
-   Deep navy surfaces, a single violet accent, hairline borders. The legacy
-   shell scopes the same palette on `.sentinel-app-shell` so unmigrated screens
-   keep rendering exactly as before.
-   --------------------------------------------------------------------------- */
 
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
-  --background: #040811;
-  --foreground: #e9edf5;
-  --card: #0b1420;
-  --card-foreground: #e9edf5;
-  --border: #18263a;
-  --muted: #111b28;
-  --muted-foreground: #8391a6;
-  --accent: #18233a;
-  --accent-foreground: #e9edf5;
-  --primary: #7c6cf6;
-  --primary-foreground: #ffffff;
-  --destructive: #ef4444;
-  --ring: #6366f1;
-  --sidebar: #050d17;
-  --sidebar-border: #172438;
-  --panel: #09131f;
+  /* Ground and surfaces, darkest to lightest. */
+  --background: #0e1416;
+  --sidebar: #0a0f11;
+  --sidebar-border: #1e292c;
+  --canvas: #0b1012;
+  --panel: #121a1d;
+  --card: #151e21;
+  --muted: #1b2629;
+  --accent: #213034;
 
-  --canvas: #01040a;
-  --canvas-foreground: #e9edf5;
-  --canvas-muted: #8391a6;
-  --canvas-card: #070c14;
-  --canvas-card-foreground: #e9edf5;
-  --canvas-card-border: #152334;
+  --foreground: #ebe6da;
+  --card-foreground: #ebe6da;
+  --accent-foreground: #ebe6da;
+  --muted-foreground: #9aa5a3;
+  --text-faint: #6f7c7b;
 
-  /* Orrery accents and glass surfaces. */
-  --lens: #a78bfa;
-  --primary-soft: #b4a7fb;
-  --glass: rgba(5, 9, 17, 0.86);
-  --glass-border: rgba(40, 58, 88, 0.55);
-  --text-faint: #5f6d82;
+  --border: #243134;
+  --border-strong: #33454a;
 
-  /* Elevation — hairlines carry structure, shadows stay deep and quiet. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  /* Brass: the one signal colour. */
+  --primary: #d4a95a;
+  --primary-soft: #e6c486;
+  --primary-foreground: #1c1508;
+  --primary-wash: rgba(212, 169, 90, 0.12);
+  --ring: #e0b768;
+  --lens: #e6c486;
 
-  /* Semantic entity colors — the single source for graph clusters, entity
-     chips and status. Components read these tokens, never literals. */
-  --entity-agent: #a98bf5;
-  --entity-project: #e09a52;
-  --entity-workspace: #57c2a8;
-  --entity-knowledge: #4a89c4;
-  --entity-memory: #57c2a8;
-  --entity-tool: #dd8a4c;
-  --entity-source: #5c9fe0;
-  --entity-external: #b57cf0;
-  --entity-conversation: #7c6cf6;
+  --destructive: #ef6b5e;
 
-  /* Status */
-  --status-online: #10b981;
-  --status-busy: #f59e0b;
-  --status-error: #ef4444;
-  --status-idle: #5f6d82;
+  --canvas-foreground: #ebe6da;
+  --canvas-muted: #9aa5a3;
+  --canvas-card: #131b1e;
+  --canvas-card-foreground: #ebe6da;
+  --canvas-card-border: #243134;
 
-  /* Release rail. Colour is reserved for the two states that need an
-     operator to look — a revision that is not where it should be, and a
-     transition that failed. Everything else is ink and grey. */
-  --rail-carried: #e9edf5;
-  --rail-pending: #2a3a52;
-  --rail-attention: #f59e0b;
-  --rail-severed: #ef4444;
-  --rail-marker: #7c6cf6;
+  /* Translucent surfaces that sit in front of the graph. Mostly opaque: the
+     graph is atmosphere, the conversation is the subject. */
+  --glass: rgba(14, 20, 22, 0.9);
+  --glass-strong: rgba(18, 26, 29, 0.96);
+  --glass-border: rgba(64, 86, 90, 0.5);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+
+  /* Mineral pigments — one per entity type. Graph strata, entity chips and
+     legends all read these; components never hold a literal. */
+  --entity-agent: #86a9e8;
+  --entity-project: #74c2ab;
+  --entity-task: #e7926f;
+  --entity-memory: #b9a0e6;
+  --entity-workspace: #9cc39a;
+  --entity-knowledge: #cdb8f0;
+  --entity-tool: #e0a070;
+  --entity-source: #86a9e8;
+  --entity-external: #c9a0d8;
+  --entity-conversation: #d4a95a;
+
+  --status-online: #5fcf9a;
+  --status-busy: #e8b04a;
+  --status-error: #ef6b5e;
+  --status-idle: #6f7c7b;
+
+  --rail-carried: #ebe6da;
+  --rail-pending: #33454a;
+  --rail-attention: #e8b04a;
+  --rail-severed: #ef6b5e;
+  --rail-marker: #d4a95a;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* Legacy dark shell — every screen still rendered by components/layout/AppShell. */
+/* Screens still mounted through components/layout/AppShell carry this class.
+   It now resolves to exactly the same tokens; the class remains as the hook
+   for the compatibility mappings further down. */
 .sentinel-app-shell {
   color-scheme: dark;
   color: var(--foreground);
-  /* Dark shell tokens (rail, topbar, panels) */
-  --background: #040811;
-  --foreground: #e9edf5;
-  --card: #0b1420;
-  --card-foreground: #e8eaed;
-  --border: #18263a;
-  --muted: #111b28;
-  --muted-foreground: #77859a;
-  --accent: #18233a;
-  --accent-foreground: #e8eaed;
-  --primary: #7c6cf6;
-  --primary-foreground: #ffffff;
-  --destructive: #ef4444;
-  --ring: #6366f1;
-  --sidebar: #050d17;
-  --sidebar-border: #172438;
-  --panel: #09131f;
-  /* Canvas tokens (workspace main areas) — dark to match the shell */
-  --canvas: #010409;
-  --canvas-foreground: #e8eaed;
-  --canvas-muted: #6b7280;
-  --canvas-card: #070c14;
-  --canvas-card-foreground: #e8eaed;
-  --canvas-card-border: #152334;
+  isolation: isolate;
+  background: var(--background);
 }
 
 * {
@@ -237,145 +175,163 @@ body {
   height: 100%;
   background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01" 1, "cv11" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
 }
 
-body {
-  background: var(--background);
+@layer base {
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+/* Page and panel titles share the display face; a component opts out by
+   setting its own font family. */
+:where(main) :where(h1) {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+:where(button, a, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 }
 
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2d32;
-  border-radius: 2px;
+  background: #263336;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3d42;
+  background: #33454a;
+  background-clip: padding-box;
+}
+* {
+  scrollbar-color: #263336 transparent;
+  scrollbar-width: thin;
 }
 
 ::selection {
-  background: rgba(124, 58, 237, 0.3);
+  background: rgba(212, 169, 90, 0.32);
+  color: #fff8e8;
 }
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+/* ── Strata stage ─────────────────────────────────────────────────────────── */
+
+/* The ground behind the graph: a single low light from above, as if the
+   strata were lit by the conversation in front of them. */
+.strata-ground {
+  background:
+    radial-gradient(120% 70% at 62% -10%, rgba(116, 194, 171, 0.07), transparent 60%),
+    radial-gradient(90% 60% at 70% 110%, rgba(212, 169, 90, 0.05), transparent 60%),
+    var(--canvas);
 }
 
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-/* Voice waveform bars — animate only while listening/speaking */
-@keyframes wave-bar {
-  0%, 100% { height: 3px; opacity: 0.45; }
-  50% { height: 16px; opacity: 1; }
-}
-
-.animate-wave-bar {
-  animation: wave-bar 1.05s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-wave-bar { animation: none; height: 6px; }
-}
-
-.animate-pulse-dot {
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.15s ease-out;
-}
-
-/* Subtle interactive card lift used across workspace surfaces */
-.card-hover {
-  transition: border-color 0.15s ease, background-color 0.15s ease,
-    transform 0.15s ease;
-}
-.card-hover:hover {
-  border-color: rgba(124, 108, 246, 0.35);
-  background-color: #12151b;
-}
-
-/* Faint grid texture for canvas backdrops (e.g. graph views) */
-.canvas-grid {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(255, 255, 255, 0.035) 1px,
-    transparent 0
+/* Hairline "contour" texture used on large empty panels. Static. */
+.strata-contour {
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0 27px,
+    rgba(235, 230, 218, 0.025) 27px 28px
   );
-  background-size: 22px 22px;
 }
 
-/* ── Feature surfaces (neural space, panels) ──────────────────────────────── */
-.bg-grid {
-  background-image:
-    linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 32px 32px;
+/* ── Legacy feature surfaces (retinted) ───────────────────────────────────── */
+
+.neural-space-canvas {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(116, 194, 171, 0.1), transparent 42%),
+    radial-gradient(circle at 74% 22%, rgba(134, 169, 232, 0.06), transparent 30%),
+    var(--canvas);
 }
 
-.surface-panel {
-  background: linear-gradient(180deg, rgba(19, 21, 24, 0.96), rgba(12, 13, 15, 0.98));
-  border: 1px solid var(--border);
-  box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.surface-glow {
-  position: relative;
-}
-
-.surface-glow::before {
+.neural-space-canvas::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 22%);
+  background: radial-gradient(circle at center, transparent 42%, rgba(6, 10, 11, 0.7) 100%);
+  opacity: 0.8;
 }
 
-.sentinel-app-shell {
-  color-scheme: dark;
-  isolation: isolate;
+.sentinel-density-slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
+.sentinel-density-slider::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
+.org-neural-canvas {
   background:
-    radial-gradient(circle at 16% 0%, rgba(124, 58, 237, 0.08), transparent 28%),
-    linear-gradient(180deg, #040912 0%, #02060d 100%);
+    radial-gradient(circle at 51% 42%, rgba(116, 194, 171, 0.08), transparent 34%),
+    var(--canvas);
+}
+
+.org-neural-canvas .react-flow__edge-path {
+  stroke: #4b6064;
+}
+
+.org-neural-canvas .react-flow__edge.animated path {
+  stroke: var(--primary);
+  stroke-dasharray: 5 8;
+}
+
+.org-neural-canvas .react-flow__connection-path {
+  stroke: var(--entity-project);
+  stroke-width: 1.5;
+}
+
+.org-neural-canvas .react-flow__node {
+  font-family: inherit;
 }
 
 .sentinel-app-shell main {
-  background:
-    radial-gradient(circle at 50% -12%, rgba(64, 79, 132, 0.1), transparent 34%),
-    linear-gradient(180deg, #050a12 0%, #02060d 100%);
+  background: var(--canvas);
   color: var(--canvas-foreground);
 }
 
+.mission-control-page {
+  color-scheme: dark;
+  background: var(--canvas);
+}
+
+.mission-control-page section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 420px;
+}
+
 /*
- * Dark compatibility layer for legacy module surfaces. New work should use the
- * semantic canvas/card tokens above; these mappings keep every existing module
- * inside the same Sentinel shell while those screens are migrated incrementally.
+ * Compatibility layer for legacy module surfaces that were authored against a
+ * light theme. New work uses the semantic tokens; these keep every existing
+ * module legible inside the Strata shell until it is migrated.
  */
 .sentinel-app-shell main :is(
   .bg-white:not(.rounded-full),
@@ -392,73 +348,127 @@ body {
   .border-\[\#e0e3ea\],
   .border-\[\#f0f2f7\],
   .border-\[\#e8eaf0\],
-  .border-\[\#c8cdd8\]
+  .border-\[\#c8cdd8\],
+  .border-\[\#1e2130\],
+  .border-\[\#181b22\],
+  .border-\[\#1b3047\],
+  .border-\[\#203248\],
+  .border-\[\#203247\],
+  .border-\[\#1a2a3c\]
 ) {
-  border-color: var(--canvas-card-border) !important;
+  border-color: var(--border) !important;
 }
 
-.sentinel-app-shell main .text-\[\#1a1d26\] {
-  color: #e9edf5 !important;
+.sentinel-app-shell main :is(
+  .bg-\[\#0f1013\],
+  .bg-\[\#08131f\],
+  .bg-\[\#0a1420\],
+  .bg-\[\#07101b\],
+  .bg-\[\#07131f\],
+  .bg-\[\#161920\],
+  .bg-\[\#171c24\],
+  .bg-\[\#070b13\],
+  .bg-\[\#05080d\],
+  .bg-\[\#060708\]
+) {
+  background-color: var(--card) !important;
 }
 
-.sentinel-app-shell main .text-\[\#7a8099\] {
-  color: #9ca9ba !important;
+.sentinel-app-shell main :is(.text-\[\#1a1d26\], .text-\[\#e2e5ed\], .text-\[\#e8eaed\], .text-\[\#dbe5f1\], .text-\[\#f0f3f8\], .text-\[\#edf3f8\]) {
+  color: var(--foreground) !important;
 }
 
-.sentinel-app-shell main .text-\[\#aab0c0\] {
-  color: #718096 !important;
+.sentinel-app-shell main :is(.text-\[\#7a8099\], .text-\[\#c8cdd8\], .text-\[\#9aa1b4\], .text-\[\#8b93a5\], .text-\[\#9eabba\], .text-\[\#c5cedb\]) {
+  color: var(--muted-foreground) !important;
 }
 
-.sentinel-app-shell main :is(.text-\[\#5a5f6e\], .text-\[\#3a3f50\]) {
-  color: #8290a4 !important;
+.sentinel-app-shell main :is(.text-\[\#aab0c0\], .text-\[\#5a5f6e\], .text-\[\#3a3f50\], .text-\[\#697084\], .text-\[\#4a5065\], .text-\[\#718095\], .text-\[\#66758c\]) {
+  color: #8b9795 !important;
 }
 
 .sentinel-app-shell main .hover\:bg-\[\#f5f6f9\]:hover,
 .sentinel-app-shell main .hover\:bg-white:hover {
-  background-color: #111b28 !important;
+  background-color: var(--muted) !important;
 }
 
 .sentinel-app-shell main .hover\:text-\[\#1a1d26\]:hover {
-  color: #f8fafc !important;
+  color: #fff8ea !important;
 }
 
-.mission-control-page {
-  color-scheme: dark;
-  background:
-    radial-gradient(circle at 48% -8%, rgba(91, 73, 181, 0.09), transparent 34%),
-    linear-gradient(180deg, #050a12 0%, #02060d 100%);
+/* ── Shared motion ────────────────────────────────────────────────────────── */
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
-.mission-control-page section {
-  content-visibility: auto;
-  contain-intrinsic-size: 1px 420px;
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.neural-space-canvas::after {
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes wave-bar {
+  0%, 100% { height: 3px; opacity: 0.45; }
+  50% { height: 16px; opacity: 1; }
+}
+
+.animate-wave-bar { animation: wave-bar 1.05s ease-in-out infinite; }
+.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+.animate-fade-in { animation: fade-in 0.2s var(--ease-out); }
+.animate-slide-in-right { animation: slide-in-right 0.16s var(--ease-out); }
+.animate-slide-in-left { animation: slide-in-left 0.18s var(--ease-out); }
+
+/* Repeated objects: border and surface move, nothing lifts or scales. */
+.card-hover {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.card-hover:hover {
+  border-color: var(--border-strong);
+  background-color: var(--muted);
+}
+
+.canvas-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(235, 230, 218, 0.04) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(235, 230, 218, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(235, 230, 218, 0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.surface-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+.surface-glow {
+  position: relative;
+}
+
+.surface-glow::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at center, transparent 42%, rgba(1, 4, 10, 0.68) 100%);
-  opacity: 0.78;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(235, 230, 218, 0.03), transparent 22%);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .neural-space * {
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Release rail motion.
-
-   The only thing on the control plane that moves on its own is the halo behind
-   the marker for the revision currently in flight, and it moves slowly enough
-   to be felt rather than watched. Everything else animates only in response to
-   an action. If more than one thing is breathing at a time, the screen is
-   telling the operator that everything is equally urgent, which is the same as
-   telling them nothing.
-   --------------------------------------------------------------------------- */
+/* Release rail: the only self-moving thing on the control plane. */
 @keyframes rail-marker-breathe {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50% { opacity: 0.35; transform: scale(0.88); }
@@ -470,16 +480,80 @@ body {
   animation: rail-marker-breathe 5.5s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .rail-marker-halo {
-    animation: none;
-    opacity: 0.6;
-  }
-}
-
-/* Tabular numerals wherever a SHA, a count or a timestamp is shown, so columns
-   of them line up and a changing digit does not reflow the row. */
 .control-plane-figures {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .animate-wave-bar { animation: none; height: 6px; }
+  .animate-pulse-dot,
+  .rail-marker-halo { animation: none; }
+  .rail-marker-halo { opacity: 0.6; }
+
+  .animate-fade-in,
+  .animate-slide-in-right,
+  .animate-slide-in-left { animation: none; }
+
+  .mission-control-page *,
+  .mission-control-page *::before,
+  .mission-control-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Message prose ────────────────────────────────────────────────────────── */
+.prose-sentinel > * + * { margin-top: 0.7em; }
+.prose-sentinel :where(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin-top: 1.2em;
+}
+.prose-sentinel h1 { font-size: 1.3em; }
+.prose-sentinel h2 { font-size: 1.15em; }
+.prose-sentinel :where(h3, h4) { font-size: 1em; }
+.prose-sentinel :where(ul, ol) { padding-left: 1.3em; }
+.prose-sentinel ul { list-style: disc; }
+.prose-sentinel ol { list-style: decimal; }
+.prose-sentinel li + li { margin-top: 0.3em; }
+.prose-sentinel li::marker { color: var(--text-faint); }
+.prose-sentinel a { color: var(--primary-soft); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(230, 196, 134, 0.4); }
+.prose-sentinel a:hover { text-decoration-color: currentColor; }
+.prose-sentinel strong { font-weight: 650; color: #fff8ea; }
+.prose-sentinel :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.prose-sentinel pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.prose-sentinel blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 0.9em;
+  color: var(--muted-foreground);
+}
+.prose-sentinel table { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.prose-sentinel :where(th, td) { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+.prose-sentinel th { color: var(--muted-foreground); font-weight: 600; }
+.prose-sentinel hr { border: 0; border-top: 1px solid var(--border); }

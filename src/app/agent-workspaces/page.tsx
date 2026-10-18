@@ -13,7 +13,7 @@ export default async function AgentWorkspacesPage() {
     orderBy: { name: "asc" },
   });
   return (
-    <AppShell header={<span className="text-[15px] font-medium">Workspaces</span>}>
+    <AppShell title="Workspaces">
       <div className="h-full overflow-y-auto">
         <WorkspaceListView tenantWorkspaces={tenantWorkspaces} />
       </div>
