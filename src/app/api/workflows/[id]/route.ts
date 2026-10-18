@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> };
 async function authorize(id: string, write: boolean) {
   const user = await requireUser();
   const workflow = await db.workflow.findUnique({ where: { id } });
-  if (!workflow) return null;
+  if (!workflow || workflow.kind !== "graph") return null;
   if (!workflow.projectId) return workflow.userId === user.id ? workflow : null;
   await requireProjectPermission(workflow.projectId, write ? "project.update" : "project.read");
   return workflow;
