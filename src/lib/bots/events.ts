@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { redactPayload } from "@/lib/learning/redaction";
 
 export const BOT_EVENT_TYPES = [
-  "queued", "started", "model", "memory_read", "memory_write", "tool_allowed", "tool_denied", "tool_completed",
+  "queued", "started", "model", "memory_read", "memory_write", "tool_gate", "tool_allowed", "tool_denied", "tool_completed",
   "approval_requested", "approval_resolved", "delegated", "usage", "warning", "error", "completed", "cancelled",
 ] as const;
 export type BotEventType = (typeof BOT_EVENT_TYPES)[number];

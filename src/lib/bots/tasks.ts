@@ -239,14 +239,15 @@ export interface BotTaskView {
   input: { task: string | null; context: string | null };
   output: { text: string } | null;
   artifacts: { id: string; type: string; title: string; url: string | null; mimeType: string | null }[];
-  toolCalls: { tool: string; server: string | null; decision: "allowed" | "denied" | "approval"; reason: string; at: string }[];
+  /** `stage`: "pre-execution" = decided before the call ran; "observed" = decided after the runtime reported it starting. */
+  toolCalls: { tool: string; server: string | null; decision: "allowed" | "denied" | "approval"; reason: string; at: string; stage: "pre-execution" | "observed" }[];
   memory: { read: { retrieved: number; injected: number; dropped: number; scopes: string[]; skipped: string | null } | null; writes: { scope: string | null; accepted: boolean; denied: string | null }[] };
   model: { requested: string | null; actual: string | null; provider: string | null };
   usage: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null;
   cost: { usd: number | null; note: string };
   error: string | null;
   cancelRequested: boolean;
-  waitingFor: { approvalRequestId: string; tool: string } | null;
+  waitingFor: { approvalRequestId: string; tool: string; stage: "pre-execution" | "observed" } | null;
   events: BotTaskEvent[];
 }
 
@@ -254,6 +255,8 @@ export interface TaskViewer { userId: string; isAdmin: boolean }
 
 const asRecord = (value: unknown): Record<string, unknown> => (value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const num = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
+/** Events written before the pre-execution gate existed carry no stage; they were all observed after the call started. */
+const toolStage = (value: unknown): "pre-execution" | "observed" => (value === "pre-execution" ? "pre-execution" : "observed");
 
 export async function getBotTask(taskId: string, viewer: TaskViewer): Promise<BotTaskView> {
   const run = await db.orchestrationRun.findFirst({
@@ -293,7 +296,7 @@ export async function getBotTask(taskId: string, viewer: TaskViewer): Promise<Bo
     toolCalls: events.filter((event) => ["tool_allowed", "tool_denied", "approval_requested"].includes(event.type)).map((event) => ({
       tool: String(event.data.tool ?? "unknown"), server: typeof event.data.server === "string" ? event.data.server : null,
       decision: event.type === "tool_allowed" ? "allowed" : event.type === "approval_requested" ? "approval" : "denied",
-      reason: String(event.data.reason ?? event.summary), at: event.at,
+      reason: String(event.data.reason ?? event.summary), at: event.at, stage: toolStage(event.data.stage),
     })),
     memory: {
       read: memRead ? { retrieved: num(memRead.data.retrieved) ?? 0, injected: num(memRead.data.injected) ?? 0, dropped: num(memRead.data.dropped) ?? 0, scopes: Array.isArray(memRead.data.scopes) ? memRead.data.scopes.map(String) : [], skipped: typeof memRead.data.skipped === "string" ? memRead.data.skipped : null } : null,
@@ -307,7 +310,7 @@ export async function getBotTask(taskId: string, viewer: TaskViewer): Promise<Bo
     usage: attempt && Object.keys(usageRaw).length ? { inputTokens: num(usageRaw.inputTokens), outputTokens: num(usageRaw.outputTokens), totalTokens: num(usageRaw.totalTokens) } : null,
     cost: typeof attempt?.cost === "number" ? { usd: attempt.cost, note: "Calculated from reported tokens at Sentinel's rate card." } : { usd: null, note: "Not priced: Sentinel has no rate for this model, so no cost is shown." },
     error: run.error, cancelRequested: run.status === "cancelling",
-    waitingFor: run.status === "waiting" && waiting ? { approvalRequestId: String(waiting.data.approvalRequestId ?? ""), tool: String(waiting.data.tool ?? "") } : null,
+    waitingFor: run.status === "waiting" && waiting ? { approvalRequestId: String(waiting.data.approvalRequestId ?? ""), tool: String(waiting.data.tool ?? ""), stage: toolStage(waiting.data.stage) } : null,
     events,
   };
 }
