@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { canEditConfig, getControlPlaneUser } from "@/lib/agents/permissions";
@@ -22,15 +23,22 @@ export async function GET(req: NextRequest) {
 
   const config = resolveSystemOneConfig();
   const summary = await getSystemOneSummary({ windowDays, agentId, userId: global ? undefined : user.id });
+  const recent = await db.systemOneDecision.findMany({ where: { ...(agentId ? { agentId } : {}), ...(global ? {} : { userId: user.id }) }, orderBy: { createdAt: "desc" }, take: 30,
+    select: { id: true, createdAt: true, agentId: true, surface: true, mode: true, outcome: true, providerModel: true, intent: true, route: true, s1LatencyMs: true, s1InputTokens: true, s1CostUsd: true, system2Model: true, system2Invoked: true, planReasons: true } });
   return NextResponse.json({
+    recent,
     scope: global ? "all_users" : "own",
     config: {
       mode: config.mode,
       agentModes: {
+        "claude-code": resolveAgentMode("claude-code"),
+        codex: resolveAgentMode("codex"),
         "hermes-lisa": resolveAgentMode("hermes-lisa"),
         "hermes-nathan2": resolveAgentMode("hermes-nathan2"),
       },
       provider: config.provider,
+      providerHost: new URL(config.baseUrl).hostname,
+      fallbackPolicy: "preserve selected agent/model and all existing authorization; use System-2 with governed memory",
       model: config.model,
       keyConfigured: Boolean(config.apiKey),
       timeoutMs: config.timeoutMs,

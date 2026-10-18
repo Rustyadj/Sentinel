@@ -1,3 +1,4 @@
+import { classifyDispatch, observeDispatch } from "@/lib/system-one/dispatch";
 import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { RUNTIME_PERMISSIONS, requireSessionAccess } from "@/lib/agents/runtime/authorization";
@@ -24,12 +25,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
       action: "agent_runtime.task_sent", entityType: "AgentSession", entityId: sessionId,
       details: { runtimeId: runtime.id, promptLength: body.prompt.length },
     });
+    const routing = await classifyDispatch({ agentId: runtime.agentId, userId: user.id, request: body.prompt, surface: "runtime_api", configuredModel: typeof session.metadata.requestedModel === "string" ? session.metadata.requestedModel : runtime.model });
     const adapter = getRuntimeAdapter(runtime.kind);
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          for await (const event of adapter.send({ sessionId, prompt: body.prompt as string, userId: user.id })) {
+          for await (const event of observeDispatch(routing, adapter.send({ sessionId, prompt: body.prompt as string, userId: user.id }))) {
             controller.enqueue(encoder.encode(sseEvent(event)));
           }
         } catch (error) {

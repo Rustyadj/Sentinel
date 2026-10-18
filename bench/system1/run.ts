@@ -69,7 +69,7 @@ interface CaseResult {
   confidence: number | null;
   latencies: number[];
   toolLatencyMs?: number;
-  costUsd: number;
+  costUsd: number | null;
   outcomes: string[];
 }
 
@@ -136,7 +136,7 @@ function score(c: EvalCase, r: SystemOneResult, action: string, tool: string | n
     memoryVerdict,
     confidence: d?.confidence ?? null,
     latencies: runs.filter((x) => x.outcome === "ok").map((x) => x.latencyMs),
-    costUsd: runs.reduce((s, x) => s + (x.costUsd ?? 0), 0),
+    costUsd: runs.some(x => x.costUsd === null) ? null : runs.reduce((s, x) => s + (x.costUsd ?? 0), 0),
     outcomes: runs.map((x) => x.outcome),
   };
 }
@@ -184,7 +184,9 @@ function report(results: CaseResult[], providerModel: string | null) {
     "",
     `- System 1 decision: p50 **${pct(latencies, 50)} ms**, p95 **${pct(latencies, 95)} ms** (${latencies.length} calls, client-side wall clock incl. network)`,
     `- Fast-path tool execution: ${toolLatencies.length ? `p50 ${pct(toolLatencies, 50)} ms, p95 ${pct(toolLatencies, 95)} ms (${toolLatencies.length} calls)` : "not measured (run with --tools)"}`,
-    `- System 1 cost: $${results.reduce((s, r) => s + r.costUsd, 0).toFixed(6)} for ${allCalls} calls ($${(results.reduce((s, r) => s + r.costUsd, 0) / Math.max(1, allCalls)).toFixed(7)} per decision, provider-reported)`,
+    results.some(r => r.costUsd === null)
+      ? `- System 1 cost: unreported for one or more of ${allCalls} calls (unknown, not zero)`
+      : `- System 1 cost: $${results.reduce((s, r) => s + (r.costUsd ?? 0), 0).toFixed(6)} for ${allCalls} calls (provider-reported)`,
     "",
     "## System 2 baseline (measured in production, see baseline.json)",
     "",

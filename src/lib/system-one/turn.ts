@@ -29,12 +29,13 @@ const disabled = (latencyMs = 0): SystemOneResult => ({
 export function beginSystemOne(input: Omit<DecisionInput, "tools"> & {
   trace: RequestTrace;
   signal?: AbortSignal;
+  routingOnly?: boolean;
 }): SystemOneTurn {
   const mode = resolveAgentMode(input.agentId);
   if (mode === "off") return { mode, tools: [], result: Promise.resolve(disabled()) };
 
   const { service, config } = getSystemOne();
-  const tools = peekReadOnlyTools(input.agentId);
+  const tools = input.routingOnly ? [] : peekReadOnlyTools(input.agentId);
   input.trace.mark("s1_start");
   const result = service
     .decide({ ...input, tools }, { timeoutMs: surfaceTimeoutMs(config, input.surface), signal: input.signal })

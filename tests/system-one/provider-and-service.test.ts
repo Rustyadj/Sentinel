@@ -141,3 +141,12 @@ describe("SystemOneDecisionService", () => {
     expect((await service.decide(input, { timeoutMs: 50 })).outcome).toBe("malformed");
   });
 });
+
+describe("hard deadline", () => {
+  it("falls back even when a provider ignores cancellation", async () => {
+    const service = new SystemOneDecisionService(provider(async () => new Promise(() => {})), testConfig());
+    const started = performance.now();
+    expect((await service.decide(input, { timeoutMs: 50 })).outcome).toBe("timeout");
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+});

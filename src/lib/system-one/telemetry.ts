@@ -150,6 +150,11 @@ export interface SystemOneSummary {
   handledWithoutSystem2: number;
   system2CallsAvoided: number;
   fallbackRate: number | null;
+  system2DispatchRate: number | null;
+  lastDecisionAt: string | null;
+  lastSuccessAt: string | null;
+  byOutcome: Record<string, number>;
+  unpricedDecisions: number;
   s1: { p50: number | null; p95: number | null; costUsd: number; inputTokens: number };
   totalLatency: Record<string, { p50: number | null; p95: number | null; n: number }>;
   ttfa: Record<string, { p50: number | null; p95: number | null; n: number }>;
@@ -180,7 +185,7 @@ export async function getSystemOneSummary(options: { windowDays?: number; agentI
       ...(options.userId ? { userId: options.userId } : {}),
     },
     select: {
-      mode: true, outcome: true, executedPath: true, system2Invoked: true, system2Avoided: true, s1LatencyMs: true,
+      createdAt: true, mode: true, outcome: true, executedPath: true, system2Invoked: true, system2Avoided: true, s1LatencyMs: true,
       s1CostUsd: true, s1InputTokens: true, totalLatencyMs: true, ttfaMs: true, estTokensAvoided: true,
       estCostAvoidedUsd: true, confidence: true, plannedAction: true, toolId: true, decision: true, system2Tools: true,
     },
@@ -193,7 +198,7 @@ export async function getSystemOneSummary(options: { windowDays?: number; agentI
 
   const consulted = rows.filter((r) => r.mode !== "off");
   const fallbacks = consulted.filter((r) => r.outcome !== "ok").length;
-  const s1Latencies = rows.map((r) => r.s1LatencyMs).filter((v): v is number => v !== null).sort((a, b) => a - b);
+  const s1Latencies = consulted.map((r) => r.s1LatencyMs).filter((v): v is number => v !== null).sort((a, b) => a - b);
   const s1Cost = rows.reduce((s, r) => s + (r.s1CostUsd ?? 0), 0);
 
   const byPath = (field: "totalLatencyMs" | "ttfaMs") => {
@@ -233,13 +238,18 @@ export async function getSystemOneSummary(options: { windowDays?: number; agentI
     byExecutedPath: count((r) => r.executedPath),
     handledWithoutSystem2: rows.filter((r) => !r.system2Invoked).length,
     system2CallsAvoided: avoidedRows.length,
+    system2DispatchRate: consulted.length ? consulted.filter(r => r.system2Invoked).length / consulted.length : null,
+    lastDecisionAt: consulted[0]?.createdAt.toISOString() ?? null,
+    lastSuccessAt: consulted.find(r => r.outcome === "ok")?.createdAt.toISOString() ?? null,
+    byOutcome: count(r => r.outcome),
+    unpricedDecisions: consulted.filter(r => r.outcome === "ok" && r.s1CostUsd === null).length,
     fallbackRate: consulted.length ? fallbacks / consulted.length : null,
     s1: { p50: percentile(s1Latencies, 50), p95: percentile(s1Latencies, 95), costUsd: s1Cost, inputTokens: rows.reduce((s, r) => s + r.s1InputTokens, 0) },
     totalLatency: byPath("totalLatencyMs"),
     ttfa: byPath("ttfaMs"),
     estTokensAvoided: avoidedRows.reduce((s, r) => s + (r.estTokensAvoided ?? 0), 0),
     estCostAvoidedUsd,
-    netSavingsUsd: estCostAvoidedUsd === null ? null : estCostAvoidedUsd - s1Cost,
+    netSavingsUsd: estCostAvoidedUsd === null || consulted.some(r => r.outcome === "ok" && r.s1CostUsd === null) ? null : estCostAvoidedUsd - s1Cost,
     confidenceHistogram: histogram,
     shadowToolAgreement: { comparable: comparable.length, agreed, rate: comparable.length ? agreed / comparable.length : null },
   };

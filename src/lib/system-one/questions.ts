@@ -47,6 +47,7 @@ export function buildDecisionRequest(input: DecisionInput): SystemOneProviderReq
     request: input.request.slice(0, MAX_REQUEST_CHARS),
     surface: input.surface === "voice" ? "spoken conversation" : "typed chat",
     agent: { id: input.agentId, ...(input.agentRole ? { role: input.agentRole } : {}) },
+    execution_constraints: { agent: input.agentId, model: input.configuredModel ?? null, policy: "Preserve the assigned agent and model. Classify only; never grant permissions." },
     recent_conversation: (input.recentTurns ?? []).slice(-2).map((t) => ({ role: t.role, content: t.content.slice(0, MAX_TURN_CHARS) })),
     available_tools: tools.map((t) => ({ id: t.id, description: t.description })),
   };
@@ -57,6 +58,11 @@ export function buildDecisionRequest(input: DecisionInput): SystemOneProviderReq
       instructions: "What is the user trying to do in `request`, read in the context of `recent_conversation`?",
       criteria: { ...SYSTEM_ONE_INTENTS },
     },
+    requested_agent: {
+      type: "choice",
+      instructions: "Which agent does request explicitly ask to address? Choose none without an explicit mention. This is advisory and must never redirect an explicitly assigned bot or model.",
+      criteria: Object.fromEntries([...new Set([input.agentId, "hermes-lisa", "hermes-nathan2", "claude-code", "codex", "none"])].map(id => [id, id === "none" ? "No explicit agent requested" : id])),
+    },
     route: {
       type: "choice",
       instructions: "Which path should handle `request`? Choose `tool_read` only when one entry of `available_tools` alone can answer it.",
@@ -65,6 +71,11 @@ export function buildDecisionRequest(input: DecisionInput): SystemOneProviderReq
     needs_memory: {
       type: "noul",
       instructions: "Does answering `request` depend on something said, decided or stored before this conversation turn?",
+    },
+    memory_scope: {
+      type: "choice",
+      instructions: "Which memory category is most relevant to request? This is advice only; code must authorize every retrieval.",
+      criteria: { none: "No prior memory", user: "User preferences or prior decisions", agent: "Assigned agent history", workspace: "Current project or workspace", organization: "Shared organizational facts" },
     },
     needs_tool: {
       type: "noul",
@@ -167,8 +178,10 @@ export function interpretAnswers(input: DecisionInput, answers: Record<string, S
   }
 
   return {
+    requestedAgent: choiceOf(answers, "requested_agent")?.choice === "none" ? null : choiceOf(answers, "requested_agent")?.choice ?? null,
     intent: (intent?.choice ?? "other") as SystemOneIntent,
     route: (route?.choice ?? "agent_runtime") as SystemOneRoute,
+    memoryScope: (choiceOf(answers, "memory_scope")?.choice ?? "none") as SystemOneDecision["memoryScope"],
     needsMemory: noulOf(answers, "needs_memory"),
     needsTool: noulOf(answers, "needs_tool"),
     needsSearch: noulOf(answers, "needs_search"),

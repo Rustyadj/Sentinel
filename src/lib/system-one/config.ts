@@ -58,7 +58,7 @@ export function agentEnvSlug(agentId: string): string {
 export function resolveSystemOneConfig(env: Env = process.env): SystemOneConfig {
   // SYSTEM_ONE_ENABLED=false is the hard kill switch: it wins over any mode.
   const killed = env.SYSTEM_ONE_ENABLED?.trim().toLowerCase() === "false";
-  const mode = killed ? "off" : parseMode(env.SYSTEM_ONE_MODE) ?? "off";
+  const mode = killed ? "off" : parseMode(env.SYSTEM_ONE_MODE) ?? "active";
   const highDefault = num(env, "SYSTEM_ONE_HIGH_CONFIDENCE", 0.85, 0, 1);
   const lowDefault = num(env, "SYSTEM_ONE_LOW_CONFIDENCE", 0.5, 0, 1);
   const surfaces = (env.SYSTEM_ONE_FAST_PATH_SURFACES ?? "voice")
@@ -66,13 +66,16 @@ export function resolveSystemOneConfig(env: Env = process.env): SystemOneConfig 
     .map((s) => s.trim())
     .filter((s): s is SystemOneSurface => SURFACES.has(s));
 
+  const baseUrl = (env.SYSTEM_ONE_BASE_URL?.trim() || (env.SYSTEM_ONE_API_KEY?.trim() || env.TYPESAFE_API_KEY?.trim() || !env.OPENROUTER_API_KEY?.trim()
+    ? "https://api.typesafe.ai" : "https://openrouter.ai/api")).replace(/\/+$/, "");
+  const openRouter = /^https:\/\/openrouter\.ai(?:\/|$)/.test(baseUrl);
   return {
     mode,
     provider: "jev",
-    apiKey: env.SYSTEM_ONE_API_KEY?.trim() || env.OPENROUTER_API_KEY?.trim() || null,
-    baseUrl: (env.SYSTEM_ONE_BASE_URL?.trim() || "https://openrouter.ai/api").replace(/\/+$/, ""),
-    // Pinned, not jev-latest: thresholds are tuned against one model version.
-    model: env.SYSTEM_ONE_MODEL?.trim() || "jev-1.13",
+    apiKey: env.SYSTEM_ONE_API_KEY?.trim() || env.TYPESAFE_API_KEY?.trim() || env.OPENROUTER_API_KEY?.trim() || null,
+    baseUrl,
+    // Preserve explicit aliases/pins; defaults match the selected provider.
+    model: env.SYSTEM_ONE_MODEL?.trim() || (openRouter ? "~typesafe/jev-latest" : "jev-1.13.0"),
     timeoutMs: num(env, "SYSTEM_ONE_TIMEOUT_MS", 400, 50, 5_000),
     voiceTimeoutMs: num(env, "SYSTEM_ONE_VOICE_TIMEOUT_MS", 250, 50, 5_000),
     thresholds: {

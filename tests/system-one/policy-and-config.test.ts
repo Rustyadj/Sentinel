@@ -84,10 +84,10 @@ describe("confidence-gated routing", () => {
 });
 
 describe("configuration", () => {
-  it("defaults to off, with a pinned model and strict timeouts", () => {
+  it("defaults to active, with a pinned model and strict timeouts", () => {
     const c = resolveSystemOneConfig({});
-    expect(c.mode).toBe("off");
-    expect(c.model).toBe("jev-1.13");
+    expect(c.mode).toBe("active");
+    expect(c.model).toBe("jev-1.13.0");
     expect(c.voiceTimeoutMs).toBe(250);
     expect(c.apiKey).toBeNull();
     expect([...c.fastPathSurfaces]).toEqual(["voice"]);
@@ -151,5 +151,17 @@ describe("decision bundle", () => {
     expect(d.complexity).toBe(1);
     expect(d.suggestedModel).toBe("gpt-5.6-luna");
     expect(d.suggestedTool).toBeNull();
+  });
+});
+
+describe("provider defaults", () => {
+  it("uses the direct API with a TypeSafe key", () => {
+    expect(resolveSystemOneConfig({ TYPESAFE_API_KEY: "test" })).toMatchObject({ apiKey: "test", baseUrl: "https://api.typesafe.ai", model: "jev-1.13.0", mode: "active" });
+  });
+  it("keeps legacy OpenRouter credentials on their own endpoint and model namespace", () => {
+    expect(resolveSystemOneConfig({ OPENROUTER_API_KEY: "test" })).toMatchObject({ baseUrl: "https://openrouter.ai/api", model: "~typesafe/jev-latest" });
+  });
+  it("preserves an explicit URL and model", () => {
+    expect(resolveSystemOneConfig({ SYSTEM_ONE_API_KEY: "test", SYSTEM_ONE_BASE_URL: "https://api.typesafe.ai/", SYSTEM_ONE_MODEL: "jev-preview" })).toMatchObject({ baseUrl: "https://api.typesafe.ai", model: "jev-preview" });
   });
 });

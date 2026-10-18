@@ -1,3 +1,4 @@
+import { classifyDispatch, observeDispatch } from "@/lib/system-one/dispatch";
 import { db } from "@/lib/db";
 import { getVpsAgent } from "@/lib/agents/registry";
 import { RUNTIME_AGENT_MAP, runtimeEventText } from "@/lib/agents/runtime/chat-routing";
@@ -51,8 +52,11 @@ export async function runAgentTurn(input: { roomId: string; agentId: string; use
     session = await db.agentSession.update({ where: { id: created.id }, data: { chatRoomId: input.roomId } });
   }
 
+  const modelMetadata = session.metadata as Record<string, unknown> | null;
+  const routing = await classifyDispatch({ agentId: input.agentId, userId: input.userId, request: input.prompt, roomId: input.roomId, surface: "collaboration",
+    configuredModel: typeof modelMetadata?.requestedModel === "string" ? modelMetadata.requestedModel : runtime.model });
   let fullContent = "";
-  for await (const event of adapter.send({ sessionId: session.id, prompt: input.prompt, userId: input.userId })) {
+  for await (const event of observeDispatch(routing, adapter.send({ sessionId: session.id, prompt: input.prompt, userId: input.userId }))) {
     const text = runtimeEventText(event);
     if (text) fullContent += text;
     // The runtime rejected the requested model itself — surface this as a

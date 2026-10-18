@@ -95,8 +95,8 @@ export class JevProvider implements SystemOneProvider {
 
     if (!response.ok) {
       // 401/422 are configuration bugs; 429/529 are load. Both mean "not now".
-      const detail = (await response.text().catch(() => "")).slice(0, 200);
-      throw new SystemOneProviderError(`System One API ${response.status}: ${detail}`, "http", response.status);
+      // Never persist provider bodies: they may echo request content or credentials.
+      throw new SystemOneProviderError(`System One API ${response.status}`, "http", response.status);
     }
 
     const body = (await response.json().catch(() => null)) as {

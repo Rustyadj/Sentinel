@@ -1,3 +1,4 @@
+import { classifyDispatch, observeDispatch } from "@/lib/system-one/dispatch";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getAdapterForRuntime } from "@/lib/agents/runtime/service";
@@ -106,6 +107,11 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   // is widened here.
   // Bots take memory through the same governed path but with their own scope
   // policy (see bots/memory.ts), so they do not use the generic retrieval below.
+  const channel = (run.request as { channel?: { kind?: string; chatRoomId?: string } }).channel;
+  const routing = await classifyDispatch({ agentId: run.resolvedAgentId, userId: run.userId, request: task, executionRef: run.id,
+    roomId: channel?.chatRoomId, surface: channel?.kind === "telegram" ? "telegram" : "orchestration", configuredModel: botExec?.requestedModel ?? runtime.model, memoryRetrievalSkippable: !botExec });
+  const systemOneContext = { decisionId: routing.recordId, agentId: run.resolvedAgentId, memorySkipped: routing.skipMemory };
+  await db.orchestrationRun.update({ where: { id: run.id }, data: { contextSnapshot: json({ ...(run.contextSnapshot as Record<string, unknown> | null ?? {}), systemOne: systemOneContext }) } });
   let prompt: string;
   if (botExec) {
     try {
@@ -120,7 +126,7 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
       return;
     }
   } else {
-    const memory = await buildMemoryContext(
+    const memory = routing.skipMemory ? { context: { text: "", injected: [], droppedMemoryIds: [], estimatedTokens: 0 }, knowledgeObjectIds: [], retrievedMemoryIds: [] } : await buildMemoryContext(
       {
         userId: run.userId,
         // The task text is the query: memory is ranked against the work being
@@ -140,6 +146,7 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
         retrievedObjectIds: memory.knowledgeObjectIds,
         contextSnapshot: json({
           ...(run.contextSnapshot as Record<string, unknown> | null ?? {}),
+          systemOne: systemOneContext,
           memory: {
             retrieved: memory.retrievedMemoryIds.length,
             injected: memory.context.injected.length,
@@ -183,7 +190,7 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   let text = "";
   try {
     if (botExec) await botExec.useSession(session);
-    for await (const event of adapter.send({ sessionId: session.id, userId: run.userId, prompt, ...(botExec ? { authorizeTool: botExec.authorizeTool } : {}) })) {
+    for await (const event of observeDispatch(routing, adapter.send({ sessionId: session.id, userId: run.userId, prompt, ...(botExec ? { authorizeTool: botExec.authorizeTool } : {}) }))) {
       if (ownershipLost) throw new Error("Execution ownership lease was lost; adapter cancellation was requested.");
       if (event.type === "assistant_delta" && typeof event.data.text === "string") text += event.data.text;
       if (botExec) {

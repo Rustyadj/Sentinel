@@ -1,105 +1,98 @@
-# System 1 (Jev) — Sentinel's reflex layer
+# Jev System-1 routing
 
-Decision record: [decisions.md ADR-004](decisions.md). Code: `src/lib/system-one/`.
+Sentinel reuses `src/lib/system-one`: one batched TypeSafe evaluation, the existing confidence policy, circuit breaker, decision table and metrics API. The repository default is now `active`. Jev classifies; the assigned runtime and its primary reasoning model execute. No new queue, executor, memory store or model substitution policy is introduced.
 
-System 1 answers *what kind of thing is happening and which path should handle
-it* — never *what to tell the human*. It routes between paths; it never chooses
-which model thinks (the agent's configured model always does).
-
-```
- User ─ GPT-Live (voice) / chat UI
-          │
-          ▼
-  Sentinel route  (/api/voice/reasoning, /api/chat)
-          │  begin: ONE batched Jev call (intent, route, tool, needs*, scores)
-          ├──────────────┬───────────────────────────┐   concurrently:
-          │              │                           │   read-only prep only
-          ▼              ▼                           ▼   (memory retrieval,
-   policy (confidence   memory retrieval        warm caches:  tool catalog,
-   gates routing, not   (chat, model_chat)      runtime readiness, Jev conn)
-   truth)
-          │
-   ┌──────┼───────────────────────────┬───────────────────────────┐
-   ▼      ▼                           ▼                           ▼
- fast_path_tool              system2_skip_memory               system2
- read-only MCP tool of        model call starts without        today's path:
- THIS agent (readOnlyHint)    waiting for retrieval            agent runtime
- → structured data            (race: never slower)             (Hermes / Claude
- → GPT-Live presents it                                         Code / Codex)
-   │ failure ──────────────────────────────────────────────────────▲
-   ▼
- response  ── system_one_decisions row (decision, plan, what ran, phases, cost)
+```mermaid
+flowchart LR
+  T[Telegram webhook] --> I[Durable inbox and governed task admission]
+  I --> Q[Existing orchestration queue]
+  U[Sentinel UI / API] --> A[Existing authentication and authorization]
+  Q --> B[Bot policy and fixed agent binding]
+  A --> J[Jev System-1 decision]
+  B --> J
+  J --> P[Existing confidence and dispatch policy]
+  P --> M[Authorized Sentinel memory]
+  M --> R[Assigned Hermes / Lisa / Nathan2 / Claude Code / Codex]
+  R --> H[Existing approvals, audit, usage and persistence]
+  H --> O[Sentinel UI or Telegram outbox]
 ```
 
-Hierarchy: **Jev** (System 1, routes) → **Hermes / runtimes** (agent identity,
-memory, tools, writes) → **agent's configured model** (System 2) → **GPT-Live**
-(realtime human interface).
+The Telegram branch is a prerequisite for that channel. Its native-consumer cutover and trusted Hermes execution boundary must be verified before enabling it. This diagram does not claim a completed live cutover.
 
-## Where it runs
+## Audit findings (2026-10-18)
 
-| Surface | Off | Shadow | Active |
-|---|---|---|---|
-| Voice (`/api/voice/reasoning`) | unchanged; baseline row recorded | Jev runs **alongside** System 2, adds 0 ms, records the would-be plan | awaits Jev (≤ `SYSTEM_ONE_VOICE_TIMEOUT_MS`), then read-only tool fast path or System 2 |
-| Chat, direct-model agents | unchanged | Jev alongside retrieval, recorded | Jev **races** memory retrieval; a confident "no memory needed" starts the model early |
-| Chat, runtime agents (Hermes, Claude Code, Codex) | unchanged | recorded, scored against the tools the runtime actually called | **same as shadow** — see limitations |
+- Development/code and Compose previously defaulted to `off`; presence of the provider did not activate it.
+- Running app: global `shadow`, Nathan2 override `active`, Lisa inherited shadow; direct TypeSafe endpoint, configured `jev-latest`. Runtime chat forcibly recorded active as shadow and ran classification concurrently with execution. Thus Nathan2's setting did not enforce a pre-dispatch decision there.
+- Running orchestration worker: no System-1 configuration or key. Bot tasks, delegated orchestration, collaboration turns, session-message API and bot proposal generation bypassed the existing classifier.
+- Direct-model chat and voice reasoning already used System-1. Voice's existing explicit read-only fast path is preserved. Health, discovery, empty session creation, cancellation, internal maintenance/learning experiments and local CLI invocations are not user request classification surfaces.
+- Native Hermes Telegram consumers and dashboards are outside the Sentinel request boundary. Repository changes cannot establish exclusive production routing while those paths remain live. See [Telegram cutover and blockers](telegram/GATEWAY.md).
 
-Interruption (voice): barge-in aborts the in-flight `/api/voice/reasoning`
-fetch; the server aborts the Jev call, cancels the runtime session
-(`adapter.cancel`, audited as `voice_interrupt`) and never speaks the stale
-answer. The cancelled call gets a `superseded` output with no `response.create`.
+## Dispatch coverage and policy
 
-## Configuration
-
-All env, resolved per request (per-agent overrides need no redeploy of code,
-only of env). Compose passes each variable explicitly (`docker-compose.yml`).
-
-| Variable | Default | Meaning |
+| Entry point | Classification boundary | Execution policy |
 |---|---|---|
-| `SYSTEM_ONE_MODE` | `off` | `off` / `shadow` / `active`, global |
-| `SYSTEM_ONE_MODE_<AGENT>` | – | per-agent override, e.g. `SYSTEM_ONE_MODE_HERMES_NATHAN2=active` |
-| `SYSTEM_ONE_ENABLED` | `true` | `false` = hard kill switch, beats every mode |
-| `SYSTEM_ONE_API_KEY` | `OPENROUTER_API_KEY` | provider key |
-| `SYSTEM_ONE_BASE_URL` | `https://openrouter.ai/api` | or `https://api.typesafe.ai` |
-| `SYSTEM_ONE_MODEL` | `jev-1.13` | pinned; re-tune thresholds before changing |
-| `SYSTEM_ONE_TIMEOUT_MS` / `_VOICE_TIMEOUT_MS` | 400 / 250 | hard ceiling on the wait |
-| `SYSTEM_ONE_HIGH_CONFIDENCE` / `_LOW_CONFIDENCE` | 0.85 / 0.5 | global band |
-| `SYSTEM_ONE_{ROUTE,TOOL}_{HIGH,LOW}_CONFIDENCE` | global band | per-decision bands |
-| `SYSTEM_ONE_NOUL_THRESHOLD` | 0.9 | a yes/no is "firm" at ≥ this or ≤ 1 − this |
-| `SYSTEM_ONE_FAST_PATH_SURFACES` | `voice` | surfaces allowed to fast-path |
-| `SYSTEM_ONE_BREAKER_FAILURES` / `_OPEN_MS` | 5 / 30000 | circuit breaker |
-| `SYSTEM_ONE_WARMUP` | `true` | warm Jev + tool catalog + runtime at voice session start |
-| `SYSTEM_ONE_BASELINE_TELEMETRY` | `true` | record off-mode rows as the "current Sentinel" baseline |
-| `SENTINEL_AGENT_MCP_<AGENT>_URL` / `_TOKEN` / `_NAME` | – | that agent's own MCP credential for read-only fast paths |
+| Direct-model `/api/chat` | After existing user/room/agent access checks | Active mode awaits classification; may omit unnecessary memory retrieval, never expand access |
+| Runtime chat, including voice's existing runtime call | `routeRuntimeChat`, after runtime and session scope authorization | Retain assigned agent/model, dispatch System-2 |
+| `/api/agent-sessions/:id/messages` | After owner/runtime execution authorization | Retain session and pinned model |
+| Collaboration, direct mentions and delegated worker turns | `runAgentTurn`, after runtime authorization | Preserve existing lead, worker selection and worktree rules |
+| Queued runs, bot tasks, Telegram | Existing orchestration executor, after bot policy and runtime verification | Same queue and tool authorization callback; bot memory policy is mandatory |
+| Bot proposal generation | Authorized generation service dispatch | Same selected host and generation behavior |
+| Existing voice reasoning | Existing voice System-1 implementation | No unrelated Telnyx or GPT-Live changes |
 
-Nathan2's MobileOps credential is the same token Hermes Nathan2 uses
-(`mcp_servers.mobileops` in its Hermes config); MobileOps authenticates it as
-Nathan2 and enforces its own scopes. No other agent can resolve it.
+The existing voice handler shares its already-classified turn through a server-owned async scope, matching user, agent and request exactly; the runtime call does not pay for a second classification. No client parameter can create that scope.
 
-## Rollout (do not skip shadow)
+`classifyDispatch` extends the existing turn/service seam. It supplies no connector tools, so classification cannot execute a tool or bypass bot approvals. It records the assigned agent/model as immutable constraints. Existing capability/workload selection remains authoritative; Jev does not automatically reassign agents or choose a different model. The generated decision includes intent, complexity, System-2 probability, memory need and a metadata-only memory category recommendation.
 
-1. Deploy with `SYSTEM_ONE_MODE=off`. Apply migration `20260926120000_system_one_decisions` (additive). Off-mode rows accumulate the measured baseline.
-2. Set the key, `SYSTEM_ONE_MODE=shadow`. Watch `GET /api/system-one/metrics` and the Mission Control "System 1 (Jev)" health line: fallback rate, S1 p50/p95, `shadowToolAgreement`.
-3. Run `npx tsx bench/system1/run.ts --repeat 3` (add `--tools` with the Nathan2 connector set). It must report **0 unsafe fast paths**; review wrong-tool and wrong-memory-skip counts, tune thresholds.
-4. Promote one agent: `SYSTEM_ONE_MODE_HERMES_NATHAN2=active`, other agents stay shadow.
-5. Compare active vs off/shadow rows (`totalLatency`, `ttfa` by `executedPath`) before widening.
+Complex, coding, write and ambiguous requests remain System-2 work. A simple greeting also uses the assigned conversational model: Jev returns judgments, not user-facing prose. Only the existing explicitly configured voice read-only tool path can avoid System-2 calls. Enabling Jev therefore adds classifier cost on most requests; it does not guarantee net savings.
 
-## Rollback
+Memory category recommendations never become access grants or direct scope filters. The existing retrieval ACLs, provenance, confidence/contradiction handling, retention and bot memory policy own what may be retrieved/injected. Generic chat and non-bot queued runs may skip optional retrieval with high confidence. Bots always prepare their governed memory. No retrieved memory content is fetched for Jev. Requests are bounded to 4,000 characters; existing chat history input remains bounded to two short turns. Collaboration prompts may already contain authorized context prepared upstream; this change does not make Jev their memory authority.
 
-Any of these, fastest first — none needs a code change or migration rollback:
+## Provider and configuration
 
-- `SYSTEM_ONE_ENABLED=false` (or `SYSTEM_ONE_MODE=off`) and restart the app container: every request takes the pre-System-1 path. Only a baseline telemetry row is written (disable with `SYSTEM_ONE_BASELINE_TELEMETRY=false`).
-- Per agent: `SYSTEM_ONE_MODE_<AGENT>=shadow` or `off`.
-- Remove the fast path only: `SYSTEM_ONE_FAST_PATH_SURFACES=none` or unset the agent's `SENTINEL_AGENT_MCP_*` vars.
-- Full revert: revert the branch. `system_one_decisions` is unused by anything else and can be left or dropped.
+The live synthetic probes confirmed `api.typesafe.ai` serves the existing `jev-latest` setting as **`jev-1.13.0`**. Current [TypeSafe model documentation](https://docs.typesafe.ai/models) lists that version as stable and 1.14 as preview. The direct default pins `jev-1.13.0`; explicit model settings are preserved. HTTP uses the existing [System One endpoint](https://docs.typesafe.ai/api), not a text completion API.
 
-The provider failing needs no action: timeouts, errors, malformed answers and
-an open breaker all fall back to today's routing automatically.
+| Variable | Default / behavior |
+|---|---|
+| `SYSTEM_ONE_ENABLED` | `true`; `false` is the hard kill switch, including per-agent overrides |
+| `SYSTEM_ONE_MODE` | `active`; explicit `off`/`shadow` are retained |
+| `SYSTEM_ONE_MODE_<AGENT>` | Optional override; e.g. `HERMES_LISA`, `HERMES_NATHAN2`, `CLAUDE_CODE`, `CODEX` |
+| `SYSTEM_ONE_API_KEY` | Preferred key; then `TYPESAFE_API_KEY`, then legacy `OPENROUTER_API_KEY` |
+| `SYSTEM_ONE_BASE_URL` | Direct `https://api.typesafe.ai`; OpenRouter-only key selects `https://openrouter.ai/api` when no URL is supplied |
+| `SYSTEM_ONE_MODEL` | Direct `jev-1.13.0`; OpenRouter `~typesafe/jev-latest`; explicit value wins |
+| `SYSTEM_ONE_TIMEOUT_MS` | 400; bounded 50–5000 ms, hard deadline even if provider ignores abort |
+| `SYSTEM_ONE_VOICE_TIMEOUT_MS` | Existing 250 ms voice budget |
+| `SYSTEM_ONE_HIGH_CONFIDENCE` / `_LOW_CONFIDENCE` | Existing .85 / .5 thresholds |
+| `SYSTEM_ONE_NOUL_THRESHOLD` | Existing .9 threshold |
+| `SYSTEM_ONE_FAST_PATH_SURFACES` | Existing `voice`; `none` disables all tool fast paths |
+| `SYSTEM_ONE_BREAKER_FAILURES` / `_OPEN_MS` | Existing 5 failures / 30000 ms |
 
-## Known limitations
+Compose passes identical routing settings and credentials to the app and orchestration worker. Existing production `.env` overrides are not rewritten automatically. Restart both processes when changing provider settings; their provider instance/breaker is process-local.
 
-- **Free-text arguments.** Jev chooses; it cannot extract. A tool whose required argument is an id, a date or a name is never fast-pathed, so "what tools are assigned to Nick?" still goes to Hermes. MobileOps currently has no enum-typed arguments; its 14 no-required-argument read tools are the fast-path set, called unfiltered.
-- **Runtime chat is never routed**, only observed: the runtime owns that turn's persistence and memory, and typed chat has no layer that presents raw tool data the way GPT-Live does.
-- **Active voice waits for Jev** (≤ 250 ms) on turns that end up in System 2, because System 2 can take write actions and is never started speculatively. Offsets: runtime readiness is cached/warmed, and the tool catalog and Jev connection are warmed at session start.
-- **Savings in dollars are null** for models without a rate card entry in `src/lib/agents/pricing.ts` — today that includes `gpt-5.6-luna` and `deepseek/deepseek-v4.1-flash`, i.e. both Hermes agents. Token savings are still recorded.
-- **Tokens avoided are an estimate** from the same agent's recent System 2 turns on the same surface; no history → null.
-- **TTFA** is client-measured (speech end → first answer audio) and reported best-effort.
+Provider failure, missing key, malformed answer, deadline or open breaker produce an explicit fallback: assigned System-2 agent/model with normal governed memory, permissions and approvals. There is no model fallback caused by Jev. The underlying runtime's existing independently authorized fallback policy remains unchanged. No retries occur inside the classifier budget.
+
+## Observability and availability
+
+Mission Control's System-1 health link opens `/system-one`. The existing authenticated `/api/system-one/metrics` returns caller-scoped aggregates and recent decision metadata; administrators retain the existing broader view. It includes effective agent modes, provider model, outcome, assigned agent/model, latency, token usage, reported cost, fallbacks, System-2 dispatch rate, cost estimates and shadow tool agreement. No prompts, memory contents or credentials are returned.
+
+Queued runs persist the decision ID in `contextSnapshot.systemOne`; structured `system_one.dispatch` logs correlate it with the run. Actual dispatch and observed model/tool/token events update the same decision row. Decision persistence remains best effort under database failure, as in the existing telemetry service. Failed provider response bodies are not logged.
+
+Availability is passive: a successful decision within 15 minutes is evidence, not merely a configured key. Missing/stale success is unverified, an open breaker is down and high fallback rate is degraded. Health and maintenance never call Jev as a prerequisite. Operators can run the synthetic read-only provider check:
+
+```sh
+node_modules/.bin/tsx scripts/system-one/probe.ts
+```
+
+The probe uses configured credentials and four synthetic coding requests, never an agent execution. Existing labeled routing evaluation remains `node_modules/.bin/tsx bench/system1/run.ts --repeat 3` (optional tool execution requires its separate `--tools` flag). Shadow tool agreement is a proxy, not measured routing accuracy. Provider responses without price leave cost unknown; net savings are unknown when successful decisions are unpriced.
+
+## Deployment and rollback
+
+1. Review the dedicated Jev PR and prerequisite Telegram PR separately. Resolve inherited build/security findings and the gateway's execution-boundary/cutover blockers before enabling Telegram.
+2. Configure a valid provider key, URL and provider-appropriate model. To use the verified direct provider: `SYSTEM_ONE_BASE_URL=https://api.typesafe.ai`, `SYSTEM_ONE_MODEL=jev-1.13.0`.
+3. Set `SYSTEM_ONE_ENABLED=true`, `SYSTEM_ONE_MODE=active`; review/remove per-agent `off`/`shadow` overrides intentionally. Merely deploying the new code will not override production's current explicit `shadow` value.
+4. Build the reviewed immutable release and restart app and orchestration worker with the same config. No Jev schema migration is required: the existing `system_one_decisions` model and run context JSON suffice. The prerequisite gateway has its own additive migration.
+5. Run the synthetic provider probe, then authenticated UI/API checks for each runtime. Inspect recent decision rows and correlated task IDs. Verify the actual primary models remain unchanged and bot tool approvals still hold execution.
+6. Follow the gateway's controlled live procedure before claiming Lisa/Nathan2 Telegram routing works. Verify only one native update consumer per bot and the trusted pre-tool proof. Do not disable the working bots prematurely.
+
+Rollback: set `SYSTEM_ONE_ENABLED=false` on app and orchestration worker and restart both. This preserves existing runtime authorization and bot approvals while restoring pre-classifier dispatch. Per-agent `shadow`/`off` are narrower options; no decision rows are removed. Telegram rollback is a separate controlled operation documented in its gateway guide.
+
+See [verification results and remaining release gates](SYSTEM_ONE_VERIFICATION.md).

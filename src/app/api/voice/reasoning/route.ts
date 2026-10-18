@@ -1,3 +1,4 @@
+import { withClassifiedTurn } from "@/lib/system-one/dispatch";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
@@ -134,14 +135,14 @@ export async function POST(req: NextRequest) {
   let result;
   trace.mark("system2_start");
   try {
-    result = await runVoiceReasoningTurn({
+    result = await withClassifiedTurn({ agentId: config.agentId, userId: user.id, request }, () => runVoiceReasoningTurn({
       agentId: config.agentId,
       userId: user.id,
       roomId: body.roomId,
       request,
       signal,
       onFirstText: () => trace.mark("system2_first_token"),
-    });
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Reasoning failed";
     return NextResponse.json({ error: message.slice(0, 240) }, { status: 502 });
