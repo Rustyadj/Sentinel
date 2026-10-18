@@ -269,7 +269,7 @@ function ToolsTab({ bot, detail, catalog, reload }: { bot: Bot; detail: Detail; 
   };
   return (
     <div className="max-w-[820px] space-y-5">
-      <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">A bot starts with no tools. Set access per server, then override per tool. Read only covers tools the server itself marks read-only. Sentinel checks each tool call as Hermes reports it; a call outside these grants stops the task. It cannot block a call before Hermes makes it.</p>
+      <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">A bot starts with no tools. Set access per server, then override per tool. Read only covers tools the server itself marks read-only. On a Hermes host with Sentinel&apos;s pre-execution gate installed, each call is checked before it runs and a call outside these grants is refused. On any other host Sentinel checks each call as Hermes reports it and stops the task; it cannot block that call before Hermes makes it. Each task records which applied.</p>
       {msg ? <Notice tone="info">{msg}</Notice> : null}
       <ul className="space-y-2">
         {catalog.map((s) => {
