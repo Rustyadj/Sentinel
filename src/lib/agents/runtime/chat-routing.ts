@@ -9,7 +9,7 @@ import { asRuntimeInstance } from "./config";
 import { getRuntimeAdapter } from "./service";
 import { RuntimeError } from "./errors";
 import { runtimeSessionStore } from "./store";
-import type { RuntimeEvent } from "./types";
+import type { RuntimeEvent, RuntimeView } from "./types";
 import { isReportedTokenUsage } from "@/lib/agents/pricing";
 
 export type ChatExecutionMode = "model_chat" | "persistent_agent_runtime" | "coding_runtime" | "workflow_runtime";
@@ -64,10 +64,14 @@ export async function routeRuntimeChat(input: {
   roomId?: string;
   userContent: string;
   mode: ChatExecutionMode;
-}) {
+}, authorize?: (runtimeId: string) => Promise<RuntimeView>) {
   const route = RUNTIME_AGENT_MAP[input.agentId];
   if (!route || route.mode !== input.mode) throw new RuntimeError("Selected agent does not support this execution mode", "execution_mode_mismatch", 422);
-  const { runtime } = await requireRuntimeAccess(route.runtimeId, RUNTIME_PERMISSIONS.execute);
+  // Machine channel ingress supplies an authorizer bound to its verified sender.
+  // Browser callers retain the normal session + workspace permission check.
+  const runtime = authorize
+    ? await authorize(route.runtimeId)
+    : (await requireRuntimeAccess(route.runtimeId, RUNTIME_PERMISSIONS.execute)).runtime;
   const adapter = getRuntimeAdapter(runtime.kind);
   const readiness = await checkReadiness(runtime);
   if (!readiness.ready) throw new RuntimeError(`Runtime unavailable: ${readiness.reason ?? "not ready"}`, "runtime_not_ready", 503);
