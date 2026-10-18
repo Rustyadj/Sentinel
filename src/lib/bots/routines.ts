@@ -278,6 +278,14 @@ export async function sweepRoutines() {
   for (const run of pending) await dispatchRoutineRun(run.id).catch((error: unknown) => { errors.push({ id: run.id, error: error instanceof Error ? error.message : String(error) }); });
   const due = await db.workflow.findMany({ where: { kind: "routine", status: "enabled", nextRunAt: { lte: new Date() } }, orderBy: { nextRunAt: "asc" }, take: 50 });
   for (const workflow of due) {
+    // Routines name their bot and workspace without foreign keys. A bot deleted with its workspace (or any way
+    // other than deleteBot) would otherwise fail here every interval; pause the routine instead.
+    const bot = workflow.botId ? await db.bot.findFirst({ where: { id: workflow.botId, ...(workflow.workspaceId ? { workspaceId: workflow.workspaceId } : {}) }, select: { id: true } }) : null;
+    if (!bot) {
+      await db.workflow.updateMany({ where: { id: workflow.id, status: "enabled" }, data: { status: "paused", nextRunAt: null } });
+      errors.push({ id: workflow.id, error: "The routine's bot or workspace no longer exists; the routine was paused." });
+      continue;
+    }
     await requestRoutineRun(workflow.id, "schedule", workflow.nextRunAt!.toISOString(), undefined, workflow.nextRunAt!)
       .catch((error: unknown) => { errors.push({ id: workflow.id, error: error instanceof Error ? error.message : String(error) }); });
   }
