@@ -170,8 +170,13 @@ export async function deleteBot(id: string, actorUserId: string): Promise<void> 
   if (!bot) throw new BotConfigError("Bot not found", 404);
   const active = await db.orchestrationRun.count({ where: { botId: id, status: { in: [...ACTIVE_RUN_STATUSES] } } });
   if (active > 0) throw new BotConfigError(`${bot.name} has ${active} task(s) in progress. Cancel them or wait before deleting.`, 409);
-  await db.bot.delete({ where: { id } });
-  await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.deleted", entityType: "Bot", entityId: id, details: { name: bot.name } });
+  // Routines name their bot without a foreign key. Pause any that are enabled in the same transaction, so the
+  // sweep never keeps dispatching to a bot that is gone (each attempt would fail and schedule the next).
+  const [paused] = await db.$transaction([
+    db.workflow.updateMany({ where: { kind: "routine", botId: id, status: "enabled" }, data: { status: "paused", nextRunAt: null } }),
+    db.bot.delete({ where: { id } }),
+  ]);
+  await writeAuditLog({ workspaceId: bot.workspaceId, userId: actorUserId, action: "bot.deleted", entityType: "Bot", entityId: id, details: { name: bot.name, routinesPaused: paused.count } });
 }
 
 export async function duplicateBot(id: string, actorUserId: string, name?: string): Promise<BotRecord> {
