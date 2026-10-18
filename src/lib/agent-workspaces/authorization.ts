@@ -71,14 +71,19 @@ export async function requireWorkspaceAccess(
   const user = await requireUser().catch(() => {
     throw new WorkspaceAccessError("Unauthorized", 401);
   });
+  const workspace = await assertUserWorkspaceAccess(agentWorkspaceId, user.id, permission);
+  return { user, workspace };
+}
+
+export async function assertUserWorkspaceAccess(agentWorkspaceId: string, userId: string, permission: AgentWorkspacePermission) {
   const workspace = await loadWorkspaceOrThrow(agentWorkspaceId);
 
-  if (!(await userHasWorkspacePermission(user.id, workspace.workspaceId, permission))) {
+  if (!(await userHasWorkspacePermission(userId, workspace.workspaceId, permission))) {
     throw new WorkspaceAccessError(`Missing permission: ${permission}`, 403);
   }
 
-  if (workspace.ownerUserId !== user.id) {
-    const grant = await activeUserGrant(agentWorkspaceId, user.id);
+  if (workspace.ownerUserId !== userId) {
+    const grant = await activeUserGrant(agentWorkspaceId, userId);
     const required = PERMISSION_MIN_LEVEL[permission];
     if (!grant || LEVEL_RANK[grant.level as GrantLevel] < LEVEL_RANK[required]) {
       // Tenant RBAC alone never implies access to another owner's workspace.
@@ -90,7 +95,7 @@ export async function requireWorkspaceAccess(
   }
 
   assertMutable(workspace, permission);
-  return { user, workspace };
+  return workspace;
 }
 
 function assertMutable(workspace: AgentWorkspace, permission: AgentWorkspacePermission) {

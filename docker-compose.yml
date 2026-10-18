@@ -8,16 +8,17 @@ x-release-build-args: &release-build-args
   SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
 
 # What a worker needs to reach its runtimes. The orchestration worker is the
-# process that actually executes a claude-code/codex run, so it needs exactly what
-# the app has: the CLI binaries and their credentials (bind-mounted, never baked
-# into an image), a resolvable host.docker.internal for the Hermes dashboards, and
-# the same project root.
+# process that executes coding runs, so it needs the workspace Docker provider.
+# Legacy mounts remain for other runtimes; coding computers never use them.
+# Hermes dashboards still need a resolvable host.docker.internal.
 x-runtime-mounts: &runtime-mounts
   - agent_configs:/opt/sentinel-os/agents
   - agent_logs:/opt/sentinel-os/logs
   - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
   - ./runtime-agents/bin:/opt/runtime-bin:ro
   - ./runtime-agents/home:/opt/runtime-home:rw
+  - /var/run/docker.sock:/var/run/docker.sock
+  - /var/lib/sentinel/workspace-snapshots:/var/lib/sentinel/workspace-snapshots:rw
 
 x-worker-healthcheck: &worker-healthcheck
   # Fresh only while the worker can round-trip to Postgres and Redis (src/workers/heartbeat.ts).
@@ -168,10 +169,17 @@ services:
       # already has both installed and authenticated interactively; the
       # container reuses those same credentials rather than a fresh login.
       CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-/opt/runtime-bin/claude}
-      CLAUDE_CODE_PROJECT_ROOT: /opt/sentinel-os/projects
+      SENTINEL_CLAUDE_CODE_API_KEY: ${SENTINEL_CLAUDE_CODE_API_KEY:-}
+      SENTINEL_CODEX_API_KEY: ${SENTINEL_CODEX_API_KEY:-}
+      SENTINEL_CLAUDE_CODE_GIT_TOKEN: ${SENTINEL_CLAUDE_CODE_GIT_TOKEN:-}
+      SENTINEL_CLAUDE_CODE_GIT_USERNAME: ${SENTINEL_CLAUDE_CODE_GIT_USERNAME:-x-access-token}
+      SENTINEL_CODEX_GIT_TOKEN: ${SENTINEL_CODEX_GIT_TOKEN:-}
+      SENTINEL_CODEX_GIT_USERNAME: ${SENTINEL_CODEX_GIT_USERNAME:-x-access-token}
+      AGENT_WORKSPACE_DOCKER_BIN: ${AGENT_WORKSPACE_DOCKER_BIN:-docker}
+      CLAUDE_CODE_PROJECT_ROOT: /workspace/projects
       CLAUDE_CODE_WORKSPACE_ID: ${CLAUDE_CODE_WORKSPACE_ID:-}
       CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-/opt/runtime-bin/codex}
-      CODEX_PROJECT_ROOT: /opt/sentinel-os/projects
+      CODEX_PROJECT_ROOT: /workspace/projects
       CODEX_WORKSPACE_ID: ${CODEX_WORKSPACE_ID:-}
       HOME: /opt/runtime-home
       CLAUDE_CONFIG_DIR: /opt/runtime-home/.claude
@@ -249,11 +257,9 @@ services:
   # queue that /api/mcp's route_task and the bot task API enqueue. Without this
   # service a run is queued and never executed.
   #
-  # It executes the runtimes, so it is configured like the app for them: the CLI
-  # binaries and credentials mounted from the host, HOME/CLAUDE_CONFIG_DIR/CODEX_HOME
-  # pointing at the mounted home, and host.docker.internal resolvable (the Nathan2
-  # dashboard is only reachable through it). Before this, claude-code runs failed with
-  # `binary_missing` and Nathan2 was unreachable from the worker.
+  # Coding runs use the same Docker workspace provider as the app, with their
+  # own images, homes and per-exec keys. Legacy host mounts remain for other
+  # runtimes. Hermes dashboards use host.docker.internal.
   #
   # It waits on the same `migrate` completion gate as app: dispatch filters
   # candidates on agent_runtimes.executionVerified, which defaults to false, so
@@ -274,10 +280,17 @@ services:
       AGENT_LOG_DIR: /opt/sentinel-os/logs
       AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
       CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-/opt/runtime-bin/claude}
-      CLAUDE_CODE_PROJECT_ROOT: /opt/sentinel-os/projects
+      SENTINEL_CLAUDE_CODE_API_KEY: ${SENTINEL_CLAUDE_CODE_API_KEY:-}
+      SENTINEL_CODEX_API_KEY: ${SENTINEL_CODEX_API_KEY:-}
+      SENTINEL_CLAUDE_CODE_GIT_TOKEN: ${SENTINEL_CLAUDE_CODE_GIT_TOKEN:-}
+      SENTINEL_CLAUDE_CODE_GIT_USERNAME: ${SENTINEL_CLAUDE_CODE_GIT_USERNAME:-x-access-token}
+      SENTINEL_CODEX_GIT_TOKEN: ${SENTINEL_CODEX_GIT_TOKEN:-}
+      SENTINEL_CODEX_GIT_USERNAME: ${SENTINEL_CODEX_GIT_USERNAME:-x-access-token}
+      AGENT_WORKSPACE_DOCKER_BIN: ${AGENT_WORKSPACE_DOCKER_BIN:-docker}
+      CLAUDE_CODE_PROJECT_ROOT: /workspace/projects
       CLAUDE_CODE_WORKSPACE_ID: ${CLAUDE_CODE_WORKSPACE_ID:-}
       CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-/opt/runtime-bin/codex}
-      CODEX_PROJECT_ROOT: /opt/sentinel-os/projects
+      CODEX_PROJECT_ROOT: /workspace/projects
       CODEX_WORKSPACE_ID: ${CODEX_WORKSPACE_ID:-}
       HOME: /opt/runtime-home
       CLAUDE_CONFIG_DIR: /opt/runtime-home/.claude
@@ -295,6 +308,8 @@ services:
       HERMES_NATHAN2_SESSION_TOKEN: ${HERMES_NATHAN2_SESSION_TOKEN:-}
       HERMES_NATHAN2_MODEL: ${HERMES_NATHAN2_MODEL:-gpt-5.6-luna}
     volumes: *runtime-mounts
+    group_add:
+      - "${DOCKER_GID:-988}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck: *worker-healthcheck

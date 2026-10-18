@@ -1,6 +1,6 @@
 # VPS Deployment Guide
 
-Sentinel OS runs on the VPS as the default web UI. Hermes Lisa and Hermes Nathan2 are managed backend agent services accessible from Sentinel's Agent Registry; Claude Code and Codex run as process-transport coding runtimes.
+Sentinel OS runs on the VPS as the default web UI. Hermes Lisa and Hermes Nathan2 are managed backend agent services accessible from Sentinel's Agent Registry; Claude Code and Codex run through their dedicated persistent Agent Workspaces. Follow [coding-computer provisioning and acceptance](CODING_AGENT_COMPUTERS.md) when rolling out this change; both app and orchestration worker require Docker access and separate per-agent keys.
 
 ## Architecture
 

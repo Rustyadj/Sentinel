@@ -111,6 +111,8 @@ CMD ["node", "server.js"]
 # consistently. Built once and used by both workers, from the same release.
 FROM node:20-bookworm-slim AS worker
 
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+
 ARG SENTINEL_COMMIT=unknown
 ARG SENTINEL_BUILT_AT=unknown
 

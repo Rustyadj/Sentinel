@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates curl git openssh-client gnupg jq unzip zip \
-      python3 python3-pip python3-venv build-essential ripgrep less procps coreutils findutils tar gzip \
+      python3 python3-pip python3-venv build-essential ripgrep less procps coreutils findutils tar gzip util-linux \
     && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g pnpm@10 \

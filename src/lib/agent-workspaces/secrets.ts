@@ -9,24 +9,25 @@ export type SecretScope = "git";
 
 const REDACTION = "[redacted]";
 
-export function resolveSecrets(scope: SecretScope): Record<string, string> {
+export function resolveSecrets(scope: SecretScope, agentId?: string): Record<string, string> {
   if (scope !== "git") return {};
-  const token = process.env.SENTINEL_WORKSPACE_GIT_TOKEN?.trim();
+  const prefix = agentId === "claude-code" ? "SENTINEL_CLAUDE_CODE_GIT" : agentId === "codex" ? "SENTINEL_CODEX_GIT" : "SENTINEL_WORKSPACE_GIT";
+  const token = process.env[`${prefix}_TOKEN`]?.trim();
   if (!token) return {};
   return {
     // Consumed by the credential helper configured in the workspace image.
     GIT_ASKPASS: "/usr/local/bin/sentinel-git-askpass",
-    SENTINEL_GIT_USERNAME: process.env.SENTINEL_WORKSPACE_GIT_USERNAME?.trim() || "x-access-token",
+    SENTINEL_GIT_USERNAME: process.env[`${prefix}_USERNAME`]?.trim() || "x-access-token",
     SENTINEL_GIT_TOKEN: token,
     GIT_TERMINAL_PROMPT: "0",
   };
 }
 
-export function requireSecrets(scope: SecretScope) {
-  const secrets = resolveSecrets(scope);
+export function requireSecrets(scope: SecretScope, agentId?: string) {
+  const secrets = resolveSecrets(scope, agentId);
   if (!Object.keys(secrets).length) {
     throw new WorkspaceError(
-      "No Git credentials are configured for workspace runtimes. Set SENTINEL_WORKSPACE_GIT_TOKEN on the Sentinel host.",
+      `No Git credentials are configured for ${agentId ?? "workspace runtimes"}. Configure its scoped Git token on the Sentinel host.`,
       "policy_violation",
     );
   }

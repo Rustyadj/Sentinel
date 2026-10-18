@@ -1,3 +1,5 @@
+import { personalComputerRunner } from "./workspace-runner";
+import { resolveEffectiveAgentModel, modelProvenance } from "@/lib/agents/model-policy";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
@@ -78,6 +80,9 @@ export async function delegateSession(input: DelegateSessionInput) {
       throw new RuntimeError("Target agent has no runtime in this workspace", "runtime_not_found", 404);
     }
 
+    const coding = targetRuntime.kind === "claude-code" || targetRuntime.kind === "codex";
+    const computer = coding ? await personalComputerRunner({ id: targetRuntime.id, agentId: targetRuntime.agentId, kind: targetRuntime.kind as "claude-code" | "codex", transport: "process" }, source.userId) : null;
+    const config = coding ? await resolveEffectiveAgentModel(targetRuntime.agentId, targetRuntime.kind as "claude-code" | "codex") : null;
     const context = input.context ?? {};
     const delegated = await tx.agentSession.create({
       data: {
@@ -88,10 +93,12 @@ export async function delegateSession(input: DelegateSessionInput) {
         workspaceId: source.workspaceId,
         projectId: source.projectId,
         chatRoomId: source.chatRoomId,
-        workingDirectory: targetRuntime.workingDirectoryRoot,
+        workingDirectory: computer?.root ?? targetRuntime.workingDirectoryRoot,
         status: "ready",
         parentSessionId: source.id,
         metadata: asJson({
+          ...(computer ? { agentWorkspaceId: computer.workspace.id } : {}),
+          ...(config ? modelProvenance(targetRuntime.agentId, targetRuntime.kind as "claude-code" | "codex", config) : {}),
           delegation: {
             sourceSessionId: source.id,
             sourceAgentId: source.agentId,

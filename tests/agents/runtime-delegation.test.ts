@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, it } from "vitest";
+vi.mock("@/lib/agents/runtime/workspace-runner", () => ({ personalComputerRunner: vi.fn(async () => ({ root: "/workspace/projects", workspace: { id: "target-computer" } })) }));
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { delegateSession } from "@/lib/agents/runtime/delegation";
 import { deriveOperationalState } from "@/lib/agents/runtime/status";

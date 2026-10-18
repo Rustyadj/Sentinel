@@ -1,5 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import type { RuntimeProcessRunner } from "./runner";
 import type { WorkerModelConfig } from "@/lib/agents/model-policy";
 import type { ReportedTokenUsage } from "@/lib/agents/pricing";
 import { CliRuntimeAdapter } from "./cli-adapter";
@@ -49,37 +48,34 @@ export class CodexRuntimeAdapter extends CliRuntimeAdapter {
     }
   }
 
-  protected async reportedSessionModel(externalSessionId: string, startedAt: string) {
-    if (!/^[a-f0-9-]{36}$/.test(externalSessionId)) return null;
-    const home = process.env.CODEX_HOME ?? join(process.env.HOME ?? "/nonexistent", ".codex");
-    // Read only the runtime-created file for this owned session. Never import transcripts.
-    for (const dayOffset of [0, 1]) {
-      const date = new Date(new Date(startedAt).getTime() + dayOffset * 86400000).toISOString().slice(0, 10).replaceAll("-", "/");
-      const directory = join(home, "sessions", date);
-      const files = await readdir(directory).catch(() => [] as string[]);
-      for (const file of files.filter(name => name.endsWith(`${externalSessionId}.jsonl`))) {
-        const path = join(directory, file);
-        if ((await stat(path)).size > 16 * 1024 * 1024) continue;
-        const lines = (await readFile(path, "utf8")).split("\n");
-        let owned = false;
-        let reported: Record<string, unknown> | null = null;
-        let tokenUsage: ReportedTokenUsage | null = null;
-        for (const line of lines) {
-          try {
-            const frame = JSON.parse(line);
-            if (frame.type === "session_meta") owned = (frame.payload.id ?? frame.payload.session_id) === externalSessionId;
-            if (owned && frame.type === "turn_context" && typeof frame.payload.model === "string") {
-              reported = { actualModel: frame.payload.model, actualEffort: frame.payload.effort ?? null, actualModelSource: "runtime_turn_context" };
-            }
-            if (owned && frame.type === "event_msg" && frame.payload?.type === "token_count") {
-              tokenUsage = codexTokenUsage(frame.payload.info?.total_token_usage) ?? tokenUsage;
-            }
-          } catch { /* An incomplete last JSONL frame is not provenance. */ }
+  protected async reportedSessionModel(externalSessionId: string, startedAt: string, runner?: RuntimeProcessRunner) {
+    if (!runner || !/^[a-f0-9-]{36}$/.test(externalSessionId)) return null;
+    // Read provenance from this computer, never from Sentinel's host HOME.
+    const script = `
+      const fs = require('node:fs'), path = require('node:path');
+      const [id, start] = process.argv.slice(1);
+      for (const offset of [0, 1]) {
+        const day = new Date(Date.parse(start) + offset * 86400000).toISOString().slice(0,10).replaceAll('-', '/');
+        const dir = path.join(process.env.CODEX_HOME, 'sessions', day);
+        for (const file of fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(id + '.jsonl')) : []) {
+          const p = path.join(dir,file); if (fs.statSync(p).size > 16*1024*1024) continue;
+          let owned = false, result = null, usage = null;
+          for (const line of fs.readFileSync(p,'utf8').split('\\n')) {
+            try { const f = JSON.parse(line);
+              if (f.type === 'session_meta') owned = (f.payload.id ?? f.payload.session_id) === id;
+              if (owned && f.type === 'turn_context' && typeof f.payload.model === 'string') result = {actualModel:f.payload.model, actualEffort:f.payload.effort ?? null, actualModelSource:'runtime_turn_context'};
+              if (owned && f.type === 'event_msg' && f.payload?.type === 'token_count') usage = f.payload.info?.total_token_usage ?? usage;
+            } catch {}
+          }
+          if (result) { console.log(JSON.stringify({...result, usage})); process.exit(0); }
         }
-        if (reported) return { ...reported, ...(tokenUsage ? { tokenUsage } : {}) };
       }
-    }
-    return null;
+    `;
+    const result = await runner.run("node", ["-e", script, externalSessionId, startedAt]);
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    const { usage, ...reported } = JSON.parse(result.stdout);
+    const tokenUsage = codexTokenUsage(usage);
+    return { ...reported, ...(tokenUsage ? { tokenUsage } : {}) };
   }
 
   async capabilities(runtime: RuntimeInstance): Promise<RuntimeCapabilities> {

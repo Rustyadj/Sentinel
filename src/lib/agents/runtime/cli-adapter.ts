@@ -1,3 +1,4 @@
+import { isPersonalComputer, personalComputerRunner, codingCredential } from "./workspace-runner";
 import { createInterface } from "node:readline";
 import { ModelUnavailableError, isManagedWorkerKind, looksLikeAuthenticationRequired, looksLikeModelUnavailable, resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, type WorkerModelConfig } from "@/lib/agents/model-policy";
 import { isReportedTokenUsage } from "@/lib/agents/pricing";
@@ -66,7 +67,7 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
   protected abstract buildTaskArgs(runtime: RuntimeInstance, prompt: string, externalSessionId?: string, modelConfig?: WorkerModelConfig): string[];
   protected abstract parseStructuredLine(line: string, sessionId: string): { type: RuntimeEvent["type"]; data: Record<string, unknown>; externalSessionId?: string };
 
-  protected async reportedSessionModel(_externalSessionId: string, _startedAt: string): Promise<Record<string, unknown> | null> { return null; }
+  protected async reportedSessionModel(_externalSessionId: string, _startedAt: string, _runner?: RuntimeProcessRunner): Promise<Record<string, unknown> | null> { return null; }
 
   private readonly active = new Map<string, ActiveProcess>();
 
@@ -81,7 +82,8 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     const runtime = await this.resolveRuntime(`runtime-${this.kind}`);
     if (!runtime?.executable) return { found: false, kind: this.kind, instances: [], reason: "configuration_invalid" };
     try {
-      const result = await this.runner.run(runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
+      const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime) : null;
+      const result = await (computer?.runner ?? this.runner).run(computer?.executable ?? runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
       if (result.exitCode !== 0) {
         return { found: false, kind: this.kind, instances: [], reason: result.stderr || "binary_unavailable" };
       }
@@ -95,20 +97,26 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     const checkedAt = new Date().toISOString();
     if (!runtime.executable) return unhealthy(checkedAt, "configuration_invalid", "No executable configured");
     let version: string | undefined;
+    let computerId: string | undefined;
     try {
-      const result = await this.runner.run(runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
+      const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime) : null;
+      computerId = computer?.workspace.id;
+      const result = await (computer?.runner ?? this.runner).run(computer?.executable ?? runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
       if (result.exitCode !== 0) return unhealthy(checkedAt, "binary_unavailable", result.stderr || "Version check failed");
       version = result.stdout.trim().split("\n")[0];
-    } catch {
-      return unhealthy(checkedAt, "binary_missing", "Runtime binary was not found");
+    } catch (error) {
+      return unhealthy(checkedAt, isPersonalComputer(runtime) && error && typeof error === "object" && "code" in error ? String(error.code) : "binary_missing", error instanceof Error ? error.message : "Runtime binary was not found");
     }
 
     let authenticated: boolean | null = null;
+    let credentialConfigured = false;
+    let credentialError: string | undefined;
     try {
-      const auth = await this.runner.run(runtime.executable, this.authArgs, { timeoutMs: 5_000 });
-      authenticated = auth.exitCode === 0;
-    } catch {
+      if (isPersonalComputer(runtime)) { codingCredential(this.kind); credentialConfigured = true; }
+      else { const auth = await this.runner.run(runtime.executable, this.authArgs, { timeoutMs: 5_000 }); authenticated = auth.exitCode === 0; }
+    } catch (error) {
       authenticated = null;
+      if (isPersonalComputer(runtime)) credentialError = error instanceof Error ? error.message : "Agent credential is missing";
     }
     const currentSessionId = [...this.active.keys()][0];
     const staleSession = currentSessionId
@@ -135,13 +143,14 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
       processRunning: Boolean(currentSessionId),
       reachable: true,
       authenticated,
-      ready: authenticated === true,
+      ready: credentialConfigured || authenticated === true,
       busy: Boolean(currentSessionId),
-      degraded: authenticated !== true,
+      degraded: !credentialConfigured && authenticated !== true,
       version,
       ...(currentSessionId ? { currentSessionId } : {}),
       ...(authenticated === false ? { failureCode: "not_authenticated", message: "Runtime requires provider authentication" } : {}),
-      ...(authenticated === null ? { failureCode: "authentication_unknown", message: "Runtime authentication state could not be determined" } : {}),
+      ...(credentialConfigured ? { message: `Personal computer ${computerId}. API key configured; provider authentication is checked on execution.` } : {}),
+      ...(authenticated === null && !credentialConfigured ? { failureCode: credentialError ? "credential_missing" : "authentication_unknown", message: credentialError ?? "Runtime authentication state could not be determined" } : {}),
       checkedAt,
     };
   }
@@ -153,10 +162,11 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
 
   async startSession(input: StartSessionInput): Promise<AgentSession> {
     const runtime = await this.requireRuntime(input.runtimeId);
-    const workingDirectory = await resolveAllowedWorkingDirectory(this.runner, runtime.workingDirectoryRoot, input.workingDirectory);
+    const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime, input.userId) : null;
+    const workingDirectory = await resolveAllowedWorkingDirectory(computer?.runner ?? this.runner, computer?.root ?? runtime.workingDirectoryRoot, input.workingDirectory);
     const config = await resolveEffectiveAgentModel(runtime.agentId, this.kind, input.modelOverride);
     const created = await this.store.create(input, this.kind, runtime.agentId, workingDirectory);
-    const session = await this.store.update(created.id, { metadata: modelProvenance(runtime.agentId, this.kind, config) });
+    const session = await this.store.update(created.id, { metadata: { ...modelProvenance(runtime.agentId, this.kind, config), ...(computer ? { agentWorkspaceId: computer.workspace.id } : {}) } });
     await this.store.append(session.id, "session_started", { runtimeId: runtime.id, workingDirectory });
     return session;
   }
@@ -165,9 +175,11 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     if (!this.supportsResume) throw new UnsupportedRuntimeCapabilityError("resume");
     assertSafeOpaqueId(input.externalSessionId, "externalSessionId");
     const runtime = await this.requireRuntime(input.runtimeId);
-    const workingDirectory = await resolveAllowedWorkingDirectory(this.runner, runtime.workingDirectoryRoot, undefined);
+    const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime, input.userId) : null;
     const previous = (await this.store.list({ runtimeId: runtime.id, userId: input.userId })).find(s => s.externalSessionId === input.externalSessionId);
     if (!previous || !sessionModelConfiguration(previous.metadata)) throw new RuntimeError("Original session model provenance required for resume", "session_not_found", 404);
+    if (computer && previous.metadata?.agentWorkspaceId !== computer.workspace.id) throw new RuntimeError("Session belongs to a different computer; start a new session", "workspace_mismatch", 409);
+    const workingDirectory = await resolveAllowedWorkingDirectory(computer?.runner ?? this.runner, computer?.root ?? runtime.workingDirectoryRoot, previous.workingDirectory);
     const created = await this.store.create(input, this.kind, runtime.agentId, workingDirectory, input.externalSessionId);
     const session = await this.store.update(created.id, { metadata: previous.metadata });
     await this.store.append(session.id, "session_started", { runtimeId: runtime.id, resumedFrom: input.externalSessionId });
@@ -190,9 +202,12 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
     const modelConfig = isManagedWorkerKind(this.kind) ? sessionModelConfiguration(session.metadata) ?? await resolveEffectiveAgentModel(runtime.agentId, this.kind) : undefined;
     if (modelConfig && runtime.args?.some(arg => arg.startsWith("--fallback-model"))) throw new ModelUnavailableError(this.kind, modelConfig.runtimeModelId, modelConfig.effort, "Automatic fallback flags are forbidden; choose a model explicitly");
     const args = this.buildTaskArgs(runtime, input.prompt, session.externalSessionId, modelConfig);
-    const child = this.runner.spawn(runtime.executable, args, { cwd: session.workingDirectory });
-    const active: ActiveProcess = { child, cancelled: false, timedOut: false };
-    this.active.set(session.id, active);
+    const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime, input.userId) : null;
+    if (computer && (session.agentId !== runtime.agentId || session.metadata?.agentWorkspaceId !== computer.workspace.id)) {
+      throw new RuntimeError("Session belongs to a different or legacy computer; start a new session", "workspace_mismatch", 409);
+    }
+    const runner = computer?.runner ?? this.runner;
+    const cwd = await resolveAllowedWorkingDirectory(runner, computer?.root ?? runtime.workingDirectoryRoot, session.workingDirectory);
     await this.store.update(session.id, {
       status: "running",
       // Persist the requested model/effort on this execution's own record
@@ -200,6 +215,17 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
       // model actually performed this?" has a real, auditable answer.
       ...(modelConfig ? { metadata: { ...modelProvenance(runtime.agentId, this.kind, modelConfig), ...session.metadata } } : {}),
     });
+    if (this.active.has(session.id)) throw new RuntimeError("Session already has an active task", "session_busy", 409);
+    const child = runner.spawn(computer?.executable ?? runtime.executable, args, { cwd });
+    // Attach listeners immediately: a failed credential/provider check can
+    // complete before the first output event is consumed.
+    const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    void exit.catch(() => undefined);
+    const active: ActiveProcess = { child, cancelled: false, timedOut: false };
+    this.active.set(session.id, active);
     const queue = new AsyncQueue<RuntimeEvent>();
     const emit = async (type: RuntimeEvent["type"], data: Record<string, unknown>) => queue.push(await this.store.append(session.id, type, data));
     let stderrBuffer = "";
@@ -249,12 +275,9 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
             await emit("stderr", { text: line });
           }
         })();
-        const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("close", (code, signal) => resolve({ code, signal }));
-        });
         const [{ code, signal }] = await Promise.all([exit, readStdout, readStderr]);
         clearTimeout(timeout);
+        if (computer && code === 124) active.timedOut = true;
         const status = active.cancelled ? "cancelled" : active.timedOut ? "timed_out" : code === 0 && !structuredFailure ? "completed" : "failed";
         // A failed run gets one extra check: did the runtime itself reject
         // the requested model, as opposed to an ordinary task failure? If
@@ -272,7 +295,7 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
         const authRequired = status === "failed" && !modelUnavailable && looksLikeAuthenticationRequired(stderrBuffer);
         const latestSession = await this.store.get(session.id);
         const reported = status === "completed" && latestSession?.externalSessionId
-          ? await this.reportedSessionModel(latestSession.externalSessionId, session.startedAt).catch(() => null) : null;
+          ? await this.reportedSessionModel(latestSession.externalSessionId, session.startedAt, runner).catch(() => null) : null;
         await this.store.update(session.id, {
           status,
           exitCode: code ?? undefined,

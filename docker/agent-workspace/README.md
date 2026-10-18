@@ -20,3 +20,7 @@ Environment consumed by the Sentinel host (never by the workspace image):
 
 The Docker socket is **never** mounted into a workspace container. Only the
 Sentinel host process talks to the daemon, behind the runtime gateway.
+
+Claude Code/Codex use the derived `docker/coding-agent/Dockerfile`, with explicit
+CLI versions and separate per-exec provider keys. See
+[provisioning and recovery](../../docs/CODING_AGENT_COMPUTERS.md).

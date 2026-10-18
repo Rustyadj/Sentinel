@@ -258,12 +258,6 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
   await setTaskStatus(task.id, "RUNNING");
   await emitCollaborationEvent(ctx.roomId, "task.started", { taskId: task.id, agentId: ownerAgentId });
 
-  const worktree = await ensureTaskWorktree({ runtime, taskId: task.id, agentId: ownerAgentId }).catch((error) => {
-    console.error("[lisa-loop] worktree setup failed, falling back to shared working directory", error);
-    return null;
-  });
-  if (worktree) await db.task.update({ where: { id: task.id }, data: { branch: worktree.branch, worktreePath: worktree.path } });
-
   const lockPattern = task.fileScope[0] ?? `room:${ctx.roomId}/task:${task.id}/**`;
   const lock = await acquireExecutionLock({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, resourcePattern: lockPattern }).catch((error) => {
     console.error("[lisa-loop] execution lock conflict", error);
@@ -271,6 +265,8 @@ async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<s
   });
 
   try {
+    const worktree = await ensureTaskWorktree({ runtime, taskId: task.id, agentId: ownerAgentId, userId: ctx.userId });
+    await db.task.update({ where: { id: task.id }, data: { branch: worktree.branch, worktreePath: worktree.path } });
     const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, userId: ctx.userId });
     const output = await runAgentTurn({ roomId: ctx.roomId, agentId: ownerAgentId, userId: ctx.userId, prompt: context, workingDirectory: worktree?.path });
 
@@ -467,7 +463,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       if (task.status !== "COMPLETED") return { error: `task is ${task.status}, not COMPLETED — nothing to merge yet` };
       if (!task.branch || !task.agentId) return { error: "task has no worktree branch to merge" };
       const runtime = await resolveAgentRuntime(task.agentId);
-      const result = await mergeTaskBranch(runtime, task.branch);
+      const result = await mergeTaskBranch(runtime, task.branch, ctx.userId);
       if (!result.merged) return { merged: false, conflict: result.conflict };
       await emitCollaborationEvent(ctx.roomId, "decision.created", { taskId, merged: true });
       return { merged: true, branch: task.branch };

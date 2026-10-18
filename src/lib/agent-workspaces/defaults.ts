@@ -111,8 +111,8 @@ export async function resolveDefaultAgentWorkspace(input: ResolveDefaultAgentWor
     return { workspace, assigned: false, created: true };
   });
 
-  if (result.created) {
-    const provisioning = input.provisioning!;
+  if (result.created || (!result.workspace.volumeName && input.provisioning)) {
+    const provisioning = input.provisioning;
     const provider = getRuntimeProvider(result.workspace.runtimeType);
     const availability = await provider.isAvailable();
     if (!availability.available) {
@@ -131,9 +131,9 @@ export async function resolveDefaultAgentWorkspace(input: ResolveDefaultAgentWor
       tenantWorkspaceId: result.workspace.workspaceId,
       type: "workspace.created",
       message: `Default workspace \"${result.workspace.name}\" created for agent ${agentId}.`,
-      actorUserId: provisioning.actor.userId ?? null,
-      actorAgentId: provisioning.actor.agentId ?? null,
-      source: provisioning.actor.client,
+      actorUserId: provisioning?.actor.userId ?? null,
+      actorAgentId: provisioning?.actor.agentId ?? null,
+      source: provisioning?.actor.client ?? "system",
       metadata: { volumeName, default: true, runtimeType: result.workspace.runtimeType, image: result.workspace.image },
     });
   } else if (result.assigned) {

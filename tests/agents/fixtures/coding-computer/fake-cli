@@ -1,0 +1,16 @@
+#!/bin/bash
+set -eu
+if test "${1:-}" = --version; then echo fixture-cli-1; exit; fi
+if test "${1:-}" = --help; then echo "--effort low medium high"; exit; fi
+kind=$(basename "$0")
+if test "$kind" = claude; then
+  test -n "${ANTHROPIC_API_KEY:-}" && test -z "${CODEX_API_KEY:-}"
+  printf '%s\n' "$ANTHROPIC_API_KEY" >&2
+  printf '%s' claude > "$HOME/identity-marker"
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"claude in %s"}]}}\n' "$PWD"
+else
+  test -n "${CODEX_API_KEY:-}" && test -z "${ANTHROPIC_API_KEY:-}"
+  printf '%s\n' "$CODEX_API_KEY" >&2
+  printf '%s' codex > "$HOME/identity-marker"
+  printf '{"type":"item.completed","item":{"type":"agent_message","text":"codex in %s"}}\n' "$PWD"
+fi

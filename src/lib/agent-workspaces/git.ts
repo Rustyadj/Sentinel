@@ -59,7 +59,7 @@ export async function runGit(request: GitRequest) {
   const { workspace, operation, actor } = request;
   const cwd = resolveWorkspacePath(workspace.homePath, request.path);
   const needsRemote = operation === "clone" || operation === "pull" || operation === "fetch";
-  const secrets = needsRemote ? requireSecrets("git") : {};
+  const secrets = needsRemote ? requireSecrets("git", workspace.agentId) : {};
 
   let command: string;
   let effectiveCwd = cwd;

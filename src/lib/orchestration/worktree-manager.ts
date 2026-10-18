@@ -1,3 +1,4 @@
+import { isPersonalComputer, personalComputerRunner } from "@/lib/agents/runtime/workspace-runner";
 import { resolve } from "node:path";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
 import { nodeRuntimeProcessRunner } from "@/lib/agents/runtime/runner";
@@ -8,6 +9,7 @@ export interface EnsureWorktreeInput {
   taskId: string;
   agentId: string;
   baseBranch?: string;
+  userId?: string;
 }
 
 export interface WorktreeResult {
@@ -25,19 +27,26 @@ export interface WorktreeResult {
  * worktree exists for its task.
  */
 export async function ensureTaskWorktree(input: EnsureWorktreeInput): Promise<WorktreeResult> {
-  const root = input.runtime.workingDirectoryRoot;
+  for (const value of [input.agentId, input.taskId]) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(value)) throw new RuntimeError("Invalid worktree identity", "invalid_argument", 400);
+  }
+  if (input.agentId !== input.runtime.agentId) throw new RuntimeError("Runtime identity mismatch", "workspace_mismatch", 403);
+  const computer = isPersonalComputer(input.runtime) ? await personalComputerRunner(input.runtime, input.userId) : null;
+  const runner = computer?.runner ?? nodeRuntimeProcessRunner;
+  const root = computer?.root ?? input.runtime.workingDirectoryRoot;
   if (!root) throw new RuntimeError("Runtime has no allowlisted project root", "configuration_invalid", 503);
   const branch = `agent/${input.agentId}/${input.taskId}`;
   const path = resolve(root, "worktrees", `${input.taskId}-${input.agentId}`);
 
-  const existing = await nodeRuntimeProcessRunner.run("git", ["worktree", "list", "--porcelain"], { cwd: root });
-  if (existing.exitCode === 0 && existing.stdout.includes(path)) {
+  const existing = await runner.run("git", ["worktree", "list", "--porcelain"], { cwd: root });
+  if (existing.exitCode === 0 && existing.stdout.split("\n").includes(`worktree ${path}`)) {
     return { path, branch };
   }
 
-  const result = await nodeRuntimeProcessRunner.run(
+  const branchExists = await runner.run("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: root });
+  const result = await runner.run(
     "git",
-    ["worktree", "add", "-B", branch, path, input.baseBranch ?? "HEAD"],
+    branchExists.exitCode === 0 ? ["worktree", "add", path, branch] : ["worktree", "add", "-b", branch, path, input.baseBranch ?? "HEAD"],
     { cwd: root, timeoutMs: 30_000 },
   );
   if (result.exitCode !== 0) {
@@ -47,9 +56,11 @@ export async function ensureTaskWorktree(input: EnsureWorktreeInput): Promise<Wo
 }
 
 export async function removeTaskWorktree(runtime: RuntimeInstance, worktreePath: string): Promise<void> {
-  const root = runtime.workingDirectoryRoot;
+  const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime) : null;
+  const runner = computer?.runner ?? nodeRuntimeProcessRunner;
+  const root = computer?.root ?? runtime.workingDirectoryRoot;
   if (!root) return;
-  await nodeRuntimeProcessRunner
+  await runner
     .run("git", ["worktree", "remove", "--force", worktreePath], { cwd: root, timeoutMs: 30_000 })
     .catch(() => undefined);
 }
@@ -67,12 +78,14 @@ export interface MergeResult {
  * attempt rather than stuck mid-merge, and returns the conflict text for
  * Lisa to reason about (retry a narrower fix, hand off, or ask the user).
  */
-export async function mergeTaskBranch(runtime: RuntimeInstance, branch: string): Promise<MergeResult> {
-  const root = runtime.workingDirectoryRoot;
+export async function mergeTaskBranch(runtime: RuntimeInstance, branch: string, userId?: string): Promise<MergeResult> {
+  const computer = isPersonalComputer(runtime) ? await personalComputerRunner(runtime, userId) : null;
+  const runner = computer?.runner ?? nodeRuntimeProcessRunner;
+  const root = computer?.root ?? runtime.workingDirectoryRoot;
   if (!root) throw new RuntimeError("Runtime has no allowlisted project root", "configuration_invalid", 503);
-  const result = await nodeRuntimeProcessRunner.run("git", ["merge", "--no-ff", branch, "-m", `Merge ${branch}`], { cwd: root, timeoutMs: 30_000 });
+  const result = await runner.run("git", ["merge", "--no-ff", branch, "-m", `Merge ${branch}`], { cwd: root, timeoutMs: 30_000 });
   if (result.exitCode !== 0) {
-    await nodeRuntimeProcessRunner.run("git", ["merge", "--abort"], { cwd: root, timeoutMs: 30_000 }).catch(() => undefined);
+    await runner.run("git", ["merge", "--abort"], { cwd: root, timeoutMs: 30_000 }).catch(() => undefined);
     return { merged: false, conflict: (result.stderr || result.stdout).slice(0, 2_000) };
   }
   return { merged: true };

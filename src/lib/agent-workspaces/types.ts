@@ -92,6 +92,10 @@ export interface ExecRequest {
   /** Secrets injected at exec time. Never written into the image or volume. */
   env?: Record<string, string>;
   stdin?: string;
+  signal?: AbortSignal;
+  loginShell?: boolean;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
 }
 
 export interface ExecResult {
