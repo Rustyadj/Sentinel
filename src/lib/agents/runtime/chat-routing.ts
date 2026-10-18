@@ -65,6 +65,7 @@ export async function routeRuntimeChat(input: {
   userContent: string;
   mode: ChatExecutionMode;
 }) {
+  if (input.roomId && await db.telegramConversation.findUnique({ where: { chatRoomId: input.roomId } })) throw new RuntimeError("Continue this governed conversation in Telegram Mission Control", "telegram_room_uses_gateway", 409);
   const route = RUNTIME_AGENT_MAP[input.agentId];
   if (!route || route.mode !== input.mode) throw new RuntimeError("Selected agent does not support this execution mode", "execution_mode_mismatch", 422);
   const { runtime } = await requireRuntimeAccess(route.runtimeId, RUNTIME_PERMISSIONS.execute);

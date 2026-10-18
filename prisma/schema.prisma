@@ -3431,3 +3431,101 @@ model BotRunEvent {
   @@index([botId, occurredAt])
   @@map("bot_run_events")
 }
+
+
+// Telegram transport state. All execution remains an existing OrchestrationRun.
+model TelegramBot {
+  id                 String   @id @default(cuid())
+  key                String   @unique
+  telegramBotId      String   @unique
+  agentId            String
+  botId              String   @unique
+  workspaceId        String
+  tokenEnvVar        String
+  webhookSecretEnvVar String
+  enabled            Boolean  @default(false)
+  cutoverVerifiedAt  DateTime?
+  lastWebhookAt      DateTime?
+  nextSendAt         DateTime @default(now())
+  lastHealthAt       DateTime?
+  webhookHealth      Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  access TelegramAccess[]
+  conversations TelegramConversation[]
+  updates TelegramUpdate[]
+  @@map("telegram_bots")
+}
+
+model TelegramAccess {
+  id             String @id @default(cuid())
+  telegramBotId  String
+  senderId       String
+  chatId         String
+  userId         String
+  enabled        Boolean @default(true)
+  bot TelegramBot @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
+  @@unique([telegramBotId, senderId, chatId])
+  @@map("telegram_access")
+}
+
+model TelegramConversation {
+  id             String @id @default(cuid())
+  telegramBotId  String
+  senderId       String
+  chatId         String
+  userId         String
+  chatRoomId     String @unique
+  createdAt      DateTime @default(now())
+  bot TelegramBot @relation(fields: [telegramBotId], references: [id], onDelete: Restrict)
+  @@unique([telegramBotId, senderId, chatId])
+  @@map("telegram_conversations")
+}
+
+model TelegramUpdate {
+  id             String @id @default(cuid())
+  telegramBotId  String
+  updateId       String
+  senderId       String
+  chatId         String
+  messageId      String
+  replyToMessageId String?
+  userId         String
+  payload        Json
+  mediaPaths     String[] @default([])
+  mediaPreparedAt DateTime?
+  chatRoomId     String?
+  taskId         String? @unique
+  currentTaskId  String?
+  status         String @default("pending")
+  errorCode      String?
+  receivedAt     DateTime @default(now())
+  completedAt    DateTime?
+  updatedAt      DateTime @updatedAt
+  bot TelegramBot @relation(fields: [telegramBotId], references: [id], onDelete: Restrict)
+  deliveries TelegramDelivery[]
+  @@unique([telegramBotId, updateId])
+  @@unique([telegramBotId, chatId, messageId])
+  @@index([status, receivedAt])
+  @@map("telegram_updates")
+}
+
+model TelegramDelivery {
+  id             String @id @default(cuid())
+  updateId       String
+  sequence       Int
+  kind           String @default("result")
+  text           String
+  status         String @default("pending")
+  telegramMessageId String?
+  attempts       Int @default(0)
+  nextAttemptAt  DateTime @default(now())
+  sendingAt      DateTime?
+  sentAt         DateTime?
+  errorCode      String?
+  createdAt      DateTime @default(now())
+  update TelegramUpdate @relation(fields: [updateId], references: [id], onDelete: Restrict)
+  @@unique([updateId, kind, sequence])
+  @@index([status, nextAttemptAt])
+  @@map("telegram_deliveries")
+}

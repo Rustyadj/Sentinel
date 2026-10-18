@@ -56,6 +56,13 @@ export interface StartSessionInput {
   workingDirectory?: string;
   initialPrompt?: string;
   modelOverride?: { model: string; effort?: import("../model-policy").EffortLevel | null; authorized: boolean };
+  /**
+   * Ask for a session whose tool calls Sentinel authorizes before they run. A runtime that cannot do this
+   * for the session records `metadata.toolGate = "observed"` (Sentinel only sees calls after they start);
+   * one that can records `"pre-execution"`, and its send() then requires `authorizeTool`.
+   */
+  toolGate?: "bot" | "telegram";
+  telegramUpdateId?: string;
 }
 
 export interface ResumeSessionInput {
@@ -93,10 +100,31 @@ export interface AgentSession {
   parentSessionId?: string;
 }
 
+/**
+ * A runtime asking Sentinel, before a tool runs, whether it may run.
+ *  - `pre-execution`: Sentinel's own pre-call hook on the runtime; `tool` is the runtime's name for the call.
+ *  - `runtime-approval`: the runtime's own approval prompt (e.g. a command it flagged as dangerous).
+ */
+export interface ToolAuthorizationRequest {
+  kind: "pre-execution" | "runtime-approval";
+  tool: string;
+  requestId: string | null;
+  description: string | null;
+}
+
+export interface ToolAuthorizationDecision {
+  allow: boolean;
+  reason: string;
+}
+
+export type ToolAuthorizer = (request: ToolAuthorizationRequest) => Promise<ToolAuthorizationDecision>;
+
 export interface SendTaskInput {
   sessionId: string;
   prompt: string;
   userId: string;
+  /** Required for a session started with `toolGate` whose metadata says `toolGate: "pre-execution"`. Answers are final: a throw is a denial. */
+  authorizeTool?: ToolAuthorizer;
 }
 
 export type RuntimeEventType =

@@ -1,8 +1,9 @@
+import { verifyTelegramRuntimeGate } from "@/lib/telegram/gate";
 import { resolveEffectiveAgentModel, modelProvenance, sessionModelConfiguration, looksLikeModelUnavailable, ModelUnavailableError } from "@/lib/agents/model-policy";
 import { RuntimeError } from "./errors";
 import { HttpAgentRuntimeAdapter } from "./http-adapter";
 import { runtimeSessionStore, type RuntimeSessionStore } from "./store";
-import { HermesWebSocketClient, HermesWsError, type HermesEventFrame } from "./transports/hermes-websocket";
+import { HermesWebSocketClient, HermesWsError, type HermesEventFrame, type HermesServerReply, type HermesServerRequest } from "./transports/hermes-websocket";
 import type { RuntimeResolver } from "./cli-adapter";
 import type {
   AgentRuntimeAdapter,
@@ -20,6 +21,8 @@ import type {
   SendTaskInput,
   SessionQuery,
   StartSessionInput,
+  ToolAuthorizationRequest,
+  ToolAuthorizer,
 } from "./types";
 
 interface QueueItem<T> { value?: T; error?: Error; done?: boolean }
@@ -43,6 +46,46 @@ export function hermesAuth(agentId: string) {
   }
   return { token, credentials: username && password ? { username, password } : undefined };
 }
+/**
+ * Pre-execution tool authorization for bot sessions. It needs the `sentinel-bot-gate` plugin on the Hermes host
+ * (deploy/hermes/plugins/sentinel-bot-gate): for every tool call in a session whose source is BOT_SESSION_SOURCE,
+ * its `pre_tool_call` hook sends the call to Hermes's own approval gate, which asks this connection before the
+ * tool runs and blocks on deny, timeout, withdrawal or disconnect. Sentinel cannot see whether the plugin is
+ * installed, so the operator turns this on per host (`<AGENT>_BOT_TOOL_GATE=pre-execution`) after installing it.
+ */
+export const BOT_SESSION_SOURCE = "sentinel-bot";
+const GATE_RULE_PREFIX = "plugin_rule:sentinel-bot:";
+
+function botToolGateEnabled(agentId: string): boolean {
+  return process.env[`${agentId.replaceAll("-", "_").toUpperCase()}_BOT_TOOL_GATE`]?.trim() === "pre-execution";
+}
+
+/** Read an `approval` server request. Hermes renders a plugin rule's subject as `<tool> (plugin approval rule)`. */
+export function parseApprovalRequest(params: Record<string, unknown>): ToolAuthorizationRequest {
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const requestId = text(params.request_id) || null;
+  const description = text(params.description) || null;
+  if (!text(params.pattern_key).startsWith(GATE_RULE_PREFIX)) {
+    return { kind: "runtime-approval", tool: text(params.tool_name) || text(params.command).slice(0, 200), requestId, description };
+  }
+  const tool = /^<(.+)> \(plugin approval rule\)$/.exec(text(params.command))?.[1] ?? "";
+  return { kind: "pre-execution", tool, requestId, description };
+}
+
+/** Bot sessions answer approvals from Sentinel's policy and refuse every other kind of question. */
+function botServerRequestHandler(authorize: ToolAuthorizer) {
+  const answered = new Set<string>();
+  return async (request: HermesServerRequest): Promise<HermesServerReply> => {
+    if (request.method !== "approval") return { error: { code: -32601, message: `A Sentinel bot session does not answer ${request.method}.` } };
+    if (answered.has(request.id) || answered.size >= 10000) return { result: { choice: "deny" } };
+    answered.add(request.id);
+    const ask = parseApprovalRequest(request.params);
+    const decision = await authorize(ask).catch(() => ({ allow: false, reason: "Authorization failed." }));
+    // "once" persists nothing on the Hermes side, so every later call is asked again.
+    return { result: { choice: decision.allow ? "once" : "deny" } };
+  };
+}
+
 async function assertNoHermesFallback(client: HermesWebSocketClient, model: string, effort: import("@/lib/agents/model-policy").EffortLevel | null) {
   const { config } = await client.call<{ config: Record<string, unknown> }>("config.get", { key: "full" });
   const enabled = (value: unknown) => Array.isArray(value) ? value.length > 0 : value != null && value !== false && value !== "";
@@ -144,16 +187,27 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
       hermesAuth(runtime.agentId).token,
       hermesAuth(runtime.agentId).credentials,
     );
+    const telegram = input.toolGate === "telegram";
+    const gated = (telegram || input.toolGate === "bot") && botToolGateEnabled(runtime.agentId);
+    const profile = telegram ? process.env[`${runtime.agentId.replaceAll("-", "_").toUpperCase()}_TELEGRAM_PROFILE`]?.trim() : undefined;
+    if (telegram && (!gated || !profile)) { client.close(); throw new RuntimeError("Telegram requires a managed profile and pre-execution gate", "telegram_gate_unavailable", 503); }
+    if (telegram && !/^[a-z0-9]{20,40}$/.test(input.telegramUpdateId ?? "")) { client.close(); throw new RuntimeError("Missing trusted channel identity", "telegram_gate_unavailable", 503); }
+    const source = telegram ? `sentinel-telegram:${input.telegramUpdateId}` : gated ? BOT_SESSION_SOURCE : "sentinel";
     try {
       await assertNoHermesFallback(client, config.runtimeModelId, config.effort);
       const result = await client.call<{ session_id: string; info?: { model?: string; provider?: string } }>("session.create", {
         cwd: input.workingDirectory,
-        source: "sentinel",
+        source,
+        ...(profile ? { profile } : {}),
         model: config.runtimeModelId,
         ...(config.effort ? { reasoning_effort: config.effort } : {}),
       });
+      if (telegram) await verifyTelegramRuntimeGate(client, result.session_id, profile!, source);
       const session = await this.store.create(input, "hermes", runtime.agentId, input.workingDirectory, result.session_id);
-      return this.store.update(session.id, { metadata: modelProvenance(runtime.agentId, "hermes", config) });
+      return this.store.update(session.id, { metadata: {
+        ...modelProvenance(runtime.agentId, "hermes", config),
+        ...(input.toolGate ? { toolGate: gated ? "pre-execution" : "observed", sessionSource: source, ...(profile ? { telegramProfile: profile } : {}) } : {}),
+      } });
     } catch (err) {
       if (looksLikeModelUnavailable(String(err))) throw new ModelUnavailableError("hermes", config.runtimeModelId, config.effort, String(err));
       throw wrapHermesError(err);
@@ -200,7 +254,14 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     );
     const pinned = sessionModelConfiguration(session.metadata);
     if (!pinned) { client.close(); throw new RuntimeError("Session model provenance missing", "session_model_unknown", 409); }
-    try { await assertNoHermesFallback(client, pinned.runtimeModelId, pinned.effort); } catch (error) { client.close(); throw error; }
+    const gated = session.metadata.toolGate === "pre-execution";
+    if (gated && !input.authorizeTool) { client.close(); throw new RuntimeError("This session's tool calls must be authorized before they run, and no authorizer was given", "tool_gate_unavailable", 409); }
+    try {
+      await assertNoHermesFallback(client, pinned.runtimeModelId, pinned.effort);
+      if (String(session.metadata.sessionSource).startsWith("sentinel-telegram:")) await verifyTelegramRuntimeGate(client, session.externalSessionId!, String(session.metadata.telegramProfile), String(session.metadata.sessionSource));
+      // Before the prompt, so no tool call can be asked about on a connection that is not yet answering.
+      if (gated) { client.onRequest(botServerRequestHandler(input.authorizeTool!)); await client.advertiseServerRequests(); }
+    } catch (error) { client.close(); throw error; }
     await this.store.update(session.id, { status: "running" });
     activeConnections.set(input.sessionId, client);
 
@@ -248,11 +309,13 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
           if (!config) throw new RuntimeError("Cannot recover session without model provenance", "session_model_unknown", 409);
           const created = await client.call<{ session_id: string }>("session.create", {
             cwd: session.workingDirectory,
-            source: "sentinel",
+            source: typeof session.metadata.sessionSource === "string" ? session.metadata.sessionSource : "sentinel",
+            ...(session.metadata.telegramProfile ? { profile: session.metadata.telegramProfile } : {}),
             model: config.runtimeModelId,
             ...(config.effort ? { reasoning_effort: config.effort } : {}),
           });
           externalSessionId = created.session_id;
+          if (String(session.metadata.sessionSource).startsWith("sentinel-telegram:")) await verifyTelegramRuntimeGate(client, externalSessionId, String(session.metadata.telegramProfile), String(session.metadata.sessionSource));
           await this.store.update(input.sessionId, { externalSessionId });
           ack = await client.call<{ status: string }>("prompt.submit", {
             session_id: externalSessionId,
@@ -391,4 +454,4 @@ async function handleFrame(store: RuntimeSessionStore, sessionId: string, frame:
   }
 }
 
-export const __test__ = { AsyncQueue, handleFrame, TERMINAL_EVENT_TYPES };
+export const __test__ = { AsyncQueue, handleFrame, TERMINAL_EVENT_TYPES, botServerRequestHandler };

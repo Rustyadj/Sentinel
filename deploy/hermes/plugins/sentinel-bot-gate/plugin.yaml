@@ -1,0 +1,7 @@
+name: sentinel-bot-gate
+version: "0.2.0"
+description: "Routes every tool call in a Sentinel bot session (session source 'sentinel-bot') through Hermes's approval gate before it runs, so Sentinel authorizes it from the bot's grants. Other sessions are untouched."
+author: "Sentinel"
+provides_hooks:
+  - pre_tool_call
+  - pre_gateway_dispatch

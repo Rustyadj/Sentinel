@@ -10,6 +10,7 @@
 // scheduleRecurringJobs() calls do not duplicate schedules, and SIGTERM
 // closes the worker gracefully.
 
+import { sweepTelegram } from "@/lib/telegram/service";
 import { Worker, type Job } from "bullmq";
 import {
   LEARNING_QUEUE_NAME,
@@ -44,6 +45,8 @@ const JOB_TIMEOUT_MS = Number.isFinite(requestedTimeout) && requestedTimeout > 0
 
 async function processJob(job: Job<JobPayload>) {
   switch (job.name) {
+    case JOB_NAMES.telegramSweep:
+      return sweepTelegram();
     case JOB_NAMES.degradationSweep:
       return runRecordedDegradationSweep();
     case JOB_NAMES.knowledgeGapAnalysis: {

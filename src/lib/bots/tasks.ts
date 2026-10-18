@@ -13,7 +13,7 @@ import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { enqueueOrchestrationRun } from "@/lib/orchestration/queue";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { ApprovalAlreadyDecidedError, decideApprovalIn } from "@/lib/workspaces/approvals";
-import { BotRunLog } from "./events";
+import { BotRunLog, sanitizeEventData } from "./events";
 import { activeCatalog, loadCatalog } from "./catalog";
 import { approvalKey, evaluateDelegation, resolveObservedTool, type DelegationParent } from "./policy";
 import { toBotRecord, type BotRecord } from "./service";
@@ -185,6 +185,11 @@ async function insertTaskRun(client: Prisma.TransactionClient, task: AdmittedTas
       contextSnapshot: { scope: { workspaceId: bot.workspaceId, projectId } } as Prisma.InputJsonValue,
     },
   });
+  if (parentRunId) {
+    const parent = await client.orchestrationRun.findUnique({ where: { id: parentRunId } });
+    const channel = (parent?.request as Prisma.JsonObject | null)?.channel;
+    if (channel && parent?.botId === bot.id) await client.orchestrationRun.update({ where: { id: run.id }, data: { request: { ...(run.request as Prisma.JsonObject), channel } } });
+  }
   if (unique.length) {
     await client.botToolGrant.createMany({ data: unique.map((grant) => ({ runId: run.id, key: grant.key, approvalRequestId: grant.approvalRequestId ?? null, sourceRunId: grant.sourceRunId ?? null })) });
   }
@@ -220,6 +225,35 @@ export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, 
   return getBotTask(run.id, { userId: caller.userId, isAdmin: false });
 }
 
+/**
+ * Channel admission participates in the caller's durable inbox transaction.
+ * Same normal delegation checks and task insertion as delegateToBot; no test
+ * bypass or grants. The caller MUST enqueue the returned task after commit.
+ */
+export async function delegateToBotIn(
+  tx: Prisma.TransactionClient,
+  botId: string,
+  input: DelegateTaskInput,
+  caller: Extract<BotCaller, { kind: "user" }>,
+  channel?: { kind: "telegram"; updateId: string; chatRoomId: string; agentId: string },
+): Promise<OrchestrationRun> {
+  const admission = await admitTask(botId, input, caller, { mode: "delegate" });
+  if ("existingId" in admission) return tx.orchestrationRun.findUniqueOrThrow({ where: { id: admission.existingId } });
+  const { admitted } = admission;
+  let run = await insertTaskRun(tx, admitted, []);
+  if (channel) run = await tx.orchestrationRun.update({ where: { id: run.id }, data: { request: { ...(run.request as Prisma.JsonObject), channel } } });
+  await tx.botRunEvent.create({ data: {
+    botId, runId: run.id, seq: 1, type: "queued", summary: `Task queued by ${admitted.key}.`.slice(0, 300),
+    data: sanitizeEventData({ caller: admitted.key, mode: "delegate", modelRole: admitted.input.modelRole }),
+  } });
+  await writeAuditLog({
+    workspaceId: admitted.bot.workspaceId, projectId: run.projectId, userId: caller.userId,
+    actorType: "user", action: "bot.task.queued", entityType: "orchestration_run", entityId: run.id,
+    details: { botId, caller: admitted.key, mode: "delegate" },
+  }, tx);
+  return run;
+}
+
 // ---------------------------------------------------------------- views ----
 
 export interface BotTaskEvent { seq: number; type: string; summary: string; data: Record<string, unknown>; at: string }
@@ -239,14 +273,14 @@ export interface BotTaskView {
   input: { task: string | null; context: string | null };
   output: { text: string } | null;
   artifacts: { id: string; type: string; title: string; url: string | null; mimeType: string | null }[];
-  toolCalls: { tool: string; server: string | null; decision: "allowed" | "denied" | "approval"; reason: string; at: string }[];
+  toolCalls: { tool: string; server: string | null; decision: "allowed" | "denied" | "approval"; reason: string; at: string; stage: "pre-execution" | "observed" }[];
   memory: { read: { retrieved: number; injected: number; dropped: number; scopes: string[]; skipped: string | null } | null; writes: { scope: string | null; accepted: boolean; denied: string | null }[] };
   model: { requested: string | null; actual: string | null; provider: string | null };
   usage: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null;
   cost: { usd: number | null; note: string };
   error: string | null;
   cancelRequested: boolean;
-  waitingFor: { approvalRequestId: string; tool: string } | null;
+  waitingFor: { approvalRequestId: string; tool: string; stage: "pre-execution" | "observed" } | null;
   events: BotTaskEvent[];
 }
 
@@ -293,7 +327,7 @@ export async function getBotTask(taskId: string, viewer: TaskViewer): Promise<Bo
     toolCalls: events.filter((event) => ["tool_allowed", "tool_denied", "approval_requested"].includes(event.type)).map((event) => ({
       tool: String(event.data.tool ?? "unknown"), server: typeof event.data.server === "string" ? event.data.server : null,
       decision: event.type === "tool_allowed" ? "allowed" : event.type === "approval_requested" ? "approval" : "denied",
-      reason: String(event.data.reason ?? event.summary), at: event.at,
+      reason: String(event.data.reason ?? event.summary), at: event.at, stage: event.data.stage === "pre-execution" ? "pre-execution" : "observed",
     })),
     memory: {
       read: memRead ? { retrieved: num(memRead.data.retrieved) ?? 0, injected: num(memRead.data.injected) ?? 0, dropped: num(memRead.data.dropped) ?? 0, scopes: Array.isArray(memRead.data.scopes) ? memRead.data.scopes.map(String) : [], skipped: typeof memRead.data.skipped === "string" ? memRead.data.skipped : null } : null,
@@ -307,7 +341,7 @@ export async function getBotTask(taskId: string, viewer: TaskViewer): Promise<Bo
     usage: attempt && Object.keys(usageRaw).length ? { inputTokens: num(usageRaw.inputTokens), outputTokens: num(usageRaw.outputTokens), totalTokens: num(usageRaw.totalTokens) } : null,
     cost: typeof attempt?.cost === "number" ? { usd: attempt.cost, note: "Calculated from reported tokens at Sentinel's rate card." } : { usd: null, note: "Not priced: Sentinel has no rate for this model, so no cost is shown." },
     error: run.error, cancelRequested: run.status === "cancelling",
-    waitingFor: run.status === "waiting" && waiting ? { approvalRequestId: String(waiting.data.approvalRequestId ?? ""), tool: String(waiting.data.tool ?? "") } : null,
+    waitingFor: run.status === "waiting" && waiting ? { approvalRequestId: String(waiting.data.approvalRequestId ?? ""), tool: String(waiting.data.tool ?? ""), stage: waiting.data.stage === "pre-execution" ? "pre-execution" : "observed" } : null,
     events,
   };
 }

@@ -1,25 +1,29 @@
 // Bot-specific behaviour inside the orchestration executor. The executor keeps
 // owning the lease, the queue, cancellation and the retry guard; this object is
 // what it consults at the points where a bot run differs from an ordinary one:
-// what to send, which model to ask for, whether an observed tool call is
-// permitted, and what to record afterwards.
+// what to send, which model to ask for, whether a tool call is permitted, and
+// what to record afterwards.
 //
-// Enforcement note, because it is easy to overstate: Hermes calls its tools
-// itself, so Sentinel cannot veto a call before it happens. This is detect-and-halt,
-// not pre-execution enforcement, and no wording here or in the UI may say otherwise. It sees each call as
-// the runtime announces it, and on a denied one interrupts the session and fails
-// the task. The prompt manifest asks the bot not to try; this is what happens if
-// it does anyway. The call that triggered the halt may already be under way.
+// Enforcement, stated exactly because it is easy to overstate. Hermes calls its tools itself. Which of
+// two modes a task runs in is decided by the runtime when the session starts (`metadata.toolGate`):
+//  - "pre-execution": the host runs the sentinel-bot-gate plugin, so Hermes asks `authorize` before each
+//    tool call runs and blocks the call unless Sentinel answers yes. A denied or approval-gated call never
+//    starts; Sentinel then interrupts the session. A call that starts without having been asked about means
+//    the gate was bypassed on the host; Sentinel halts the task after the fact and says so.
+//  - "observed" (any host without the gate): detect-and-halt. Sentinel sees each call as the runtime
+//    announces it and interrupts afterwards; the call that triggered the halt may already be under way.
+// The prompt manifest asks the bot not to try a forbidden tool in either mode; it is not enforcement.
 
 import type { OrchestrationRun, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { userHasWorkspacePermission } from "@/lib/workspaces/authorization";
 import { calculateModelCost } from "@/lib/agents/pricing";
-import type { RuntimeEvent } from "@/lib/agents/runtime/types";
+import type { AgentSession, RuntimeEvent, ToolAuthorizer } from "@/lib/agents/runtime/types";
 import { activeCatalog, loadCatalog } from "./catalog";
 import { BotRunLog } from "./events";
 import { readBotMemory, writeBotMemory } from "./memory";
 import { selectBotModel } from "./models";
-import { evaluateObservedTool, renderToolManifest, type CatalogServer, type PermissionRow, type ResolvedTool } from "./policy";
+import { evaluateObservedTool, resolveObservedTool, renderToolManifest, type CatalogServer, type PermissionRow, type ResolvedTool } from "./policy";
 import { buildBotPrompt } from "./prompt";
 import { getBotRow, toBotRecord, toGrant, type BotRecord } from "./service";
 
@@ -40,6 +44,8 @@ export interface Halt {
   approvalKeys?: string[];
   reason: string;
   risk: "normal" | "high";
+  /** True when the call was refused before it ran (pre-execution gate). False/absent: seen after it started. */
+  preExecution?: boolean;
 }
 
 export interface HaltContext { attemptId: string; startedAtMs: number; text: string }
@@ -71,6 +77,10 @@ export interface BotExecution {
   /** An explicit, operator-chosen fallback for a session that failed to start on an unavailable model. */
   fallbackOverride(error: unknown): ModelOverride | null;
   noteFallback(from: string | null, to: string): Promise<void>;
+  /** Read how the runtime will let Sentinel govern this session's tools. Call once the session exists. */
+  useSession(session: AgentSession): Promise<void>;
+  /** Pre-execution decision for one tool call, given to the runtime's send(). Refusals park a halt that observe() returns. */
+  readonly authorizeTool: ToolAuthorizer;
   observe(event: RuntimeEvent): Promise<Halt | null>;
   halted(halt: Halt, context: HaltContext): Promise<void>;
   /** The runtime did not confirm it stopped. Keep the task tracked as in-flight; do not halt, park or release it. */
@@ -115,23 +125,60 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
   const bot = toBotRecord(row);
   const log = new BotRunLog(bot.id, run.id);
   const request = asRecord(run.request);
+  const telegramChannel = asRecord(request.channel);
   const mode = request.mode === "test" ? "test" : "delegate";
   if (mode !== "test" && bot.status !== "active") { await failRun(run, log, `${bot.name} is ${bot.status}, so it cannot run delegated tasks.`); return null; }
 
   const task = String(request.task ?? "");
-  const rows: PermissionRow[] = row.toolPermissions.map(toGrant);
-  const catalog: CatalogServer[] = activeCatalog(await loadCatalog(bot.workspaceId));
+  let rows: PermissionRow[] = row.toolPermissions.map(toGrant);
+  let catalog: CatalogServer[] = activeCatalog(await loadCatalog(bot.workspaceId));
   const approvedOnce = new Set<string>(await loadUnspentGrants(run.id, request));
   const role = (["primary", "fast", "reasoning", "vision"].includes(String(request.modelRole)) ? request.modelRole : "primary") as "primary" | "fast" | "reasoning" | "vision";
   const requestedModel = selectBotModel(bot.modelConfig, role);
   const modelOverride: ModelOverride | undefined = requestedModel ? { model: requestedModel, ...(bot.modelConfig.effort !== undefined ? { effort: bot.modelConfig.effort } : {}), authorized: true } : undefined;
 
   const pending = new Set<string>();
+  let gate: "pre-execution" | "observed" = "observed";
+  /** Calls the pre-execution gate admitted and the runtime has not yet reported starting, by reported name. */
+  const admitted = new Map<string, number>();
+  /** A refusal made inside authorizeTool, handed to the executor by the next observe(). The first one wins. */
+  let parkedHalt: Halt | null = null;
+  let parkedHaltReturned = false;
   let usage: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null; model: string | null } | null = null;
   let actualModel: string | null = null;
   let provider: string | null = null;
   let toolCalls = 0;
   let reportedError: string | null = null;
+
+  /**
+   * One policy decision for one call, the same whether it is asked before the call runs or seen after it
+   * started. Returns null when the call is permitted (spending any one-use grant it used), else the halt.
+   */
+  async function decide(name: string, stage: "pre-execution" | "observed"): Promise<Halt | null> {
+    toolCalls += 1;
+    let verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+    // An approval is for ONE use: admitting this call spends it, durably, so neither a restart nor the
+    // continuation of this task can spend it again. The spend is a conditional update on the grant row;
+    // if another caller spent it first (count 0) this call is NOT admitted by it, and is evaluated again without.
+    for (let round = 0; verdict.allowed && verdict.consumed.length && round < 4; round += 1) {
+      let lost = false;
+      for (const key of verdict.consumed) {
+        approvedOnce.delete(key);
+        const spent = await db.botToolGrant.updateMany({ where: { runId: run.id, key, consumedAt: null }, data: { consumedAt: new Date() } });
+        if (spent.count === 0) lost = true;
+      }
+      if (!lost) break;
+      verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
+    }
+    const resolved: ResolvedTool | null = verdict.resolved;
+    const details = { tool: name, server: resolved?.serverName ?? null, serverId: resolved?.serverId ?? null, permission: verdict.permission, source: verdict.source, reason: verdict.reason, stage };
+    if (verdict.allowed) { await log.emit("tool_allowed", `${name} allowed.`, details); return null; }
+    const risk = resolved ? (catalog.find((server) => server.id === resolved.serverId)?.tools.find((tool) => tool.name === resolved.toolName)?.risk ?? "normal") : "normal";
+    const preExecution = stage === "pre-execution";
+    if (verdict.requiresApproval) return { kind: "approval", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, approvalKeys: verdict.approvalKeys, reason: verdict.reason, risk, preExecution };
+    await log.emit("tool_denied", `${name} denied: ${verdict.reason}`, details);
+    return { kind: "violation", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, reason: verdict.reason, risk, preExecution };
+  }
 
   const execution: BotExecution = {
     bot, requestedModel, modelOverride,
@@ -162,7 +209,52 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
       await log.emit("model", `Requested model was unavailable; using the bot's configured fallback ${to}.`, { requested: from, fallback: to, requestedOriginal: from });
     },
 
+    async useSession(session) {
+      const channel = telegramChannel;
+      if (channel.kind === "telegram") {
+        const inbox = typeof channel.updateId === "string" ? await db.telegramUpdate.findUnique({ where: { id: channel.updateId }, include: { bot: true } }) : null;
+        const access = inbox ? await db.telegramAccess.findUnique({ where: { telegramBotId_senderId_chatId: { telegramBotId: inbox.telegramBotId, senderId: inbox.senderId, chatId: inbox.chatId } } }) : null;
+        if (!inbox || !access?.enabled || access.userId !== run.userId || !await userHasWorkspacePermission(run.userId, inbox.bot.workspaceId, "agents.runtime.execute") || inbox.bot.botId !== bot.id || inbox.bot.agentId !== bot.runtimeAgentId || inbox.userId !== run.userId || inbox.bot.workspaceId !== run.workspaceId || session.metadata?.sessionSource !== `sentinel-telegram:${inbox.id}` || session.metadata?.toolGate !== "pre-execution") throw new Error("Trusted Telegram execution identity or tool gate is unavailable");
+      }
+      gate = session.metadata?.toolGate === "pre-execution" ? "pre-execution" : "observed";
+      await log.emit("tool_gate", gate === "pre-execution"
+        ? "Tool calls are checked before they run."
+        : "Tool calls are checked as the runtime reports them; a refused call may already have started.", { gate });
+    },
+
+    async authorizeTool(request) {
+      // Once a call has been refused the task is stopping; nothing else may start in the meantime.
+      if (parkedHalt) return { allow: false, reason: "The task is stopping." };
+      if (telegramChannel.kind === "telegram") {
+        const inbox = await db.telegramUpdate.findUnique({ where: { id: String(telegramChannel.updateId) }, include: { bot: true } });
+        const access = inbox ? await db.telegramAccess.findUnique({ where: { telegramBotId_senderId_chatId: { telegramBotId: inbox.telegramBotId, senderId: inbox.senderId, chatId: inbox.chatId } } }) : null;
+        const currentBot = await getBotRow(bot.id);
+        if (!inbox || !inbox.bot.enabled || !access?.enabled || access.userId !== run.userId || currentBot?.status !== "active" || currentBot.runtimeAgentId !== inbox.bot.agentId || !await userHasWorkspacePermission(run.userId, bot.workspaceId, "agents.runtime.execute")) {
+          parkedHalt = { kind: "violation", tool: request.tool, server: null, serverId: null, reason: "Telegram execution authority was revoked.", risk: "high", preExecution: true };
+          await log.emit("tool_denied", parkedHalt.reason, { tool: request.tool, stage: "pre-execution" });
+          return { allow: false, reason: parkedHalt.reason };
+        }
+        rows = currentBot.toolPermissions.map(toGrant);
+        catalog = activeCatalog(await loadCatalog(bot.workspaceId));
+      }
+      if (request.kind === "runtime-approval") {
+        const reason = "The runtime asked for approval of an action; bot tasks run unattended, so it was refused before it ran.";
+        await log.emit("tool_denied", `${request.tool || "runtime action"} denied: ${reason}`, { tool: request.tool || null, server: null, serverId: null, permission: "none", source: "runtime-approval", reason, stage: "pre-execution" });
+        parkedHalt = { kind: "violation", tool: request.tool || "runtime approval", server: null, serverId: null, reason, risk: "high", preExecution: true };
+        return { allow: false, reason };
+      }
+      if (telegramChannel.kind === "telegram" && resolveObservedTool(request.tool, catalog).length !== 1) {
+        parkedHalt = { kind: "violation", tool: request.tool, server: null, serverId: null, reason: "Tool identity is unknown or ambiguous.", risk: "high", preExecution: true };
+        return { allow: false, reason: parkedHalt.reason };
+      }
+      const halt = await decide(request.tool, "pre-execution");
+      if (!halt) { admitted.set(request.tool, (admitted.get(request.tool) ?? 0) + 1); return { allow: true, reason: "Permitted by the bot's grants." }; }
+      parkedHalt = halt;
+      return { allow: false, reason: halt.reason };
+    },
+
     async observe(event) {
+      if (parkedHalt && !parkedHaltReturned) { parkedHaltReturned = true; return parkedHalt; }
       const data = asRecord(event.data);
       switch (event.type) {
         case "status": {
@@ -174,30 +266,19 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
         }
         case "tool_started": {
           const name = asString(data.name);
+          if (gate === "pre-execution") {
+            // `tool.generating` streams while the model is still writing the call, before Hermes's pre-call hook;
+            // the decision is made at that hook. `tool.start` is the call actually beginning.
+            if (!name || data.phase !== "tool.start") return null;
+            const left = admitted.get(name) ?? 0;
+            if (left > 0) { admitted.set(name, left - 1); return null; }
+            const reason = "The call started without passing Sentinel's pre-execution check, so the gate on the runtime host was bypassed or is not installed. Sentinel stopped the session after the call began.";
+            await log.emit("tool_denied", `${name} denied: ${reason}`, { tool: name, server: null, serverId: null, permission: "none", source: "ungated", reason, stage: "observed" });
+            return { kind: "violation", tool: name, server: null, serverId: null, reason, risk: "high" };
+          }
           if (!name || pending.has(name)) return null;
           pending.add(name);
-          toolCalls += 1;
-          let verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
-          // An approval is for ONE use: admitting this call spends it, durably, so neither a restart nor the
-          // continuation of this task can spend it again. The spend is a conditional update on the grant row;
-          // if another caller spent it first (count 0) this call is NOT admitted by it, and is evaluated again without.
-          for (let round = 0; verdict.allowed && verdict.consumed.length && round < 4; round += 1) {
-            let lost = false;
-            for (const key of verdict.consumed) {
-              approvedOnce.delete(key);
-              const spent = await db.botToolGrant.updateMany({ where: { runId: run.id, key, consumedAt: null }, data: { consumedAt: new Date() } });
-              if (spent.count === 0) lost = true;
-            }
-            if (!lost) break;
-            verdict = evaluateObservedTool(rows, name, catalog, approvedOnce);
-          }
-          const resolved: ResolvedTool | null = verdict.resolved;
-          const details = { tool: name, server: resolved?.serverName ?? null, serverId: resolved?.serverId ?? null, permission: verdict.permission, source: verdict.source, reason: verdict.reason };
-          if (verdict.allowed) { await log.emit("tool_allowed", `${name} allowed.`, details); return null; }
-          const risk = resolved ? (catalog.find((server) => server.id === resolved.serverId)?.tools.find((tool) => tool.name === resolved.toolName)?.risk ?? "normal") : "normal";
-          if (verdict.requiresApproval) return { kind: "approval", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, approvalKeys: verdict.approvalKeys, reason: verdict.reason, risk };
-          await log.emit("tool_denied", `${name} denied: ${verdict.reason}`, details);
-          return { kind: "violation", tool: name, catalogTool: resolved?.toolName ?? null, server: details.server, serverId: details.serverId, reason: verdict.reason, risk };
+          return decide(name, "observed");
         }
         case "tool_completed": {
           const name = asString(data.name);
@@ -207,7 +288,7 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
           return null;
         }
         case "approval_required":
-          // The runtime itself is asking a human to approve a command. A bot runs unattended, and Sentinel has no channel to answer it.
+          // An older Hermes announcing its own approval prompt as an event, which Sentinel cannot answer. A bot runs unattended.
           return { kind: "violation", tool: asString(data.tool_name) ?? "runtime approval", server: null, serverId: null, reason: "The runtime asked for approval of an action; bot tasks run unattended, so it was not granted.", risk: "high" };
         case "completed": {
           if (typeof data.error === "string" && data.error) reportedError = `${data.error}`.slice(0, 300);
@@ -229,7 +310,9 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
         const approval = await db.approvalRequest.create({
           data: {
             workspaceId: run.workspaceId!, projectId: run.projectId, type: "bot_tool_call", risk: halt.risk === "high" ? "high" : "medium",
-            title: `${bot.name} wants to use ${halt.tool}`, description: `Bot task ${run.id} called ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Sentinel saw the call as the runtime started it and then interrupted the session, so the tool may already have begun running. Approve to continue as a new task that may use it once.`,
+            title: `${bot.name} wants to use ${halt.tool}`, description: halt.preExecution
+              ? `Bot task ${run.id} called ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Sentinel's pre-execution check refused the call before it ran and then stopped the session. Approve to continue as a new task that may use it once.`
+              : `Bot task ${run.id} called ${halt.tool}${halt.server ? ` (${halt.server})` : ""}. Sentinel saw the call as the runtime started it and then interrupted the session, so the tool may already have begun running. Approve to continue as a new task that may use it once.`,
             requesterUserId: run.userId,
             // Stored under the catalog's names, not the runtime's spelling (Hermes reports MCP tools as
             // `mcp_<slug>_<tool>`): evaluateToolAccess matches on `<serverId>:<catalog tool>`, so an
@@ -237,14 +320,15 @@ export async function loadBotExecution(run: OrchestrationRun): Promise<BotExecut
             payload: json({ runId: run.id, botId: bot.id, serverId: halt.serverId, tool: halt.catalogTool ?? halt.tool, reportedTool: halt.tool, approvalKeys: halt.approvalKeys ?? [] }),
           },
         });
-        await log.emit("approval_requested", `${halt.tool} needs approval; task is waiting.`, { tool: halt.tool, server: halt.server, serverId: halt.serverId, reason: halt.reason, approvalRequestId: approval.id });
+        const stage = halt.preExecution ? "pre-execution" : "observed";
+        await log.emit("approval_requested", `${halt.tool} needs approval; task is waiting.`, { tool: halt.tool, server: halt.server, serverId: halt.serverId, reason: halt.reason, approvalRequestId: approval.id, stage });
         await db.$transaction([
           db.executionAttempt.update({ where: { id: context.attemptId }, data: { status: "halted", completedAt: new Date(), latencyMs, output: json({ text: context.text }), validation: json({ passed: false, reason: "Waiting for tool approval." }) } }),
-          db.orchestrationRun.update({ where: { id: run.id }, data: { status: "waiting", result: json({ text: context.text, waitingFor: { approvalRequestId: approval.id, tool: halt.tool } }) } }),
+          db.orchestrationRun.update({ where: { id: run.id }, data: { status: "waiting", result: json({ text: context.text, waitingFor: { approvalRequestId: approval.id, tool: halt.tool, stage } }) } }),
         ]);
         return;
       }
-      const message = `policy_violation: ${halt.tool} is not permitted — ${halt.reason}`;
+      const message = `policy_violation: ${halt.tool} is not permitted — ${halt.reason}${halt.preExecution ? " (refused before it ran)" : ""}`;
       await log.emit("error", `Task stopped: ${message}`, { tool: halt.tool, reason: halt.reason });
       await db.$transaction([
         db.executionAttempt.update({ where: { id: context.attemptId }, data: { status: "failed", error: message, completedAt: new Date(), latencyMs, output: json({ text: context.text }), validation: json({ passed: false, reason: message }) } }),
