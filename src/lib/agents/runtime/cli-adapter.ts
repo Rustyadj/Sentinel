@@ -104,6 +104,17 @@ export abstract class CliRuntimeAdapter implements AgentRuntimeAdapter {
       const result = await (computer?.runner ?? this.runner).run(computer?.executable ?? runtime.executable, this.versionArgs, { timeoutMs: 5_000 });
       if (result.exitCode !== 0) return unhealthy(checkedAt, "binary_unavailable", result.stderr || "Version check failed");
       version = result.stdout.trim().split("\n")[0];
+      if (computer && this.kind === "codex") {
+        // CLI presence is not proof that its nested filesystem sandbox can
+        // execute under this host's Docker/AppArmor/seccomp policy.
+        const sandbox = await computer.runner.run(computer.executable,
+          ["-c", 'sandbox_mode="workspace-write"', "sandbox", "sh", "-c", "printf sentinel-sandbox-ready"],
+          { cwd: computer.root, timeoutMs: 5_000, probe: true });
+        if (sandbox.exitCode !== 0 || sandbox.stdout.trim() !== "sentinel-sandbox-ready") {
+          return { ...unhealthy(checkedAt, "sandbox_unavailable", `Personal computer ${computer.workspace.id}: Codex cannot execute with its filesystem sandbox under this host policy. Validate a compatible CLI/image and host policy before activation.`),
+            installed: true, reachable: true, version };
+        }
+      }
     } catch (error) {
       return unhealthy(checkedAt, isPersonalComputer(runtime) && error && typeof error === "object" && "code" in error ? String(error.code) : "binary_missing", error instanceof Error ? error.message : "Runtime binary was not found");
     }

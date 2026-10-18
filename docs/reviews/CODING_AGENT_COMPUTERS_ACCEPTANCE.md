@@ -53,3 +53,49 @@ transcripts for reviewed transfer. Verify real authenticated tasks through both
 app and deployed worker, persistence/recovery, browser attachment where needed,
 and unchanged Lisa/Nathan2 operation. A configured key or historic runtime
 verification flag alone is not evidence that this live acceptance passed.
+
+## Deployment preflight after merge/deploy authorization
+
+PR #55 was opened against main. The host release inputs were inventoried and a
+private PostgreSQL backup was created and verified. The migration rehearsal on
+a disposable restored copy passed: no pending schema changes, unchanged row
+counts in all 121 tables, no new drift, and compatibility with running revision
+`189e144`. App, worker and browser CI run independently before merge; the GitHub
+branch protection requires passing checks and an approving review.
+
+A real coding image was built with Claude Code 2.1.226 and Codex 0.153.4. Both
+version commands run as UID 10001; image home directories contain no credential
+files and image environment contains no provider keys. A real Codex sandboxed
+command under cap-drop ALL/no-new-privileges failed because Bubblewrap could not
+create namespaces. Its deprecated Landlock mode also rejects the required
+filesystem-restricted policy. Codex 0.147.0's Landlock fallback was additionally
+checked in a disposable image and showed the same rejection; that test image
+was removed. No sandbox bypass, privileged container, host sysctl change or
+security-policy relaxation was applied.
+
+The adapter now probes an actual credential-free Codex sandboxed command during
+health checks and reports `sandbox_unavailable` rather than claiming readiness
+from the version response. The probe does not refresh the idle timer. Dedicated
+regressions cover rejection and success; the fixture CLI verifies probes receive
+no provider keys.
+
+Deployment and activation remain gated on the required GitHub review, secure
+references for the two dedicated provider keys, and a reviewed compatible Codex
+sandbox configuration. The running production app/workers, Lisa/Nathan2 services,
+workspace defaults, volumes and runtime credentials have not been replaced or
+modified by this preflight. Rollout records and the database backup are retained
+privately under `/root/sentinel-release-prep-72e30e3`.
+
+Automated PR review additionally identified the 16 KB shell-command limit as a
+regression for valid large coding prompts. Both adapters now send prompt data
+through stdin; command audit rows retain prompt length without copying prompts
+to workspace files or embedding them in shell text. Two real Docker cases send
+near-100,000-character prompts with shell metacharacters and verify exact input
+length, completion, bounded command text, and absence of shell execution.
+
+Follow-up validation passed 38 focused cases across four suites, including all
+12 Docker integration cases and both sandbox-readiness regressions, plus
+TypeScript, changed-file ESLint and diff checks. Before these follow-up changes,
+PR CI passed verify, Docker, smoke, browser and the deployment gate on 72e30e3;
+the updated commit must complete CI again before any merge. No production
+services were replaced.

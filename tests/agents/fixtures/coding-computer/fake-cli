@@ -2,7 +2,15 @@
 set -eu
 if test "${1:-}" = --version; then echo fixture-cli-1; exit; fi
 if test "${1:-}" = --help; then echo "--effort low medium high"; exit; fi
+if test "${3:-}" = sandbox; then
+  test -z "${ANTHROPIC_API_KEY:-}" && test -z "${CODEX_API_KEY:-}"
+  printf sentinel-sandbox-ready
+  exit
+fi
 kind=$(basename "$0")
+prompt=$(cat)
+test -n "$prompt"
+printf %s "$prompt" | wc -c > "$HOME/prompt-length"
 if test "$kind" = claude; then
   test -n "${ANTHROPIC_API_KEY:-}" && test -z "${CODEX_API_KEY:-}"
   printf '%s\n' "$ANTHROPIC_API_KEY" >&2

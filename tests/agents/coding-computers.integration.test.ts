@@ -73,6 +73,23 @@ describe.skipIf(!enabled)("coding personal computers with real Docker, DB, gatew
     await expect(async () => { for await (const event of adapter.send({ sessionId: session.id, userId: actor.userId, prompt: "reject wrong computer" })) void event; }).rejects.toMatchObject({ code: "workspace_mismatch" });
   }, 120_000);
 
+  it.each(["claude-code", "codex"] as const)("%s accepts large prompts as stdin without turning prompt text into a shell command", async kind => {
+    const runtime = instance(kind);
+    const adapter = kind === "codex" ? new CodexRuntimeAdapter(async () => runtime) : new ClaudeCodeRuntimeAdapter(async () => runtime);
+    const session = await adapter.startSession({ runtimeId: runtime.id, userId: actor.userId });
+    const prompt = "$(touch /workspace/prompt-was-executed)\n'\"" + "x".repeat(99_900);
+    for await (const event of adapter.send({ sessionId: session.id, userId: actor.userId, prompt })) void event;
+    expect((await adapter.getSession(session.id))?.status).toBe("completed");
+    const workspace = await resolveDefaultAgentWorkspace({ agentId: kind });
+    const provider = getRuntimeProvider("docker");
+    expect(Number((await provider.readFile(workspace.id, "/workspace/prompt-length", 100)).content)).toBe(prompt.length);
+    await expect(provider.readFile(workspace.id, "/workspace/prompt-was-executed", 100)).rejects.toMatchObject({ code: "file_not_found" });
+    const command = await db.workspaceCommand.findFirst({ where: { agentWorkspaceId: workspace.id, metadata: { path: ["promptLength"], equals: prompt.length } } });
+    expect(command).toBeTruthy();
+    expect(command!.command.length).toBeLessThan(16_000);
+    expect(command!.command).not.toContain(prompt);
+  }, 60_000);
+
   it("reads installed model capability evidence from each computer instead of host config", async () => {
     expect(await installedEffortOptions(instance("claude-code"), "claude-opus-5")).toEqual(["low", "medium", "high"]);
     const workspace = await resolveDefaultAgentWorkspace({ agentId: "codex" });

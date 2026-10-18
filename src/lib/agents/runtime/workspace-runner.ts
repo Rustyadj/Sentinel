@@ -51,10 +51,21 @@ export async function personalComputerRunner(runtime: RuntimeInstance, userId?: 
     async run(executable, args, options = {}) {
       const cwd = checkedPath(options.cwd ?? workspace.homePath);
       const result = await runCommand({ workspace: await refresh(), actor, cwd, command: [executable, ...args].map(shellArg).join(" "), timeoutMs: options.timeoutMs,
-        env, loginShell: false, touchActivity: !args.includes("--version"), metadata: { runtimeId: runtime.id, via: "coding-runtime" } });
+        env, loginShell: false, touchActivity: options.probe !== true && !args.includes("--version"), metadata: { runtimeId: runtime.id, via: "coding-runtime" } });
       return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
     },
     spawn(executable: string, args: string[], options: SpawnOptionsWithoutStdio) {
+      // Prompts have a 100k-character adapter limit, while audited shell
+      // commands are intentionally capped at 16k. Keep prompt data on stdin.
+      const commandArgs = [...args];
+      let stdin: string | undefined;
+      if (executable === "claude" && commandArgs.includes("-p")) {
+        const index = commandArgs.indexOf("-p") + 1;
+        stdin = commandArgs.splice(index, 1)[0];
+      } else if (executable === "codex" && commandArgs.includes("exec")) {
+        stdin = commandArgs.pop();
+        commandArgs.push("-");
+      }
       const child = new EventEmitter() as SpawnedRuntimeProcess;
       const stdout = new PassThrough(), stderr = new PassThrough();
       Object.assign(child, { stdout, stderr });
@@ -64,10 +75,10 @@ export async function personalComputerRunner(runtime: RuntimeInstance, userId?: 
       void Promise.resolve().then(async () => {
         try {
           const result = await runCommand({ workspace: await refresh(), actor, cwd: checkedPath(String(options.cwd ?? root)),
-            command: [executable, ...args].map(shellArg).join(" "), timeoutMs: 10 * 60_000,
+            command: [executable, ...commandArgs].map(shellArg).join(" "), stdin, timeoutMs: 10 * 60_000,
             env, loginShell: false, secrets: codingCredential(client), signal: controller.signal,
             onStdout: chunk => stdout.write(chunk), onStderr: chunk => stderr.write(chunk),
-            metadata: { runtimeId: runtime.id, via: "coding-runtime" } });
+            metadata: { runtimeId: runtime.id, via: "coding-runtime", ...(stdin !== undefined ? { promptLength: stdin.length } : {}) } });
           stdout.end(); stderr.end(); child.emit("close", result.exitCode, controller.signal.aborted ? "SIGTERM" : null);
         } catch (error) { stdout.end(); stderr.end(); child.emit("error", error); }
       });

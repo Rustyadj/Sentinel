@@ -124,14 +124,17 @@ persistent desktop or an in-container browser. See `AGENT_WORKSPACES.md` for
 installation and current browser limitations.
 
 The existing Agent Runtime Console/operations status calls adapter health against
-the computer's actual CLI, not the host binary. Healthy status names the computer
+the computer's actual CLI, not the host binary. Codex additionally runs a
+credential-free sandboxed-command probe inside that computer. A host that cannot
+support the CLI's filesystem sandbox reports `sandbox_unavailable` and cannot
+be routed through normal readiness checks. Version presence alone is insufficient. Healthy status names the computer
 ID. Missing/ambiguous defaults, stopped/paused compute, lock/archive, unavailable
 backend, missing binary and missing credentials fail closed with diagnostic
 codes. A configured API key permits an execution attempt; health explicitly
 reports provider authentication as unverified (`authenticated: null`) until real
 execution is checked. A version response or historic `executionVerified` row is
 not acceptance evidence for the new computer. Task commands and session events
-are audited; provider key values are redacted before output is persisted or
+are audited; prompts travel through stdin to preserve the adapter's 100,000-character limit without entering shell command text or workspace files, and audits record prompt length. Provider key values are redacted before output is persisted or
 streamed. Cancellation and deadlines terminate the in-container process group;
 an internal timeout also bounds commands if the control-plane process dies.
 
@@ -165,7 +168,13 @@ the intended existing default through the authorized default-workspace API;
 do not delete candidate data. For `volume_missing`, restore the original volume
 and ownership labels or recover its backup before starting compute. Starting
 compute now refuses a missing/mismatched volume instead of allowing Docker to
-silently create an empty replacement. For an image upgrade, preserve the volume
+silently create an empty replacement. For `sandbox_unavailable`, validate Codex's `workspace-write` command sandbox
+under the existing non-root/cap-drop/no-new-privileges policy before activation.
+On the inspected host, Codex 0.153.4's Bubblewrap cannot create namespaces;
+its deprecated Landlock mode also rejects filesystem-restricted profiles.
+Do not disable the CLI sandbox, add privileged containers or relax host security
+settings as an automatic recovery. A compatible enforced sandbox must be
+reviewed and validated before cutover. For an image upgrade, preserve the volume
 and replace compute explicitly. For expired credentials rotate only the owning
 agent's host setting and refresh app/worker environment. Retry in a new session
 when legacy session binding is rejected. Preserve old host projects for a
