@@ -24,6 +24,7 @@ import {
   runRecordedDegradationSweep,
   runRecordedScheduledJob,
   runRecordedMemoryDecaySweep,
+  runRecordedRoutineSweep,
 } from "@/lib/neural-engine/scheduler-service";
 import { detectKnowledgeGaps } from "@/lib/learning/knowledge-gaps";
 import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
@@ -44,6 +45,8 @@ const JOB_TIMEOUT_MS = Number.isFinite(requestedTimeout) && requestedTimeout > 0
 
 async function processJob(job: Job<JobPayload>) {
   switch (job.name) {
+    case JOB_NAMES.botRoutineSweep:
+      return runRecordedRoutineSweep();
     case JOB_NAMES.degradationSweep:
       return runRecordedDegradationSweep();
     case JOB_NAMES.knowledgeGapAnalysis: {

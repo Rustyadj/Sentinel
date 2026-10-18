@@ -10,6 +10,12 @@ import WebSocket from "ws";
  *   → request:  {"jsonrpc":"2.0","method":<rpc>,"params":{...},"id":<n>}
  *   ← response: {"jsonrpc":"2.0","result":{...}|"error":{...},"id":<n>}
  *   ← event:    {"jsonrpc":"2.0","method":"event","params":{"type":<t>,"session_id":<sid>,"payload":{...}}}
+ *   ← server request: {"jsonrpc":"2.0","id":"srq-<hex>","method":<kind>,"params":{"session_id":<sid>,...}}
+ *   → its reply:      {"jsonrpc":"2.0","id":"srq-<hex>","result":{...}|"error":{...}}
+ *
+ * Server requests (Hermes 0.21+: approval, clarify, sudo, secret, ...) are only sent to a connection that
+ * said `client.capabilities {server_requests: true}`; see advertiseServerRequests(). Before that Hermes
+ * withholds them and treats each as unanswered.
  *
  * The server emits a `gateway.ready` event immediately after accept. Calling
  * `prompt.submit` acks `{"status":"streaming"}` and the real reply streams as
@@ -22,6 +28,15 @@ export interface HermesEventFrame {
   session_id: string;
   payload?: Record<string, unknown>;
 }
+
+export interface HermesServerRequest {
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
+}
+
+/** The reply to a server request: a result object, or an error (Hermes treats an error as "no answer"). */
+export type HermesServerReply = { result: Record<string, unknown> } | { error: { code: number; message: string } };
 
 interface PendingCall {
   resolve: (result: unknown) => void;
@@ -42,6 +57,7 @@ export class HermesWebSocketClient {
   private nextId = 1;
   private readonly pending = new Map<number, PendingCall>();
   private readonly eventHandlers = new Set<(event: HermesEventFrame) => void>();
+  private requestHandler: ((request: HermesServerRequest) => Promise<HermesServerReply>) | null = null;
   private closed = false;
 
   private constructor(ws: WebSocket) {
@@ -123,6 +139,20 @@ export class HermesWebSocketClient {
     return () => this.eventHandlers.delete(handler);
   }
 
+  /**
+   * Answer Hermes's server→client requests on this connection. Only one handler; it must reply to every
+   * request it is given (a throw is sent as an error reply). Pair with advertiseServerRequests().
+   */
+  onRequest(handler: (request: HermesServerRequest) => Promise<HermesServerReply>): () => void {
+    this.requestHandler = handler;
+    return () => { if (this.requestHandler === handler) this.requestHandler = null; };
+  }
+
+  /** Tell Hermes this connection answers server requests. Without it Hermes never sends them here. */
+  async advertiseServerRequests(): Promise<void> {
+    await this.call("client.capabilities", { server_requests: true });
+  }
+
   async call<T = unknown>(method: string, params: Record<string, unknown>, timeoutMs = 30_000): Promise<T> {
     if (!this.ws || this.closed) throw new HermesWsError("connection closed");
     const id = this.nextId++;
@@ -159,7 +189,7 @@ export class HermesWebSocketClient {
   }
 
   private handleMessage(raw: string) {
-    let frame: { id?: number; result?: unknown; error?: { code: number; message: string }; method?: string; params?: HermesEventFrame };
+    let frame: { id?: number | string; result?: unknown; error?: { code: number; message: string }; method?: string; params?: HermesEventFrame };
     try {
       frame = JSON.parse(raw);
     } catch {
@@ -171,6 +201,17 @@ export class HermesWebSocketClient {
       return;
     }
 
+    // Hermes mints string ids (`srq-...`) for its own requests, so they never collide with ours.
+    if (typeof frame.id === "string" && typeof frame.method === "string") {
+      const request: HermesServerRequest = { id: frame.id, method: frame.method, params: (frame.params ?? {}) as unknown as Record<string, unknown> };
+      const handler = this.requestHandler;
+      if (!handler) return;
+      void handler(request)
+        .catch((error: unknown): HermesServerReply => ({ error: { code: -32603, message: error instanceof Error ? error.message : String(error) } }))
+        .then((reply) => this.reply(request.id, reply));
+      return;
+    }
+
     if (typeof frame.id === "number") {
       const pending = this.pending.get(frame.id);
       if (!pending) return;
@@ -178,6 +219,11 @@ export class HermesWebSocketClient {
       if (frame.error) pending.reject(new HermesWsError(frame.error.message, frame.error.code));
       else pending.resolve(frame.result);
     }
+  }
+
+  private reply(id: string, reply: HermesServerReply) {
+    if (!this.ws || this.closed) return;
+    this.ws.send(JSON.stringify({ jsonrpc: "2.0", id, ...reply }));
   }
 
   private handleClose() {

@@ -10,7 +10,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const projectIds = await getReadableProjectIds(user.id);
   return NextResponse.json(await db.workflow.findMany({
-    where: { OR: [{ userId: user.id, projectId: null }, ...(projectIds.length ? [{ projectId: { in: projectIds } }] : [])] },
+    where: { kind: "graph", OR: [{ userId: user.id, projectId: null }, ...(projectIds.length ? [{ projectId: { in: projectIds } }] : [])] },
     orderBy: { updatedAt: "desc" },
   }));
 }

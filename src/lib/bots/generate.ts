@@ -102,11 +102,14 @@ export async function generateBotProposal(input: { description: string; workspac
   const prompt = buildGenerationPrompt(description, catalog.filter((server) => server.enabled).map((server) => ({ name: server.name, tools: server.tools.map((tool) => tool.name) })), skills.map((skill) => skill.name));
 
   const { adapter, runtime } = await getAdapterForRuntime(host.agentId);
-  const session = await adapter.startSession({ runtimeId: runtime.id, userId: input.userId, workspaceId: input.workspaceId });
+  const session = await adapter.startSession({ runtimeId: runtime.id, userId: input.userId, workspaceId: input.workspaceId, toolGate: "bot" });
   let text = "";
   const deadline = setTimeout(() => { void adapter.cancel(session.id); }, GENERATION_TIMEOUT_MS);
   try {
-    for await (const event of adapter.send({ sessionId: session.id, userId: input.userId, prompt })) {
+    // Where the host has the pre-execution gate, every call is refused before it runs; elsewhere the check below
+    // only sees a call after the runtime announces it.
+    const authorizeTool = async () => ({ allow: false, reason: "Generating a bot definition needs no tools." });
+    for await (const event of adapter.send({ sessionId: session.id, userId: input.userId, prompt, authorizeTool })) {
       if (event.type === "assistant_delta" && typeof event.data.text === "string") text += event.data.text;
       // Generating a definition needs no tools. A call means the runtime is going off-task, so stop it.
       if (event.type === "tool_started" || event.type === "approval_required") {

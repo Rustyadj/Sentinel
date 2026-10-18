@@ -40,6 +40,7 @@ export const JOB_NAMES = {
   coOccurrenceDiscovery: "co-occurrence-discovery",
   memoryDecaySweep: "memory-decay-sweep",
   memoryConsolidation: "memory-consolidation",
+  botRoutineSweep: "bot-routine-sweep",
 } as const;
 
 export type LearningJobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -115,6 +116,14 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
   const q = getLearningQueue();
   if (!q) return null;
 
+  // Routines persist their own due times in Workflow. The existing scheduler
+  // only wakes admission/reconciliation; execution uses the orchestration queue.
+  await q.upsertJobScheduler(
+    JOB_NAMES.botRoutineSweep,
+    { every: 60_000 },
+    { name: JOB_NAMES.botRoutineSweep, data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS },
+  );
+
   // BullMQ v6: repeatable jobs go through upsertJobScheduler (add()'s
   // `repeat` option was removed in this major version) — upserting with the
   // same schedulerId + repeat options is itself the idempotency guarantee,
@@ -162,6 +171,7 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
 
   return {
     scheduled: [
+      JOB_NAMES.botRoutineSweep,
       JOB_NAMES.degradationSweep,
       JOB_NAMES.knowledgeGapAnalysis,
       JOB_NAMES.coOccurrenceDiscovery,

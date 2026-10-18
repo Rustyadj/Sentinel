@@ -10,11 +10,11 @@ export interface TaskData {
   id: string; botName: string | null; status: string; mode: string; origin: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null; durationMs: number | null;
   input: { task: string | null; context: string | null }; output: { text: string } | null;
   artifacts: { id: string; type: string; title: string; url: string | null }[];
-  toolCalls: { tool: string; server: string | null; decision: string; reason: string; at: string }[];
+  toolCalls: { tool: string; server: string | null; decision: string; reason: string; at: string; stage?: string }[];
   memory: { read: { retrieved: number; injected: number; dropped: number; scopes: string[]; skipped: string | null } | null; writes: { scope: string | null; accepted: boolean; denied: string | null }[] };
   model: { requested: string | null; actual: string | null; provider: string | null };
   usage: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null;
-  cost: { usd: number | null; note: string }; error: string | null; waitingFor: { approvalRequestId: string; tool: string } | null; events: TaskEvent[];
+  cost: { usd: number | null; note: string }; error: string | null; waitingFor: { approvalRequestId: string; tool: string; stage?: string } | null; events: TaskEvent[];
 }
 
 const fmtMs = (ms: number | null) => (ms == null ? "not finished" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
@@ -54,7 +54,9 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
         </span>
       </div>
       {error ? <Notice>{error}</Notice> : null}
-      {task.status === "WAITING" ? <Notice tone="warn">Sentinel interrupted the session when {task.waitingFor?.tool} was called; the tool may already have started. Approving starts a new task that may use it once.</Notice> : null}
+      {task.status === "WAITING" ? (task.waitingFor?.stage === "pre-execution"
+        ? <Notice tone="warn">Sentinel refused {task.waitingFor?.tool} before it ran and stopped the session. Approving starts a new task that may use it once.</Notice>
+        : <Notice tone="warn">Sentinel interrupted the session when {task.waitingFor?.tool} was called; the tool may already have started. Approving starts a new task that may use it once.</Notice>) : null}
       {task.error ? <Notice>{task.error}</Notice> : null}
 
       <dl className="divide-y divide-[--border] rounded-lg border border-[--border] px-3">
@@ -75,6 +77,7 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
                 <Pill tone={DECISION_TONE[call.decision as keyof typeof DECISION_TONE] ?? "neutral"}>{call.decision === "approval" ? "Needs approval" : call.decision === "allowed" ? "Allowed" : "Denied"}</Pill>
                 <code className="text-[12px]">{call.tool}</code>
                 {call.server ? <span className="text-[--muted-foreground]">{call.server}</span> : null}
+                <span className="ml-auto text-[11px] text-[--muted-foreground]">{call.stage === "pre-execution" ? "Checked before it ran" : "Seen after it started"}</span>
                 <span className="basis-full text-[12px] text-[--muted-foreground]">{call.reason}</span>
               </li>
             ))}

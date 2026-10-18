@@ -152,7 +152,9 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
 
   }
 
-  const sessionInput = { runtimeId: runtime.id, userId: run.userId, workspaceId: run.workspaceId ?? undefined, projectId: run.projectId ?? undefined };
+  // A bot session asks the runtime to let Sentinel authorize tool calls before they run; the runtime records
+  // whether it can (session.metadata.toolGate), and botExec.useSession reads that.
+  const sessionInput = { runtimeId: runtime.id, userId: run.userId, workspaceId: run.workspaceId ?? undefined, projectId: run.projectId ?? undefined, ...(botExec ? { toolGate: "bot" as const } : {}) };
   let session;
   try {
     session = await adapter.startSession({ ...sessionInput, ...(botExec?.modelOverride ? { modelOverride: botExec.modelOverride } : {}) });
@@ -177,16 +179,17 @@ export async function executeOrchestrationRun(runId: string, workerId = orchestr
   }
   sessionId = session.id;
   await db.executionAttempt.update({ where: { id: attempt.id }, data: { runtimeJobId: session.id } });
+  if (botExec) await botExec.useSession(session);
   const started = Date.now();
   let text = "";
   try {
-    for await (const event of adapter.send({ sessionId: session.id, userId: run.userId, prompt })) {
+    for await (const event of adapter.send({ sessionId: session.id, userId: run.userId, prompt, ...(botExec ? { authorizeTool: botExec.authorizeTool } : {}) })) {
       if (ownershipLost) throw new Error("Execution ownership lease was lost; adapter cancellation was requested.");
       if (event.type === "assistant_delta" && typeof event.data.text === "string") text += event.data.text;
       if (botExec) {
-        // Tool calls are checked against the bot's grants as the runtime announces
-        // them. A denied call interrupts the session; an approval-gated one parks
-        // the task as WAITING.
+        // Tool calls are checked against the bot's grants: before they run when the session has the
+        // pre-execution gate (a refusal made there surfaces here as a halt), otherwise as the runtime
+        // announces them. A denied call interrupts the session; an approval-gated one parks the task as WAITING.
         const halt = await botExec.observe(event);
         if (halt) {
           const interrupted = await interruptSession(adapter, session.id);

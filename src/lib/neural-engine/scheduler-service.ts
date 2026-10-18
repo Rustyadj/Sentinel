@@ -69,3 +69,9 @@ export async function runRecordedMemoryDecaySweep(): Promise<{ jobRunId: string;
 export async function runRecordedTrustDecaySweep(): Promise<{ jobRunId: string; result: TrustDecayResult }> {
   return runRecordedScheduledJob(TRUST_DECAY_SWEEP_JOB_KEY, () => decayStaleTrust());
 }
+
+/** Bot routines reuse recorded sweeps from the existing recurring scheduler or external trigger. */
+export async function runRecordedRoutineSweep() {
+  const { sweepRoutines } = await import("@/lib/bots/routines");
+  return runRecordedScheduledJob("bot-routine-sweep", sweepRoutines);
+}
