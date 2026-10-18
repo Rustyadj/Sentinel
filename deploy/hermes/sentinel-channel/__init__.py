@@ -48,7 +48,7 @@ async def _dispatch(event, gateway, **_):
         metadata = _thread_metadata_for_source(source, getattr(event, "message_id", None))
 
         async def reply(text):
-            result = await adapter.send(chat_id=source.chat_id, text=text, metadata=metadata)
+            result = await adapter.send(chat_id=source.chat_id, content=text, metadata=metadata)
             if result is not None and getattr(result, "success", True) is False:
                 raise RuntimeError("Channel reply delivery failed")
 

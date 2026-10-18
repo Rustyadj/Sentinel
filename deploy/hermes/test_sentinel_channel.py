@@ -6,11 +6,16 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace, ModuleType
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 spec = importlib.util.spec_from_file_location("sentinel_channel", Path(__file__).parent / "sentinel-channel/__init__.py")
 plugin = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plugin)
+
+
+async def adapter_send(chat_id, content, reply_to=None, metadata=None):
+    """Hermes BasePlatformAdapter.send contract; strict signature catches keyword drift."""
+    return SimpleNamespace(success=True)
 
 
 class ChannelTests(unittest.IsolatedAsyncioTestCase):
@@ -20,7 +25,7 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         plugin._locks.clear()
         self.source = SimpleNamespace(platform=SimpleNamespace(value="telegram"), user_id="sender", chat_id="chat", thread_id="topic")
         self.event = SimpleNamespace(source=self.source, internal=False, message_id="1", text="hello", media_urls=[], get_command=lambda: None)
-        self.adapter = SimpleNamespace(send=AsyncMock(), extract_media=lambda text: ([], text))
+        self.adapter = SimpleNamespace(send=create_autospec(adapter_send, return_value=SimpleNamespace(success=True)), extract_media=lambda text: ([], text))
         self.gateway = SimpleNamespace(
             _is_user_authorized_for_source=MagicMock(return_value=True),
             _delivery_adapter_for=MagicMock(return_value=self.adapter),
@@ -43,7 +48,7 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await plugin._dispatch(self.event, self.gateway))["action"], "skip")
         self.assertEqual(self.post.call_args.kwargs["json"]["senderId"], "sender")
         self.assertEqual(self.adapter.send.call_args.kwargs["metadata"], {"thread_id": "topic"})
-        self.assertEqual(self.adapter.send.call_args.kwargs["text"], "Sentinel reply")
+        self.assertEqual(self.adapter.send.call_args.kwargs["content"], "Sentinel reply")
 
     async def test_unauthorized_sender_stays_with_native_auth(self):
         self.gateway._is_user_authorized_for_source.return_value = False
@@ -54,7 +59,7 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.post.side_effect = OSError("offline")
         with self.assertLogs(plugin.log, logging.ERROR):
             self.assertEqual((await plugin._dispatch(self.event, self.gateway))["action"], "skip")
-        self.assertIn("unavailable", self.adapter.send.call_args.kwargs["text"])
+        self.assertIn("unavailable", self.adapter.send.call_args.kwargs["content"])
 
     async def test_completed_delivery_is_not_sent_twice(self):
         await plugin._dispatch(self.event, self.gateway)
@@ -66,7 +71,7 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.gateway._hm_estop_gate.return_value = "Paused"
         await plugin._dispatch(self.event, self.gateway)
         self.post.assert_not_awaited()
-        self.assertEqual(self.adapter.send.call_args.kwargs["text"], "Paused")
+        self.assertEqual(self.adapter.send.call_args.kwargs["content"], "Paused")
 
     async def test_skill_shortcuts_go_through_sentinel(self):
         self.event.text = "/research topic"
