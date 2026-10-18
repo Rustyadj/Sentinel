@@ -52,15 +52,18 @@ export class SystemOneDecisionService {
 
     const controller = new AbortController();
     let timedOut = false;
+    let rejectDeadline!: (error: Error) => void;
+    const deadline = new Promise<never>((_, reject) => { rejectDeadline = reject; });
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
+      rejectDeadline(new Error("System One deadline exceeded"));
     }, options.timeoutMs);
-    const onCallerAbort = () => controller.abort();
+    const onCallerAbort = () => { controller.abort(); rejectDeadline(new Error("Caller aborted")); };
     options.signal?.addEventListener("abort", onCallerAbort, { once: true });
 
     try {
-      const response = await this.provider.evaluate(buildDecisionRequest(input), controller.signal);
+      const response = await Promise.race([this.provider.evaluate(buildDecisionRequest(input), controller.signal), deadline]);
       this.breaker.success();
       return result("ok", {
         decision: interpretAnswers(input, response.answers),

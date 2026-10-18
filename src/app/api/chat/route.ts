@@ -19,7 +19,6 @@ import { isRuntimeChatMode, routeRuntimeChat, RUNTIME_AGENT_MAP, type ChatExecut
 import { RuntimeError } from "@/lib/agents/runtime/errors";
 import { RequestTrace, recordDecision } from "@/lib/system-one/telemetry";
 import { beginSystemOne, planForTurn } from "@/lib/system-one/turn";
-import { observeRuntimeStream } from "@/lib/system-one/stream-observer";
 import type { RoutingPlan, SystemOneResult } from "@/lib/system-one/types";
 
 interface ContextBlockResult {
@@ -372,30 +371,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
   const runtimeMode = runtimeRoute?.mode ?? body.executionMode;
   if (!voiceTurn && isRuntimeChatMode(runtimeMode)) {
     if (!userContent) return sseError("Missing required field: userContent");
-    // System 1 observes runtime chat in every mode but never routes it: the
-    // runtime owns this turn's memory and persistence, and typed chat has no
-    // layer to present raw tool data (the fast path is a voice feature — see
-    // docs/SYSTEM_ONE.md). The decision runs alongside the turn and is scored
-    // against the tools the runtime actually called. Zero added latency.
-    const s1 = beginSystemOne({
-      surface: "runtime_chat", agentId, request: userContent, recentTurns: messages.slice(-3, -1), trace, signal: request.signal,
-    });
     try {
-      trace.mark("system2_start");
-      const response = await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: runtimeMode! });
-      return observeRuntimeStream(response, {
-        onFirstText: () => { trace.mark("system2_first_token"); trace.mark("response_first_token"); },
-        onComplete: async (observed) => {
-          trace.mark("request_complete");
-          const result = await s1.result;
-          await recordDecision({
-            surface: "runtime_chat", agentId, userId: user.id, roomId, mode: s1.mode === "active" ? "shadow" : s1.mode,
-            result, plan: s1.mode === "off" ? null : planForTurn(s1, result, "runtime_chat", false),
-            executedPath: "system2", system2Invoked: true, trace, interrupted: observed.aborted,
-            system2: { model: observed.model, inputTokens: observed.inputTokens, outputTokens: observed.outputTokens, tools: observed.toolNames },
-          });
-        },
-      });
+      return await routeRuntimeChat({ agentId, userId: user.id, roomId, userContent, mode: runtimeMode! });
     } catch (error) {
       return sseError(error instanceof Error ? error.message : "Runtime routing failed", error instanceof RuntimeError ? error.status : 503);
     }
@@ -412,39 +389,20 @@ async function handlePost(request: NextRequest): Promise<Response> {
   const memoryScope = dbAgent?.memoryScope ?? agentTemplate?.memoryScope ?? "session";
   const turnText = userContent ?? messages[messages.length - 1]?.content ?? "";
 
-  // System 1 runs concurrently with memory retrieval (read-only, so safe to
-  // start speculatively). In active mode the two race: if System 1 decides
-  // first, with high confidence, that this turn needs no memory, the model
-  // call starts without waiting for retrieval; if retrieval finishes first it
-  // is simply used. Either way this is never slower than retrieval alone.
-  // Authorization is untouched — retrieval is scoped exactly as before, and
-  // System 1 can only decide to *not* use what the user was already allowed.
+  // Existing identity/access checks above run before classification. Active
+  // routing settles before context injection and cannot widen retrieval access.
   const s1 = beginSystemOne({
     surface: "chat", agentId, request: turnText, recentTurns: messages.slice(-3, -1), configuredModel: model, trace, signal: request.signal,
   });
+  const s1Result: SystemOneResult | null = s1.mode === "active" ? await s1.result : null;
+  const s1Plan: RoutingPlan | null = s1Result ? planForTurn(s1, s1Result, "chat", true) : null;
+  trace.mark("routing_complete");
+  const memorySkipped = s1Plan?.action === "system2_skip_memory";
   trace.mark("memory_start");
-  const contextPromise = buildContextBlock(roomId, memoryScope, user.id, agentId, turnText).then((context) => {
-    trace.mark("memory_complete");
-    return context;
-  });
-  let s1Result: SystemOneResult | null = null;
-  let s1Plan: RoutingPlan | null = null;
-  let memorySkipped = false;
-  const SKIP_MEMORY = Symbol("skip-memory");
-  const decided: Promise<ContextBlockResult | typeof SKIP_MEMORY> = s1.mode === "active"
-    ? s1.result.then((result): ContextBlockResult | typeof SKIP_MEMORY | Promise<ContextBlockResult> => {
-        s1Result = result;
-        s1Plan = planForTurn(s1, result, "chat", true);
-        trace.mark("routing_complete");
-        return s1Plan.action === "system2_skip_memory" ? SKIP_MEMORY : contextPromise;
-      })
-    : contextPromise;
-  const raced: ContextBlockResult | typeof SKIP_MEMORY = await Promise.race([contextPromise, decided]);
-  if (raced === SKIP_MEMORY) {
-    memorySkipped = true;
-    void contextPromise.catch(() => undefined);
-  }
-  const { block: contextBlock, knowledgeObjectIds } = raced === SKIP_MEMORY ? { block: "", knowledgeObjectIds: [] as string[] } : raced;
+  const { block: contextBlock, knowledgeObjectIds } = memorySkipped
+    ? { block: "", knowledgeObjectIds: [] as string[] }
+    : await buildContextBlock(roomId, memoryScope, user.id, agentId, turnText);
+  trace.mark("memory_complete");
   const systemPrompt = basePrompt + contextBlock;
 
   /** Records this turn once the model has finished; never awaited by the stream. */

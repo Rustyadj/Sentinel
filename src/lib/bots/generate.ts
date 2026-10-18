@@ -1,3 +1,4 @@
+import { classifyDispatch, observeDispatch } from "@/lib/system-one/dispatch";
 // "Generate Bot Instructions": turn a one-line description into a proposed bot.
 //
 // The proposal is text for a person to read and edit. Nothing it names is
@@ -102,11 +103,12 @@ export async function generateBotProposal(input: { description: string; workspac
   const prompt = buildGenerationPrompt(description, catalog.filter((server) => server.enabled).map((server) => ({ name: server.name, tools: server.tools.map((tool) => tool.name) })), skills.map((skill) => skill.name));
 
   const { adapter, runtime } = await getAdapterForRuntime(host.agentId);
+  const routing = await classifyDispatch({ agentId: host.agentId, userId: input.userId, request: description, surface: "bot_generation", configuredModel: runtime.model });
   const session = await adapter.startSession({ runtimeId: runtime.id, userId: input.userId, workspaceId: input.workspaceId });
   let text = "";
   const deadline = setTimeout(() => { void adapter.cancel(session.id); }, GENERATION_TIMEOUT_MS);
   try {
-    for await (const event of adapter.send({ sessionId: session.id, userId: input.userId, prompt })) {
+    for await (const event of observeDispatch(routing, adapter.send({ sessionId: session.id, userId: input.userId, prompt }))) {
       if (event.type === "assistant_delta" && typeof event.data.text === "string") text += event.data.text;
       // Generating a definition needs no tools. A call means the runtime is going off-task, so stop it.
       if (event.type === "tool_started" || event.type === "approval_required") {

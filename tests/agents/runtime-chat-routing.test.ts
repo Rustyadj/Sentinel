@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    telegramConversation: { findUnique: vi.fn().mockResolvedValue(null) },
     chatRoom: { findFirst: vi.fn().mockResolvedValue({ id: "room-a", projectId: "project-a" }) },
     agentSession: {
       findFirst: vi.fn().mockResolvedValue({

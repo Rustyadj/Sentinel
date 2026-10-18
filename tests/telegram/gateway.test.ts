@@ -33,6 +33,8 @@ vi.mock("@/lib/telegram/client", async (importOriginal) => {
   }) };
 });
 
+import { resetSystemOneForTests, SystemOneDecisionService } from "@/lib/system-one/service";
+import { resolveSystemOneConfig } from "@/lib/system-one/config";
 import { db } from "@/lib/db";
 import { createBot, type BotRecord } from "@/lib/bots/service";
 import { receiveUpdate, sweepTelegram, deliverPending, submitConversationTurn } from "@/lib/telegram/service";
@@ -47,6 +49,15 @@ let binding: TelegramBot; let bot: BotRecord; let owner: { id: string }; let wor
 let counter = 0;
 function message(text = "Hello", sender = 101, updateId = ++counter) { return { update_id: updateId, message: { message_id: updateId, from: { id: sender, is_bot: false }, chat: { id: sender, type: "private" }, text } }; }
 beforeEach(async () => {
+  const config = resolveSystemOneConfig({ SYSTEM_ONE_API_KEY: "simulated-jev" });
+  process.env.SYSTEM_ONE_MODE = "active";
+  resetSystemOneForTests({ config, service: new SystemOneDecisionService({ name: "jev", evaluate: async request => ({
+    model: "jev-1.13.0", inputTokens: 150, costUsd: null,
+    answers: Object.fromEntries(Object.entries(request.questions).map(([id, q]) => [id, q.type === "choice"
+      ? { type: "choice", choice: id === "route" ? "agent_runtime" : Object.keys(q.criteria)[0], confidence: 1, probabilities: {} }
+      : q.type === "noul" ? { type: "noul", noul: 1 }
+      : { type: "score", score: 1, confidence: 1, probabilities: {}, levels: q.criteria.length }]))
+  }) }, config) });
   fake.executions = 0; fake.effects = 0; fake.tool = ""; fake.queueDown = false; fake.sendMode = "ok"; fake.gateMissing = false; fake.sent = []; fake.starts = [];
   // The database is disposable and dedicated to this invocation.
   await db.telegramDelivery.deleteMany(); await db.telegramUpdate.deleteMany(); await db.telegramConversation.deleteMany(); await db.telegramAccess.deleteMany(); await db.telegramBot.deleteMany();
@@ -86,6 +97,7 @@ describe("Telegram gateway authentication and routing", () => {
     expect(await db.orchestrationRun.count({ where: { botId: bot.id } })).toBe(1);
     const done = await execute(ids[0]); expect(done.status).toBe("succeeded"); expect(fake.executions).toBe(1);
     await received(raw); await sweepTelegram(); expect(fake.executions).toBe(1);
+    expect(await db.systemOneDecision.findFirst({ where: { userId: owner.id, surface: "telegram" } })).toMatchObject({ agentId: "hermes-lisa", provider: "jev", outcome: "ok", system2Invoked: true });
     expect(fake.starts[0]).toMatchObject({ runtimeId: "runtime-hermes-lisa", toolGate: "telegram", telegramUpdateId: ids[0] });
   });
   it("serializes distinct updates with identical timestamps while a queue enqueue is pending", async () => {
@@ -102,6 +114,9 @@ describe("Telegram gateway authentication and routing", () => {
     const id = await receiveUpdate(b, message()); await sweepTelegram();
     const task = await db.orchestrationRun.findUniqueOrThrow({ where: { id: (await row(id)).taskId! } });
     expect(task.botId).toBe(nathan.id); expect(task.resolvedAgentId).toBe("hermes-nathan2");
+    await execute(id);
+    expect(fake.starts[0]).toMatchObject({ runtimeId: "runtime-hermes-nathan2" });
+    expect(await db.systemOneDecision.findFirst({ where: { userId: owner.id, surface: "telegram" } })).toMatchObject({ agentId: "hermes-nathan2", provider: "jev", outcome: "ok", system2Invoked: true });
   });
   it("acknowledges a durable inbox even while Redis is down, then recovers the same task", async () => {
     fake.queueDown = true; const id = await received(); await sweepTelegram(); const pending = await row(id);

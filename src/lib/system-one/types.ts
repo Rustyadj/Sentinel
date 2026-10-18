@@ -8,7 +8,7 @@
  */
 
 export type SystemOneMode = "off" | "shadow" | "active";
-export type SystemOneSurface = "chat" | "runtime_chat" | "voice";
+export type SystemOneSurface = "chat" | "runtime_chat" | "voice" | "orchestration" | "telegram" | "runtime_api" | "collaboration" | "bot_generation";
 
 /** Provider-neutral question shapes. Jev's wire format is a superset of these. */
 export type SystemOneQuestion =
@@ -83,7 +83,10 @@ export interface ReadOnlyToolDescriptor {
 
 export interface SystemOneDecision {
   intent: SystemOneIntent;
+  /** Detected mention only. The server-assigned agent remains authoritative. */
+  requestedAgent?: string | null;
   route: SystemOneRoute;
+  memoryScope?: "none" | "user" | "agent" | "workspace" | "organization";
   needsMemory: number;
   needsTool: number;
   needsSearch: number;

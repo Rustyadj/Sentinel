@@ -1,3 +1,4 @@
+import { classifyDispatch, observeDispatch } from "@/lib/system-one/dispatch";
 import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { db } from "@/lib/db";
 import { persistChatExchange } from "@/lib/chat/persistence";
@@ -114,6 +115,10 @@ export async function routeRuntimeChat(input: {
     });
   }
 
+  const modelMetadata = session.metadata as Record<string, unknown> | null;
+  const routing = await classifyDispatch({ agentId: input.agentId, userId: input.userId, request: input.userContent, roomId: input.roomId, surface: "runtime_chat",
+    configuredModel: typeof modelMetadata?.requestedModel === "string" ? modelMetadata.requestedModel : runtime.model });
+
   await writeAuditLog({
     workspaceId: runtime.workspaceId,
     projectId: room?.projectId ?? undefined,
@@ -145,7 +150,7 @@ export async function routeRuntimeChat(input: {
       enqueue({ type: "source", executionMode: input.mode, runtime: runtime.kind, label: route.label, sessionId: session.id });
       enqueue({ type: "presence", agentId: input.agentId, status: "thinking" });
       try {
-        for await (const event of adapter.send({ sessionId: session.id, prompt: input.userContent, userId: input.userId })) {
+        for await (const event of observeDispatch(routing, adapter.send({ sessionId: session.id, prompt: input.userContent, userId: input.userId }))) {
           const text = runtimeEventText(event);
           if (text) {
             fullContent += text;
