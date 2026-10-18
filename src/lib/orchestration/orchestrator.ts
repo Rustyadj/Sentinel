@@ -28,6 +28,7 @@ export interface RunCollaborationInput {
  */
 export async function runCollaborationTurn(input: RunCollaborationInput): Promise<void> {
   const room = await db.chatRoom.findFirstOrThrow({ where: { id: input.chatRoomId, userId: input.userId } });
+  if (await db.telegramConversation.findUnique({ where: { chatRoomId: room.id } })) throw new Error("Telegram conversations use the governed Telegram gateway");
   const lead = resolveLead(room.agentIds);
   const pool = resolveWorkerPool(room.agentIds);
 

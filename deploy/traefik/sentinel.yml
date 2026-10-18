@@ -17,6 +17,14 @@
 
 http:
   routers:
+    sentinel-telegram:
+      rule: "Host(`sentinel.srv1427612.hstgr.cloud`) && PathPrefix(`/api/telegram/webhooks/`)"
+      entrypoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+      priority: 210
+      middlewares: [sentinel-forwarded, sentinel-security-headers]
+      service: sentinel-mcp
     # ── MCP control plane (external clients, e.g. ChatGPT) ──────────────────
     # Covers the JSON-RPC endpoint and both discovery documents. An MCP client
     # fetches /.well-known/oauth-protected-resource/mcp first (it is named in

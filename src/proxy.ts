@@ -59,6 +59,6 @@ export const proxy = auth;
 // the one path nobody had listed.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/voice|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/health|api/ready|api/version|api/rooms|api/chat|api/mcp|api/voice|api/telegram/webhooks/|api/integrations/oauth/token|api/integrations/oauth/register|\\.well-known|mcp(?:/|$)|auth|media/|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -1,0 +1,42 @@
+# Opt-in overlay. No bot credentials are copied into an image or Hermes profile.
+# docker compose -f docker-compose.yml -f docker-compose.telegram.yml ...
+x-telegram-environment: &telegram-environment
+  TELEGRAM_WEBHOOKS_ENABLED: ${TELEGRAM_WEBHOOKS_ENABLED:-false}
+  TELEGRAM_GATEWAY_ENABLED: ${TELEGRAM_GATEWAY_ENABLED:-false}
+  TELEGRAM_WEBHOOK_ORIGIN: ${TELEGRAM_WEBHOOK_ORIGIN:-https://sentinel.srv1427612.hstgr.cloud}
+  TELEGRAM_MEDIA_ROOT: /var/lib/sentinel-telegram/media
+x-telegram-secrets-environment: &telegram-secrets-environment
+  <<: *telegram-environment
+  TELEGRAM_LISA_BOT_TOKEN_FILE: /run/secrets/telegram_lisa_bot_token
+  TELEGRAM_NATHAN2_BOT_TOKEN_FILE: /run/secrets/telegram_nathan2_bot_token
+  TELEGRAM_LISA_WEBHOOK_SECRET_FILE: /run/secrets/telegram_lisa_webhook_secret
+  TELEGRAM_NATHAN2_WEBHOOK_SECRET_FILE: /run/secrets/telegram_nathan2_webhook_secret
+
+services:
+  app:
+    environment: *telegram-secrets-environment
+    secrets: [telegram_lisa_bot_token, telegram_nathan2_bot_token, telegram_lisa_webhook_secret, telegram_nathan2_webhook_secret]
+    volumes:
+      - ${TELEGRAM_MEDIA_HOST_DIR:?set a private media directory}:/var/lib/sentinel-telegram/media:ro
+  learning-worker:
+    environment: *telegram-secrets-environment
+    secrets: [telegram_lisa_bot_token, telegram_nathan2_bot_token, telegram_lisa_webhook_secret, telegram_nathan2_webhook_secret]
+    volumes:
+      - ${TELEGRAM_MEDIA_HOST_DIR:?set a private media directory}:/var/lib/sentinel-telegram/media
+  orchestration-worker:
+    environment:
+      <<: *telegram-environment
+      HERMES_LISA_BOT_TOOL_GATE: pre-execution
+      HERMES_NATHAN2_BOT_TOOL_GATE: pre-execution
+      HERMES_LISA_TELEGRAM_PROFILE: ${HERMES_LISA_TELEGRAM_PROFILE:-sentinel-lisa}
+      HERMES_NATHAN2_TELEGRAM_PROFILE: ${HERMES_NATHAN2_TELEGRAM_PROFILE:-sentinel-nathan2}
+
+secrets:
+  telegram_lisa_bot_token:
+    file: ${TELEGRAM_LISA_TOKEN_FILE:?set a root-protected token file}
+  telegram_nathan2_bot_token:
+    file: ${TELEGRAM_NATHAN2_TOKEN_FILE:?set a root-protected token file}
+  telegram_lisa_webhook_secret:
+    file: ${TELEGRAM_LISA_SECRET_FILE:?set a root-protected webhook secret file}
+  telegram_nathan2_webhook_secret:
+    file: ${TELEGRAM_NATHAN2_SECRET_FILE:?set a root-protected webhook secret file}

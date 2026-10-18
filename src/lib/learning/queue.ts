@@ -40,6 +40,7 @@ export const JOB_NAMES = {
   coOccurrenceDiscovery: "co-occurrence-discovery",
   memoryDecaySweep: "memory-decay-sweep",
   memoryConsolidation: "memory-consolidation",
+  telegramSweep: "telegram-gateway-sweep",
 } as const;
 
 export type LearningJobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -115,6 +116,9 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
   const q = getLearningQueue();
   if (!q) return null;
 
+  await q.upsertJobScheduler(JOB_NAMES.telegramSweep, { every: 10_000 }, {
+    name: JOB_NAMES.telegramSweep, data: { triggeredBy: "schedule" } satisfies JobPayload, opts: LEARNING_JOB_OPTIONS,
+  });
   // BullMQ v6: repeatable jobs go through upsertJobScheduler (add()'s
   // `repeat` option was removed in this major version) — upserting with the
   // same schedulerId + repeat options is itself the idempotency guarantee,
@@ -162,6 +166,7 @@ export async function scheduleRecurringJobs(): Promise<{ scheduled: string[]; sk
 
   return {
     scheduled: [
+      JOB_NAMES.telegramSweep,
       JOB_NAMES.degradationSweep,
       JOB_NAMES.knowledgeGapAnalysis,
       JOB_NAMES.coOccurrenceDiscovery,

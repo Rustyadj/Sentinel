@@ -51,6 +51,9 @@ export const SENTINEL_MCP_TOOLS: CatalogTool[] = [
  */
 export const HERMES_BUILTIN_TOOLS: CatalogTool[] = [
   ro("read_file", "Read a file."),
+  rw("sentinel_transcribe_audio", "Transcribe this Telegram message using Hermes’ configured STT backend."),
+  rw("vision_analyze", "Analyze an image using Hermes’ configured vision backend."),
+  rw("video_analyze", "Analyze a staged video using Hermes’ configured video backend."),
   ro("search_files", "Search files."),
   ro("web_search", "Search the web."),
   ro("web_extract", "Extract a web page."),
