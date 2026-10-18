@@ -520,11 +520,30 @@ model Workflow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // A routine is a Workflow dispatched through the existing governed bot task API.
+  kind                 String    @default("graph")
+  workspaceId          String?
+  botId                String?
+  skillVersionId       String?
+  routineTask          String?
+  routineContext       String?
+  intervalMinutes      Int?
+  nextRunAt            DateTime?
+  revision             Int       @default(1)
+  reviewedDigest       String?
+  reviewedByUserId     String?
+  reviewedAt           DateTime?
+  runAsUserId          String?
+
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillVersion SkillVersion? @relation(fields: [skillVersionId], references: [id], onDelete: Restrict)
+  routineRuns RoutineRun[]
 
   @@index([userId])
   @@index([projectId])
+  @@index([kind, status, nextRunAt])
+  @@index([workspaceId, botId])
   @@map("workflows")
 }
 
@@ -2056,6 +2075,8 @@ model SkillVersion {
   retiredAt          DateTime?
 
   skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  routines Workflow[]
+  routineRuns RoutineRun[]
 
   @@unique([skillId, version])
   @@map("learning_skill_versions")
@@ -3430,4 +3451,35 @@ model BotRunEvent {
   @@unique([runId, seq])
   @@index([botId, occurredAt])
   @@map("bot_run_events")
+}
+
+/// Scheduling/admission history only. Execution remains an OrchestrationRun.
+model RoutineRun {
+  id                 String   @id @default(cuid())
+  workflowId         String
+  revision           Int
+  skillVersionId     String
+  botId              String
+  userId             String
+  trigger            String // manual | test | schedule
+  requestKey         String
+  taskId             String?  @unique
+  currentTaskId      String?
+  status             String   @default("pending")
+  input              Json
+  scheduledFor       DateTime?
+  createdAt          DateTime @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  resultSummary      String?
+  errorSummary       String?
+  updatedAt          DateTime @updatedAt
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+  skillVersion SkillVersion @relation(fields: [skillVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([workflowId, requestKey])
+  @@index([workflowId, createdAt])
+  @@index([status, createdAt])
+  @@map("routine_runs")
 }

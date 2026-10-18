@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Plus, RefreshCw, Trash2 } from "l
 import { BotAvatar, AVATARS, Button, Empty, Field, Notice, Pill, Select, TextArea, TextInput, lines, statusTone } from "./bits";
 import { api, errorMessage, MEMORY_SCOPE_LABEL, TERMINAL } from "./client";
 import { TaskView, type TaskData } from "./TaskView";
+import { RoutinesTab } from "./RoutinesTab";
 import type { BotRecord } from "@/lib/bots/service";
 
 type Bot = BotRecord;
@@ -14,7 +15,7 @@ interface Detail { bot: Bot; grants: { serverId: string; toolName: string; permi
 interface CatalogServer { id: string; slug: string; name: string; kind: string; description: string; enabled: boolean; status: string; lastError: string | null; lastDiscoveredAt: string | null; url?: string; capabilityTags: string[]; tools: { name: string; description?: string; readOnly: boolean | null; risk?: string }[] }
 interface Meta { hosts: { agentId: string; executionVerified: boolean; health: { ready: boolean } | null }[]; models: { choices: string[]; inherited: { model: string }; unsupported: string[] } | null; memoryScopes: string[]; callers: { agents: string[]; clients: { key: string; name: string }[] } }
 
-const TABS = [["overview", "Overview"], ["model", "Model and limits"], ["skills", "Skills"], ["tools", "Tools"], ["memory", "Memory"], ["delegation", "Delegation"], ["test", "Test"], ["activity", "Activity"], ["versions", "Versions"]] as const;
+const TABS = [["overview", "Overview"], ["model", "Model and limits"], ["skills", "Skills"], ["routines", "Routines"], ["tools", "Tools"], ["memory", "Memory"], ["delegation", "Delegation"], ["test", "Test"], ["activity", "Activity"], ["versions", "Versions"]] as const;
 type TabId = (typeof TABS)[number][0];
 
 const PERMS = [["disabled", "Off"], ["read", "Read only"], ["execute", "Execute"], ["approval", "Needs approval"]] as const;
@@ -80,6 +81,7 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
         {tab === "overview" ? <OverviewTab bot={bot} reload={reload} /> : null}
         {tab === "model" ? <ModelTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "skills" ? <SkillsTab bot={bot} detail={detail} reload={reload} /> : null}
+        {tab === "routines" ? <RoutinesTab botId={bot.id} workspaceId={bot.workspaceId} /> : null}
         {tab === "tools" ? <ToolsTab bot={bot} detail={detail} catalog={catalog} reload={reload} /> : null}
         {tab === "memory" ? <MemoryTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "delegation" ? <DelegationTab bot={bot} meta={meta} reload={reload} /> : null}

@@ -13,7 +13,7 @@ import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { enqueueOrchestrationRun } from "@/lib/orchestration/queue";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { ApprovalAlreadyDecidedError, decideApprovalIn } from "@/lib/workspaces/approvals";
-import { BotRunLog } from "./events";
+import { BotRunLog, sanitizeEventData } from "./events";
 import { activeCatalog, loadCatalog } from "./catalog";
 import { approvalKey, evaluateDelegation, resolveObservedTool, type DelegationParent } from "./policy";
 import { toBotRecord, type BotRecord } from "./service";
@@ -218,6 +218,33 @@ export async function delegateToBot(botId: string, rawInput: DelegateTaskInput, 
     throw new BotTaskError(`The task could not be queued: ${message}`, 503);
   }
   return getBotTask(run.id, { userId: caller.userId, isAdmin: false });
+}
+
+/**
+ * Routine admission participates in the caller's durable Workflow transaction.
+ * Same normal delegation checks and task insertion as delegateToBot; no test
+ * bypass or grants. The caller MUST enqueue the returned task after commit.
+ */
+export async function delegateToBotIn(
+  tx: Prisma.TransactionClient,
+  botId: string,
+  input: DelegateTaskInput,
+  caller: Extract<BotCaller, { kind: "user" }>,
+): Promise<OrchestrationRun> {
+  const admission = await admitTask(botId, input, caller, { mode: "delegate" });
+  if ("existingId" in admission) return tx.orchestrationRun.findUniqueOrThrow({ where: { id: admission.existingId } });
+  const { admitted } = admission;
+  const run = await insertTaskRun(tx, admitted, []);
+  await tx.botRunEvent.create({ data: {
+    botId, runId: run.id, seq: 1, type: "queued", summary: `Task queued by ${admitted.key}.`.slice(0, 300),
+    data: sanitizeEventData({ caller: admitted.key, mode: "delegate", modelRole: admitted.input.modelRole }),
+  } });
+  await writeAuditLog({
+    workspaceId: admitted.bot.workspaceId, projectId: run.projectId, userId: caller.userId,
+    actorType: "user", action: "bot.task.queued", entityType: "orchestration_run", entityId: run.id,
+    details: { botId, caller: admitted.key, mode: "delegate" },
+  }, tx);
+  return run;
 }
 
 // ---------------------------------------------------------------- views ----
