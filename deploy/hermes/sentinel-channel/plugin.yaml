@@ -1,0 +1,6 @@
+name: sentinel-channel
+version: "0.1.0"
+description: "Routes Lisa's messaging channels through Sentinel and Jev before the conversational runtime."
+author: "Sentinel"
+provides_hooks:
+  - pre_gateway_dispatch
