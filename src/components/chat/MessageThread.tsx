@@ -335,7 +335,7 @@ function ReferenceReasoningProcess() {
         aria-expanded={expanded}
         className="flex w-full items-center gap-2 text-left text-[10.5px] font-medium text-[#e5eaf2] outline-none focus-visible:ring-2 focus-visible:ring-violet-400/55"
       >
-        <span className="h-2 w-2 rounded-full bg-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.75)]" />
+        <span className="h-2 w-2 rounded-full bg-(--primary) shadow-[0_0_10px_rgba(139,92,246,0.75)]" />
         Reasoning summary
         <span className="ml-1 text-[8.5px] font-normal text-[#6f7d91]">Approved steps only</span>
         <ChevronRight className={cn("ml-auto h-3 w-3 text-[#758195] transition-transform", expanded && "rotate-90")} />
@@ -388,5 +388,5 @@ function MessageFeedback({ messageId }: { messageId: string }) {
       setStatus("Feedback recorded");
     } catch { setStatus("Could not record feedback"); }
   }
-  return <div className="mt-1 text-xs text-[--muted-foreground]"><button onClick={() => void reject()} disabled={status === "Feedback recorded" || status === "Recording…"} aria-label="Mark response unhelpful">Thumbs down</button>{status && <span role="status" className="ml-2">{status}</span>}</div>;
+  return <div className="mt-1 text-xs text-(--muted-foreground)"><button onClick={() => void reject()} disabled={status === "Feedback recorded" || status === "Recording…"} aria-label="Mark response unhelpful">Thumbs down</button>{status && <span role="status" className="ml-2">{status}</span>}</div>;
 }

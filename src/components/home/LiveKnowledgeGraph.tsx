@@ -18,7 +18,7 @@ import { knowledgeNodeColor } from "@/lib/knowledge/colors";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center font-mono text-[10px] uppercase tracking-widest text-[--muted-foreground]">
+    <div className="flex h-full items-center justify-center font-mono text-[10px] uppercase tracking-widest text-(--muted-foreground)">
       Loading graph…
     </div>
   ),
@@ -303,10 +303,10 @@ export function LiveKnowledgeGraph({
             isStreaming ? "bg-indigo-400 animate-pulse-dot" : "bg-emerald-400"
           )}
         />
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[--muted-foreground]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-(--muted-foreground)">
           Knowledge graph
         </span>
-        <span className="font-mono text-[10px] tracking-wider text-[--muted-foreground] opacity-60">
+        <span className="font-mono text-[10px] tracking-wider text-(--muted-foreground) opacity-60">
           {graphData.nodes.length} nodes · {graphData.edges.length} links
         </span>
       </div>
@@ -316,7 +316,7 @@ export function LiveKnowledgeGraph({
         <button
           onClick={zoomToFit}
           title="Fit graph to view"
-          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-md border border-[--border] bg-[--card]/80 text-[--muted-foreground] backdrop-blur transition-colors hover:text-[--foreground]"
+          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-md border border-(--border) bg-(--card)/80 text-(--muted-foreground) backdrop-blur transition-colors hover:text-(--foreground)"
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
@@ -334,8 +334,8 @@ export function LiveKnowledgeGraph({
               />
             ))}
           </div>
-          <p className="text-sm text-[--foreground]">Your graph starts here</p>
-          <p className="max-w-[220px] text-xs leading-relaxed text-[--muted-foreground]">
+          <p className="text-sm text-(--foreground)">Your graph starts here</p>
+          <p className="max-w-[220px] text-xs leading-relaxed text-(--muted-foreground)">
             Start a conversation and Sentinel maps what it learns as connected knowledge.
           </p>
         </div>
@@ -343,7 +343,7 @@ export function LiveKnowledgeGraph({
 
       {/* Selected node card */}
       {selectedNode && (
-        <div className="animate-fade-in absolute bottom-4 left-4 right-4 max-w-sm rounded-xl border border-[--border] bg-[--card]/95 p-4 shadow-2xl backdrop-blur">
+        <div className="animate-fade-in absolute bottom-4 left-4 right-4 max-w-sm rounded-xl border border-(--border) bg-(--card)/95 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2">
@@ -354,27 +354,27 @@ export function LiveKnowledgeGraph({
                       knowledgeNodeColor(selectedNode.type),
                   }}
                 />
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[--muted-foreground]">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-(--muted-foreground)">
                   {selectedNode.type}
                 </span>
               </div>
-              <div className="truncate text-sm font-medium text-[--foreground]">
+              <div className="truncate text-sm font-medium text-(--foreground)">
                 {selectedNode.title}
               </div>
             </div>
             <button
               onClick={() => setSelectedNode(null)}
-              className="shrink-0 text-[--muted-foreground] transition-colors hover:text-[--foreground]"
+              className="shrink-0 text-(--muted-foreground) transition-colors hover:text-(--foreground)"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
           {selectedNode.summary && (
-            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-[--muted-foreground]">
+            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-(--muted-foreground)">
               {selectedNode.summary}
             </p>
           )}
-          <div className="mt-2 font-mono text-[10px] text-[--muted-foreground] opacity-60">
+          <div className="mt-2 font-mono text-[10px] text-(--muted-foreground) opacity-60">
             {new Date(selectedNode.createdAt).toLocaleString()}
           </div>
         </div>

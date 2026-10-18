@@ -30,26 +30,27 @@ export function ContextChip({ summary, entries }: { summary: string; entries: Co
   }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative hidden md:block" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[13px] text-[--muted-foreground] transition-colors hover:bg-[--muted] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+        aria-haspopup="dialog"
+        className="flex max-w-[16rem] items-center gap-1 rounded-md px-2 py-1.5 text-[13px] text-(--muted-foreground) transition-colors hover:bg-(--muted) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
       >
         <span className="truncate">{summary}</span>
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
 
       {open ? (
-        <div className="absolute left-0 z-40 mt-1 w-[22rem] rounded-xl bg-[--card] p-2 shadow-[var(--shadow-lg)]">
+        <div role="dialog" aria-label="Conversation context" className="animate-fade-in absolute left-0 z-40 mt-1 w-[22rem] rounded-lg border border-(--border-strong) bg-(--panel) p-2 shadow-[var(--shadow-lg)]">
           {entries.map((entry) => (
             <div key={`${entry.type}-${entry.label}`} className="flex items-center justify-between gap-3 px-1 py-1.5">
-              <span className="text-[12px] uppercase tracking-wide text-[--muted-foreground]">{entry.label}</span>
+              <span className="text-[12px] text-(--muted-foreground)">{entry.label}</span>
               {entry.value ? (
                 <EntityChip type={entry.type} label={entry.value} onClick={entry.onOpen} />
               ) : (
-                <span className="text-[13px] text-[--muted-foreground]">Not set</span>
+                <span className="text-[13px] text-(--muted-foreground)">Not set</span>
               )}
             </div>
           ))}

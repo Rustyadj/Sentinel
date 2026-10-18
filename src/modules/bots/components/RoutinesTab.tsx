@@ -95,12 +95,12 @@ export function RoutinesTab({ botId, workspaceId }: { botId: string; workspaceId
 
   return <div className="space-y-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <p className="max-w-[65ch] text-[13px] leading-5 text-[--muted-foreground]">Routines pair a reviewed skill version with a task. Review and test each revision before enabling. A routine runs one task at a time, including while it waits for approval.</p>
+      <p className="max-w-[65ch] text-[13px] leading-5 text-(--muted-foreground)">Routines pair a reviewed skill version with a task. Review and test each revision before enabling. A routine runs one task at a time, including while it waits for approval.</p>
       <Button onClick={() => { setEditingId(null); setEditingRevision(null); setForm({ ...blank, skillId: skills[0]?.id ?? "" }); }}>New routine</Button>
     </div>
     {error ? <Notice action={<Button onClick={() => { setError(null); void load().catch((e) => setError(errorMessage(e))); }}>Refresh</Button>}>{error}</Notice> : null}
     {message ? <Notice tone="info">{message}</Notice> : null}
-    {form ? <form className="space-y-3 rounded-lg border border-[--border] bg-[--card] p-4" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+    {form ? <form className="space-y-3 rounded-lg border border-(--border) bg-(--card) p-4" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 className="text-[15px] font-medium">{editingId ? "Edit routine" : "Propose routine"}</h2>
       <Field label="Routine name"><TextInput required maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
       <Field label="Description"><TextInput maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
@@ -108,21 +108,21 @@ export function RoutinesTab({ botId, workspaceId }: { botId: string; workspaceId
       <Field label="Routine task"><TextArea required rows={4} maxLength={6000} value={form.task} onChange={(e) => setForm({ ...form, task: e.target.value })} /></Field>
       <Field label="Context"><TextArea rows={3} maxLength={20000} value={form.context} onChange={(e) => setForm({ ...form, context: e.target.value })} /></Field>
       <Field label="Repeat every (minutes)" hint="Leave empty for manual runs. Minimum 5 minutes. Missed intervals are combined into one run."><TextInput type="number" min={5} max={525600} step={1} value={form.interval} onChange={(e) => setForm({ ...form, interval: e.target.value })} /></Field>
-      <p className="text-[12px] text-[--muted-foreground]">Saving an edit pauses the routine and requires another review and successful test.</p>
+      <p className="text-[12px] text-(--muted-foreground)">Saving an edit pauses the routine and requires another review and successful test.</p>
       <div className="flex gap-2"><Button type="submit" variant="primary" busy={busy}>Save proposal</Button><Button type="button" disabled={busy} onClick={() => setForm(null)}>Cancel edit</Button></div>
     </form> : null}
     {!routines ? <p aria-busy="true">Loading routines…</p> : routines.length === 0 ? <Empty title="No routines yet">Create a routine from an approved skill to get started.</Empty> : <div className="flex flex-wrap gap-2" aria-label="Routines">{routines.map((routine) => <Button key={routine.id} variant={selectedId === routine.id ? "primary" : "secondary"} onClick={() => { setSelectedId(routine.id); setViewingRunId(null); setTask(null); }}>{routine.name} · {routine.status}</Button>)}</div>}
     {selected ? <section aria-label="Routine details" className="space-y-4">
-      <header className="flex flex-wrap items-center gap-2"><h2 className="text-[16px] font-medium">{selected.name}</h2><Pill>{selected.status}</Pill><span className="text-[12px] text-[--muted-foreground]">Revision {selected.revision}</span></header>
+      <header className="flex flex-wrap items-center gap-2"><h2 className="text-[16px] font-medium">{selected.name}</h2><Pill>{selected.status}</Pill><span className="text-[12px] text-(--muted-foreground)">Revision {selected.revision}</span></header>
       <p className="text-[13px]">{selected.description}</p>
       <dl className="grid gap-2 text-[13px] sm:grid-cols-2">
-        <div><dt className="text-[--muted-foreground]">Schedule</dt><dd>{selected.intervalMinutes ? `Every ${selected.intervalMinutes} minutes` : "Manual only"}</dd></div>
-        <div><dt className="text-[--muted-foreground]">Next due</dt><dd>{date(selected.nextRunAt)}</dd></div>
-        <div><dt className="text-[--muted-foreground]">Pinned skill</dt><dd>{selected.skill.name} · version {selected.skill.version}</dd></div>
-        <div><dt className="text-[--muted-foreground]">Routine reviewed</dt><dd>{date(selected.reviewedAt)}</dd></div>
+        <div><dt className="text-(--muted-foreground)">Schedule</dt><dd>{selected.intervalMinutes ? `Every ${selected.intervalMinutes} minutes` : "Manual only"}</dd></div>
+        <div><dt className="text-(--muted-foreground)">Next due</dt><dd>{date(selected.nextRunAt)}</dd></div>
+        <div><dt className="text-(--muted-foreground)">Pinned skill</dt><dd>{selected.skill.name} · version {selected.skill.version}</dd></div>
+        <div><dt className="text-(--muted-foreground)">Routine reviewed</dt><dd>{date(selected.reviewedAt)}</dd></div>
       </dl>
-      <div className="rounded-lg border border-[--border] p-3 text-[13px]"><h3 className="mb-2 font-medium">Task to review</h3><p className="whitespace-pre-wrap break-words">{selected.routineTask}</p>{selected.routineContext ? <><h3 className="mb-2 mt-3 font-medium">Context</h3><p className="whitespace-pre-wrap break-words">{selected.routineContext}</p></> : null}</div>
-      <details className="rounded-lg border border-[--border] p-3 text-[13px]"><summary className="cursor-pointer font-medium">Read pinned skill instructions</summary><pre className="mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words font-sans">{selected.skill.body}</pre><p className="mt-3 break-all text-[11px] text-[--muted-foreground]">Content digest: {selected.skill.bodySha256} · Skill reviewed {date(selected.skill.reviewedAt)}</p></details>
+      <div className="rounded-lg border border-(--border) p-3 text-[13px]"><h3 className="mb-2 font-medium">Task to review</h3><p className="whitespace-pre-wrap break-words">{selected.routineTask}</p>{selected.routineContext ? <><h3 className="mb-2 mt-3 font-medium">Context</h3><p className="whitespace-pre-wrap break-words">{selected.routineContext}</p></> : null}</div>
+      <details className="rounded-lg border border-(--border) p-3 text-[13px]"><summary className="cursor-pointer font-medium">Read pinned skill instructions</summary><pre className="mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words font-sans">{selected.skill.body}</pre><p className="mt-3 break-all text-[11px] text-(--muted-foreground)">Content digest: {selected.skill.bodySha256} · Skill reviewed {date(selected.skill.reviewedAt)}</p></details>
       <div className="flex flex-wrap gap-2">
         <Button disabled={busy} onClick={() => edit(selected)}>Edit</Button>
         <Button disabled={busy || selected.reviewedDigest === selected.digest} onClick={() => void act(selected, "review")}>Approve reviewed revision</Button>
@@ -132,15 +132,15 @@ export function RoutinesTab({ botId, workspaceId }: { botId: string; workspaceId
         <Button disabled={busy || !["enabled", "paused"].includes(selected.status) || !selected.reviewedAt || selected.routineRuns.some((r) => inFlight(r.status))} onClick={() => void act(selected, "run")}>Run now</Button>
         <Button variant="danger" disabled={busy || selected.status === "rejected"} onClick={() => void act(selected, "reject")}>Reject</Button>
       </div>
-      <p className="text-[12px] text-[--muted-foreground]">Tests perform real work with normal bot permissions. Pausing stops future scheduled runs; use Cancel task below to stop work already admitted.</p>
+      <p className="text-[12px] text-(--muted-foreground)">Tests perform real work with normal bot permissions. Pausing stops future scheduled runs; use Cancel task below to stop work already admitted.</p>
       <h3 className="text-[14px] font-medium">Recent runs</h3>
-      {selected.routineRuns.length ? <ul className="divide-y divide-[--border] rounded-lg border border-[--border]">{selected.routineRuns.map((run) => <li key={run.id} className="space-y-1 p-3 text-[12px]">
+      {selected.routineRuns.length ? <ul className="divide-y divide-(--border) rounded-lg border border-(--border)">{selected.routineRuns.map((run) => <li key={run.id} className="space-y-1 p-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-2"><Pill tone={run.status === "succeeded" ? "good" : run.status === "failed" ? "bad" : "neutral"}>{run.status}</Pill><span>{run.trigger} · revision {run.revision} · {date(run.createdAt)}</span>{run.currentTaskId ? <Button className="ml-auto" onClick={() => { setTask(null); setViewingRunId(run.id); }}>View task</Button> : null}</div>
-        <p className="text-[--muted-foreground]">Due: {date(run.scheduledFor)} · Started: {date(run.startedAt)} · Finished: {date(run.completedAt)}</p>
-        <p className="break-all text-[--muted-foreground]">Skill version: {run.skillVersionId}</p>
+        <p className="text-(--muted-foreground)">Due: {date(run.scheduledFor)} · Started: {date(run.startedAt)} · Finished: {date(run.completedAt)}</p>
+        <p className="break-all text-(--muted-foreground)">Skill version: {run.skillVersionId}</p>
         {run.errorSummary ? <p className="whitespace-pre-wrap break-words text-red-400">{run.errorSummary}</p> : run.resultSummary ? <p className="whitespace-pre-wrap break-words">{run.resultSummary}</p> : null}
       </li>)}</ul> : <Empty title="No runs yet">Approve this revision, then test it.</Empty>}
-      {taskId ? <div className="rounded-lg border border-[--border] p-4">{task?.id === taskId ? <TaskView task={task} onChanged={() => { void loadTask().catch((e) => setError(errorMessage(e))); void load().catch((e) => setError(errorMessage(e))); }} /> : <p aria-busy="true">Loading task…</p>}</div> : null}
+      {taskId ? <div className="rounded-lg border border-(--border) p-4">{task?.id === taskId ? <TaskView task={task} onChanged={() => { void loadTask().catch((e) => setError(errorMessage(e))); void load().catch((e) => setError(errorMessage(e))); }} /> : <p aria-busy="true">Loading task…</p>}</div> : null}
     </section> : null}
   </div>;
 }

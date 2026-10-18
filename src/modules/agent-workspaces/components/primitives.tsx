@@ -49,9 +49,9 @@ export function relativeTime(iso: string | null | undefined) {
 export function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-[--muted-foreground]">{label}</div>
+      <div className="text-[10px] uppercase tracking-wide text-(--muted-foreground)">{label}</div>
       <div className="truncate text-sm font-medium tabular-nums">{value}</div>
-      {hint ? <div className="truncate text-[11px] text-[--muted-foreground]">{hint}</div> : null}
+      {hint ? <div className="truncate text-[11px] text-(--muted-foreground)">{hint}</div> : null}
     </div>
   );
 }
@@ -61,7 +61,7 @@ export function ErrorNote({ error, className }: { error: unknown; className?: st
   const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : String(error);
   const code = error instanceof ApiError ? error.code : null;
   return (
-    <div className={cn("rounded-md border border-[--destructive]/40 bg-[--destructive]/10 px-3 py-2 text-xs text-[--destructive]", className)}>
+    <div className={cn("rounded-md border border-(--destructive)/40 bg-(--destructive)/10 px-3 py-2 text-xs text-(--destructive)", className)}>
       {message}
       {code ? <span className="ml-2 opacity-70">({code})</span> : null}
     </div>
@@ -69,7 +69,7 @@ export function ErrorNote({ error, className }: { error: unknown; className?: st
 }
 
 export function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <div className="px-3 py-6 text-center text-xs text-[--muted-foreground]">{children}</div>;
+  return <div className="px-3 py-6 text-center text-xs text-(--muted-foreground)">{children}</div>;
 }
 
 /**

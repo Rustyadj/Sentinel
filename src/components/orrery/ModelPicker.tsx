@@ -104,14 +104,14 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
           setAgentId(activeAgentId); setOpen(true);
           if (agent) void load(agent.id);
         }}
-        className="flex max-w-[11rem] items-center gap-1.5 rounded-md border border-[--glass-border] px-2 py-1 font-mono text-[11px] text-[--muted-foreground] transition-colors hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]"
+        className="flex max-w-[11rem] items-center gap-1.5 rounded-md border border-(--glass-border) px-2 py-1 font-mono text-[11px] text-(--muted-foreground) transition-colors hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
       >
         <SlidersHorizontal className="h-3 w-3 shrink-0" />
         <span className="truncate">{shownModel}</span>
       </button>
 
       {open ? (
-        <div role="dialog" aria-label="Agent models" className="absolute right-0 top-[calc(100%+6px)] z-30 w-[320px] rounded-xl border border-[--glass-border] bg-[--card] p-3 shadow-[var(--shadow-lg)]">
+        <div role="dialog" aria-label="Agent models" className="absolute right-0 top-[calc(100%+6px)] z-30 w-[320px] rounded-lg border border-(--border-strong) bg-(--panel) p-3 shadow-[var(--shadow-lg)]">
           <div role="tablist" aria-label="Agent" className="mb-3 flex flex-wrap gap-1">
             {agents.map((a) => (
               <button
@@ -120,8 +120,8 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
                 aria-selected={a.id === agent.id}
                 onClick={() => { setAgentId(a.id); void load(a.id); }}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]",
-                  a.id === agent.id ? "bg-[--accent] text-[--foreground]" : "text-[--muted-foreground] hover:text-[--foreground]",
+                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
+                  a.id === agent.id ? "bg-(--accent) text-(--foreground)" : "text-(--muted-foreground) hover:text-(--foreground)",
                 )}
               >
                 <i className="h-1.5 w-1.5 rounded-full" style={{ background: a.color }} />{a.name}
@@ -130,13 +130,13 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
           </div>
 
           {loading ? (
-            <p className="flex items-center gap-2 py-4 text-[12px] text-[--muted-foreground]"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</p>
+            <p className="flex items-center gap-2 py-4 text-[12px] text-(--muted-foreground)"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</p>
           ) : null}
-          {error ? <p role="alert" className="py-2 text-[12px] text-[--destructive]">{error}</p> : null}
+          {error ? <p role="alert" className="py-2 text-[12px] text-(--destructive)">{error}</p> : null}
 
           {settings ? (
             <>
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[--text-faint]">Model · {settings.provider}</p>
+              <p className="mb-2 text-[11px] font-medium text-(--text-faint)">Model · {settings.provider}</p>
               <ul className="space-y-0.5" role="radiogroup" aria-label="Model">
                 {settings.options.map((o) => {
                   const selected = o.id === settings.config.runtimeModelId;
@@ -148,13 +148,13 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
                         disabled={saving || o.state === "unavailable"}
                         onClick={() => !selected && void save({ model: o.id })}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50",
-                          selected ? "bg-[--accent] text-[--foreground]" : "text-[--muted-foreground] hover:bg-[--muted] hover:text-[--foreground]",
+                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:opacity-50",
+                          selected ? "bg-(--accent) text-(--foreground)" : "text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground)",
                         )}
                       >
-                        <span className={cn("h-1.5 w-1.5 rounded-full", selected ? "bg-[--primary]" : "bg-[--text-faint]")} />
+                        <span className={cn("h-1.5 w-1.5 rounded-full", selected ? "bg-(--primary)" : "bg-(--text-faint)")} />
                         <span className="flex-1 truncate font-mono">{o.id}</span>
-                        <span className="text-[10.5px] text-[--text-faint]">{STATE_LABEL[o.state] ?? o.state}</span>
+                        <span className="text-[10.5px] text-(--text-faint)">{STATE_LABEL[o.state] ?? o.state}</span>
                       </button>
                     </li>
                   );
@@ -163,7 +163,7 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
 
               {settings.efforts.length > 0 ? (
                 <>
-                  <p className="mb-2 mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-[--text-faint]">Reasoning effort</p>
+                  <p className="mb-2 mt-3 text-[11px] font-medium text-(--text-faint)">Reasoning effort</p>
                   <div role="radiogroup" aria-label="Reasoning effort" className="flex gap-1">
                     {settings.efforts.map((effort) => (
                       <button
@@ -173,8 +173,8 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
                         disabled={saving}
                         onClick={() => settings.config.effort !== effort && void save({ reasoningEffort: effort })}
                         className={cn(
-                          "rounded-md border px-2.5 py-1 text-[12px] capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50",
-                          settings.config.effort === effort ? "border-[--primary]/40 bg-[--accent] text-[--foreground]" : "border-[--glass-border] text-[--muted-foreground] hover:text-[--foreground]",
+                          "rounded-md border px-2.5 py-1 text-[12px] capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:opacity-50",
+                          settings.config.effort === effort ? "border-(--primary)/40 bg-(--accent) text-(--foreground)" : "border-(--glass-border) text-(--muted-foreground) hover:text-(--foreground)",
                         )}
                       >
                         {effort}
@@ -184,13 +184,13 @@ export function ModelPicker({ agents, activeAgentId, onChanged }: {
                 </>
               ) : null}
 
-              <div className="mt-3 flex items-center justify-between border-t border-[--glass-border] pt-2.5">
-                <p className="text-[11px] text-[--text-faint]">Applies to new sessions.</p>
+              <div className="mt-3 flex items-center justify-between border-t border-(--glass-border) pt-2.5">
+                <p className="text-[11px] text-(--text-faint)">Applies to new sessions.</p>
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => void save({ reset: true })}
-                  className="flex items-center gap-1 text-[11px] text-[--muted-foreground] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50"
+                  className="flex items-center gap-1 text-[11px] text-(--muted-foreground) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:opacity-50"
                 >
                   <RotateCcw className="h-3 w-3" />Reset to default
                 </button>

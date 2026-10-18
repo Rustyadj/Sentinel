@@ -34,7 +34,7 @@ export function WorkspaceHeader({ detail, onChanged }: Props) {
   const busy = (action: string) => pending === action;
 
   return (
-    <div className="space-y-3 border-b border-[--border] pb-4">
+    <div className="space-y-3 border-b border-(--border) pb-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -42,7 +42,7 @@ export function WorkspaceHeader({ detail, onChanged }: Props) {
             <StateBadge state={state} />
             {workspace.locked ? <span className="text-[11px] text-amber-400">locked</span> : null}
           </div>
-          <p className="mt-0.5 text-xs text-[--muted-foreground]">
+          <p className="mt-0.5 text-xs text-(--muted-foreground)">
             {workspace.agentId} · {workspace.runtimeType} · {workspace.image}
             {runtime?.containerName ? ` · ${runtime.containerName}` : ""}
           </p>
@@ -101,7 +101,7 @@ export function WorkspaceHeader({ detail, onChanged }: Props) {
         <Metric label="Snapshots / Artifacts" value={`${detail.counts.snapshots} / ${detail.counts.artifacts}`} hint={workspace.volumeName ?? "no volume"} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-[11px] text-[--muted-foreground]">
+      <div className="flex flex-wrap items-center gap-4 text-[11px] text-(--muted-foreground)">
         <span className="inline-flex items-center gap-1"><HardDrive className="h-3 w-3" /> {workspace.homePath}</span>
         <span className="inline-flex items-center gap-1"><GitBranch className="h-3 w-3" /> cross-client delegation: {detail.policy.crossAgentDelegation}</span>
         <span>last active {relativeTime(workspace.lastActiveAt)}</span>

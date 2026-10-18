@@ -25,7 +25,7 @@ export function AgentWorkspaceView({ workspaceId }: { workspaceId: string }) {
   const load = useCallback(() => { void refresh(); }, [refresh]);
 
   if (loading && !detail) {
-    return <div className="flex items-center gap-2 p-6 text-sm text-[--muted-foreground]"><Loader2 className="h-4 w-4 animate-spin" /> Loading workspace…</div>;
+    return <div className="flex items-center gap-2 p-6 text-sm text-(--muted-foreground)"><Loader2 className="h-4 w-4 animate-spin" /> Loading workspace…</div>;
   }
   if (!detail) return <div className="p-6"><ErrorNote error={error} /></div>;
 
@@ -39,7 +39,7 @@ export function AgentWorkspaceView({ workspaceId }: { workspaceId: string }) {
       <WorkspaceHeader detail={detail} onChanged={load} />
 
       {!running ? (
-        <div className="rounded-md border border-[--border] bg-[--muted]/30 px-3 py-2 text-xs text-[--muted-foreground]">
+        <div className="rounded-md border border-(--border) bg-(--muted)/30 px-3 py-2 text-xs text-(--muted-foreground)">
           The runtime is {detail.state.toLowerCase()}. Files, snapshots and artifacts are retained — start the runtime to browse or execute.
         </div>
       ) : null}
@@ -90,7 +90,7 @@ export function AgentWorkspaceView({ workspaceId }: { workspaceId: string }) {
 
 function StoppedNote() {
   return (
-    <div className="rounded-md border border-[--border] px-3 py-6 text-center text-xs text-[--muted-foreground]">
+    <div className="rounded-md border border-(--border) px-3 py-6 text-center text-xs text-(--muted-foreground)">
       Start the runtime to use this view. Workspace data is unaffected while the runtime is down.
     </div>
   );

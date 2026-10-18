@@ -43,22 +43,23 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState("profile");
 
   return (
-    <div className="flex h-full">
-      {/* Settings nav */}
-      <div className="w-48 border-r border-[--border] bg-[--sidebar] p-3 shrink-0">
-        <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground] mb-3 px-2">
+    <div className="flex h-full flex-col md:flex-row">
+      {/* Settings nav: a scrolling strip on phones, a column from tablet up. */}
+      <nav aria-label="Settings sections" className="shrink-0 border-b border-(--border) bg-(--sidebar) p-2 md:w-52 md:border-b-0 md:border-r md:p-3">
+        <h2 className="mb-3 hidden px-2 font-display text-[15px] font-semibold tracking-tight text-(--foreground) md:block">
           Settings
-        </div>
-        <div className="space-y-0.5">
+        </h2>
+        <div className="flex gap-0.5 overflow-x-auto [scrollbar-width:none] md:block md:space-y-0.5">
           {SETTINGS_SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveSection(id)}
+              aria-current={activeSection === id ? "page" : undefined}
               className={cn(
-                "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors",
+                "relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-2.5 py-2 text-sm transition-colors md:w-full",
                 activeSection === id
-                  ? "bg-[--primary]/15 text-[--primary]"
-                  : "text-[--muted-foreground] hover:text-[--foreground] hover:bg-[--accent]"
+                  ? "bg-(--muted) text-(--foreground) md:before:absolute md:before:inset-y-1.5 md:before:left-0 md:before:w-[2px] md:before:rounded-full md:before:bg-(--primary) [&>svg]:text-(--primary-soft)"
+                  : "text-(--muted-foreground) hover:text-(--foreground) hover:bg-(--panel)"
               )}
             >
               <Icon className="w-4 h-4 shrink-0" />
@@ -66,10 +67,10 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
-      </div>
+      </nav>
 
       {/* Settings content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="max-w-xl">
           {activeSection === "profile" && <ProfileSettings />}
           {activeSection === "agents" && <AgentSettings />}
@@ -99,7 +100,7 @@ function SettingsSection({
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{title}</CardTitle>
         {description && (
-          <p className="text-xs text-[--muted-foreground]">{description}</p>
+          <p className="text-[13px] text-(--muted-foreground)">{description}</p>
         )}
       </CardHeader>
       <CardContent className="pt-0 space-y-4">{children}</CardContent>
@@ -117,11 +118,11 @@ function FieldRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <div className="text-sm text-[--foreground]">{label}</div>
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="min-w-0">
+        <div className="text-sm text-(--foreground)">{label}</div>
         {description && (
-          <div className="text-xs text-[--muted-foreground]">{description}</div>
+          <div className="text-xs text-(--muted-foreground)">{description}</div>
         )}
       </div>
       <div className="shrink-0">{children}</div>
@@ -136,7 +137,7 @@ function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
       onClick={() => setOn(!on)}
       className={cn(
         "w-10 h-5 rounded-full transition-colors relative",
-        on ? "bg-[--primary]" : "bg-[--muted]"
+        on ? "bg-(--primary)" : "bg-(--muted)"
       )}
     >
       <span
@@ -160,13 +161,13 @@ function ProfileSettings() {
             <img
               src={session.user.image}
               alt={session.user.name ?? "User"}
-              className="w-12 h-12 rounded-full border border-[--border]"
+              className="w-12 h-12 rounded-full border border-(--border)"
             />
             <div>
-              <div className="text-sm font-medium text-[--foreground]">
+              <div className="text-sm font-medium text-(--foreground)">
                 {session.user.name}
               </div>
-              <div className="text-xs text-[--muted-foreground]">
+              <div className="text-xs text-(--muted-foreground)">
                 {session.user.email}
               </div>
             </div>
@@ -175,13 +176,13 @@ function ProfileSettings() {
         <FieldRow label="Display name">
           <Input
             defaultValue={session?.user?.name ?? ""}
-            className="w-48 h-8 text-sm"
+            className="h-9 w-full text-sm sm:w-56"
           />
         </FieldRow>
         <FieldRow label="Email">
           <Input
             defaultValue={session?.user?.email ?? ""}
-            className="w-48 h-8 text-sm"
+            className="h-9 w-full text-sm sm:w-56"
             readOnly
           />
         </FieldRow>
@@ -206,7 +207,7 @@ function AgentSettings() {
       description="Default settings for new agents"
     >
       <FieldRow label="Default model" description="Used when creating new agents">
-        <select className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]">
+        <select className="h-9 rounded-md border border-(--border) bg-(--panel) px-2 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">
           <option>deepseek/deepseek-v4.1-flash</option>
           <option>claude-sonnet-4-6</option>
           <option>claude-opus-4-8</option>
@@ -214,7 +215,7 @@ function AgentSettings() {
         </select>
       </FieldRow>
       <FieldRow label="Default memory scope">
-        <select className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]">
+        <select className="h-9 rounded-md border border-(--border) bg-(--panel) px-2 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">
           <option>project</option>
           <option>session</option>
           <option>org</option>
@@ -299,7 +300,7 @@ function VoiceSettings() {
         <select
           value={provider}
           onChange={(e) => handleChange(e.target.value as VoiceProviderOption)}
-          className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]"
+          className="h-9 rounded-md border border-(--border) bg-(--panel) px-2 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
         >
           <option value="browser_stt">Browser Speech</option>
           <option value="mock">Mock (no mic)</option>
@@ -319,7 +320,7 @@ function AppearanceSettings() {
       description="Customize the look and feel"
     >
       <FieldRow label="Theme">
-        <select className="h-8 px-2 rounded border border-[--border] bg-[--muted] text-sm text-[--foreground]">
+        <select className="h-9 rounded-md border border-(--border) bg-(--panel) px-2 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">
           {themes.map((t) => (
             <option key={t}>{t}</option>
           ))}
@@ -388,11 +389,11 @@ function ApiKeyRow({
 
   if (editing) {
     return (
-      <div className="py-3 border-b border-[--border] last:border-0 space-y-2">
+      <div className="py-3 border-b border-(--border) last:border-0 space-y-2">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-[--foreground]">{label}</div>
-            <div className="text-xs text-[--muted-foreground]">{description}</div>
+            <div className="text-sm text-(--foreground)">{label}</div>
+            <div className="text-xs text-(--muted-foreground)">{description}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -401,13 +402,13 @@ function ApiKeyRow({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={placeholder}
-            className="flex-1 h-8 text-xs font-mono bg-[--muted]"
+            className="flex-1 h-8 text-xs font-mono bg-(--muted)"
             autoFocus
           />
           <button
             type="button"
             onClick={() => setVisible(!visible)}
-            className="text-[--muted-foreground] hover:text-[--foreground]"
+            className="text-(--muted-foreground) hover:text-(--foreground)"
           >
             {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           </button>
@@ -442,10 +443,10 @@ function ApiKeyRow({
   }
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[--border] last:border-0">
+    <div className="flex items-center gap-3 py-3 border-b border-(--border) last:border-0">
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-[--foreground]">{label}</div>
-        <div className="text-xs font-mono text-[--muted-foreground] truncate">
+        <div className="text-sm text-(--foreground)">{label}</div>
+        <div className="text-xs font-mono text-(--muted-foreground) truncate">
           {configured ? maskKey(value) : description}
         </div>
       </div>
@@ -458,7 +459,7 @@ function ApiKeyRow({
       {configured && (
         <button
           onClick={onClear}
-          className="text-[--muted-foreground] hover:text-destructive transition-colors"
+          className="text-(--muted-foreground) hover:text-destructive transition-colors"
           title="Remove key"
         >
           <X className="w-3.5 h-3.5" />
@@ -520,10 +521,10 @@ function APIKeySettings() {
           onClear={() => setOpenRouterKey("")}
         />
       </SettingsSection>
-      <div className="text-[11px] text-[--muted-foreground] px-1 space-y-1">
+      <div className="text-[11px] text-(--muted-foreground) px-1 space-y-1">
         <p>
-          Keys are persisted to <code className="text-[10px] bg-[--muted] px-1 rounded">localStorage</code> under{" "}
-          <code className="text-[10px] bg-[--muted] px-1 rounded">hermes-api-keys</code>.
+          Keys are persisted to <code className="text-[10px] bg-(--muted) px-1 rounded">localStorage</code> under{" "}
+          <code className="text-[10px] bg-(--muted) px-1 rounded">hermes-api-keys</code>.
         </p>
         <p>
           Claude agents require an Anthropic key · Codex requires an OpenAI key · all agents can fall back to OpenRouter.

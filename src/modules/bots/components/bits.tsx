@@ -15,7 +15,7 @@ export function BotAvatar({ icon, color, size = 36 }: { icon: string; color: str
 }
 
 const TONES = {
-  neutral: "border-[--border] text-[--muted-foreground]",
+  neutral: "border-(--border) text-(--muted-foreground)",
   good: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
   warn: "border-amber-500/30 bg-amber-500/10 text-amber-400",
   bad: "border-red-500/30 bg-red-500/10 text-red-400",
@@ -45,10 +45,10 @@ export function Button({ variant = "secondary", busy, className, children, ...pr
       disabled={props.disabled || busy}
       className={cn(
         "inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-[--primary] text-[--primary-foreground] hover:opacity-90",
-        variant === "secondary" && "border border-[--border] bg-[--card] text-[--foreground] hover:bg-[--accent]",
-        variant === "ghost" && "text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "primary" && "bg-(--primary) text-(--primary-foreground) hover:opacity-90",
+        variant === "secondary" && "border border-(--border) bg-(--card) text-(--foreground) hover:bg-(--accent)",
+        variant === "ghost" && "text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground)",
         variant === "danger" && "border border-red-500/40 text-red-400 hover:bg-red-500/10",
         className,
       )}
@@ -59,14 +59,14 @@ export function Button({ variant = "secondary", busy, className, children, ...pr
   );
 }
 
-const fieldClass = "w-full rounded-md border border-[--border] bg-[--background] px-2.5 py-1.5 text-[13px] text-[--foreground] placeholder:text-[--muted-foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] disabled:opacity-50";
+const fieldClass = "w-full rounded-md border border-(--border) bg-(--background) px-2.5 py-1.5 text-[13px] text-(--foreground) placeholder:text-(--muted-foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:opacity-50";
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12px] font-medium text-[--foreground]">{label}</span>
+      <span className="mb-1 block text-[12px] font-medium text-(--foreground)">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-[11px] leading-4 text-[--muted-foreground]">{hint}</span> : null}
+      {hint ? <span className="mt-1 block text-[11px] leading-4 text-(--muted-foreground)">{hint}</span> : null}
     </label>
   );
 }
@@ -85,9 +85,9 @@ export function Notice({ tone = "bad", children, action }: { tone?: Tone; childr
 
 export function Empty({ title, children, action }: { title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-[--border] p-6">
-      <p className="text-[14px] font-medium text-[--foreground]">{title}</p>
-      {children ? <p className="max-w-[60ch] text-[13px] leading-5 text-[--muted-foreground]">{children}</p> : null}
+    <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-(--border) p-6">
+      <p className="text-[14px] font-medium text-(--foreground)">{title}</p>
+      {children ? <p className="max-w-[60ch] text-[13px] leading-5 text-(--muted-foreground)">{children}</p> : null}
       {action}
     </div>
   );

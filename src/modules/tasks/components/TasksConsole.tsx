@@ -47,7 +47,7 @@ function statusLabel(status: string) {
 }
 
 function AgentPill({ agent, label }: { agent: AgentRef | null; label: string }) {
-  if (!agent) return <span className="text-[--muted-foreground]">Unassigned</span>;
+  if (!agent) return <span className="text-(--muted-foreground)">Unassigned</span>;
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: agent.color }} aria-hidden />
@@ -65,10 +65,10 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
         showBack={false}
       />
 
-      <div className="overflow-x-auto rounded-lg border border-[--canvas-card-border]">
+      <div className="overflow-x-auto rounded-lg border border-(--canvas-card-border)">
         <table className="w-full min-w-[880px] border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-[--canvas-card]">
-            <tr className="border-b border-[--canvas-card-border] text-left text-[11px] uppercase tracking-wide text-[--muted-foreground]">
+          <thead className="sticky top-0 bg-(--canvas-card)">
+            <tr className="border-b border-(--canvas-card-border) text-left text-[11px] uppercase tracking-wide text-(--muted-foreground)">
               <th className="px-3 py-2.5 font-medium">Task</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Priority</th>
@@ -82,14 +82,14 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
             {tasks.map((task) => (
               <tr
                 key={task.id}
-                className="border-b border-[--canvas-card-border] last:border-0 hover:bg-[--canvas-card]/60"
+                className="border-b border-(--canvas-card-border) last:border-0 hover:bg-(--canvas-card)/60"
               >
                 <td className="max-w-[280px] px-3 py-2.5">
-                  <Link href={`/tasks/${task.id}`} className="block truncate font-medium text-[--canvas-foreground] hover:underline">
+                  <Link href={`/tasks/${task.id}`} className="block truncate font-medium text-(--canvas-foreground) hover:underline">
                     {task.title}
                   </Link>
                   {task.project ? (
-                    <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[--muted-foreground]">
+                    <div className="mt-0.5 flex items-center gap-1 text-[11px] text-(--muted-foreground)">
                       <FolderGit2 className="h-3 w-3" /> {task.project.name}
                     </div>
                   ) : null}
@@ -99,20 +99,20 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
                     {statusLabel(task.status)}
                   </Badge>
                 </td>
-                <td className={cn("px-3 py-2.5 capitalize", task.priority === "high" || task.priority === "urgent" ? "text-[--destructive]" : "text-[--muted-foreground]")}>
+                <td className={cn("px-3 py-2.5 capitalize", task.priority === "high" || task.priority === "urgent" ? "text-(--destructive)" : "text-(--muted-foreground)")}>
                   {task.priority}
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="space-y-0.5">
                     <AgentPill agent={task.agent} label="Owner" />
                     {task.reviewerAgent ? (
-                      <div className="text-[11px] text-[--muted-foreground]">
+                      <div className="text-[11px] text-(--muted-foreground)">
                         Reviewer: <AgentPill agent={task.reviewerAgent} label="Reviewer" />
                       </div>
                     ) : null}
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-[--muted-foreground]">
+                <td className="px-3 py-2.5 text-(--muted-foreground)">
                   {task.workspace ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.workspace.color }} aria-hidden />
@@ -122,7 +122,7 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
                     "—"
                   )}
                 </td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-[--muted-foreground]">
+                <td className="px-3 py-2.5 font-mono text-[11px] text-(--muted-foreground)">
                   {task.branch ? (
                     <div className="flex items-center gap-1.5">
                       <GitBranch className="h-3 w-3 shrink-0" />
@@ -133,14 +133,14 @@ export function TasksConsole({ tasks }: { tasks: TaskRow[] }) {
                   )}
                   {task.worktreePath ? <div className="mt-0.5 truncate opacity-70">{task.worktreePath}</div> : null}
                 </td>
-                <td className="px-3 py-2.5 text-[--muted-foreground]">
+                <td className="px-3 py-2.5 text-(--muted-foreground)">
                   {task.dependsOnTaskIds.length > 0 ? `${task.dependsOnTaskIds.length} task${task.dependsOnTaskIds.length === 1 ? "" : "s"}` : "—"}
                 </td>
               </tr>
             ))}
             {tasks.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-[--muted-foreground]">
+                <td colSpan={7} className="px-3 py-10 text-center text-(--muted-foreground)">
                   No tasks yet — tasks created by agents or from a workspace will show up here.
                 </td>
               </tr>

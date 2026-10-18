@@ -12,7 +12,7 @@ export default async function StudioBuilderPage() {
   return (
     <WorkspaceShell noPadding className="flex h-full min-h-0 flex-col overflow-hidden p-6">
       <WorkspaceHeader title={LENS_CONFIG.studio.title} description="AI creation environment — build UI components with AI." accent={LENS_CONFIG.studio.accent} showBack={false} />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[--canvas-card-border]">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-(--canvas-card-border)">
         <StudioPage />
       </div>
     </WorkspaceShell>

@@ -12,7 +12,7 @@ export default async function OrganizationChartPage() {
   return (
     <WorkspaceShell noPadding className="flex h-full min-h-0 flex-col overflow-hidden p-6">
       <WorkspaceHeader title={LENS_CONFIG.organization.title} description="Interactive organization chart for people, agents, teams, and departments." accent={LENS_CONFIG.organization.accent} showBack={false} />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[--canvas-card-border]">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-(--canvas-card-border)">
         <OrgPage />
       </div>
     </WorkspaceShell>

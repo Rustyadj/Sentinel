@@ -53,10 +53,10 @@ export function EntityChip({ type, label, onClick, className }: {
       <span className="truncate">{label}</span>
     </>
   );
-  const base = "inline-flex max-w-[16rem] items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] text-[--muted-foreground]";
+  const base = "inline-flex max-w-[16rem] items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] text-(--muted-foreground)";
   if (!onClick) return <span className={cn(base, className)}>{content}</span>;
   return (
-    <button type="button" onClick={onClick} className={cn(base, "transition-colors hover:bg-[--muted] hover:text-[--foreground]", className)}>
+    <button type="button" onClick={onClick} className={cn(base, "transition-colors hover:bg-(--muted) hover:text-(--foreground)", className)}>
       {content}
     </button>
   );
@@ -77,9 +77,9 @@ export function IconButton({ label, onClick, children, className, active }: {
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-lg text-[--muted-foreground] transition-colors",
-        "hover:bg-[--muted] hover:text-[--foreground] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]",
-        active && "bg-[--muted] text-[--foreground]",
+        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--muted-foreground) transition-colors",
+        "hover:bg-(--muted) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
+        active && "bg-(--muted) text-(--foreground)",
         className,
       )}
     >
@@ -92,8 +92,8 @@ export function IconButton({ label, onClick, children, className, active }: {
 export function EmptyState({ title, hint, action }: { title: string; hint?: string; action?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
-      <p className="text-[15px] text-[--foreground]">{title}</p>
-      {hint ? <p className="max-w-md text-[13px] leading-relaxed text-[--muted-foreground]">{hint}</p> : null}
+      <p className="font-display text-[18px] font-semibold tracking-tight text-(--foreground)">{title}</p>
+      {hint ? <p className="max-w-md text-[13px] leading-relaxed text-(--muted-foreground)">{hint}</p> : null}
       {action}
     </div>
   );

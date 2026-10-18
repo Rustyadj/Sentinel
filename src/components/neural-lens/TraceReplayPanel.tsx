@@ -17,7 +17,7 @@ import { relativeTime } from "./LensOverview";
 const TRACE_STEP_MS = 900;
 
 const controlClass =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md border border-[--border] text-[--muted-foreground] transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-[--canvas-foreground] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[--border] disabled:hover:bg-transparent";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md border border-(--border) text-(--muted-foreground) transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-(--canvas-foreground) disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-(--border) disabled:hover:bg-transparent";
 
 export function TraceReplayPanel() {
   const recentTraces = useGraphStore((state) => state.recentTraces);
@@ -51,8 +51,8 @@ export function TraceReplayPanel() {
   const atEnd = !activeTrace || traceStepIndex >= activeTrace.nodeIds.length - 1;
 
   return (
-    <section className="rounded-lg border border-[--canvas-card-border] bg-[--canvas-card] p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[--muted-foreground]">
+    <section className="rounded-lg border border-(--canvas-card-border) bg-(--canvas-card) p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--muted-foreground)">
         <Route className="h-3.5 w-3.5" />
         Trace Replay
       </div>
@@ -60,8 +60,8 @@ export function TraceReplayPanel() {
       {activeTrace ? (
         <div className="flex min-h-16 flex-col justify-between gap-2 sm:flex-row sm:items-center">
           <div className="min-w-0">
-            <p className="line-clamp-2 text-xs text-[--canvas-foreground]">{activeTrace.label}</p>
-            <p className="mt-1 text-[10px] text-[--muted-foreground]" aria-live="polite">
+            <p className="line-clamp-2 text-xs text-(--canvas-foreground)">{activeTrace.label}</p>
+            <p className="mt-1 text-[10px] text-(--muted-foreground)" aria-live="polite">
               Step {traceStepIndex + 1} of {activeTrace.nodeIds.length}
               {!animate ? " · Auto-play disabled" : ""}
             </p>
@@ -119,18 +119,18 @@ export function TraceReplayPanel() {
           </div>
         </div>
       ) : recentTraces.length === 0 ? (
-        <p className="py-2 text-xs text-[--muted-foreground]">Waiting for multi-node activity.</p>
+        <p className="py-2 text-xs text-(--muted-foreground)">Waiting for multi-node activity.</p>
       ) : (
         <ul className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {recentTraces.map((trace) => (
             <li key={trace.id}>
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-3 rounded-md border border-[--border] bg-[--background]/40 px-2.5 py-2 text-left transition-colors hover:border-cyan-400/35 hover:bg-cyan-400/5"
+                className="flex w-full items-center justify-between gap-3 rounded-md border border-(--border) bg-(--background)/40 px-2.5 py-2 text-left transition-colors hover:border-cyan-400/35 hover:bg-cyan-400/5"
                 onClick={() => selectTrace(trace)}
               >
-                <span className="min-w-0 truncate text-[11px] text-[--canvas-foreground]">{trace.label}</span>
-                <span className="shrink-0 text-[10px] text-[--muted-foreground]">
+                <span className="min-w-0 truncate text-[11px] text-(--canvas-foreground)">{trace.label}</span>
+                <span className="shrink-0 text-[10px] text-(--muted-foreground)">
                   {relativeTime(new Date(trace.capturedAt))}
                 </span>
               </button>

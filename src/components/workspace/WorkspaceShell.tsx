@@ -11,7 +11,7 @@ export function WorkspaceShell({ children, className, noPadding }: WorkspaceShel
   return (
     <div
       className={cn(
-        "min-h-full bg-[--canvas] text-[--canvas-foreground]",
+        "min-h-full bg-(--canvas) text-(--canvas-foreground)",
         !noPadding && "p-6",
         className
       )}

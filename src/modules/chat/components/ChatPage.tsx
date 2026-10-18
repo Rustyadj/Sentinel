@@ -132,8 +132,8 @@ function RoomItem({
         "flex items-center gap-1.5 px-2 py-1.5 cursor-pointer rounded-md mx-1 group transition-colors",
         indent && "ml-4",
         active
-          ? "bg-[--primary]/15 text-[--primary]"
-          : "hover:bg-[--accent] text-[--muted-foreground]"
+          ? "bg-(--primary)/15 text-(--primary)"
+          : "hover:bg-(--accent) text-(--muted-foreground)"
       )}
       onMouseEnter={() => onHover(room.id)}
       onMouseLeave={() => onHover(null)}
@@ -142,7 +142,7 @@ function RoomItem({
       <Hash
         className={cn(
           "w-3 h-3 shrink-0",
-          active ? "text-[--primary]" : "text-[--muted-foreground] opacity-50"
+          active ? "text-(--primary)" : "text-(--muted-foreground) opacity-50"
         )}
       />
       <span className="text-xs truncate flex-1">{room.name}</span>
@@ -152,7 +152,7 @@ function RoomItem({
             e.stopPropagation();
             onDelete();
           }}
-          className="w-4 h-4 flex items-center justify-center text-[--muted-foreground] hover:text-red-500 transition-colors"
+          className="w-4 h-4 flex items-center justify-center text-(--muted-foreground) hover:text-red-500 transition-colors"
         >
           <Trash2 className="w-3 h-3" />
         </button>
@@ -209,15 +209,15 @@ function LeftPanel({
   const ungroupedRooms = rooms.filter((r) => !r.projectId);
 
   return (
-    <div className="w-60 flex flex-col h-full bg-[--sidebar] border-r border-[--border] overflow-hidden shrink-0">
+    <div className="w-60 flex flex-col h-full bg-(--sidebar) border-r border-(--border) overflow-hidden shrink-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-[--border]">
-        <span className="text-[11px] font-semibold text-[--muted-foreground] uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-(--border)">
+        <span className="text-[11px] font-semibold text-(--muted-foreground) uppercase tracking-wider">
           Workspaces
         </span>
         <button
           onClick={onCreateProject}
-          className="w-6 h-6 rounded-md bg-[--primary]/15 hover:bg-[--primary]/25 flex items-center justify-center text-[--primary] transition-colors"
+          className="w-6 h-6 rounded-md bg-(--primary)/15 hover:bg-(--primary)/25 flex items-center justify-center text-(--primary) transition-colors"
           title="New Project"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -233,20 +233,20 @@ function LeftPanel({
           return (
             <div key={project.id}>
               <div
-                className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-[--accent] group rounded-md mx-1 transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-(--accent) group rounded-md mx-1 transition-colors"
                 onClick={() => toggleProject(project.id)}
               >
                 {isExpanded ? (
-                  <ChevronDown className="w-3 h-3 text-[--muted-foreground] shrink-0" />
+                  <ChevronDown className="w-3 h-3 text-(--muted-foreground) shrink-0" />
                 ) : (
-                  <ChevronRight className="w-3 h-3 text-[--muted-foreground] shrink-0" />
+                  <ChevronRight className="w-3 h-3 text-(--muted-foreground) shrink-0" />
                 )}
                 {isExpanded ? (
-                  <FolderOpen className="w-3.5 h-3.5 text-[--primary] shrink-0" />
+                  <FolderOpen className="w-3.5 h-3.5 text-(--primary) shrink-0" />
                 ) : (
-                  <Folder className="w-3.5 h-3.5 text-[--muted-foreground] shrink-0" />
+                  <Folder className="w-3.5 h-3.5 text-(--muted-foreground) shrink-0" />
                 )}
-                <span className="text-xs font-medium text-[--foreground] truncate flex-1">
+                <span className="text-xs font-medium text-(--foreground) truncate flex-1">
                   {project.name}
                 </span>
                 <button
@@ -254,7 +254,7 @@ function LeftPanel({
                     e.stopPropagation();
                     onCreateRoom(project.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[--muted-foreground] hover:text-[--primary] transition-all"
+                  className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-(--muted-foreground) hover:text-(--primary) transition-all"
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -276,7 +276,7 @@ function LeftPanel({
                 <div className="pl-10 pr-2 py-1">
                   <button
                     onClick={() => onCreateRoom(project.id)}
-                    className="text-[10px] text-[--muted-foreground] hover:text-[--primary] transition-colors"
+                    className="text-[10px] text-(--muted-foreground) hover:text-(--primary) transition-colors"
                   >
                     + New room
                   </button>
@@ -290,7 +290,7 @@ function LeftPanel({
         {ungroupedRooms.length > 0 && (
           <div className="mt-2">
             <div className="px-3 pb-1">
-              <span className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium opacity-60">
+              <span className="text-[9px] uppercase tracking-widest text-(--muted-foreground) font-medium opacity-60">
                 General
               </span>
             </div>
@@ -311,11 +311,11 @@ function LeftPanel({
         {/* Empty state */}
         {projects.length === 0 && rooms.length === 0 && (
           <div className="px-3 py-6 text-center">
-            <MessageSquare className="w-8 h-8 text-[--muted-foreground] opacity-30 mx-auto mb-2" />
-            <div className="text-xs text-[--muted-foreground]">No projects yet</div>
+            <MessageSquare className="w-8 h-8 text-(--muted-foreground) opacity-30 mx-auto mb-2" />
+            <div className="text-xs text-(--muted-foreground)">No projects yet</div>
             <button
               onClick={onCreateProject}
-              className="mt-2 text-xs text-[--primary] hover:underline"
+              className="mt-2 text-xs text-(--primary) hover:underline"
             >
               Create one
             </button>
@@ -324,10 +324,10 @@ function LeftPanel({
       </div>
 
       {/* New Room (general) */}
-      <div className="border-t border-[--border] p-2">
+      <div className="border-t border-(--border) p-2">
         <button
           onClick={() => onCreateRoom()}
-          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs text-[--muted-foreground] hover:bg-[--accent] hover:text-[--foreground] transition-colors"
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs text-(--muted-foreground) hover:bg-(--accent) hover:text-(--foreground) transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
           New chat
@@ -351,11 +351,11 @@ function MessageBubble({
   if (msg.role === "system") {
     return (
       <div className="flex items-center gap-2 py-1">
-        <div className="flex-1 h-px bg-[--border]" />
-        <span className="text-[11px] text-[--muted-foreground] px-2 shrink-0">
+        <div className="flex-1 h-px bg-(--border)" />
+        <span className="text-[11px] text-(--muted-foreground) px-2 shrink-0">
           {msg.content}
         </span>
-        <div className="flex-1 h-px bg-[--border]" />
+        <div className="flex-1 h-px bg-(--border)" />
       </div>
     );
   }
@@ -365,10 +365,10 @@ function MessageBubble({
       {/* Avatar */}
       {!isUser && (
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 border border-[--border]"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5 border border-(--border)"
           style={{ backgroundColor: (agent?.color ?? "#6366f1") + "22" }}
         >
-          {agent?.avatar ?? <Bot className="w-4 h-4 text-[--muted-foreground]" />}
+          {agent?.avatar ?? <Bot className="w-4 h-4 text-(--muted-foreground)" />}
         </div>
       )}
 
@@ -379,9 +379,9 @@ function MessageBubble({
             <span className="text-[11px] font-semibold" style={{ color: agent.color }}>
               {agent.name}
             </span>
-            <span className="text-[10px] text-[--muted-foreground]">{agent.role}</span>
+            <span className="text-[10px] text-(--muted-foreground)">{agent.role}</span>
             {msg.sourceLabel ? (
-              <span className="rounded border border-[--border] bg-[--muted] px-1.5 py-0.5 text-[9px] text-[--muted-foreground]">
+              <span className="rounded border border-(--border) bg-(--muted) px-1.5 py-0.5 text-[9px] text-(--muted-foreground)">
                 {msg.sourceLabel}
               </span>
             ) : null}
@@ -393,10 +393,10 @@ function MessageBubble({
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
             isUser
-              ? "bg-[--primary]/15 border border-[--primary]/20 text-[--foreground] rounded-tr-sm"
+              ? "bg-(--primary)/15 border border-(--primary)/20 text-(--foreground) rounded-tr-sm"
               : msg.error
               ? "bg-red-500/10 text-red-400 border border-red-500/20 rounded-tl-sm"
-              : "bg-[--card] text-[--foreground] border border-[--border] rounded-tl-sm"
+              : "bg-(--card) text-(--foreground) border border-(--border) rounded-tl-sm"
           )}
         >
           {msg.error && (
@@ -404,14 +404,14 @@ function MessageBubble({
           )}
           {msg.content ||
             (msg.isStreaming ? (
-              <span className="flex items-center gap-2 text-[--muted-foreground]">
+              <span className="flex items-center gap-2 text-(--muted-foreground)">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…
               </span>
             ) : (
               ""
             ))}
           {msg.isStreaming && msg.content && (
-            <span className="inline-block w-1 h-4 bg-[--primary] ml-0.5 animate-pulse rounded-sm" />
+            <span className="inline-block w-1 h-4 bg-(--primary) ml-0.5 animate-pulse rounded-sm" />
           )}
         </div>
       </div>
@@ -431,39 +431,39 @@ function RightPanel({
   recentMemories: { id: string; content: string; type: string; confidence: number }[];
 }) {
   return (
-    <div className="w-64 flex flex-col h-full bg-[--sidebar] border-l border-[--border] overflow-hidden shrink-0">
+    <div className="w-64 flex flex-col h-full bg-(--sidebar) border-l border-(--border) overflow-hidden shrink-0">
       {/* Active agent */}
-      <div className="p-3 border-b border-[--border]">
-        <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2">
+      <div className="p-3 border-b border-(--border)">
+        <div className="text-[9px] uppercase tracking-widest text-(--muted-foreground) font-medium mb-2">
           Active Agent
         </div>
         {activeAgent ? (
-          <div className="bg-[--card] rounded-xl p-3 border border-[--border]">
+          <div className="bg-(--card) rounded-xl p-3 border border-(--border)">
             <div className="flex items-center gap-2.5">
               <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-base border border-[--border]"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-base border border-(--border)"
                 style={{ backgroundColor: activeAgent.color + "22" }}
               >
                 {activeAgent.avatar}
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-[--foreground] truncate">
+                <div className="text-sm font-semibold text-(--foreground) truncate">
                   {activeAgent.name}
                 </div>
-                <div className="text-[10px] text-[--muted-foreground] truncate">
+                <div className="text-[10px] text-(--muted-foreground) truncate">
                   {activeAgent.role}
                 </div>
               </div>
             </div>
             <div className="mt-2 flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[10px] text-[--muted-foreground]">
+              <span className="text-[10px] text-(--muted-foreground)">
                 {activeAgent.model}
               </span>
             </div>
           </div>
         ) : (
-          <div className="text-xs text-[--muted-foreground] text-center py-2">
+          <div className="text-xs text-(--muted-foreground) text-center py-2">
             No agent selected
           </div>
         )}
@@ -471,19 +471,19 @@ function RightPanel({
 
       {/* Project info */}
       {activeProject && (
-        <div className="p-3 border-b border-[--border]">
-          <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2">
+        <div className="p-3 border-b border-(--border)">
+          <div className="text-[9px] uppercase tracking-widest text-(--muted-foreground) font-medium mb-2">
             Project
           </div>
-          <div className="bg-[--card] rounded-xl p-3 border border-[--border]">
+          <div className="bg-(--card) rounded-xl p-3 border border-(--border)">
             <div className="flex items-center gap-2 mb-1">
-              <Folder className="w-3.5 h-3.5 text-[--primary] shrink-0" />
-              <span className="text-sm font-medium text-[--foreground] truncate">
+              <Folder className="w-3.5 h-3.5 text-(--primary) shrink-0" />
+              <span className="text-sm font-medium text-(--foreground) truncate">
                 {activeProject.name}
               </span>
             </div>
             {activeProject.description && (
-              <div className="text-[10px] text-[--muted-foreground] line-clamp-2">
+              <div className="text-[10px] text-(--muted-foreground) line-clamp-2">
                 {activeProject.description}
               </div>
             )}
@@ -491,7 +491,7 @@ function RightPanel({
               {activeProject.tags?.slice(0, 3).map((tag: string) => (
                 <span
                   key={tag}
-                  className="text-[9px] bg-[--primary]/10 text-[--primary] px-1.5 py-0.5 rounded-md"
+                  className="text-[9px] bg-(--primary)/10 text-(--primary) px-1.5 py-0.5 rounded-md"
                 >
                   {tag}
                 </span>
@@ -503,30 +503,30 @@ function RightPanel({
 
       {/* Memory context */}
       <div className="flex-1 p-3 overflow-y-auto">
-        <div className="text-[9px] uppercase tracking-widest text-[--muted-foreground] font-medium mb-2 flex items-center gap-1.5">
+        <div className="text-[9px] uppercase tracking-widest text-(--muted-foreground) font-medium mb-2 flex items-center gap-1.5">
           <Brain className="w-3 h-3" /> Memory Context
         </div>
         <div className="space-y-2">
           {recentMemories.slice(0, 5).map((mem) => (
             <div
               key={mem.id}
-              className="bg-[--card] rounded-lg p-2.5 border border-[--border]"
+              className="bg-(--card) rounded-lg p-2.5 border border-(--border)"
             >
-              <div className="text-[10px] text-[--foreground] line-clamp-2 leading-relaxed">
+              <div className="text-[10px] text-(--foreground) line-clamp-2 leading-relaxed">
                 {mem.content}
               </div>
               <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-[9px] bg-[--muted] text-[--muted-foreground] px-1.5 py-0.5 rounded capitalize">
+                <span className="text-[9px] bg-(--muted) text-(--muted-foreground) px-1.5 py-0.5 rounded capitalize">
                   {mem.type}
                 </span>
-                <span className="text-[9px] text-[--muted-foreground]">
+                <span className="text-[9px] text-(--muted-foreground)">
                   {Math.round(mem.confidence * 100)}% conf.
                 </span>
               </div>
             </div>
           ))}
           {recentMemories.length === 0 && (
-            <div className="text-xs text-[--muted-foreground] text-center py-3">
+            <div className="text-xs text-(--muted-foreground) text-center py-3">
               No memories yet
             </div>
           )}
@@ -828,24 +828,24 @@ export function ChatPage() {
       {/* Center: Chat */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[--border] bg-[--card] shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-(--border) bg-(--card) shrink-0">
           <div className="flex items-center gap-2">
             {activeRoom ? (
               <>
-                <Hash className="w-4 h-4 text-[--muted-foreground]" />
-                <span className="text-sm font-semibold text-[--foreground]">
+                <Hash className="w-4 h-4 text-(--muted-foreground)" />
+                <span className="text-sm font-semibold text-(--foreground)">
                   {activeRoom.name}
                 </span>
                 {activeProject && (
-                  <span className="text-xs text-[--muted-foreground]">
+                  <span className="text-xs text-(--muted-foreground)">
                     · {activeProject.name}
                   </span>
                 )}
               </>
             ) : (
               <>
-                <Cpu className="w-4 h-4 text-[--primary]" />
-                <span className="text-sm font-semibold text-[--foreground]">
+                <Cpu className="w-4 h-4 text-(--primary)" />
+                <span className="text-sm font-semibold text-(--foreground)">
                   Sentinel OS Chat
                 </span>
               </>
@@ -858,7 +858,7 @@ export function ChatPage() {
               aria-label="Execution source"
               value={executionMode}
               onChange={(event) => setExecutionMode(event.target.value as ExecutionMode)}
-              className="rounded-lg border border-[--border] bg-[--muted] px-2 py-1.5 text-[10px] text-[--foreground] outline-none focus:border-indigo-500/50"
+              className="rounded-lg border border-(--border) bg-(--muted) px-2 py-1.5 text-[10px] text-(--foreground) outline-none focus:border-indigo-500/50"
             >
               {AGENT_RUNTIME_MODE[selectedAgentId] ? (
                 <option value={AGENT_RUNTIME_MODE[selectedAgentId].mode}>{AGENT_RUNTIME_MODE[selectedAgentId].label}</option>
@@ -868,7 +868,7 @@ export function ChatPage() {
             <div className="relative">
             <button
               onClick={() => setAgentDropdownOpen((o) => !o)}
-              className="flex items-center gap-2 bg-[--muted] hover:bg-[--accent] border border-[--border] rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+              className="flex items-center gap-2 bg-(--muted) hover:bg-(--accent) border border-(--border) rounded-lg px-2.5 py-1.5 text-xs transition-colors"
             >
               <div
                 className="w-4 h-4 rounded-full flex items-center justify-center text-[10px]"
@@ -879,14 +879,14 @@ export function ChatPage() {
               >
                 {selectedTemplate?.avatar ?? "🤖"}
               </div>
-              <span className="text-[--foreground] font-medium">
+              <span className="text-(--foreground) font-medium">
                 {selectedTemplate?.name ?? "Select Agent"}
               </span>
-              <ChevronDown className="w-3 h-3 text-[--muted-foreground]" />
+              <ChevronDown className="w-3 h-3 text-(--muted-foreground)" />
             </button>
 
             {agentDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-[--card] border border-[--border] rounded-xl shadow-xl z-50 overflow-hidden py-1">
+              <div className="absolute right-0 top-full mt-1 w-56 bg-(--card) border border-(--border) rounded-xl shadow-xl z-50 overflow-hidden py-1">
                 {AGENT_TEMPLATES.map((a) => (
                   <button
                     key={a.id}
@@ -898,8 +898,8 @@ export function ChatPage() {
                     className={cn(
                       "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
                       selectedAgentId === a.id
-                        ? "bg-[--primary]/10"
-                        : "hover:bg-[--accent]"
+                        ? "bg-(--primary)/10"
+                        : "hover:bg-(--accent)"
                     )}
                   >
                     <div
@@ -909,15 +909,15 @@ export function ChatPage() {
                       {a.avatar}
                     </div>
                     <div>
-                      <div className="text-xs font-medium text-[--foreground]">
+                      <div className="text-xs font-medium text-(--foreground)">
                         {a.name}
                       </div>
-                      <div className="text-[10px] text-[--muted-foreground]">
+                      <div className="text-[10px] text-(--muted-foreground)">
                         {a.model}
                       </div>
                     </div>
                     {selectedAgentId === a.id && (
-                      <Circle className="w-2 h-2 fill-[--primary] text-[--primary] ml-auto" />
+                      <Circle className="w-2 h-2 fill-(--primary) text-(--primary) ml-auto" />
                     )}
                   </button>
                 ))}
@@ -935,13 +935,13 @@ export function ChatPage() {
         >
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-14 h-14 rounded-2xl bg-[--primary]/10 border border-[--primary]/20 flex items-center justify-center mb-4">
-                <Cpu className="w-7 h-7 text-[--primary]" />
+              <div className="w-14 h-14 rounded-2xl bg-(--primary)/10 border border-(--primary)/20 flex items-center justify-center mb-4">
+                <Cpu className="w-7 h-7 text-(--primary)" />
               </div>
-              <div className="text-sm font-semibold text-[--foreground] mb-1">
+              <div className="text-sm font-semibold text-(--foreground) mb-1">
                 {activeRoom ? activeRoom.name : "Start a conversation"}
               </div>
-              <div className="text-xs text-[--muted-foreground] max-w-xs">
+              <div className="text-xs text-(--muted-foreground) max-w-xs">
                 {selectedTemplate
                   ? `Talking with ${selectedTemplate.name} · ${selectedTemplate.role}`
                   : "Select an agent to begin"}
@@ -965,8 +965,8 @@ export function ChatPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-[--border] bg-[--card] px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2 bg-[--muted] border border-[--border] rounded-2xl px-3 py-2 focus-within:border-[--primary]/50 focus-within:ring-2 focus-within:ring-[--primary]/10 transition-all">
+        <div className="border-t border-(--border) bg-(--card) px-4 py-3 shrink-0">
+          <div className="flex items-center gap-2 bg-(--muted) border border-(--border) rounded-2xl px-3 py-2 focus-within:border-(--primary)/50 focus-within:ring-2 focus-within:ring-(--primary)/10 transition-all">
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0"
               style={{ backgroundColor: (activeAgent?.color ?? "#6366f1") + "22" }}
@@ -984,13 +984,13 @@ export function ChatPage() {
                 }
               }}
               placeholder={`Message ${selectedTemplate?.name ?? "agent"}…`}
-              className="flex-1 bg-transparent text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none"
+              className="flex-1 bg-transparent text-sm text-(--foreground) placeholder:text-(--muted-foreground) outline-none"
             />
             <VoiceChatButton agent={voiceAgent} onClick={() => setVoiceOpen(true)} />
             <button
               onClick={() => void sendMessage()}
               disabled={!input.trim() || sending}
-              className="w-8 h-8 rounded-xl bg-[--primary] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
+              className="w-8 h-8 rounded-xl bg-(--primary) hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
             >
               {sending ? (
                 <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
@@ -999,7 +999,7 @@ export function ChatPage() {
               )}
             </button>
           </div>
-          <div className="mt-1.5 px-1 text-[10px] text-[--muted-foreground]">
+          <div className="mt-1.5 px-1 text-[10px] text-(--muted-foreground)">
             Press Enter to send · Shift+Enter for newline
           </div>
         </div>

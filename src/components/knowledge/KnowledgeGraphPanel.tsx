@@ -10,7 +10,7 @@ import type { KnowledgeNode, KnowledgeEdge } from "@/lib/knowledge/types";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full text-xs text-[--muted-foreground]">
+    <div className="flex items-center justify-center h-full text-xs text-(--muted-foreground)">
       Loading graph…
     </div>
   ),
@@ -302,15 +302,15 @@ export function KnowledgeGraphPanel({
   );
 
   return (
-    <div className={immersive ? "neural-space relative flex h-full flex-col overflow-hidden bg-[#020711]" : "flex flex-col h-full bg-[--card] border-l border-[--border]"}>
+    <div className={immersive ? "neural-space relative flex h-full flex-col overflow-hidden bg-[#020711]" : "flex flex-col h-full bg-(--card) border-l border-(--border)"}>
       {/* Header */}
-      <div className={immersive ? "absolute left-4 right-4 top-4 z-20 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#07101c]/78 px-3 shadow-2xl backdrop-blur-xl" : "h-10 border-b border-[--border] px-3 flex items-center gap-2 shrink-0"}>
-        <span className="text-xs font-medium text-[--foreground]">Knowledge Graph</span>
-        <span className="text-[10px] text-[--muted-foreground] ml-1">
+      <div className={immersive ? "absolute left-4 right-4 top-4 z-20 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#07101c]/78 px-3 shadow-2xl backdrop-blur-xl" : "h-10 border-b border-(--border) px-3 flex items-center gap-2 shrink-0"}>
+        <span className="text-xs font-medium text-(--foreground)">Knowledge Graph</span>
+        <span className="text-[10px] text-(--muted-foreground) ml-1">
           {filteredNodes.length} nodes
         </span>
         <button
-          className="ml-auto text-[--muted-foreground] hover:text-[--foreground] transition-colors text-sm leading-none"
+          className="ml-auto text-(--muted-foreground) hover:text-(--foreground) transition-colors text-sm leading-none"
           onClick={onClose}
         >
           ✕
@@ -318,7 +318,7 @@ export function KnowledgeGraphPanel({
       </div>
 
       {/* Filters */}
-      <div className={immersive ? "absolute left-4 top-16 z-20 w-52 rounded-lg border border-white/10 bg-[#07101c]/82 px-3 py-3 shadow-2xl backdrop-blur-xl" : "border-b border-[--border] px-3 py-2 shrink-0"}>
+      <div className={immersive ? "absolute left-4 top-16 z-20 w-52 rounded-lg border border-white/10 bg-[#07101c]/82 px-3 py-3 shadow-2xl backdrop-blur-xl" : "border-b border-(--border) px-3 py-2 shrink-0"}>
         {immersive && (
           <div className="mb-3 grid grid-cols-3 gap-1 border-b border-white/8 pb-3">
             {(["Knowledge", "Execution", "People"] as const).map((lens) => (

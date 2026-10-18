@@ -67,34 +67,42 @@ export function CredentialsForm() {
   return (
     <div className="space-y-4">
       {/* Mode toggle */}
-      <div className="flex rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] p-1">
+      <div role="tablist" aria-label="Account" className="flex gap-1 border-b border-(--border)">
         {(["signin", "register"] as const).map((m) => (
           <button
             key={m}
+            type="button"
+            role="tab"
+            aria-selected={mode === m}
             onClick={() => { setMode(m); setError(""); }}
-            className={`flex-1 rounded-xl py-2 text-xs font-medium transition-colors ${
+            className={`relative -mb-px px-1 pb-2.5 pt-1 text-[14px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ${
               mode === m
-                ? "bg-[rgba(255,255,255,0.05)] text-[--foreground] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-                : "text-[--muted-foreground] hover:text-[--foreground]"
-            }`}
+                ? "border-b-2 border-(--primary) text-(--foreground)"
+                : "border-b-2 border-transparent text-(--muted-foreground) hover:text-(--foreground)"
+            } ${m === "register" ? "ml-4" : ""}`}
           >
-            {m === "signin" ? "Sign In" : "Register"}
+            {m === "signin" ? "Sign in" : "Create account"}
           </button>
         ))}
       </div>
 
       <form onSubmit={mode === "signin" ? handleSignIn : handleRegister} className="space-y-3">
         {mode === "register" && (
+          <label className="block space-y-1.5">
+          <span className="text-[13px] font-medium text-(--muted-foreground)">Name</span>
           <input
             type="text"
             placeholder="Name"
             value={name}
             onChange={e => setName(e.target.value)}
             autoComplete="name"
-            className="w-full h-12 px-4 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+            className="w-full h-11 px-3.5 rounded-md border border-(--border-strong) bg-(--canvas) text-[15px] text-(--foreground) placeholder:text-(--text-faint) outline-none transition-colors hover:border-[#41575c] focus:border-(--primary) focus:ring-2 focus:ring-(--primary)/25"
           />
+          </label>
         )}
 
+        <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium text-(--muted-foreground)">Email</span>
         <input
           type="email"
           placeholder="Email"
@@ -102,11 +110,15 @@ export function CredentialsForm() {
           onChange={e => setEmail(e.target.value)}
           required
           autoComplete="email"
-          className="w-full h-12 px-4 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+          className="w-full h-11 px-3.5 rounded-md border border-(--border-strong) bg-(--canvas) text-[15px] text-(--foreground) placeholder:text-(--text-faint) outline-none transition-colors hover:border-[#41575c] focus:border-(--primary) focus:ring-2 focus:ring-(--primary)/25"
         />
+        </label>
 
+        <div className="space-y-1.5">
+        <label htmlFor="signin-password" className="block text-[13px] font-medium text-(--muted-foreground)">Password</label>
         <div className="relative">
           <input
+            id="signin-password"
             type={showPw ? "text" : "password"}
             placeholder="Password"
             value={password}
@@ -114,19 +126,21 @@ export function CredentialsForm() {
             required
             minLength={8}
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            className="w-full h-12 px-4 pr-10 rounded-2xl border border-[--border] bg-[rgba(255,255,255,0.03)] text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/60 transition-colors"
+            className="w-full h-11 pl-3.5 pr-11 rounded-md border border-(--border-strong) bg-(--canvas) text-[15px] text-(--foreground) placeholder:text-(--text-faint) outline-none transition-colors hover:border-[#41575c] focus:border-(--primary) focus:ring-2 focus:ring-(--primary)/25"
           />
           <button
             type="button"
             onClick={() => setShowPw(v => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[--muted-foreground] hover:text-[--foreground] transition-colors"
+            aria-label={showPw ? "Hide password" : "Show password"}
+            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-(--muted-foreground) transition-colors hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
+        </div>
 
         {error && (
-          <div className="rounded-2xl border border-[--destructive]/20 bg-[--destructive]/10 px-3 py-2.5 text-xs text-[--destructive]">
+          <div role="alert" className="rounded-md border border-(--destructive)/30 bg-(--destructive)/10 px-3 py-2.5 text-[13px] text-(--destructive)">
             {error}
           </div>
         )}
@@ -134,7 +148,7 @@ export function CredentialsForm() {
         <button
           type="submit"
           disabled={loading}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[--primary] text-sm font-medium text-white shadow-[0_12px_30px_rgba(108,124,255,0.22)] transition-all hover:-translate-y-px hover:bg-[--primary]/92 disabled:opacity-60"
+          className="!mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-md bg-(--primary) text-[15px] font-semibold text-(--primary-foreground) transition-colors hover:bg-(--primary-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 focus-visible:ring-offset-(--panel) disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {mode === "signin" ? "Sign in" : "Create account"}

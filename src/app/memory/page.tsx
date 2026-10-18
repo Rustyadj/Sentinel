@@ -21,6 +21,14 @@ export default function MemoryPage() {
     setLensCluster("Knowledge");
   }, [setLensCluster]);
 
+  // On a phone the notes panel would cover the whole graph; start it folded.
+  useEffect(() => {
+    if (!window.matchMedia("(min-width: 768px)").matches) {
+      const id = requestAnimationFrame(() => setNotesCollapsed(true));
+      return () => cancelAnimationFrame(id);
+    }
+  }, []);
+
   useEffect(() => {
     const onModuleTab = (event: Event) => {
       const detail = (event as CustomEvent<{ moduleId: string; tabId: string }>).detail;
@@ -48,7 +56,7 @@ export default function MemoryPage() {
   }, []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#050810]">
+    <div className="relative h-full w-full overflow-hidden bg-(--canvas)">
       <div className="absolute inset-0">
         <NeuralLens />
       </div>

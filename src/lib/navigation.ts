@@ -39,26 +39,44 @@ export const PRIMARY_NAV: NavItem[] = [
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [];
 
 /**
- * The rebuilt product shell. Five surfaces, nothing else: Chat is interaction,
- * Graph is understanding, Workspaces is execution, Agents is management,
- * Activity is accountability. Projects, files, memories, tools, tasks and
- * artifacts are objects that appear contextually inside these — they are
- * deliberately not top-level destinations.
+ * The product shell rail. Grouped by what the operator is doing: talking and
+ * understanding, running agents, and holding them to account. Projects, files
+ * and artifacts stay contextual — they appear inside these surfaces rather
+ * than as destinations of their own.
  */
-export const SHELL_NAV: NavItem[] = [
-  { id: "chat",       label: "Chat",       icon: "MessageSquare", href: "/chat" },
-  { id: "graph",      label: "Graph",      icon: "Network",       href: "/graph" },
-  { id: "workspaces", label: "Workspaces", icon: "HardDrive",     href: "/agent-workspaces" },
-  { id: "agents",     label: "Agents",     icon: "Bot",           href: "/agents" },
-  { id: "bots",       label: "Bots",       icon: "Boxes",         href: "/bots" },
-  { id: "activity",   label: "Activity",   icon: "Activity",      href: "/activity" },
-  // Accountability's other half: Activity is what happened, Control is where
-  // each change currently sits and whether production matches main.
-  { id: "control",    label: "Control",    icon: "GitBranch",     href: "/control" },
+export interface NavGroup { id: string; label: string; items: NavItem[] }
+
+export const SHELL_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "think", label: "Think", items: [
+      { id: "chat",   label: "Chat",   icon: "MessageSquare", href: "/chat" },
+      { id: "graph",  label: "Graph",  icon: "Network",       href: "/graph" },
+      { id: "memory", label: "Memory", icon: "BookOpen",      href: "/memory" },
+    ],
+  },
+  {
+    id: "run", label: "Run", items: [
+      { id: "agents",     label: "Agents",     icon: "Bot",        href: "/agents" },
+      { id: "bots",       label: "Bots",       icon: "Boxes",      href: "/bots" },
+      { id: "tasks",      label: "Tasks",      icon: "ListChecks", href: "/tasks" },
+      { id: "workspaces", label: "Workspaces", icon: "HardDrive",  href: "/agent-workspaces" },
+    ],
+  },
+  {
+    id: "oversee", label: "Oversee", items: [
+      { id: "activity", label: "Activity", icon: "Activity",  href: "/activity" },
+      // Accountability's other half: Activity is what happened, Control is where
+      // each change currently sits and whether production matches main.
+      { id: "control",  label: "Control",  icon: "GitBranch", href: "/control" },
+    ],
+  },
 ];
+
+export const SHELL_NAV: NavItem[] = SHELL_NAV_GROUPS.flatMap((group) => group.items);
 
 /** Global, always-available, never a primary destination. */
 export const SHELL_SECONDARY_NAV: NavItem[] = [
+  { id: "search", label: "Search", icon: "Search", href: "/search" },
   { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
 ];
 

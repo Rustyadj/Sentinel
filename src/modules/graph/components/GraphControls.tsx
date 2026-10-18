@@ -65,30 +65,30 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 p-4">
       <div className="pointer-events-auto flex flex-wrap items-center gap-2">
         <div className="relative">
-          <div className="flex w-[20rem] items-center gap-2 rounded-xl bg-[--card] px-3 py-2 shadow-[var(--shadow-md)]">
-            <Search className="h-3.5 w-3.5 text-[--muted-foreground]" />
+          <div className="flex w-[20rem] items-center gap-2 rounded-xl bg-(--card) px-3 py-2 shadow-[var(--shadow-md)]">
+            <Search className="h-3.5 w-3.5 text-(--muted-foreground)" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search nodes"
-              className="w-full bg-transparent text-[13px] outline-none placeholder:text-[--muted-foreground]"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-(--muted-foreground)"
             />
-            {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[--muted-foreground]" /> : null}
+            {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin text-(--muted-foreground)" /> : null}
             {query ? (
-              <button aria-label="Clear search" onClick={() => setQuery("")}><X className="h-3.5 w-3.5 text-[--muted-foreground]" /></button>
+              <button aria-label="Clear search" onClick={() => setQuery("")}><X className="h-3.5 w-3.5 text-(--muted-foreground)" /></button>
             ) : null}
           </div>
 
           {results.length > 0 ? (
-            <div className="absolute left-0 top-full mt-1 max-h-64 w-[20rem] overflow-y-auto rounded-xl bg-[--card] py-1 shadow-[var(--shadow-lg)]">
+            <div className="absolute left-0 top-full mt-1 max-h-64 w-[20rem] overflow-y-auto rounded-xl bg-(--card) py-1 shadow-[var(--shadow-lg)]">
               {results.map((node) => (
                 <button
                   key={node.id}
                   onClick={() => { onFocusNode(node); setQuery(""); setResults([]); }}
-                  className="block w-full px-3 py-1.5 text-left hover:bg-[--muted]"
+                  className="block w-full px-3 py-1.5 text-left hover:bg-(--muted)"
                 >
                   <span className="block truncate text-[13px]">{node.title}</span>
-                  <span className="block text-[11px] text-[--muted-foreground]">{node.type}</span>
+                  <span className="block text-[11px] text-(--muted-foreground)">{node.type}</span>
                 </button>
               ))}
             </div>
@@ -99,8 +99,8 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
           onClick={() => setFiltersOpen((open) => !open)}
           aria-expanded={filtersOpen}
           className={cn(
-            "flex items-center gap-1.5 rounded-xl bg-[--card] px-3 py-2 text-[13px] shadow-[var(--shadow-md)] transition-colors",
-            filtersOpen ? "text-[--foreground]" : "text-[--muted-foreground] hover:text-[--foreground]",
+            "flex items-center gap-1.5 rounded-xl bg-(--card) px-3 py-2 text-[13px] shadow-[var(--shadow-md)] transition-colors",
+            filtersOpen ? "text-(--foreground)" : "text-(--muted-foreground) hover:text-(--foreground)",
           )}
         >
           <Filter className="h-3.5 w-3.5" />
@@ -108,14 +108,14 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
           {activeClusters.length ? <span className="text-[11px]">({activeClusters.length})</span> : null}
         </button>
 
-        <div className="flex items-center gap-1 rounded-xl bg-[--card] p-1 shadow-[var(--shadow-md)]">
+        <div className="flex items-center gap-1 rounded-xl bg-(--card) p-1 shadow-[var(--shadow-md)]">
           {TIME_WINDOWS.map((window) => (
             <button
               key={window.id}
               onClick={() => onTimeWindowChange(window.id)}
               className={cn(
                 "rounded-lg px-2.5 py-1 text-[12px] transition-colors",
-                timeWindow === window.id ? "bg-[--muted] text-[--foreground]" : "text-[--muted-foreground] hover:text-[--foreground]",
+                timeWindow === window.id ? "bg-(--muted) text-(--foreground)" : "text-(--muted-foreground) hover:text-(--foreground)",
               )}
             >
               {window.label}
@@ -123,13 +123,13 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
           ))}
         </div>
 
-        <span className="rounded-xl bg-[--card] px-3 py-2 text-[12px] text-[--muted-foreground] shadow-[var(--shadow-md)]">
+        <span className="rounded-xl bg-(--card) px-3 py-2 text-[12px] text-(--muted-foreground) shadow-[var(--shadow-md)]">
           {loading ? "Loading…" : `${resultCount} nodes${partial ? " · more available" : ""}`}
         </span>
       </div>
 
       {filtersOpen ? (
-        <div className="pointer-events-auto flex max-w-[42rem] flex-wrap gap-1.5 rounded-xl bg-[--card] p-2 shadow-[var(--shadow-md)]">
+        <div className="pointer-events-auto flex max-w-[42rem] flex-wrap gap-1.5 rounded-xl bg-(--card) p-2 shadow-[var(--shadow-md)]">
           {clusters.map((cluster) => {
             const active = activeClusters.includes(cluster);
             return (
@@ -138,7 +138,7 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
                 onClick={() => onClustersChange(active ? activeClusters.filter((entry) => entry !== cluster) : [...activeClusters, cluster])}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition-colors",
-                  active ? "bg-[--muted] text-[--foreground]" : "text-[--muted-foreground] hover:text-[--foreground]",
+                  active ? "bg-(--muted) text-(--foreground)" : "text-(--muted-foreground) hover:text-(--foreground)",
                 )}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: `var(--entity-${cluster})` }} />
@@ -147,7 +147,7 @@ export function GraphControls({ activeClusters, onClustersChange, timeWindow, on
             );
           })}
           {activeClusters.length ? (
-            <button onClick={() => onClustersChange([])} className="rounded-lg px-2.5 py-1 text-[12px] text-[--muted-foreground] hover:text-[--foreground]">
+            <button onClick={() => onClustersChange([])} className="rounded-lg px-2.5 py-1 text-[12px] text-(--muted-foreground) hover:text-(--foreground)">
               Clear
             </button>
           ) : null}

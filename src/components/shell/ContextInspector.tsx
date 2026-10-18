@@ -27,19 +27,19 @@ export function ContextInspector({ children }: { children?: React.ReactNode }) {
   return (
     <aside
       aria-label={`${inspector.type} inspector`}
-      className="flex w-[22rem] shrink-0 flex-col border-l border-[--border] bg-[--card]"
+      className="flex w-[22rem] shrink-0 flex-col border-l border-(--border) bg-(--card)"
     >
       <header className="flex items-center gap-2 px-4 py-3">
         <span className="h-2 w-2 rounded-full" style={{ background: accent }} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] text-[--foreground]">{inspector.label}</p>
-          <p className="text-[12px] capitalize text-[--muted-foreground]">{inspector.type}</p>
+          <p className="truncate text-[15px] text-(--foreground)">{inspector.label}</p>
+          <p className="text-[12px] capitalize text-(--muted-foreground)">{inspector.type}</p>
         </div>
         <IconButton label="Close inspector" onClick={closeInspector}><X className="h-4 w-4" /></IconButton>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {children ?? (
-          <p className="text-[13px] leading-relaxed text-[--muted-foreground]">
+          <p className="text-[13px] leading-relaxed text-(--muted-foreground)">
             No inspector view is registered for this entity type yet.
           </p>
         )}

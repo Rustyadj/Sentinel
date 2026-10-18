@@ -47,7 +47,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: ElementType; color: string 
 
 function SubNav({ active, onSelect }: { active: Section; onSelect: (s: Section) => void }) {
   return (
-    <div className="w-44 flex flex-col h-full bg-[--sidebar] border-r border-[#181b22] shrink-0 overflow-y-auto">
+    <div className="w-44 flex flex-col h-full bg-(--sidebar) border-r border-[#181b22] shrink-0 overflow-y-auto">
       <div className="px-3 py-3 border-b border-[#181b22]">
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-indigo-400" />
@@ -189,15 +189,15 @@ function ConsoleStatCard({ label, value, icon: Icon, color, sub }: {
   sub: string;
 }) {
   return (
-    <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-4">
+    <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-4">
       <div className="flex items-start justify-between mb-3">
-        <span className="text-xs text-[--canvas-muted]">{label}</span>
+        <span className="text-xs text-(--canvas-muted)">{label}</span>
         <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: color + "22" }}>
           <Icon className="w-4 h-4" style={{ color }} />
         </div>
       </div>
-      <div className="text-2xl font-bold text-[--canvas-foreground]">{value}</div>
-      <div className="text-[11px] text-[--canvas-muted] mt-1">{sub}</div>
+      <div className="text-2xl font-bold text-(--canvas-foreground)">{value}</div>
+      <div className="text-[11px] text-(--canvas-muted) mt-1">{sub}</div>
     </div>
   );
 }
@@ -215,7 +215,7 @@ function ChainNode({ phase, isLast }: { phase: (typeof CHAIN_PHASES)[number]; is
           <Icon className="w-4.5 h-4.5" style={{ color: ringColor }} />
         </div>
         <div className="text-center">
-          <div className="text-xs font-medium text-[--canvas-foreground] whitespace-nowrap">{phase.label}</div>
+          <div className="text-xs font-medium text-(--canvas-foreground) whitespace-nowrap">{phase.label}</div>
           <div className="text-[10px] font-medium mt-0.5" style={{ color: statusColor }}>{statusLabel}</div>
         </div>
       </div>
@@ -245,7 +245,7 @@ function RangeConsole() {
   );
 
   return (
-    <div className="p-6 space-y-5 overflow-y-auto h-full bg-[--canvas] text-[--canvas-foreground]">
+    <div className="p-6 space-y-5 overflow-y-auto h-full bg-(--canvas) text-(--canvas-foreground)">
       {/* Stat tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {stats.map((s) => <ConsoleStatCard key={s.label} {...s} />)}
@@ -253,10 +253,10 @@ function RangeConsole() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Attack Chain Progress */}
-        <div className="xl:col-span-1 bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+        <div className="xl:col-span-1 bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-sm font-bold text-[--canvas-foreground]">Attack Chain Progress</h2>
-            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+            <h2 className="text-sm font-bold text-(--canvas-foreground)">Attack Chain Progress</h2>
+            <button className="text-[11px] text-(--canvas-muted) hover:text-(--canvas-foreground) transition-colors">View All</button>
           </div>
           <div className="flex items-start">
             {CHAIN_PHASES.map((phase, i) => (
@@ -266,29 +266,29 @@ function RangeConsole() {
         </div>
 
         {/* Technique Library */}
-        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+        <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-[--canvas-foreground]">Technique Library</h2>
-            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+            <h2 className="text-sm font-bold text-(--canvas-foreground)">Technique Library</h2>
+            <button className="text-[11px] text-(--canvas-muted) hover:text-(--canvas-foreground) transition-colors">View All</button>
           </div>
           <div className="space-y-2.5">
             {CONSOLE_TECHNIQUES.map((t) => (
               <div key={t.id} className="flex items-center gap-3">
                 <span className="text-[10px] font-mono font-bold text-[#a78bfa] bg-[#8b7cf6]/15 border border-[#8b7cf6]/20 px-1.5 py-0.5 rounded-md shrink-0">{t.id}</span>
-                <span className="text-xs text-[--canvas-foreground] flex-1 truncate">{t.name}</span>
-                <span className="text-[11px] text-[--canvas-muted] shrink-0">{t.campaigns} Campaigns</span>
+                <span className="text-xs text-(--canvas-foreground) flex-1 truncate">{t.name}</span>
+                <span className="text-[11px] text-(--canvas-muted) shrink-0">{t.campaigns} Campaigns</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Phishing Templates */}
-        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+        <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-[--canvas-foreground]">Phishing Templates</h2>
-            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+            <h2 className="text-sm font-bold text-(--canvas-foreground)">Phishing Templates</h2>
+            <button className="text-[11px] text-(--canvas-muted) hover:text-(--canvas-foreground) transition-colors">View All</button>
           </div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-3 text-[10px] uppercase tracking-wider text-[--canvas-muted] mb-2 px-0.5">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-3 text-[10px] uppercase tracking-wider text-(--canvas-muted) mb-2 px-0.5">
             <span>Template</span><span>Click Rate</span><span className="text-right">Usage</span>
           </div>
           <div className="space-y-1">
@@ -301,10 +301,10 @@ function RangeConsole() {
                     <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: t.color + "22" }}>
                       <Icon className="w-3 h-3" style={{ color: t.color }} />
                     </div>
-                    <span className="text-xs text-[--canvas-foreground] truncate">{t.name}</span>
+                    <span className="text-xs text-(--canvas-foreground) truncate">{t.name}</span>
                   </div>
                   <span className="text-xs font-mono font-medium" style={{ color: rateColor }}>{t.clickRate}%</span>
-                  <span className="text-xs text-[--canvas-muted] text-right">{t.usage}</span>
+                  <span className="text-xs text-(--canvas-muted) text-right">{t.usage}</span>
                 </div>
               );
             })}
@@ -317,8 +317,8 @@ function RangeConsole() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Recent Activity */}
-        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-[--canvas-foreground] mb-4">Recent Activity</h2>
+        <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
+          <h2 className="text-sm font-bold text-(--canvas-foreground) mb-4">Recent Activity</h2>
           <div className="space-y-3.5">
             {RECENT_ACTIVITY.map((a, i) => {
               const Icon = a.icon;
@@ -328,10 +328,10 @@ function RangeConsole() {
                     <Icon className="w-3.5 h-3.5" style={{ color: a.color }} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs text-[--canvas-foreground] font-medium truncate">{a.title}</div>
-                    <div className="text-[11px] text-[--canvas-muted] truncate">{a.detail}</div>
+                    <div className="text-xs text-(--canvas-foreground) font-medium truncate">{a.title}</div>
+                    <div className="text-[11px] text-(--canvas-muted) truncate">{a.detail}</div>
                   </div>
-                  <span className="text-[10px] text-[--canvas-muted] shrink-0">{a.time}</span>
+                  <span className="text-[10px] text-(--canvas-muted) shrink-0">{a.time}</span>
                 </div>
               );
             })}
@@ -339,22 +339,22 @@ function RangeConsole() {
         </div>
 
         {/* Build New Phishing Template */}
-        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-[--canvas-foreground]">Build New Phishing Template</h2>
-          <p className="text-[11px] text-[--canvas-muted] mb-4">AI-powered template creation</p>
+        <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
+          <h2 className="text-sm font-bold text-(--canvas-foreground)">Build New Phishing Template</h2>
+          <p className="text-[11px] text-(--canvas-muted) mb-4">AI-powered template creation</p>
           <div className="space-y-3">
             <div>
-              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Template Name</label>
+              <label className="text-[11px] text-(--canvas-muted) mb-1 block">Template Name</label>
               <input
                 value={templateName}
                 onChange={(e) => setTemplateName(e.target.value)}
                 placeholder="e.g., Invoice from Acme Corp"
-                className="w-full bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-3 py-2 text-xs text-[--canvas-foreground] placeholder:text-[--canvas-muted] outline-none focus:border-[#7c6cf6] transition-colors"
+                className="w-full bg-(--canvas) border border-(--canvas-card-border) rounded-lg px-3 py-2 text-xs text-(--canvas-foreground) placeholder:text-(--canvas-muted) outline-none focus:border-[#7c6cf6] transition-colors"
               />
             </div>
             <div>
-              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Category</label>
-              <select className="w-full bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-3 py-2 text-xs text-[--canvas-foreground] outline-none focus:border-[#7c6cf6] transition-colors">
+              <label className="text-[11px] text-(--canvas-muted) mb-1 block">Category</label>
+              <select className="w-full bg-(--canvas) border border-(--canvas-card-border) rounded-lg px-3 py-2 text-xs text-(--canvas-foreground) outline-none focus:border-[#7c6cf6] transition-colors">
                 <option>Financial</option>
                 <option>HR</option>
                 <option>IT</option>
@@ -362,10 +362,10 @@ function RangeConsole() {
               </select>
             </div>
             <div>
-              <label className="text-[11px] text-[--canvas-muted] mb-1 block">Target Platform</label>
+              <label className="text-[11px] text-(--canvas-muted) mb-1 block">Target Platform</label>
               <div className="grid grid-cols-2 gap-1.5">
                 {["Outlook", "Gmail", "Office 365", "Other"].map((p) => (
-                  <button key={p} className="flex items-center justify-center gap-1.5 bg-[--canvas] border border-[--canvas-card-border] rounded-lg px-2 py-1.5 text-[11px] text-[--canvas-foreground] hover:border-[#7c6cf6] transition-colors">
+                  <button key={p} className="flex items-center justify-center gap-1.5 bg-(--canvas) border border-(--canvas-card-border) rounded-lg px-2 py-1.5 text-[11px] text-(--canvas-foreground) hover:border-[#7c6cf6] transition-colors">
                     {p}
                   </button>
                 ))}
@@ -377,29 +377,29 @@ function RangeConsole() {
             >
               <Sparkles className="w-3.5 h-3.5" /> Generate with AI
             </button>
-            {generateNotice && <p className="text-[10px] text-[--canvas-muted] text-center">{generateNotice}</p>}
+            {generateNotice && <p className="text-[10px] text-(--canvas-muted) text-center">{generateNotice}</p>}
           </div>
         </div>
 
         {/* Marketplace */}
-        <div className="bg-[--canvas-card] border border-[--canvas-card-border] rounded-2xl p-5">
+        <div className="bg-(--canvas-card) border border-(--canvas-card-border) rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-[--canvas-foreground]">Marketplace</h2>
-            <button className="text-[11px] text-[--canvas-muted] hover:text-[--canvas-foreground] transition-colors">View All</button>
+            <h2 className="text-sm font-bold text-(--canvas-foreground)">Marketplace</h2>
+            <button className="text-[11px] text-(--canvas-muted) hover:text-(--canvas-foreground) transition-colors">View All</button>
           </div>
           <div className="space-y-3">
             {MARKETPLACE_TOOLS.map((t) => {
               const Icon = t.icon;
               return (
                 <div key={t.name} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[--canvas] border border-[--canvas-card-border] flex items-center justify-center shrink-0">
-                    <Icon className="w-3.5 h-3.5 text-[--canvas-muted]" />
+                  <div className="w-8 h-8 rounded-lg bg-(--canvas) border border-(--canvas-card-border) flex items-center justify-center shrink-0">
+                    <Icon className="w-3.5 h-3.5 text-(--canvas-muted)" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-medium text-[--canvas-foreground] truncate">{t.name}</div>
-                    <div className="text-[10px] text-[--canvas-muted] truncate">{t.desc}</div>
+                    <div className="text-xs font-medium text-(--canvas-foreground) truncate">{t.name}</div>
+                    <div className="text-[10px] text-(--canvas-muted) truncate">{t.desc}</div>
                   </div>
-                  <div className="flex items-center gap-0.5 text-[10px] text-[--canvas-muted] shrink-0">
+                  <div className="flex items-center gap-0.5 text-[10px] text-(--canvas-muted) shrink-0">
                     <Star className="w-3 h-3 fill-current text-[#f59e0b]" style={{ color: "#f59e0b" }} />
                     {t.rating}
                   </div>
@@ -888,7 +888,7 @@ function Reports() {
           <h1 className="text-lg font-bold text-[#1a1d26]">Reports</h1>
           <p className="text-xs text-[#7a8099]">Assessment reports and findings documentation</p>
         </div>
-        <button className="ml-auto flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+        <button className="ml-auto flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
           <Plus className="w-3.5 h-3.5" /> New Report
         </button>
       </div>
@@ -933,7 +933,7 @@ export function CybersecurityPage({ stats = null }: { stats?: LensOverviewStats 
   return (
     <div className="h-full flex overflow-hidden">
       <SubNav active={section} onSelect={setSection} />
-      <div className="flex-1 overflow-hidden bg-[--background]">
+      <div className="flex-1 overflow-hidden bg-(--background)">
         {section === "ai-security" && <AiSecurityPanel />}
         {section === "overview" && <LensOverview lens="cybersecurity" stats={stats} />}
         {section === "console" && <RangeConsole />}

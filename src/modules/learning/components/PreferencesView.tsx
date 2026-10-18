@@ -80,15 +80,15 @@ export function PreferencesView() {
     <div className="max-w-5xl p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-lg font-semibold text-[--foreground]">
-            <Heart className="h-4 w-4 text-[--primary]" /> Preferences
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-(--foreground)">
+            <Heart className="h-4 w-4 text-(--primary)" /> Preferences
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-[--muted-foreground]">
+          <p className="mt-1 max-w-2xl text-sm text-(--muted-foreground)">
             Canonical preference memories backed by weighted, auditable evidence. Conflicting
             observations are flagged instead of overwriting what the user previously established.
           </p>
         </div>
-        <label className="flex shrink-0 items-center gap-1.5 text-xs text-[--muted-foreground]">
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-(--muted-foreground)">
           <input
             type="checkbox"
             checked={conflictsOnly}
@@ -103,26 +103,26 @@ export function PreferencesView() {
 
       <form
         onSubmit={submit}
-        className="mb-6 grid gap-3 rounded-lg border border-[--sidebar-border] bg-[--card] p-4 md:grid-cols-2"
+        className="mb-6 grid gap-3 rounded-lg border border-(--sidebar-border) bg-(--card) p-4 md:grid-cols-2"
       >
         <input
           required
           value={form.key}
           onChange={(event) => setForm((current) => ({ ...current, key: event.target.value }))}
           placeholder="Preference key, e.g. response tone"
-          className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+          className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
         />
         <input
           required
           value={form.value}
           onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))}
           placeholder="Observed value, e.g. concise"
-          className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+          className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
         />
         <select
           value={form.sourceType}
           onChange={(event) => setForm((current) => ({ ...current, sourceType: event.target.value }))}
-          className="rounded-md border border-[--sidebar-border] bg-[--card] px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+          className="rounded-md border border-(--sidebar-border) bg-(--card) px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
         >
           {SOURCE_TYPES.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -133,12 +133,12 @@ export function PreferencesView() {
           value={form.evidence}
           onChange={(event) => setForm((current) => ({ ...current, evidence: event.target.value }))}
           placeholder="What was observed?"
-          className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+          className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
         />
         <button
           type="submit"
           disabled={saving}
-          className="flex items-center justify-center gap-1.5 rounded-md bg-[--primary] px-3 py-2 text-xs font-medium text-white disabled:opacity-50 md:col-span-2"
+          className="flex items-center justify-center gap-1.5 rounded-md bg-(--primary) px-3 py-2 text-xs font-medium text-white disabled:opacity-50 md:col-span-2"
         >
           <Plus className="h-3.5 w-3.5" /> {saving ? "Recording…" : "Record evidence"}
         </button>
@@ -146,20 +146,20 @@ export function PreferencesView() {
 
       {error ? <p className="mb-3 text-xs text-red-400">{error}</p> : null}
       {!loaded ? (
-        <p className="text-xs text-[--muted-foreground]">Loading…</p>
+        <p className="text-xs text-(--muted-foreground)">Loading…</p>
       ) : evidence.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[--sidebar-border] p-6 text-center text-xs text-[--muted-foreground]">
+        <div className="rounded-lg border border-dashed border-(--sidebar-border) p-6 text-center text-xs text-(--muted-foreground)">
           No preference evidence recorded yet.
         </div>
       ) : (
         <div className="space-y-2">
           {evidence.map((item) => (
-            <article key={item.id} className="rounded-lg border border-[--sidebar-border] bg-[--card] p-3">
+            <article key={item.id} className="rounded-lg border border-(--sidebar-border) bg-(--card) p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-[--foreground]">
+                <span className="text-xs font-medium text-(--foreground)">
                   {item.metadata.preferenceKey?.replaceAll("_", " ") ?? "Preference"}: {item.memory.content}
                 </span>
-                <span className="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-[--muted-foreground]">
+                <span className="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-(--muted-foreground)">
                   confidence {item.memory.confidence.toFixed(3)}
                 </span>
                 {!item.supportsPreference ? (
@@ -168,8 +168,8 @@ export function PreferencesView() {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1.5 text-xs text-[--muted-foreground]">{item.evidence}</p>
-              <div className="mt-2 flex gap-2 text-[10px] text-[--muted-foreground]">
+              <p className="mt-1.5 text-xs text-(--muted-foreground)">{item.evidence}</p>
+              <div className="mt-2 flex gap-2 text-[10px] text-(--muted-foreground)">
                 <span>{item.sourceType.replaceAll("_", " ")}</span>
                 <span>weight {item.evidenceWeight.toFixed(1)}</span>
                 <span>{new Date(item.observedAt).toLocaleString()}</span>

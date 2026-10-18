@@ -6,7 +6,8 @@ import { api, fakeHermes, resetFakeHermes, signedIn } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
-const globe = (page: Page) => page.locator('canvas[aria-label="Knowledge graph globe"]');
+// The graph behind the conversation: a canvas whose accessible name summarises the four strata it draws.
+const globe = (page: Page) => page.getByRole("img", { name: /^Knowledge graph/ });
 async function openChat(page: Page) {
   await page.goto("/chat");
   await expect(globe(page)).toBeVisible();
@@ -124,7 +125,7 @@ test("a failing graph read after load is shown too, and the globe keeps its last
 test("an empty graph is said to be empty, not shown as an error", async ({ browser }) => {
   const { page, context } = await signedIn(browser, "outsider");   // owns nothing in the graph
   await page.goto("/chat");
-  await expect(page.getByText(/Your graph is empty/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/The graph is empty/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("orrery-notice-graph")).toHaveCount(0);
   await context.close();
 });

@@ -118,7 +118,7 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
 
   if (!workspaces.length) {
     return (
-      <div className="rounded-xl border border-[--canvas-card-border] bg-[--canvas-card] py-12 text-center text-sm text-[--muted-foreground]">
+      <div className="rounded-xl border border-(--canvas-card-border) bg-(--canvas-card) py-12 text-center text-sm text-(--muted-foreground)">
         No accessible workspaces yet — create one to start tracking tasks.
       </div>
     );
@@ -131,20 +131,20 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
           <button
             type="button"
             onClick={() => setWorkspacePickerOpen((o) => !o)}
-            className="flex h-9 items-center gap-2 rounded-lg border border-[--border] bg-[--muted] px-3 text-xs text-[--foreground]"
+            className="flex h-9 items-center gap-2 rounded-lg border border-(--border) bg-(--muted) px-3 text-xs text-(--foreground)"
           >
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: activeWorkspace?.color ?? "#64748b" }} />
             {activeWorkspace?.name ?? "Select workspace"}
-            <ChevronDown className="h-3.5 w-3.5 text-[--muted-foreground]" />
+            <ChevronDown className="h-3.5 w-3.5 text-(--muted-foreground)" />
           </button>
           {workspacePickerOpen ? (
-            <ul className="absolute left-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-lg border border-[--border] bg-[--canvas-card] py-1 shadow-xl">
+            <ul className="absolute left-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-lg border border-(--border) bg-(--canvas-card) py-1 shadow-xl">
               {workspaces.map((w) => (
                 <li key={w.id}>
                   <button
                     type="button"
                     onClick={() => { setWorkspaceId(w.id); setWorkspacePickerOpen(false); }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[--canvas-card-foreground] hover:bg-[--muted]"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--canvas-card-foreground) hover:bg-(--muted)"
                   >
                     <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: w.color }} />{w.name}
                   </button>
@@ -153,7 +153,7 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
             </ul>
           ) : null}
         </div>
-        {loading ? <Loader2 className="h-4 w-4 animate-spin text-[--muted-foreground]" /> : null}
+        {loading ? <Loader2 className="h-4 w-4 animate-spin text-(--muted-foreground)" /> : null}
         {error ? <p className="text-xs text-rose-400">{error}</p> : null}
       </div>
 
@@ -174,13 +174,13 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
                 if (id) void moveTask(id, col.key);
               }}
               className={cn(
-                "flex min-h-0 flex-col rounded-xl border bg-[--muted]/30 transition-colors",
-                isDragOver ? "border-[--primary]/60 bg-[--primary]/5" : "border-[--border]"
+                "flex min-h-0 flex-col rounded-xl border bg-(--muted)/30 transition-colors",
+                isDragOver ? "border-(--primary)/60 bg-(--primary)/5" : "border-(--border)"
               )}
             >
               <div className="flex items-center justify-between px-3 py-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-[--muted-foreground]">{col.label}</h3>
-                <span className="rounded-full bg-[--muted] px-2 py-0.5 text-[10px] text-[--muted-foreground]">{columnTasks.length}</span>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-(--muted-foreground)">{col.label}</h3>
+                <span className="rounded-full bg-(--muted) px-2 py-0.5 text-[10px] text-(--muted-foreground)">{columnTasks.length}</span>
               </div>
 
               <div className="flex-1 space-y-2 overflow-y-auto px-3">
@@ -196,7 +196,7 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
                   />
                 ))}
                 {!loading && columnTasks.length === 0 ? (
-                  <p className="py-4 text-center text-[11px] text-[--muted-foreground]">No tasks</p>
+                  <p className="py-4 text-center text-[11px] text-(--muted-foreground)">No tasks</p>
                 ) : null}
               </div>
 
@@ -212,13 +212,13 @@ export function KanbanBoard({ workspaces }: KanbanBoardProps) {
                     }}
                     onBlur={() => { if (!newTitle.trim()) setAddingIn(null); }}
                     placeholder="Task title"
-                    className="h-8 w-full rounded-md border border-[--border] bg-[--canvas-card] px-2.5 text-xs text-[--foreground] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+                    className="h-8 w-full rounded-md border border-(--border) bg-(--canvas-card) px-2.5 text-xs text-(--foreground) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
                   />
                 ) : (
                   <button
                     type="button"
                     onClick={() => setAddingIn(col.key)}
-                    className="flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-xs text-[--muted-foreground] hover:bg-[--muted] hover:text-[--foreground]"
+                    className="flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-xs text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground)"
                   >
                     <Plus className="h-3.5 w-3.5" />Add task
                   </button>
