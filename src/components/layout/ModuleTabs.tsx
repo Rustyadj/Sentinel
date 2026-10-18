@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/useAppStore";
 import { ContextStrip } from "@/modules/mission-control/components/ContextStrip";
 
 type ModuleTab = { id: string; label: string };
@@ -191,18 +193,30 @@ const CONFIGS: Array<{ match: (pathname: string) => boolean; config: ModuleConfi
   },
 ];
 
-const FALLBACK = CONFIGS[0].config;
+/** Screens without section tabs still get a title bar, named after the route. */
+const ROUTE_TITLES: Record<string, string> = {
+  activity: "Activity", bots: "Bots", builder: "Builder", files: "Files", kanban: "Kanban",
+  marketing: "Marketing", orgchart: "Org chart", search: "Search", tasks: "Tasks", workspaces: "Workspaces",
+  projects: "Projects", chat: "Chat",
+};
 
-export function ModuleTabs() {
-  const pathname = usePathname();
-  if (pathname === "/") return <ContextStrip />;
-  return <StandardModuleTabs pathname={pathname} />;
+function fallbackConfig(pathname: string): ModuleConfig {
+  const segment = pathname.split("/")[1] ?? "";
+  const label = ROUTE_TITLES[segment] ?? (segment ? segment.replace(/-/g, " ") : "Sentinel");
+  return { id: segment || "home", label: label.toUpperCase(), tabs: [], defaultTab: "" };
 }
 
-function StandardModuleTabs({ pathname }: { pathname: string }) {
+export function ModuleTabs({ rightPanel = false }: { rightPanel?: boolean }) {
+  const pathname = usePathname();
+  if (pathname === "/") return <ContextStrip />;
+  return <StandardModuleTabs pathname={pathname} rightPanel={rightPanel} />;
+}
+
+function StandardModuleTabs({ pathname, rightPanel }: { pathname: string; rightPanel: boolean }) {
   const searchParams = useSearchParams();
+  const { rightPanelOpen, setRightPanelOpen } = useAppStore();
   const config = useMemo(
-    () => CONFIGS.find((entry) => entry.match(pathname))?.config ?? FALLBACK,
+    () => CONFIGS.find((entry) => entry.match(pathname))?.config ?? fallbackConfig(pathname),
     [pathname]
   );
   const linkedTab = searchParams.get("tab");
@@ -219,15 +233,17 @@ function StandardModuleTabs({ pathname }: { pathname: string }) {
     );
   };
 
+  const title = ROUTE_TITLES[config.id] ?? config.label.charAt(0) + config.label.slice(1).toLowerCase();
+
   return (
     <nav
-      aria-label={`${config.label.toLowerCase()} module`}
-      className="relative z-35 flex h-11 shrink-0 items-stretch border-b border-[#182338] bg-[#07101b]/96 px-3 backdrop-blur-xl"
+      aria-label={`${title} sections`}
+      className="flex h-full min-w-0 flex-1 items-stretch gap-2"
     >
-      <div className="flex shrink-0 items-center border-r border-white/[0.055] pr-3 text-[9px] font-semibold tracking-[0.13em] text-[#66758c]">
-        {config.label}
-      </div>
-      <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto px-2" role="tablist">
+      <h1 className={cn("shrink-0 items-center pr-3 font-display text-[16px] font-semibold tracking-tight text-(--foreground)", config.tabs.length ? "hidden sm:flex" : "flex")}>
+        {title}
+      </h1>
+      <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
         {config.tabs.map((tab) => {
           const active = tab.id === activeTab;
           return (
@@ -238,23 +254,35 @@ function StandardModuleTabs({ pathname }: { pathname: string }) {
               aria-selected={active}
               onClick={() => selectTab(tab.id)}
               className={cn(
-                "relative flex h-full shrink-0 items-center px-3 text-[10.5px] outline-none transition-colors",
-                "focus-visible:bg-violet-500/10 focus-visible:text-white",
-                active ? "text-[#f2efff]" : "text-[#8290a4] hover:text-[#d7ddeb]"
+                "relative my-2.5 flex shrink-0 items-center rounded-md px-2.5 text-[13px] outline-none transition-colors",
+                "focus-visible:ring-2 focus-visible:ring-(--ring)",
+                active ? "text-(--foreground)" : "text-(--muted-foreground) hover:bg-(--panel) hover:text-(--foreground)"
               )}
             >
               {tab.label}
               {active ? (
-                <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.75)]" />
+                <span aria-hidden className="absolute inset-x-2.5 -bottom-2.5 h-[2px] rounded-full bg-(--primary)" />
               ) : null}
             </button>
           );
         })}
       </div>
-      <div className="hidden shrink-0 items-center gap-2 pl-3 text-[9px] text-[#59677a] md:flex">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-        Live
-      </div>
+      {rightPanel ? (
+        <button
+          type="button"
+          onClick={() => setRightPanelOpen(!rightPanelOpen)}
+          aria-pressed={rightPanelOpen}
+          aria-label={rightPanelOpen ? "Hide context panel" : "Show context panel"}
+          title={rightPanelOpen ? "Hide context panel" : "Show context panel"}
+          className={cn(
+            "my-2.5 hidden shrink-0 items-center gap-2 rounded-md px-2.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) xl:flex",
+            rightPanelOpen ? "bg-(--muted) text-(--foreground)" : "text-(--muted-foreground) hover:bg-(--panel) hover:text-(--foreground)",
+          )}
+        >
+          <PanelRight aria-hidden className="h-4 w-4" />
+          Context
+        </button>
+      ) : null}
     </nav>
   );
 }

@@ -20,7 +20,7 @@ export function AgentOperations({ agents, sourceState }: { agents: AgentOperatio
 
             <div className="min-w-0">
               <div className="flex items-center justify-between gap-3"><span className="truncate text-[10px] text-[#d8dee8]" title={agent.currentTask ?? undefined}>{agent.currentTask ?? "Runtime task unavailable"}</span><span className="shrink-0 text-[8px] text-[#7e8b9d]">{agent.progress === null ? "—" : `${agent.progress}%`}</span></div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.08]"><span className="block h-full bg-violet-500" style={{ width: `${agent.progress ?? 0}%` }} /></div>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.08]"><span className="block h-full bg-(--primary)" style={{ width: `${agent.progress ?? 0}%` }} /></div>
               <div className="mt-1 truncate text-[8px] text-[#748195]">{agent.role}{agent.context ? ` · ${agent.context}` : ""}</div>
             </div>
 

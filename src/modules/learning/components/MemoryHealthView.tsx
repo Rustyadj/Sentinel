@@ -17,12 +17,12 @@ interface MemoryRow {
 const STATE_COLOR: Record<string, string> = {
   active: "bg-emerald-500/15 text-emerald-400",
   stable: "bg-sky-500/15 text-sky-400",
-  candidate: "bg-white/5 text-[--muted-foreground]",
+  candidate: "bg-white/5 text-(--muted-foreground)",
   stale: "bg-amber-500/15 text-amber-400",
   disputed: "bg-orange-500/15 text-orange-400",
   quarantined: "bg-red-500/15 text-red-400",
-  archived: "bg-white/5 text-[--muted-foreground]/70",
-  forgotten: "bg-white/5 text-[--muted-foreground]/50",
+  archived: "bg-white/5 text-(--muted-foreground)/70",
+  forgotten: "bg-white/5 text-(--muted-foreground)/50",
 };
 
 export function MemoryHealthView() {
@@ -59,10 +59,10 @@ export function MemoryHealthView() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <h1 className="text-lg font-semibold text-[--foreground] mb-1 flex items-center gap-2">
-        <HeartPulse className="w-4 h-4 text-[--primary]" /> Memory Health
+      <h1 className="text-lg font-semibold text-(--foreground) mb-1 flex items-center gap-2">
+        <HeartPulse className="w-4 h-4 text-(--primary)" /> Memory Health
       </h1>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <p className="text-sm text-(--muted-foreground) mb-6">
         Sentinel does not remember everything forever. Net memory value weighs usefulness, confidence,
         transferability, and confirmation against harm, staleness, retrieval cost, poison risk, and
         unresolved contradiction. Quarantined memory never enters normal retrieval until validated.
@@ -88,26 +88,26 @@ export function MemoryHealthView() {
       )}
 
       {!loaded ? (
-        <div className="text-xs text-[--muted-foreground]">Loading…</div>
+        <div className="text-xs text-(--muted-foreground)">Loading…</div>
       ) : error ? (
         <div className="text-xs text-red-400 border border-red-500/20 rounded-lg p-6 text-center">{error}</div>
       ) : memories.length === 0 ? (
-        <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
+        <div className="text-xs text-(--muted-foreground) border border-dashed border-(--sidebar-border) rounded-lg p-6 text-center">
           No memories to show.
         </div>
       ) : (
         <div className="space-y-1.5">
           {memories.map((m) => (
-            <div key={m.id} className="rounded-lg border border-[--sidebar-border] bg-[--card] p-3">
+            <div key={m.id} className="rounded-lg border border-(--sidebar-border) bg-(--card) p-3">
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATE_COLOR[m.state] ?? STATE_COLOR.candidate}`}>
                   {m.state}
                 </span>
-                <span className="text-[10px] text-[--muted-foreground]">
+                <span className="text-[10px] text-(--muted-foreground)">
                   value {m.valueScore?.toFixed(2) ?? "—"} · poison {m.poisonRisk?.toFixed(2) ?? "—"} · contradictions {m.contradictionCount}
                 </span>
               </div>
-              <p className="text-xs text-[--foreground] mt-1.5 line-clamp-2">{m.content}</p>
+              <p className="text-xs text-(--foreground) mt-1.5 line-clamp-2">{m.content}</p>
               <div className="flex gap-2 mt-2">
                 {m.state === "quarantined" ? (
                   <button type="button" onClick={() => act(m.id, "validate")} className="text-[10px] px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25">
@@ -119,7 +119,7 @@ export function MemoryHealthView() {
                   </button>
                 )}
                 {m.state !== "forgotten" && (
-                  <button type="button" onClick={() => act(m.id, "forget")} className="text-[10px] px-2 py-1 rounded-md bg-white/5 text-[--muted-foreground] hover:bg-white/10">
+                  <button type="button" onClick={() => act(m.id, "forget")} className="text-[10px] px-2 py-1 rounded-md bg-white/5 text-(--muted-foreground) hover:bg-white/10">
                     Forget
                   </button>
                 )}

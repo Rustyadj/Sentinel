@@ -49,21 +49,21 @@ export function MarketplaceClient({
               key={manifest.id}
               title={manifest.name}
               description={`${manifest.category} · v${manifest.version}`}
-              actions={<span className="rounded-full bg-[--muted] px-2 py-1 text-[10px]">{isInstalled ? "Installed" : "Available"}</span>}
+              actions={<span className="rounded-full bg-(--muted) px-2 py-1 text-[10px]">{isInstalled ? "Installed" : "Available"}</span>}
             >
-              <p className="mb-4 text-xs leading-relaxed text-[--muted-foreground]">{manifest.description}</p>
-              <div className="mb-5 rounded-lg border border-[--border] bg-[--background]/40 p-3">
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-medium"><ShieldCheck className="h-3.5 w-3.5 text-[--primary]" />Declared permissions</div>
+              <p className="mb-4 text-xs leading-relaxed text-(--muted-foreground)">{manifest.description}</p>
+              <div className="mb-5 rounded-lg border border-(--border) bg-(--background)/40 p-3">
+                <div className="mb-2 flex items-center gap-2 text-[11px] font-medium"><ShieldCheck className="h-3.5 w-3.5 text-(--primary)" />Declared permissions</div>
                 <div className="space-y-1">
                   {manifest.declaredPermissions.map((permission) => (
-                    <p key={permission.resource} className="font-mono text-[10px] text-[--muted-foreground]">{permission.resource}: {permission.actions.join(", ")}</p>
+                    <p key={permission.resource} className="font-mono text-[10px] text-(--muted-foreground)">{permission.resource}: {permission.actions.join(", ")}</p>
                   ))}
                 </div>
               </div>
               <button
                 disabled={pending}
                 onClick={() => setModule(manifest.id, !isInstalled)}
-                className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium disabled:opacity-50 ${isInstalled ? "border border-[--border] bg-[--muted] text-[--foreground]" : "bg-[--primary] text-[--primary-foreground]"}`}
+                className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium disabled:opacity-50 ${isInstalled ? "border border-(--border) bg-(--muted) text-(--foreground)" : "bg-(--primary) text-(--primary-foreground)"}`}
               >
                 {isInstalled ? <><Trash2 className="h-4 w-4" />Uninstall</> : <><Package className="h-4 w-4" />Install</>}
               </button>

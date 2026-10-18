@@ -62,14 +62,14 @@ export function FilesTab({ workspaceId, homePath, canWrite }: { workspaceId: str
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-      <div className="min-w-0 rounded-md border border-[--border]">
-        <div className="flex items-center gap-2 border-b border-[--border] px-3 py-2">
-          <button className="text-xs text-[--muted-foreground] hover:text-[--foreground]" onClick={() => setPath(homePath)}>
+      <div className="min-w-0 rounded-md border border-(--border)">
+        <div className="flex items-center gap-2 border-b border-(--border) px-3 py-2">
+          <button className="text-xs text-(--muted-foreground) hover:text-(--foreground)" onClick={() => setPath(homePath)}>
             {homePath}
           </button>
           {segments.map((segment, index) => (
             <span key={`${segment}-${index}`} className="inline-flex items-center gap-1 text-xs">
-              <ChevronRight className="h-3 w-3 text-[--muted-foreground]" />
+              <ChevronRight className="h-3 w-3 text-(--muted-foreground)" />
               <button
                 className="hover:underline"
                 onClick={() => setPath(`${homePath}/${segments.slice(0, index + 1).join("/")}`)}
@@ -83,7 +83,7 @@ export function FilesTab({ workspaceId, homePath, canWrite }: { workspaceId: str
           </Button>
         </div>
 
-        <div className="flex items-center gap-2 border-b border-[--border] px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-(--border) px-3 py-2">
           <Input
             value={query}
             placeholder="Search file contents"
@@ -101,41 +101,41 @@ export function FilesTab({ workspaceId, homePath, canWrite }: { workspaceId: str
               }
             }}
           />
-          <Search className="h-3.5 w-3.5 text-[--muted-foreground]" />
+          <Search className="h-3.5 w-3.5 text-(--muted-foreground)" />
         </div>
 
         <div className="max-h-[26rem] overflow-auto">
           {listing.loading ? <EmptyNote>Loading…</EmptyNote> : null}
           <ErrorNote error={listing.error} className="m-3" />
           {matches ? (
-            <div className="divide-y divide-[--border]">
-              <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-[--muted-foreground]">
+            <div className="divide-y divide-(--border)">
+              <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-(--muted-foreground)">
                 <span>{matches.length} matches</span>
                 <button className="hover:underline" onClick={() => setMatches(null)}>clear</button>
               </div>
               {matches.map((match, index) => (
-                <button key={`${match.path}-${index}`} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-[--accent]" onClick={() => void open(match.path)}>
+                <button key={`${match.path}-${index}`} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-(--accent)" onClick={() => void open(match.path)}>
                   <div className="truncate font-medium">{match.path.replace(`${homePath}/`, "")}:{match.line}</div>
-                  <div className="truncate text-[--muted-foreground]">{match.text}</div>
+                  <div className="truncate text-(--muted-foreground)">{match.text}</div>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="divide-y divide-[--border]">
+            <div className="divide-y divide-(--border)">
               {listing.data?.entries.length === 0 ? <EmptyNote>This directory is empty.</EmptyNote> : null}
               {listing.data?.entries.map((entry) => (
-                <div key={entry.path} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-[--accent]">
+                <div key={entry.path} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-(--accent)">
                   <button
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     onClick={() => (entry.type === "directory" ? setPath(entry.path) : void open(entry.path))}
                   >
-                    {entry.type === "directory" ? <Folder className="h-3.5 w-3.5 text-[--muted-foreground]" /> : <FileIcon className="h-3.5 w-3.5 text-[--muted-foreground]" />}
+                    {entry.type === "directory" ? <Folder className="h-3.5 w-3.5 text-(--muted-foreground)" /> : <FileIcon className="h-3.5 w-3.5 text-(--muted-foreground)" />}
                     <span className="truncate">{entry.name}</span>
                   </button>
-                  <span className="tabular-nums text-[--muted-foreground]">{entry.type === "directory" ? "" : formatBytes(entry.sizeBytes)}</span>
-                  <span className="w-16 shrink-0 text-right text-[10px] text-[--muted-foreground]">{relativeTime(entry.modifiedAt)}</span>
+                  <span className="tabular-nums text-(--muted-foreground)">{entry.type === "directory" ? "" : formatBytes(entry.sizeBytes)}</span>
+                  <span className="w-16 shrink-0 text-right text-[10px] text-(--muted-foreground)">{relativeTime(entry.modifiedAt)}</span>
                   {canWrite ? (
-                    <button className="text-[--muted-foreground] hover:text-[--destructive]" onClick={() => void remove(entry.path, entry.type === "directory")}>
+                    <button className="text-(--muted-foreground) hover:text-(--destructive)" onClick={() => void remove(entry.path, entry.type === "directory")}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   ) : null}
@@ -146,8 +146,8 @@ export function FilesTab({ workspaceId, homePath, canWrite }: { workspaceId: str
         </div>
       </div>
 
-      <div className="min-w-0 rounded-md border border-[--border]">
-        <div className="flex items-center gap-2 border-b border-[--border] px-3 py-2">
+      <div className="min-w-0 rounded-md border border-(--border)">
+        <div className="flex items-center gap-2 border-b border-(--border) px-3 py-2">
           <span className="truncate text-xs">{openFile?.path ?? "No file open"}</span>
           {openFile && canWrite && !openFile.readOnly ? (
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => void save()} disabled={busy}>

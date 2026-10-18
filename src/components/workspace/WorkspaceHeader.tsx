@@ -39,7 +39,7 @@ export function WorkspaceHeader({
           {showBack && (
             <button
               onClick={() => router.back()}
-              className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg border border-[--canvas-card-border] text-[--muted-foreground] hover:text-[--canvas-foreground] hover:bg-[--canvas-card] transition-colors"
+              className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg border border-(--canvas-card-border) text-(--muted-foreground) hover:text-(--canvas-foreground) hover:bg-(--canvas-card) transition-colors"
               title="Back"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -52,11 +52,11 @@ export function WorkspaceHeader({
             />
           )}
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold text-[--canvas-foreground] leading-tight">
+            <h1 className="text-xl font-semibold text-(--canvas-foreground) leading-tight">
               {title}
             </h1>
             {description && (
-              <p className="text-sm text-[--canvas-muted] mt-0.5">{description}</p>
+              <p className="text-sm text-(--canvas-muted) mt-0.5">{description}</p>
             )}
           </div>
         </div>
@@ -66,7 +66,7 @@ export function WorkspaceHeader({
       </div>
 
       {tabs.length > 0 && (
-        <div className="mt-4 -mx-1 flex items-center gap-1 overflow-x-auto border-b border-[--canvas-card-border] pb-px">
+        <div className="mt-4 -mx-1 flex items-center gap-1 overflow-x-auto border-b border-(--canvas-card-border) pb-px">
           {tabs.map((tab) => {
             const active = pathname === tab.href;
             return (
@@ -76,8 +76,8 @@ export function WorkspaceHeader({
                 className={cn(
                   "relative shrink-0 px-3 py-2 text-sm whitespace-nowrap transition-colors",
                   active
-                    ? "text-[--canvas-foreground] font-medium"
-                    : "text-[--muted-foreground] hover:text-[--canvas-foreground]"
+                    ? "text-(--canvas-foreground) font-medium"
+                    : "text-(--muted-foreground) hover:text-(--canvas-foreground)"
                 )}
               >
                 {tab.label}

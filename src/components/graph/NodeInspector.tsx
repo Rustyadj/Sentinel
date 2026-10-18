@@ -140,7 +140,7 @@ export function NodeInspector({ nodes, edges, onSendToChat }: NodeInspectorProps
         <button
           type="button"
           onClick={() => onSendToChat(node)}
-          className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-indigo-500/80 text-[11px] font-medium text-white outline-none transition-colors hover:bg-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+          className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-indigo-500/80 text-[11px] font-medium text-(--primary-foreground) outline-none transition-colors hover:bg-(--primary-soft) focus-visible:ring-2 focus-visible:ring-indigo-400/60"
         >
           <MessageSquarePlus className="h-3 w-3" />
           Send to chat

@@ -23,8 +23,8 @@ const fmtN = (n: number | null | undefined) => (n == null ? "not reported" : n.t
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[120px_1fr] gap-3 py-1.5 text-[13px]">
-      <dt className="text-[--muted-foreground]">{label}</dt>
-      <dd className="min-w-0 break-words text-[--foreground]">{children}</dd>
+      <dt className="text-(--muted-foreground)">{label}</dt>
+      <dd className="min-w-0 break-words text-(--foreground)">{children}</dd>
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
       <div className="flex flex-wrap items-center gap-2">
         <Pill tone={statusTone(task.status)}>{task.status}</Pill>
         {task.mode === "test" ? <Pill>Test</Pill> : null}
-        <span className="text-[12px] text-[--muted-foreground]">Started {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}{task.origin ? `, asked by ${task.origin}` : ""}</span>
+        <span className="text-[12px] text-(--muted-foreground)">Started {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}{task.origin ? `, asked by ${task.origin}` : ""}</span>
         <span className="ml-auto flex gap-2">
           {task.status === "WAITING" ? (<><Button variant="primary" busy={busy === "approve"} onClick={() => act("approve")}>Approve {task.waitingFor?.tool} and continue</Button><Button busy={busy === "deny"} onClick={() => act("deny")}>Deny</Button></>) : null}
           {active ? <Button variant="danger" busy={busy === "cancel"} onClick={() => act("cancel")}>Cancel task</Button> : null}
@@ -59,11 +59,11 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
         : <Notice tone="warn">Sentinel interrupted the session when {task.waitingFor?.tool} was called; the tool may already have started. Approving starts a new task that may use it once.</Notice>) : null}
       {task.error ? <Notice>{task.error}</Notice> : null}
 
-      <dl className="divide-y divide-[--border] rounded-lg border border-[--border] px-3">
-        <Row label="Model">{task.model.requested ?? "runtime default"}{task.model.actual && task.model.actual !== task.model.requested ? <span className="text-[--muted-foreground]"> (runtime reported {task.model.actual}{task.model.provider ? ` via ${task.model.provider}` : ""})</span> : null}</Row>
+      <dl className="divide-y divide-(--border) rounded-lg border border-(--border) px-3">
+        <Row label="Model">{task.model.requested ?? "runtime default"}{task.model.actual && task.model.actual !== task.model.requested ? <span className="text-(--muted-foreground)"> (runtime reported {task.model.actual}{task.model.provider ? ` via ${task.model.provider}` : ""})</span> : null}</Row>
         <Row label="Time">{fmtMs(task.durationMs)}</Row>
         <Row label="Tokens">{task.usage ? `${fmtN(task.usage.inputTokens)} in, ${fmtN(task.usage.outputTokens)} out, ${fmtN(task.usage.totalTokens)} total` : "Runtime did not report usage"}</Row>
-        <Row label="Cost">{task.cost.usd != null ? `$${task.cost.usd.toFixed(4)}` : "Not priced"}<span className="block text-[11px] text-[--muted-foreground]">{task.cost.note}</span></Row>
+        <Row label="Cost">{task.cost.usd != null ? `$${task.cost.usd.toFixed(4)}` : "Not priced"}<span className="block text-[11px] text-(--muted-foreground)">{task.cost.note}</span></Row>
         <Row label="Memory read">{task.memory.read ? (task.memory.read.skipped ?? `${task.memory.read.injected} of ${task.memory.read.retrieved} memories used${task.memory.read.dropped ? `, ${task.memory.read.dropped} over budget` : ""} (${task.memory.read.scopes.join(", ") || "no scopes"})`) : "Not yet"}</Row>
         <Row label="Memory write">{task.memory.writes.length ? task.memory.writes.map((w, i) => <span key={i} className="block">{w.denied ?? (w.accepted ? `Stored at ${w.scope} scope` : "Memory gate declined it")}</span>) : "None"}</Row>
       </dl>
@@ -73,29 +73,29 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
         {task.toolCalls.length ? (
           <ul className="space-y-1">
             {task.toolCalls.map((call, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] px-2.5 py-1.5 text-[13px]">
+              <li key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) px-2.5 py-1.5 text-[13px]">
                 <Pill tone={DECISION_TONE[call.decision as keyof typeof DECISION_TONE] ?? "neutral"}>{call.decision === "approval" ? "Needs approval" : call.decision === "allowed" ? "Allowed" : "Denied"}</Pill>
                 <code className="text-[12px]">{call.tool}</code>
-                {call.server ? <span className="text-[--muted-foreground]">{call.server}</span> : null}
-                <span className="ml-auto text-[11px] text-[--muted-foreground]">{call.stage === "pre-execution" ? "Checked before it ran" : "Seen after it started"}</span>
-                <span className="basis-full text-[12px] text-[--muted-foreground]">{call.reason}</span>
+                {call.server ? <span className="text-(--muted-foreground)">{call.server}</span> : null}
+                <span className="ml-auto text-[11px] text-(--muted-foreground)">{call.stage === "pre-execution" ? "Checked before it ran" : "Seen after it started"}</span>
+                <span className="basis-full text-[12px] text-(--muted-foreground)">{call.reason}</span>
               </li>
             ))}
           </ul>
-        ) : <p className="text-[13px] text-[--muted-foreground]">No tools were requested.</p>}
+        ) : <p className="text-[13px] text-(--muted-foreground)">No tools were requested.</p>}
       </section>
 
       {task.output ? (
         <section aria-label="Output">
           <h4 className="mb-1.5 text-[13px] font-medium">Response</h4>
-          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[--border] bg-[--background] p-3 text-[13px] leading-5">{task.output.text}</pre>
+          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-(--border) bg-(--background) p-3 text-[13px] leading-5">{task.output.text}</pre>
         </section>
       ) : null}
       {task.artifacts.length ? (
         <section aria-label="Artifacts">
           <h4 className="mb-1.5 text-[13px] font-medium">Assets found in the response</h4>
-          <ul className="space-y-1">{task.artifacts.map((a) => <li key={a.id} className="text-[13px]"><Pill>{a.type}</Pill> {a.url ? <a className="text-[--primary] underline-offset-2 hover:underline" href={a.url} target="_blank" rel="noreferrer">{a.title}</a> : a.title}</li>)}</ul>
-          <p className="mt-1 text-[11px] text-[--muted-foreground]">Sentinel has not fetched or verified these links.</p>
+          <ul className="space-y-1">{task.artifacts.map((a) => <li key={a.id} className="text-[13px]"><Pill>{a.type}</Pill> {a.url ? <a className="text-(--primary) underline-offset-2 hover:underline" href={a.url} target="_blank" rel="noreferrer">{a.title}</a> : a.title}</li>)}</ul>
+          <p className="mt-1 text-[11px] text-(--muted-foreground)">Sentinel has not fetched or verified these links.</p>
         </section>
       ) : null}
 
@@ -103,9 +103,9 @@ export function TaskView({ task, onChanged }: { task: TaskData; onChanged?: () =
         <h4 className="mb-1.5 text-[13px] font-medium">Events</h4>
         <ol className="space-y-0.5 text-[12px]">
           {task.events.map((event) => (
-            <li key={event.seq} className="grid grid-cols-[64px_120px_1fr] gap-2 rounded px-1.5 py-1 hover:bg-[--accent]">
-              <time className="tabular-nums text-[--muted-foreground]" dateTime={event.at}>{new Date(event.at).toLocaleTimeString()}</time>
-              <span className="text-[--muted-foreground]">{event.type.replaceAll("_", " ")}</span>
+            <li key={event.seq} className="grid grid-cols-[64px_120px_1fr] gap-2 rounded px-1.5 py-1 hover:bg-(--accent)">
+              <time className="tabular-nums text-(--muted-foreground)" dateTime={event.at}>{new Date(event.at).toLocaleTimeString()}</time>
+              <span className="text-(--muted-foreground)">{event.type.replaceAll("_", " ")}</span>
               <span className="min-w-0 break-words">{event.summary}</span>
             </li>
           ))}

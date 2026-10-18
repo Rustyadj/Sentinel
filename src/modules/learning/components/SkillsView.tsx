@@ -170,10 +170,10 @@ export function SkillsView() {
 
   return (
     <div className="max-w-5xl p-6">
-      <h1 className="flex items-center gap-2 text-lg font-semibold text-[--foreground]">
-        <GitBranch className="h-4 w-4 text-[--primary]" /> Skill Versions
+      <h1 className="flex items-center gap-2 text-lg font-semibold text-(--foreground)">
+        <GitBranch className="h-4 w-4 text-(--primary)" /> Skill Versions
       </h1>
-      <p className="mb-6 mt-1 max-w-2xl text-sm text-[--muted-foreground]">
+      <p className="mb-6 mt-1 max-w-2xl text-sm text-(--muted-foreground)">
         Immutable implementation history with one active version per skill. Level 1 changes can
         activate immediately; Level 2 and 3 changes remain drafts until explicitly promoted.
       </p>
@@ -183,19 +183,19 @@ export function SkillsView() {
       {error ? <p className="mb-3 text-xs text-red-400">{error}</p> : null}
 
       {!loaded ? (
-        <p className="text-xs text-[--muted-foreground]">Loading…</p>
+        <p className="text-xs text-(--muted-foreground)">Loading…</p>
       ) : skills.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[--sidebar-border] p-6 text-center text-xs text-[--muted-foreground]">
+        <div className="rounded-lg border border-dashed border-(--sidebar-border) p-6 text-center text-xs text-(--muted-foreground)">
           No skills exist yet. Promote a Neural Engine skill before creating version history.
         </div>
       ) : (
         <>
-          <label className="mb-4 block max-w-xl text-xs text-[--muted-foreground]">
+          <label className="mb-4 block max-w-xl text-xs text-(--muted-foreground)">
             Skill
             <select
               value={skillId}
               onChange={(event) => setSkillId(event.target.value)}
-              className="mt-1 w-full rounded-md border border-[--sidebar-border] bg-[--card] px-3 py-2 text-xs text-[--foreground] outline-none"
+              className="mt-1 w-full rounded-md border border-(--sidebar-border) bg-(--card) px-3 py-2 text-xs text-(--foreground) outline-none"
             >
               {skills.map((skill) => (
                 <option key={skill.id} value={skill.id}>
@@ -205,23 +205,23 @@ export function SkillsView() {
             </select>
           </label>
 
-          <form onSubmit={createVersion} className="mb-6 grid gap-3 rounded-lg border border-[--sidebar-border] bg-[--card] p-4 md:grid-cols-3">
+          <form onSubmit={createVersion} className="mb-6 grid gap-3 rounded-lg border border-(--sidebar-border) bg-(--card) p-4 md:grid-cols-3">
             <input
               value={form.implementationType}
               onChange={(event) => setForm((current) => ({ ...current, implementationType: event.target.value }))}
               placeholder="Implementation type"
-              className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+              className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
             />
             <input
               value={form.dependencies}
               onChange={(event) => setForm((current) => ({ ...current, dependencies: event.target.value }))}
               placeholder="Dependencies, comma-separated"
-              className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/60"
+              className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/60"
             />
             <select
               value={form.approvalLevel}
               onChange={(event) => setForm((current) => ({ ...current, approvalLevel: Number(event.target.value) }))}
-              className="rounded-md border border-[--sidebar-border] bg-[--card] px-3 py-2 text-xs text-[--foreground] outline-none"
+              className="rounded-md border border-(--sidebar-border) bg-(--card) px-3 py-2 text-xs text-(--foreground) outline-none"
             >
               <option value={1}>Level 1 · activate</option>
               <option value={2}>Level 2 · draft</option>
@@ -233,42 +233,42 @@ export function SkillsView() {
               onChange={(event) => setForm((current) => ({ ...current, implementation: event.target.value }))}
               placeholder="Implementation JSON"
               rows={4}
-              className="rounded-md border border-[--sidebar-border] bg-transparent px-3 py-2 font-mono text-xs text-[--foreground] outline-none focus:border-[--primary]/60 md:col-span-3"
+              className="rounded-md border border-(--sidebar-border) bg-transparent px-3 py-2 font-mono text-xs text-(--foreground) outline-none focus:border-(--primary)/60 md:col-span-3"
             />
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center justify-center gap-1.5 rounded-md bg-[--primary] px-3 py-2 text-xs font-medium text-white disabled:opacity-50 md:col-span-3"
+              className="flex items-center justify-center gap-1.5 rounded-md bg-(--primary) px-3 py-2 text-xs font-medium text-white disabled:opacity-50 md:col-span-3"
             >
               <Plus className="h-3.5 w-3.5" /> {saving ? "Creating…" : "Create version"}
             </button>
           </form>
 
           <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[--muted-foreground]">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-(--muted-foreground)">
               {selectedSkill?.name} history
             </h2>
             {versions.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[--sidebar-border] p-6 text-center text-xs text-[--muted-foreground]">
+              <div className="rounded-lg border border-dashed border-(--sidebar-border) p-6 text-center text-xs text-(--muted-foreground)">
                 No versions recorded yet. The first version becomes the active baseline.
               </div>
             ) : (
               <div className="space-y-2">
                 {versions.map((version) => (
-                  <article key={version.id} className="rounded-lg border border-[--sidebar-border] bg-[--card] p-4">
+                  <article key={version.id} className="rounded-lg border border-(--sidebar-border) bg-(--card) p-4">
                     <div className="flex flex-wrap items-start gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-[--foreground]">Version {version.version}</span>
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${version.status === "active" ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-[--muted-foreground]"}`}>
+                          <span className="text-sm font-medium text-(--foreground)">Version {version.version}</span>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${version.status === "active" ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-(--muted-foreground)"}`}>
                             {version.status}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-[--muted-foreground]">
+                        <p className="mt-1 text-xs text-(--muted-foreground)">
                           {version.implementationType ?? "unspecified"}
                           {version.dependencies.length ? ` · ${version.dependencies.join(", ")}` : ""}
                         </p>
-                        <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-[--muted-foreground]">
+                        <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-(--muted-foreground)">
                           <span>created {new Date(version.createdAt).toLocaleString()}</span>
                           {version.activatedAt ? <span>activated {new Date(version.activatedAt).toLocaleString()}</span> : null}
                           {version.retiredAt ? <span>retired {new Date(version.retiredAt).toLocaleString()}</span> : null}
@@ -279,7 +279,7 @@ export function SkillsView() {
                           type="button"
                           disabled={busyId === version.id}
                           onClick={() => activate(version.id)}
-                          className="flex items-center gap-1.5 rounded-md border border-[--sidebar-border] px-2.5 py-1.5 text-xs text-[--muted-foreground] hover:text-[--foreground] disabled:opacity-50"
+                          className="flex items-center gap-1.5 rounded-md border border-(--sidebar-border) px-2.5 py-1.5 text-xs text-(--muted-foreground) hover:text-(--foreground) disabled:opacity-50"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" /> Activate
                         </button>
@@ -331,13 +331,13 @@ function SkillGenerationPanel() {
   }
 
   return (
-    <section className="mb-6 rounded-lg border border-[--sidebar-border] bg-[--card] p-4">
+    <section className="mb-6 rounded-lg border border-(--sidebar-border) bg-(--card) p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-[--foreground]">
-            <ShieldCheck className="h-4 w-4 text-[--primary]" /> Safe generation pipeline
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-(--foreground)">
+            <ShieldCheck className="h-4 w-4 text-(--primary)" /> Safe generation pipeline
           </h2>
-          <p className="mt-1 max-w-2xl text-xs text-[--muted-foreground]">
+          <p className="mt-1 max-w-2xl text-xs text-(--muted-foreground)">
             Repeated reflection patterns become explicit Tier 2/3 proposals, then pass schema,
             permission, sandbox, test, benchmark, shadow, and human-approval gates.
           </p>
@@ -346,7 +346,7 @@ function SkillGenerationPanel() {
           type="button"
           onClick={retry}
           disabled={loading}
-          className="flex shrink-0 items-center gap-1.5 rounded-md border border-[--sidebar-border] px-2.5 py-1.5 text-xs text-[--muted-foreground] hover:text-[--foreground] disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-(--sidebar-border) px-2.5 py-1.5 text-xs text-(--muted-foreground) hover:text-(--foreground) disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Scan
@@ -356,14 +356,14 @@ function SkillGenerationPanel() {
       {error ? <p className="mt-3 text-xs text-red-400">{error}</p> : null}
       {!loading && data.opportunities.length > 0 ? (
         <div className="mt-4">
-          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[--muted-foreground]">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-(--muted-foreground)">
             Detected opportunities
           </h3>
           <div className="flex flex-wrap gap-2">
             {data.opportunities.map((opportunity) => (
               <span
                 key={opportunity.opportunityKey}
-                className="rounded-md border border-[--sidebar-border] px-2 py-1 text-[10px] text-[--muted-foreground]"
+                className="rounded-md border border-(--sidebar-border) px-2 py-1 text-[10px] text-(--muted-foreground)"
               >
                 {opportunity.topic} · {opportunity.occurrenceCount}×
                 {opportunity.existingSkillId ? " · proposed" : ""}
@@ -375,25 +375,25 @@ function SkillGenerationPanel() {
 
       <div className="mt-4 space-y-2">
         {data.proposals.length === 0 && !loading ? (
-          <p className="rounded-md border border-dashed border-[--sidebar-border] p-3 text-center text-xs text-[--muted-foreground]">
+          <p className="rounded-md border border-dashed border-(--sidebar-border) p-3 text-center text-xs text-(--muted-foreground)">
             No generated skill proposals yet.
           </p>
         ) : data.proposals.map((proposal) => (
           <article
             key={proposal.candidateId}
-            className="rounded-md border border-[--sidebar-border] bg-black/10 p-3"
+            className="rounded-md border border-(--sidebar-border) bg-black/10 p-3"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-[--foreground]">
+              <span className="text-xs font-medium text-(--foreground)">
                 {proposal.skill?.name ?? "Generated skill"}
               </span>
               <span className="rounded-full bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-300">
                 {proposal.pipelineStage.replaceAll("_", " ")}
               </span>
-              <span className="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-[--muted-foreground]">
+              <span className="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-(--muted-foreground)">
                 {proposal.riskLevel} risk
               </span>
-              <span className="ml-auto text-[10px] text-[--muted-foreground]">
+              <span className="ml-auto text-[10px] text-(--muted-foreground)">
                 candidate {proposal.candidateStatus}
                 {proposal.approvalRequest ? ` · approval ${proposal.approvalRequest.status}` : ""}
               </span>

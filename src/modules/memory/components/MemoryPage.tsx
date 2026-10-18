@@ -198,7 +198,7 @@ function FilterPanel({
   stats: Stats | null;
 }) {
   return (
-    <div className="w-52 flex flex-col h-full bg-[--sidebar] border-r border-[#181b22] overflow-hidden shrink-0">
+    <div className="w-52 flex flex-col h-full bg-(--sidebar) border-r border-[#181b22] overflow-hidden shrink-0">
       <div className="px-3 py-3 border-b border-[#181b22]">
         <div className="flex items-center gap-2 text-xs font-semibold text-[#5a5f6e] uppercase tracking-wider">
           <Filter className="w-3.5 h-3.5" />
@@ -403,7 +403,7 @@ function DetailPanel({
                 onChange={(e) => setEditContent(e.target.value)}
                 className="w-full text-xs text-[#1a1d26] bg-white border border-[#e0e3ea] rounded-lg p-2 resize-none outline-none focus:border-indigo-400 min-h-[100px]"
               />
-              <button onClick={save} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg py-1.5 transition-colors">
+              <button onClick={save} className="w-full bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs rounded-lg py-1.5 transition-colors">
                 Save
               </button>
             </div>

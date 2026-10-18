@@ -60,6 +60,17 @@ Exactly how every component should behave. Visual tokens live in [DESIGN.md](DES
 - Zoom/pan controls are always visible, not hover-only, since graph navigation is a primary task.
 - Respect `prefers-reduced-motion`: disable graph pulse/particle animation and any continuous motion; keep discrete transitions (node select, edge highlight) since those carry information.
 
+### The Strata graph (behind Chat)
+
+`src/components/strata/` — the graph as atmosphere behind the conversation. Same data source as the globe (`useOrreryData`), different job: show what the current conversation touches, not support exploration.
+
+- **Four strata, fixed order.** Agents, Projects, Tasks, Memory. `stratumOf(type)` is the only mapping; unknown types settle into Memory.
+- **Deterministic seats.** A node's position is a pure function of its id and its links to the strata above it, so a project sits beneath its agents and the threads fall roughly vertically.
+- **Context, never invention.** Focus ids come from the room's agents' graph nodes, the room and its project, and nodes those agents touched in recent events. Ids the graph does not hold are ignored. The brass context column drops only through a focused agent node that exists.
+- **Pulses are events.** A bead travels a thread only when `dispatch` reports a real activity event.
+- **Legible over pretty.** Dimmed to 30% in Focus mode; labels avoid collisions and defer to the hover readout; the layer key names and counts each stratum and doubles as a keyboard-reachable emphasis control.
+- **Reduced motion.** Idle sway, breathing rings and pulses stop; heat and focus still render statically, and the canvas only redraws on change.
+
 ### The canonical graph (Neural Lens globe)
 
 There is one Sentinel graph, rendered as a globe. Everything below follows from that; treat these as invariants, not styling preferences.

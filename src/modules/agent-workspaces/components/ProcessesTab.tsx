@@ -33,7 +33,7 @@ export function ProcessesTab({ workspaceId, canExecute }: { workspaceId: string;
   return (
     <div className="space-y-4">
       {canExecute ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-[--border] p-3">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-(--border) p-3">
           <Input className="w-44" placeholder="label (dev server)" value={label} onChange={(event) => setLabel(event.target.value)} />
           <Input className="min-w-[16rem] flex-1 font-mono" placeholder="npm run dev" value={command} onChange={(event) => setCommand(event.target.value)} />
           <Input className="w-32" placeholder="ports 3000" value={ports} onChange={(event) => setPorts(event.target.value)} />
@@ -46,19 +46,19 @@ export function ProcessesTab({ workspaceId, canExecute }: { workspaceId: string;
       <ErrorNote error={error} />
       <ErrorNote error={processes.error} />
 
-      <div className="rounded-md border border-[--border]">
-        <div className="flex items-center justify-between border-b border-[--border] px-3 py-2 text-xs font-medium">
+      <div className="rounded-md border border-(--border)">
+        <div className="flex items-center justify-between border-b border-(--border) px-3 py-2 text-xs font-medium">
           Tracked processes
           <Button size="sm" variant="ghost" onClick={() => void processes.refresh()}><RefreshCw className="h-3.5 w-3.5" /></Button>
         </div>
         {processes.data?.tracked.length ? processes.data.tracked.map((process) => (
-          <div key={process.id} className="flex flex-wrap items-center gap-3 border-b border-[--border] px-3 py-2 text-xs last:border-b-0">
+          <div key={process.id} className="flex flex-wrap items-center gap-3 border-b border-(--border) px-3 py-2 text-xs last:border-b-0">
             <span className="w-40 truncate font-medium">{process.label}</span>
-            <span className="min-w-0 flex-1 truncate font-mono text-[--muted-foreground]">{process.command}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-(--muted-foreground)">{process.command}</span>
             <span className="tabular-nums">pid {process.pid ?? "—"}</span>
             <span>{process.ports.length ? `:${process.ports.join(", :")}` : "no ports"}</span>
-            <span className={process.status === "running" ? "text-emerald-400" : "text-[--muted-foreground]"}>{process.status}</span>
-            <span className="text-[--muted-foreground]">{relativeTime(process.startedAt)}</span>
+            <span className={process.status === "running" ? "text-emerald-400" : "text-(--muted-foreground)"}>{process.status}</span>
+            <span className="text-(--muted-foreground)">{relativeTime(process.startedAt)}</span>
             <Button size="sm" variant="ghost" onClick={async () => setLogs({ id: process.id, lines: (await workspaceApi.processLogs(workspaceId, process.id)).lines })}>
               <ScrollText className="h-3.5 w-3.5" />
             </Button>
@@ -71,24 +71,24 @@ export function ProcessesTab({ workspaceId, canExecute }: { workspaceId: string;
         )) : <EmptyNote>No tracked processes.</EmptyNote>}
       </div>
 
-      <div className="rounded-md border border-[--border]">
-        <div className="border-b border-[--border] px-3 py-2 text-xs font-medium">Live processes in the runtime</div>
+      <div className="rounded-md border border-(--border)">
+        <div className="border-b border-(--border) px-3 py-2 text-xs font-medium">Live processes in the runtime</div>
         {processes.data?.live.length ? processes.data.live.map((process) => (
-          <div key={process.pid} className="flex items-center gap-3 border-b border-[--border] px-3 py-1.5 text-xs last:border-b-0">
-            <span className="w-16 tabular-nums text-[--muted-foreground]">{process.pid}</span>
+          <div key={process.pid} className="flex items-center gap-3 border-b border-(--border) px-3 py-1.5 text-xs last:border-b-0">
+            <span className="w-16 tabular-nums text-(--muted-foreground)">{process.pid}</span>
             <span className="min-w-0 flex-1 truncate font-mono">{process.command}</span>
             <span className="tabular-nums">{process.cpuPercent?.toFixed(1) ?? "—"}%</span>
             <span className="tabular-nums">{formatBytes(process.memoryBytes)}</span>
-            <span className="text-[--muted-foreground]">{relativeTime(process.startedAt)}</span>
+            <span className="text-(--muted-foreground)">{relativeTime(process.startedAt)}</span>
           </div>
         )) : <EmptyNote>The runtime reports no user processes.</EmptyNote>}
       </div>
 
       {logs ? (
-        <div className="rounded-md border border-[--border]">
-          <div className="flex items-center justify-between border-b border-[--border] px-3 py-2 text-xs">
+        <div className="rounded-md border border-(--border)">
+          <div className="flex items-center justify-between border-b border-(--border) px-3 py-2 text-xs">
             Process log
-            <button className="text-[--muted-foreground] hover:underline" onClick={() => setLogs(null)}>close</button>
+            <button className="text-(--muted-foreground) hover:underline" onClick={() => setLogs(null)}>close</button>
           </div>
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words bg-black/30 p-3 font-mono text-[11px]">{logs.lines.join("\n")}</pre>
         </div>

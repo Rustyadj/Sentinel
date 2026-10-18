@@ -105,20 +105,20 @@ function LiveSessionPanel({ sessionId }: { sessionId: string }) {
   }, [lines]);
 
   return (
-    <section className="rounded-lg border border-[--canvas-card-border]">
-      <div className="flex items-center justify-between border-b border-[--canvas-card-border] px-4 py-2.5">
-        <h2 className="flex items-center gap-1.5 text-[12px] font-medium text-[--canvas-foreground]">
+    <section className="rounded-lg border border-(--canvas-card-border)">
+      <div className="flex items-center justify-between border-b border-(--canvas-card-border) px-4 py-2.5">
+        <h2 className="flex items-center gap-1.5 text-[12px] font-medium text-(--canvas-foreground)">
           <Terminal className="h-3.5 w-3.5" /> Live
         </h2>
         <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-amber-400"}`} aria-label={connected ? "Connected" : "Connecting"} />
       </div>
-      <div ref={logRef} className="max-h-64 overflow-y-auto px-4 py-2.5 font-mono text-[11px] text-[--muted-foreground]">
+      <div ref={logRef} className="max-h-64 overflow-y-auto px-4 py-2.5 font-mono text-[11px] text-(--muted-foreground)">
         {lines.length === 0 ? (
           <p>Waiting for activity…</p>
         ) : (
           lines.map((line) => (
             <div key={line.id} className="py-0.5">
-              <span className="text-[--canvas-foreground]">{line.type}</span> — {line.text}
+              <span className="text-(--canvas-foreground)">{line.type}</span> — {line.text}
             </div>
           ))
         )}
@@ -142,7 +142,7 @@ export function TaskDetailConsole({ detail }: { detail: TaskDetail }) {
         <Badge variant="secondary" className="capitalize">{task.status.toLowerCase().replace(/_/g, " ")}</Badge>
         <Badge variant="outline" className="capitalize">{task.priority}</Badge>
         {task.workspace ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-[--muted-foreground]">
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-(--muted-foreground)">
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: task.workspace.color }} />
             {task.workspace.name}
           </span>
@@ -153,35 +153,35 @@ export function TaskDetailConsole({ detail }: { detail: TaskDetail }) {
         <div className="space-y-6 lg:col-span-2">
           {liveSessionId ? <LiveSessionPanel sessionId={liveSessionId} /> : null}
 
-          <section className="rounded-lg border border-[--canvas-card-border]">
-            <h2 className="border-b border-[--canvas-card-border] px-4 py-2.5 text-[12px] font-medium text-[--canvas-foreground]">Timeline</h2>
-            <ol className="divide-y divide-[--canvas-card-border]">
+          <section className="rounded-lg border border-(--canvas-card-border)">
+            <h2 className="border-b border-(--canvas-card-border) px-4 py-2.5 text-[12px] font-medium text-(--canvas-foreground)">Timeline</h2>
+            <ol className="divide-y divide-(--canvas-card-border)">
               {timeline.map((event) => (
                 <li key={event.id} className="flex items-center justify-between px-4 py-2 text-[12px]">
-                  <span className="text-[--canvas-foreground]">{describeTimelineEvent(event.type)}</span>
-                  <time className="text-[11px] text-[--muted-foreground]" suppressHydrationWarning>
+                  <span className="text-(--canvas-foreground)">{describeTimelineEvent(event.type)}</span>
+                  <time className="text-[11px] text-(--muted-foreground)" suppressHydrationWarning>
                     {formatDistanceToNow(event.occurredAt, { addSuffix: true })}
                   </time>
                 </li>
               ))}
               {timeline.length === 0 ? (
-                <li className="px-4 py-6 text-center text-[12px] text-[--muted-foreground]">No orchestration events recorded for this task yet.</li>
+                <li className="px-4 py-6 text-center text-[12px] text-(--muted-foreground)">No orchestration events recorded for this task yet.</li>
               ) : null}
             </ol>
           </section>
 
           {artifacts.length > 0 ? (
-            <section className="rounded-lg border border-[--canvas-card-border]">
-              <h2 className="border-b border-[--canvas-card-border] px-4 py-2.5 text-[12px] font-medium text-[--canvas-foreground]">Artifacts</h2>
-              <ul className="divide-y divide-[--canvas-card-border]">
+            <section className="rounded-lg border border-(--canvas-card-border)">
+              <h2 className="border-b border-(--canvas-card-border) px-4 py-2.5 text-[12px] font-medium text-(--canvas-foreground)">Artifacts</h2>
+              <ul className="divide-y divide-(--canvas-card-border)">
                 {artifacts.map((artifact) => (
                   <li key={artifact.id} className="px-4 py-2.5 text-[12px]">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-[--canvas-foreground]">{artifact.title}</span>
+                      <span className="font-medium text-(--canvas-foreground)">{artifact.title}</span>
                       <Badge variant="outline">{artifact.type}</Badge>
                     </div>
                     {artifact.content ? (
-                      <p className="mt-1 line-clamp-2 text-[11px] text-[--muted-foreground]">{artifact.content}</p>
+                      <p className="mt-1 line-clamp-2 text-[11px] text-(--muted-foreground)">{artifact.content}</p>
                     ) : null}
                   </li>
                 ))}
@@ -191,23 +191,23 @@ export function TaskDetailConsole({ detail }: { detail: TaskDetail }) {
         </div>
 
         <div className="space-y-6">
-          <section className="rounded-lg border border-[--canvas-card-border] p-4 text-[12px]">
-            <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-[--muted-foreground]">Ownership</h2>
+          <section className="rounded-lg border border-(--canvas-card-border) p-4 text-[12px]">
+            <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-(--muted-foreground)">Ownership</h2>
             <dl className="space-y-2">
-              <div className="flex items-center justify-between"><dt className="text-[--muted-foreground]">Owner</dt><dd>{ownerName ?? "Unassigned"}</dd></div>
-              {reviewerName ? <div className="flex items-center justify-between"><dt className="text-[--muted-foreground]">Reviewer</dt><dd>{reviewerName}</dd></div> : null}
-              {creatorName ? <div className="flex items-center justify-between"><dt className="text-[--muted-foreground]">Created by</dt><dd>{creatorName}</dd></div> : null}
+              <div className="flex items-center justify-between"><dt className="text-(--muted-foreground)">Owner</dt><dd>{ownerName ?? "Unassigned"}</dd></div>
+              {reviewerName ? <div className="flex items-center justify-between"><dt className="text-(--muted-foreground)">Reviewer</dt><dd>{reviewerName}</dd></div> : null}
+              {creatorName ? <div className="flex items-center justify-between"><dt className="text-(--muted-foreground)">Created by</dt><dd>{creatorName}</dd></div> : null}
             </dl>
           </section>
 
-          <section className="rounded-lg border border-[--canvas-card-border] p-4 text-[12px]">
-            <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[--muted-foreground]">
+          <section className="rounded-lg border border-(--canvas-card-border) p-4 text-[12px]">
+            <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-(--muted-foreground)">
               <GitBranch className="h-3.5 w-3.5" /> Repository
             </h2>
             <dl className="space-y-2 font-mono text-[11px]">
-              <div><dt className="text-[--muted-foreground]">Branch</dt><dd className="truncate">{task.branch ?? "—"}</dd></div>
-              <div><dt className="text-[--muted-foreground]">Base</dt><dd className="truncate">{task.baseBranch ?? "—"}</dd></div>
-              <div><dt className="text-[--muted-foreground]">Worktree</dt><dd className="truncate">{task.worktreePath ?? "—"}</dd></div>
+              <div><dt className="text-(--muted-foreground)">Branch</dt><dd className="truncate">{task.branch ?? "—"}</dd></div>
+              <div><dt className="text-(--muted-foreground)">Base</dt><dd className="truncate">{task.baseBranch ?? "—"}</dd></div>
+              <div><dt className="text-(--muted-foreground)">Worktree</dt><dd className="truncate">{task.worktreePath ?? "—"}</dd></div>
             </dl>
           </section>
 

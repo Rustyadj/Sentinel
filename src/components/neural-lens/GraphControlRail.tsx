@@ -105,7 +105,7 @@ export function GraphControlRail({
             onClick={() => onLensOnlyChange(false)}
             aria-pressed={!lensOnly}
             className={cn(
-              "rounded px-2 py-1.5 text-[10.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+              "rounded px-2 py-1.5 text-[10.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
               !lensOnly
                 ? "bg-violet-500/25 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.35)]"
                 : "text-white/40 hover:text-white/70",
@@ -120,7 +120,7 @@ export function GraphControlRail({
             disabled={!lensClusterId}
             title={lensClusterId ? undefined : "Select a layer first — Lens Only needs something to isolate"}
             className={cn(
-              "rounded px-2 py-1.5 text-[10.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+              "rounded px-2 py-1.5 text-[10.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
               "disabled:cursor-not-allowed disabled:opacity-35",
               lensOnly
                 ? "bg-violet-500/25 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.35)]"
@@ -146,7 +146,7 @@ export function GraphControlRail({
             step={1}
             value={Math.round(settings.density * 100)}
             onChange={(event) => onSettingsChange({ density: Number(event.target.value) / 100 })}
-            className="sentinel-density-slider mt-1.5 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+            className="sentinel-density-slider mt-1.5 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
           />
         </div>
 
@@ -241,7 +241,7 @@ export function GraphControlRail({
                       type="button"
                       onClick={() => onToggleType(type)}
                       aria-pressed={activeTypes.has(type)}
-                      className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]"
+                      className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)"
                       style={{
                         borderColor: active ? `${color}55` : "rgba(255,255,255,0.07)",
                         color: active ? color : "rgba(255,255,255,0.35)",
@@ -272,7 +272,7 @@ export function GraphControlRail({
             title="Time map — reconstruct the graph as it was"
             aria-label="Time map"
             className={cn(
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
               timelineOpen ? "bg-white/[0.08] text-white/80" : "text-white/30 hover:text-white/60",
             )}
           >
@@ -328,7 +328,7 @@ function LayerRow({
       // count together ("Cybersecurity2.2k").
       aria-label={count === undefined ? label : `${label} layer, ${count.toLocaleString()} nodes`}
       className={cn(
-        "group flex w-full items-center gap-2 rounded px-2 py-[5px] text-left text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+        "group flex w-full items-center gap-2 rounded px-2 py-[5px] text-left text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
         active ? "bg-white/[0.07] text-white/90" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75",
       )}
     >
@@ -360,7 +360,7 @@ function SourceButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded border px-2 py-1 text-[9px] uppercase tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[--ring]",
+        "flex flex-1 items-center justify-center gap-1.5 rounded border px-2 py-1 text-[9px] uppercase tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)",
         active ? "border-white/[0.12] bg-white/[0.05] text-white/80" : "border-transparent text-white/30 hover:text-white/55",
       )}
     >

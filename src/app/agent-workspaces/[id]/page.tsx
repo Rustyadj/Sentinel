@@ -4,7 +4,7 @@ import { AgentWorkspaceView } from "@/modules/agent-workspaces/components/AgentW
 export default async function AgentWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   return (
-    <AppShell header={<span className="text-[15px] font-medium">Workspace</span>}>
+    <AppShell title="Workspace">
       <div className="h-full overflow-y-auto">
         <AgentWorkspaceView workspaceId={id} />
       </div>

@@ -42,20 +42,20 @@ export function GitTab({ workspaceId, canExecute }: { workspaceId: string; canEx
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run("branch")}>Branches</Button>
         <Button size="sm" variant="outline" disabled={busy || !canExecute} onClick={() => void run("fetch")}>Fetch</Button>
         <Button size="sm" variant="outline" disabled={busy || !canExecute} onClick={() => void run("pull")}>Pull</Button>
-        {pending ? <Loader2 className="h-4 w-4 animate-spin text-[--muted-foreground]" /> : null}
+        {pending ? <Loader2 className="h-4 w-4 animate-spin text-(--muted-foreground)" /> : null}
       </div>
 
       {canExecute ? (
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-2 rounded-md border border-[--border] p-3">
+          <div className="space-y-2 rounded-md border border-(--border) p-3">
             <div className="flex items-center gap-2 text-xs font-medium"><GitPullRequest className="h-3.5 w-3.5" /> Clone repository</div>
             <Input placeholder="https://github.com/org/repo.git" value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} />
             <Input placeholder="target directory" value={directory} onChange={(event) => setDirectory(event.target.value)} />
             <Button size="sm" disabled={busy || !remoteUrl.trim()} onClick={() => void run("clone", { remoteUrl, directory })}>Clone</Button>
-            <p className="text-[11px] text-[--muted-foreground]">Credentials are injected by Sentinel at execution time and never stored in the workspace.</p>
+            <p className="text-[11px] text-(--muted-foreground)">Credentials are injected by Sentinel at execution time and never stored in the workspace.</p>
           </div>
 
-          <div className="space-y-2 rounded-md border border-[--border] p-3">
+          <div className="space-y-2 rounded-md border border-(--border) p-3">
             <div className="flex items-center gap-2 text-xs font-medium"><GitBranch className="h-3.5 w-3.5" /> Branch</div>
             <Input placeholder="branch name" value={branch} onChange={(event) => setBranch(event.target.value)} />
             <div className="flex gap-2">
@@ -64,7 +64,7 @@ export function GitTab({ workspaceId, canExecute }: { workspaceId: string; canEx
             </div>
           </div>
 
-          <div className="space-y-2 rounded-md border border-[--border] p-3">
+          <div className="space-y-2 rounded-md border border-(--border) p-3">
             <div className="flex items-center gap-2 text-xs font-medium"><GitCommit className="h-3.5 w-3.5" /> Commit</div>
             <Input placeholder="commit message" value={message} onChange={(event) => setMessage(event.target.value)} />
             <Button size="sm" disabled={busy || !message.trim()} onClick={() => void run("commit", { message, addAll: true })}>Stage all &amp; commit</Button>
@@ -73,7 +73,7 @@ export function GitTab({ workspaceId, canExecute }: { workspaceId: string; canEx
       ) : null}
 
       <ErrorNote error={error} />
-      <pre className="max-h-[22rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-[--border] bg-black/30 p-3 font-mono text-xs">
+      <pre className="max-h-[22rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--border) bg-black/30 p-3 font-mono text-xs">
         {output || "Run a git operation to see its output."}
       </pre>
     </div>

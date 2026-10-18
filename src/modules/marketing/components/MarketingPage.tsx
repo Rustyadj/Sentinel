@@ -33,7 +33,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: ElementType; color: string 
 
 function SubNav({ active, onSelect }: { active: Section; onSelect: (s: Section) => void }) {
   return (
-    <div className="w-44 flex flex-col h-full bg-[--sidebar] border-r border-[#181b22] shrink-0 overflow-y-auto">
+    <div className="w-44 flex flex-col h-full bg-(--sidebar) border-r border-[#181b22] shrink-0 overflow-y-auto">
       <div className="px-3 py-3 border-b border-[#181b22]">
         <div className="flex items-center gap-2">
           <Megaphone className="w-4 h-4 text-indigo-400" />
@@ -229,7 +229,7 @@ function Leads() {
           <h1 className="text-lg font-bold text-[#1a1d26]">Leads</h1>
           <p className="text-xs text-[#7a8099]">{LEADS_DATA.length} total · {LEADS_DATA.filter(l => l.status === "hot").length} hot</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+        <button className="flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add Lead
         </button>
       </div>
@@ -331,7 +331,7 @@ function CRM() {
           <h1 className="text-lg font-bold text-[#1a1d26]">CRM Pipeline</h1>
           <p className="text-xs text-[#7a8099]">Pipeline value: ${(totalValue / 1000).toFixed(0)}K</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+        <button className="flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add Deal
         </button>
       </div>
@@ -385,7 +385,7 @@ function Clients() {
           <h1 className="text-lg font-bold text-[#1a1d26]">Clients</h1>
           <p className="text-xs text-[#7a8099]">{CLIENTS.filter(c => c.status === "active").length} active · $12.4K MRR</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+        <button className="flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add Client
         </button>
       </div>
@@ -452,7 +452,7 @@ function Campaigns() {
           <h1 className="text-lg font-bold text-[#1a1d26]">Campaigns</h1>
           <p className="text-xs text-[#7a8099]">{CAMPAIGNS.filter(c => c.status === "active").length} active · {CAMPAIGNS.length} total</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+        <button className="flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
           <Plus className="w-3.5 h-3.5" /> New Campaign
         </button>
       </div>
@@ -713,7 +713,7 @@ function Website() {
           <a href="#" className="flex items-center gap-1.5 text-xs text-[#7a8099] bg-white border border-[#e0e3ea] hover:bg-[#f5f6f9] px-3 py-2 rounded-lg transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> Preview
           </a>
-          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition-colors">
+          <button className="flex items-center gap-1.5 bg-(--primary) hover:bg-(--primary-soft) text-(--primary-foreground) text-xs px-3 py-2 rounded-lg font-medium transition-colors">
             <Plus className="w-3.5 h-3.5" /> New Page
           </button>
         </div>
@@ -756,7 +756,7 @@ export function MarketingPage({ stats = null }: { stats?: LensOverviewStats | nu
   return (
     <div className="h-full flex overflow-hidden">
       <SubNav active={section} onSelect={setSection} />
-      <div className="flex-1 overflow-hidden bg-[--background]">
+      <div className="flex-1 overflow-hidden bg-(--background)">
         {section === "overview" && <LensOverview lens="marketing" stats={stats} />}
         {section === "dashboard" && <Dashboard />}
         {section === "leads" && <Leads />}

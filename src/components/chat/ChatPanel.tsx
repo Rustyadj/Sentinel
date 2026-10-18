@@ -183,7 +183,7 @@ export function ChatPanel({
             onClick={() => void handleSend()}
             disabled={!input.trim() || !activeRoom || isThinking || isStreaming}
             aria-label="Send message"
-            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-indigo-500/80 text-white outline-none transition-colors hover:bg-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-35"
+            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-indigo-500/80 text-(--primary-foreground) outline-none transition-colors hover:bg-(--primary-soft) focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-35"
           >
             {isThinking || isStreaming ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

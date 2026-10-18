@@ -37,7 +37,7 @@ export function KnowledgeGraphFilters({
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         placeholder="Search nodes…"
-        className="w-full h-7 px-2.5 text-xs rounded-md bg-[--muted] border border-[--border] text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary] transition-colors"
+        className="w-full h-7 px-2.5 text-xs rounded-md bg-(--muted) border border-(--border) text-(--foreground) placeholder:text-(--muted-foreground) outline-none focus:border-(--primary) transition-colors"
       />
       {nodeTypes.length > 0 && (
         <div className="flex flex-wrap gap-1">

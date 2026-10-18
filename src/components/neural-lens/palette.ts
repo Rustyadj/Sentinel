@@ -1,7 +1,7 @@
 // Neural Lens — colour system for the globe renderer.
 //
 // Near-black space, a field of faint blue-white dust, and a small number of
-// deliberate accents. Sentinel purple is reserved for the thing the operator
+// deliberate accents. Sentinel brass (formerly purple) is reserved for the thing the operator
 // is acting on — the selected node and the active lens — so purple always
 // means "this is live/mine" rather than "this is decoration". Every other
 // region gets one muted hue from a narrow palette (blue, cyan, teal, amber,
@@ -11,7 +11,7 @@
 import type { ClusterId } from "./categories";
 import type { SemanticZoomLevel } from "./types";
 
-export const LENS_BG = "#01040a";
+export const LENS_BG = "#0b1012";
 
 // ---------------------------------------------------------------------------
 // Node states
@@ -20,21 +20,21 @@ export const LENS_BG = "#01040a";
 /** The bulk of the graph: faint blue-white dust. Deliberately close to
  * neutral — regions read through a *tint* of this, so the globe as a whole
  * stays blue-white instead of taking on whichever hue is most common. */
-export const NEUTRAL_NODE = "#95a9cc";
+export const NEUTRAL_NODE = "#a3b3ad";
 /** Structural hubs (Workspace/Project/Repository/…): same family, brighter. */
-export const HUB_NODE = "#c3d1e8";
+export const HUB_NODE = "#d8d6cc";
 /** The hub currently targeted by the active lens. */
-export const LENS_HUB_NODE = "#b49bf7";
+export const LENS_HUB_NODE = "#e6c486";
 /** Sentinel purple, as the graph uses it: emphasis, never decoration. */
-export const LENS_ACCENT = "#a78bfa";
+export const LENS_ACCENT = "#d4a95a";
 /** A user-selected node — a near-white core inside a purple bloom. */
-export const SELECTED_NODE = "#f4efff";
-export const SELECTED_GLOW = "#8f6ff2";
+export const SELECTED_NODE = "#fff6e2";
+export const SELECTED_GLOW = "#c99a48";
 /** Direct neighbours of the selection. Fixed rather than derived from the
  * node's workspace: "related to what I clicked" has to mean the same colour
  * every time, and the legend has to be able to name it. Workspace identity
  * colour (groupColor) still drives live-activity lighting. */
-export const RELATED_NODE = "#8fb0f5";
+export const RELATED_NODE = "#86a9e8";
 
 export const NEUTRAL_NODE_OPACITY_RANGE: [number, number] = [0.6, 1];
 export const HUB_NODE_OPACITY = 0.9;
@@ -73,18 +73,18 @@ export const ACCENT_COLORS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export const CLUSTER_COLORS: Record<ClusterId, string> = {
-  Chat: "#5c9fe0",
-  Projects: "#e09a52",
-  Knowledge: "#4a89c4",
-  Memory: "#57c2a8",
-  Learning: "#d4b45f",
-  Cybersecurity: "#9179ef",
-  Coding: "#dd8a4c",
-  Organization: "#a98bf5",
-  Infrastructure: "#4f7fc9",
-  Marketing: "#e0a83f",
-  Voice: "#93a2d8",
-  External: "#b57cf0",
+  Chat: "#8fb7c9",
+  Projects: "#74c2ab",
+  Knowledge: "#c7b4ee",
+  Memory: "#b9a0e6",
+  Learning: "#d9b56d",
+  Cybersecurity: "#e07f6e",
+  Coding: "#e0a070",
+  Organization: "#86a9e8",
+  Infrastructure: "#7f97b8",
+  Marketing: "#d6b36a",
+  Voice: "#a3b0d6",
+  External: "#c9a0d8",
 };
 
 export function clusterColor(cluster: ClusterId): string {
@@ -103,11 +103,11 @@ export function clusterColor(cluster: ClusterId): string {
  * colour accumulates. A blue-grey base saturates its blue and green channels
  * first and floods the globe with cyan; indigo accumulates toward the violet
  * the rest of the system already speaks. */
-export const EDGE_BASE_HEX = "#5a63a6";
-export const EDGE_LIT_HEX = "#8cbef5";
+export const EDGE_BASE_HEX = "#4f6b6a";
+export const EDGE_LIT_HEX = "#b9c7c0";
 export const EDGE_ACTIVE_HEX = "#ffffff";
 /** The active lens's edges: purple, matching the lens accent. */
-export const EDGE_LENS_HEX = "#8f76e8";
+export const EDGE_LENS_HEX = "#c99a48";
 
 /** Baseline alpha for an edge at rest — deliberately near the floor of what a
  * display can show, because tens of thousands of them add up. */

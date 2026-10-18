@@ -50,37 +50,37 @@ function TaskList({ project }: { project: ContentProject }) {
 
   return (
     <div className="mt-4">
-      <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground] mb-2">Tasks</div>
+      <div className="text-[10px] uppercase tracking-widest text-(--muted-foreground) mb-2">Tasks</div>
       <div className="flex items-center gap-2 mb-3">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addTask()}
           placeholder="New task…"
-          className="flex-1 h-8 rounded-md border border-[--border] bg-[--muted] px-2.5 text-xs text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/50"
+          className="flex-1 h-8 rounded-md border border-(--border) bg-(--muted) px-2.5 text-xs text-(--foreground) placeholder:text-(--muted-foreground) outline-none focus:border-(--primary)/50"
         />
         <button
           onClick={addTask}
           disabled={!title.trim()}
-          className="h-8 px-2.5 rounded-md bg-[--primary] text-[--primary-foreground] text-xs font-medium disabled:opacity-40"
+          className="h-8 px-2.5 rounded-md bg-(--primary) text-(--primary-foreground) text-xs font-medium disabled:opacity-40"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
       {loaded && tasks.length === 0 ? (
-        <p className="text-xs text-[--muted-foreground]">No tasks yet.</p>
+        <p className="text-xs text-(--muted-foreground)">No tasks yet.</p>
       ) : (
         <div className="space-y-1.5">
           {tasks.map((task) => (
             <div
               key={task.id}
-              className="flex items-center gap-2 rounded-md border border-[--border] bg-[--muted] px-2.5 py-1.5"
+              className="flex items-center gap-2 rounded-md border border-(--border) bg-(--muted) px-2.5 py-1.5"
             >
-              <span className="flex-1 text-xs text-[--foreground] truncate">{task.title}</span>
+              <span className="flex-1 text-xs text-(--foreground) truncate">{task.title}</span>
               <select
                 value={task.status}
                 onChange={(e) => updateStatus(task.id, e.target.value)}
-                className="h-6 rounded border border-[--border] bg-[--card] px-1.5 text-[10px] text-[--foreground]"
+                className="h-6 rounded border border-(--border) bg-(--card) px-1.5 text-[10px] text-(--foreground)"
               >
                 {TASK_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -88,7 +88,7 @@ function TaskList({ project }: { project: ContentProject }) {
                   </option>
                 ))}
               </select>
-              <button onClick={() => deleteTask(task.id)} className="text-[--muted-foreground] hover:text-[--destructive]">
+              <button onClick={() => deleteTask(task.id)} className="text-(--muted-foreground) hover:text-(--destructive)">
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
@@ -136,8 +136,8 @@ export function ProjectsView({ activeBrand }: { activeBrand: Brand | null }) {
   if (!activeBrand) {
     return (
       <div className="p-8 max-w-2xl">
-        <h1 className="text-lg font-semibold text-[--foreground] mb-2">Projects</h1>
-        <p className="text-sm text-[--muted-foreground]">Select a brand to see its projects.</p>
+        <h1 className="text-lg font-semibold text-(--foreground) mb-2">Projects</h1>
+        <p className="text-sm text-(--muted-foreground)">Select a brand to see its projects.</p>
       </div>
     );
   }
@@ -146,8 +146,8 @@ export function ProjectsView({ activeBrand }: { activeBrand: Brand | null }) {
 
   return (
     <div className="p-8 max-w-4xl">
-      <h1 className="text-lg font-semibold text-[--foreground] mb-1">Projects</h1>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <h1 className="text-lg font-semibold text-(--foreground) mb-1">Projects</h1>
+      <p className="text-sm text-(--muted-foreground) mb-6">
         Every piece of content for {activeBrand.name} lives inside a project.
       </p>
 
@@ -159,19 +159,19 @@ export function ProjectsView({ activeBrand }: { activeBrand: Brand | null }) {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && createProject()}
               placeholder="New project name…"
-              className="flex-1 h-9 rounded-lg border border-[--border] bg-[--muted] px-3 text-sm text-[--foreground] placeholder:text-[--muted-foreground] outline-none focus:border-[--primary]/50"
+              className="flex-1 h-9 rounded-lg border border-(--border) bg-(--muted) px-3 text-sm text-(--foreground) placeholder:text-(--muted-foreground) outline-none focus:border-(--primary)/50"
             />
             <button
               onClick={createProject}
               disabled={!name.trim()}
-              className="h-9 px-3 rounded-lg bg-[--primary] text-[--primary-foreground] text-sm font-medium disabled:opacity-40 flex items-center gap-1.5"
+              className="h-9 px-3 rounded-lg bg-(--primary) text-(--primary-foreground) text-sm font-medium disabled:opacity-40 flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
             </button>
           </div>
 
           {projects.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[--border] py-10 text-center text-sm text-[--muted-foreground]">
+            <div className="rounded-xl border border-dashed border-(--border) py-10 text-center text-sm text-(--muted-foreground)">
               No projects yet.
             </div>
           ) : (
@@ -183,15 +183,15 @@ export function ProjectsView({ activeBrand }: { activeBrand: Brand | null }) {
                   className={cn(
                     "w-full flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors",
                     project.id === selectedId
-                      ? "border-[--primary]/40 bg-[--primary]/5"
-                      : "border-[--border] bg-[--card] hover:border-[--primary]/20"
+                      ? "border-(--primary)/40 bg-(--primary)/5"
+                      : "border-(--border) bg-(--card) hover:border-(--primary)/20"
                   )}
                 >
                   <div className="min-w-0 flex items-center gap-2">
-                    <FolderKanban className="w-3.5 h-3.5 text-[--muted-foreground] shrink-0" />
-                    <span className="text-sm text-[--foreground] truncate">{project.name}</span>
+                    <FolderKanban className="w-3.5 h-3.5 text-(--muted-foreground) shrink-0" />
+                    <span className="text-sm text-(--foreground) truncate">{project.name}</span>
                   </div>
-                  <span className="text-[10px] text-[--muted-foreground] shrink-0">
+                  <span className="text-[10px] text-(--muted-foreground) shrink-0">
                     {project._count?.items ?? 0} items
                   </span>
                 </button>
@@ -200,21 +200,21 @@ export function ProjectsView({ activeBrand }: { activeBrand: Brand | null }) {
           )}
         </div>
 
-        <div className="rounded-xl border border-[--border] bg-[--card] p-4">
+        <div className="rounded-xl border border-(--border) bg-(--card) p-4">
           {!selected ? (
-            <p className="text-sm text-[--muted-foreground]">Select a project to see its tasks.</p>
+            <p className="text-sm text-(--muted-foreground)">Select a project to see its tasks.</p>
           ) : (
             <>
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="text-sm font-medium text-[--foreground]">{selected.name}</div>
+                  <div className="text-sm font-medium text-(--foreground)">{selected.name}</div>
                   {selected.description && (
-                    <p className="text-xs text-[--muted-foreground] mt-1">{selected.description}</p>
+                    <p className="text-xs text-(--muted-foreground) mt-1">{selected.description}</p>
                   )}
                 </div>
                 <button
                   onClick={() => deleteProject(selected.id)}
-                  className="text-[--muted-foreground] hover:text-[--destructive] shrink-0"
+                  className="text-(--muted-foreground) hover:text-(--destructive) shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

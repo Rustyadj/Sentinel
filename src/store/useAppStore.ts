@@ -27,7 +27,8 @@ export const useAppStore = create<AppStore>((set) => ({
   // State
   currentModule: "dashboard",
   sidebarCollapsed: false,
-  rightPanelOpen: true,
+  // Context is opt-in: the work surface gets the full width until asked.
+  rightPanelOpen: false,
   rightPanelTab: "activity",
   commandBarOpen: false,
   activeProject: null,

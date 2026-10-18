@@ -226,17 +226,17 @@ export function ScriptBuilder({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-end">
-      <div className="w-full max-w-6xl bg-background border-l border-[--border] flex flex-col h-full">
+      <div className="w-full max-w-6xl bg-background border-l border-(--border) flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[--border] shrink-0">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border) shrink-0">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="flex-1 bg-transparent text-sm font-semibold text-[--foreground] outline-none"
+            className="flex-1 bg-transparent text-sm font-semibold text-(--foreground) outline-none"
           />
           <button
             onClick={() => setShowDetails((v) => !v)}
-            className="flex items-center gap-1 text-xs text-[--muted-foreground] hover:text-[--foreground] px-2 py-1 rounded-md hover:bg-[--muted]"
+            className="flex items-center gap-1 text-xs text-(--muted-foreground) hover:text-(--foreground) px-2 py-1 rounded-md hover:bg-(--muted)"
           >
             {showDetails ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             Details
@@ -246,43 +246,43 @@ export function ScriptBuilder({
             disabled={saving}
             className={cn(
               "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
-              saved ? "bg-emerald-500/15 text-emerald-500" : "bg-[--primary] text-[--primary-foreground]"
+              saved ? "bg-emerald-500/15 text-emerald-500" : "bg-(--primary) text-(--primary-foreground)"
             )}
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
             {saving ? "Saving…" : saved ? "Saved" : "Save"}
           </button>
-          <button onClick={onClose} className="text-[--muted-foreground] hover:text-[--foreground] p-1">
+          <button onClick={onClose} className="text-(--muted-foreground) hover:text-(--foreground) p-1">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Details (YouTube fields) */}
         {showDetails && (
-          <div className="border-b border-[--border] p-4 space-y-3 shrink-0 bg-[--card]">
+          <div className="border-b border-(--border) p-4 space-y-3 shrink-0 bg-(--card)">
             <div>
-              <label className="text-[10px] uppercase tracking-widest text-[--muted-foreground]">Description</label>
+              <label className="text-[10px] uppercase tracking-widest text-(--muted-foreground)">Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-lg border border-[--border] bg-[--muted] px-3 py-2 text-xs text-[--foreground] outline-none focus:border-[--primary]/50"
+                className="mt-1 w-full rounded-lg border border-(--border) bg-(--muted) px-3 py-2 text-xs text-(--foreground) outline-none focus:border-(--primary)/50"
                 placeholder="Video description…"
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-widest text-[--muted-foreground]">Tags</label>
+              <label className="text-[10px] uppercase tracking-widest text-(--muted-foreground)">Tags</label>
               <input
                 value={tagsText}
                 onChange={(e) => setTagsText(e.target.value)}
-                className="mt-1 w-full h-8 rounded-lg border border-[--border] bg-[--muted] px-3 text-xs text-[--foreground] outline-none focus:border-[--primary]/50"
+                className="mt-1 w-full h-8 rounded-lg border border-(--border) bg-(--muted) px-3 text-xs text-(--foreground) outline-none focus:border-(--primary)/50"
                 placeholder="comma, separated, tags"
               />
             </div>
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-widest text-[--muted-foreground]">Chapters</label>
-                <button onClick={addChapter} className="text-[--primary] text-xs flex items-center gap-1">
+                <label className="text-[10px] uppercase tracking-widest text-(--muted-foreground)">Chapters</label>
+                <button onClick={addChapter} className="text-(--primary) text-xs flex items-center gap-1">
                   <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
@@ -292,15 +292,15 @@ export function ScriptBuilder({
                     <input
                       value={c.timestamp}
                       onChange={(e) => updateChapter(i, { timestamp: e.target.value })}
-                      className="w-16 h-7 rounded border border-[--border] bg-[--muted] px-1.5 text-[11px] font-mono text-[--foreground]"
+                      className="w-16 h-7 rounded border border-(--border) bg-(--muted) px-1.5 text-[11px] font-mono text-(--foreground)"
                     />
                     <input
                       value={c.title}
                       onChange={(e) => updateChapter(i, { title: e.target.value })}
                       placeholder="Chapter title"
-                      className="flex-1 h-7 rounded border border-[--border] bg-[--muted] px-2 text-[11px] text-[--foreground]"
+                      className="flex-1 h-7 rounded border border-(--border) bg-(--muted) px-2 text-[11px] text-(--foreground)"
                     />
-                    <button onClick={() => removeChapter(i)} className="text-[--muted-foreground] hover:text-[--destructive]">
+                    <button onClick={() => removeChapter(i)} className="text-(--muted-foreground) hover:text-(--destructive)">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
@@ -313,13 +313,13 @@ export function ScriptBuilder({
         {/* 3-pane body */}
         <div className="flex-1 flex min-h-0">
           {/* Outline */}
-          <div className="w-64 border-r border-[--border] flex flex-col shrink-0">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
-              <span className="text-xs font-medium text-[--foreground]">Outline</span>
+          <div className="w-64 border-r border-(--border) flex flex-col shrink-0">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-(--border)">
+              <span className="text-xs font-medium text-(--foreground)">Outline</span>
               <button
                 onClick={() => generate("outline")}
                 disabled={generating !== null}
-                className="text-[10px] text-[--primary] flex items-center gap-1 disabled:opacity-40"
+                className="text-[10px] text-(--primary) flex items-center gap-1 disabled:opacity-40"
               >
                 {generating === "outline" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 Generate
@@ -332,14 +332,14 @@ export function ScriptBuilder({
                     value={beat.text}
                     onChange={(e) => updateOutlineBeat(beat.id, e.target.value)}
                     rows={2}
-                    className="flex-1 text-xs bg-[--muted] border border-[--border] rounded-md px-2 py-1.5 text-[--foreground] outline-none focus:border-[--primary]/50 resize-none"
+                    className="flex-1 text-xs bg-(--muted) border border-(--border) rounded-md px-2 py-1.5 text-(--foreground) outline-none focus:border-(--primary)/50 resize-none"
                   />
-                  <button onClick={() => removeOutlineBeat(beat.id)} className="text-[--muted-foreground] hover:text-[--destructive] mt-1.5">
+                  <button onClick={() => removeOutlineBeat(beat.id)} className="text-(--muted-foreground) hover:text-(--destructive) mt-1.5">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               ))}
-              <button onClick={addOutlineBeat} className="w-full text-[10px] text-[--muted-foreground] hover:text-[--foreground] flex items-center justify-center gap-1 py-1.5 border border-dashed border-[--border] rounded-md">
+              <button onClick={addOutlineBeat} className="w-full text-[10px] text-(--muted-foreground) hover:text-(--foreground) flex items-center justify-center gap-1 py-1.5 border border-dashed border-(--border) rounded-md">
                 <Plus className="w-3 h-3" /> Add beat
               </button>
             </div>
@@ -347,13 +347,13 @@ export function ScriptBuilder({
 
           {/* Script editor */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-[--border] overflow-x-auto">
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-(--border) overflow-x-auto">
               {QUICK_ACTIONS.map(({ label, icon: Icon, instruction: preset }) => (
                 <button
                   key={label}
                   onClick={() => generate("script", preset)}
                   disabled={generating !== null}
-                  className="flex items-center gap-1 text-[11px] text-[--muted-foreground] hover:text-[--foreground] px-2 py-1 rounded-md hover:bg-[--muted] disabled:opacity-40 shrink-0"
+                  className="flex items-center gap-1 text-[11px] text-(--muted-foreground) hover:text-(--foreground) px-2 py-1 rounded-md hover:bg-(--muted) disabled:opacity-40 shrink-0"
                 >
                   <Icon className="w-3 h-3" /> {label}
                 </button>
@@ -361,7 +361,7 @@ export function ScriptBuilder({
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as ScriptMode | "")}
-                className="ml-auto h-6 text-[10px] rounded border border-[--border] bg-[--muted] px-1.5 text-[--foreground] shrink-0"
+                className="ml-auto h-6 text-[10px] rounded border border-(--border) bg-(--muted) px-1.5 text-(--foreground) shrink-0"
               >
                 <option value="">Default mode</option>
                 {SCRIPT_MODES.map((m) => (
@@ -373,28 +373,28 @@ export function ScriptBuilder({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Write your script, or generate one with the AI assistant →"
-              className="flex-1 w-full p-4 text-sm text-[--foreground] bg-transparent outline-none resize-none leading-relaxed font-mono"
+              className="flex-1 w-full p-4 text-sm text-(--foreground) bg-transparent outline-none resize-none leading-relaxed font-mono"
               spellCheck={false}
             />
           </div>
 
           {/* AI Assistant + Hooks */}
-          <div className="w-80 border-l border-[--border] flex flex-col shrink-0 overflow-y-auto">
-            <div className="p-3 border-b border-[--border]">
-              <div className="text-xs font-medium text-[--foreground] mb-2 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[--primary]" /> AI Assistant
+          <div className="w-80 border-l border-(--border) flex flex-col shrink-0 overflow-y-auto">
+            <div className="p-3 border-b border-(--border)">
+              <div className="text-xs font-medium text-(--foreground) mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-(--primary)" /> AI Assistant
               </div>
               <textarea
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
                 rows={3}
                 placeholder="e.g. Make the hook more contrarian and shorten the middle section…"
-                className="w-full text-xs bg-[--muted] border border-[--border] rounded-md px-2 py-1.5 text-[--foreground] outline-none focus:border-[--primary]/50 resize-none"
+                className="w-full text-xs bg-(--muted) border border-(--border) rounded-md px-2 py-1.5 text-(--foreground) outline-none focus:border-(--primary)/50 resize-none"
               />
               <button
                 onClick={() => generate("script")}
                 disabled={generating !== null}
-                className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs bg-[--primary] text-[--primary-foreground] rounded-lg py-1.5 disabled:opacity-40"
+                className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs bg-(--primary) text-(--primary-foreground) rounded-lg py-1.5 disabled:opacity-40"
               >
                 {generating === "script" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                 {generating === "script" ? "Writing…" : "Generate"}
@@ -402,8 +402,8 @@ export function ScriptBuilder({
             </div>
 
             <div className="p-3">
-              <div className="text-xs font-medium text-[--foreground] mb-2 flex items-center gap-1.5">
-                <Scissors className="w-3.5 h-3.5 text-[--primary]" /> Hook Generator
+              <div className="text-xs font-medium text-(--foreground) mb-2 flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5 text-(--primary)" /> Hook Generator
               </div>
               <div className="flex flex-wrap gap-1 mb-2">
                 {HOOK_STYLES.map((style) => (
@@ -413,8 +413,8 @@ export function ScriptBuilder({
                     className={cn(
                       "text-[10px] px-2 py-1 rounded-full border transition-colors",
                       hookStyleSel.has(style)
-                        ? "border-[--primary]/40 bg-[--primary]/10 text-[--primary]"
-                        : "border-[--border] text-[--muted-foreground]"
+                        ? "border-(--primary)/40 bg-(--primary)/10 text-(--primary)"
+                        : "border-(--border) text-(--muted-foreground)"
                     )}
                   >
                     {HOOK_STYLE_LABELS[style]}
@@ -424,7 +424,7 @@ export function ScriptBuilder({
               <button
                 onClick={generateHooks}
                 disabled={generatingHooks || hookStyleSel.size === 0}
-                className="w-full flex items-center justify-center gap-1.5 text-xs border border-[--border] rounded-lg py-1.5 text-[--foreground] hover:bg-[--muted] disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-1.5 text-xs border border-(--border) rounded-lg py-1.5 text-(--foreground) hover:bg-(--muted) disabled:opacity-40"
               >
                 {generatingHooks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                 {generatingHooks ? "Generating…" : "Generate Hooks"}
@@ -432,16 +432,16 @@ export function ScriptBuilder({
 
               {hookCandidates.length > 0 && (
                 <div className="mt-3 space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground]">Candidates</div>
+                  <div className="text-[10px] uppercase tracking-widest text-(--muted-foreground)">Candidates</div>
                   {hookCandidates.map((c, i) => (
-                    <div key={i} className="rounded-md border border-[--border] bg-[--muted] p-2">
-                      <div className="text-[9px] uppercase text-[--primary] mb-1">{c.style}</div>
-                      <p className="text-xs text-[--foreground] mb-1.5">{c.text}</p>
+                    <div key={i} className="rounded-md border border-(--border) bg-(--muted) p-2">
+                      <div className="text-[9px] uppercase text-(--primary) mb-1">{c.style}</div>
+                      <p className="text-xs text-(--foreground) mb-1.5">{c.text}</p>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => saveHook(c)} className="text-[10px] text-[--primary] flex items-center gap-1">
+                        <button onClick={() => saveHook(c)} className="text-[10px] text-(--primary) flex items-center gap-1">
                           <Save className="w-3 h-3" /> Save
                         </button>
-                        <button onClick={() => copyText(c.text, i)} className="text-[10px] text-[--muted-foreground] flex items-center gap-1">
+                        <button onClick={() => copyText(c.text, i)} className="text-[10px] text-(--muted-foreground) flex items-center gap-1">
                           {copiedIdx === i ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           {copiedIdx === i ? "Copied" : "Copy"}
                         </button>
@@ -453,22 +453,22 @@ export function ScriptBuilder({
 
               {hooks.length > 0 && (
                 <div className="mt-3 space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-widest text-[--muted-foreground]">Saved</div>
+                  <div className="text-[10px] uppercase tracking-widest text-(--muted-foreground)">Saved</div>
                   {hooks.map((h) => (
                     <div
                       key={h.id}
                       className={cn(
                         "rounded-md border p-2",
-                        h.selected ? "border-[--primary]/40 bg-[--primary]/5" : "border-[--border] bg-[--card]"
+                        h.selected ? "border-(--primary)/40 bg-(--primary)/5" : "border-(--border) bg-(--card)"
                       )}
                     >
-                      <div className="text-[9px] uppercase text-[--muted-foreground] mb-1">{h.style}</div>
-                      <p className="text-xs text-[--foreground] mb-1.5">{h.text}</p>
+                      <div className="text-[9px] uppercase text-(--muted-foreground) mb-1">{h.style}</div>
+                      <p className="text-xs text-(--foreground) mb-1.5">{h.text}</p>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => toggleHookSelected(h)} className="text-[10px] text-[--primary]">
+                        <button onClick={() => toggleHookSelected(h)} className="text-[10px] text-(--primary)">
                           {h.selected ? "Selected ✓" : "Select"}
                         </button>
-                        <button onClick={() => deleteHook(h.id)} className="text-[--muted-foreground] hover:text-[--destructive]">
+                        <button onClick={() => deleteHook(h.id)} className="text-(--muted-foreground) hover:text-(--destructive)">
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>

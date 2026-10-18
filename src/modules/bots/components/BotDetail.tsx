@@ -55,26 +55,26 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
     try { await api(`/api/bots/${botId}/actions`, { method: "POST", body: { action } }); await reload(); setError(null); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
 
-  if (error && !detail) return <div className="mx-auto max-w-[900px] p-6"><Notice action={<Button onClick={() => { setError(null); reload().catch((e) => setError(errorMessage(e))); }}>Retry</Button>}>{error}</Notice><Link href="/bots" className="mt-3 inline-block text-[13px] text-[--primary]">Back to bots</Link></div>;
-  if (!detail || !meta) return <div className="mx-auto max-w-[900px] space-y-3 p-6" aria-busy="true"><div className="h-10 w-64 animate-pulse rounded bg-[--card]" /><div className="h-64 animate-pulse rounded-lg bg-[--card]" /></div>;
+  if (error && !detail) return <div className="mx-auto max-w-[900px] p-6"><Notice action={<Button onClick={() => { setError(null); reload().catch((e) => setError(errorMessage(e))); }}>Retry</Button>}>{error}</Notice><Link href="/bots" className="mt-3 inline-block text-[13px] text-(--primary)">Back to bots</Link></div>;
+  if (!detail || !meta) return <div className="mx-auto max-w-[900px] space-y-3 p-6" aria-busy="true"><div className="h-10 w-64 animate-pulse rounded bg-(--card)" /><div className="h-64 animate-pulse rounded-lg bg-(--card)" /></div>;
   const bot = detail.bot;
 
   return (
     <div className="mx-auto w-full max-w-[980px] px-4 py-6 sm:px-6">
-      <Link href="/bots" className="inline-flex items-center gap-1 text-[12px] text-[--muted-foreground] hover:text-[--foreground]"><ArrowLeft className="h-3.5 w-3.5" aria-hidden />Bots</Link>
+      <Link href="/bots" className="inline-flex items-center gap-1 text-[12px] text-(--muted-foreground) hover:text-(--foreground)"><ArrowLeft className="h-3.5 w-3.5" aria-hidden />Bots</Link>
       <header className="mt-2 flex flex-wrap items-center gap-3">
         <BotAvatar icon={bot.avatar} color={bot.color} size={44} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2"><h1 className="truncate text-[20px] font-semibold tracking-tight">{bot.name}</h1><Pill tone={statusTone(bot.status)}>{bot.status === "active" ? "Enabled" : bot.status === "draft" ? "Draft" : "Disabled"}</Pill></div>
-          <p className="text-[13px] text-[--muted-foreground]">{bot.role}</p>
+          <p className="text-[13px] text-(--muted-foreground)">{bot.role}</p>
         </div>
         <Button busy={busy} variant={bot.status === "active" ? "secondary" : "primary"} onClick={() => toggle(bot.status === "active" ? "disable" : "enable")}>{bot.status === "active" ? "Disable" : "Enable"}</Button>
       </header>
       {error ? <div className="mt-3"><Notice>{error}</Notice></div> : null}
 
-      <div role="tablist" aria-label="Bot settings" className="mt-5 flex gap-1 overflow-x-auto border-b border-[--border]">
+      <div role="tablist" aria-label="Bot settings" className="mt-5 flex gap-1 overflow-x-auto border-b border-(--border)">
         {TABS.map(([id, label]) => (
-          <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)} className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] ${tab === id ? "border-[--primary] text-[--foreground]" : "border-transparent text-[--muted-foreground] hover:text-[--foreground]"}`}>{label}</button>
+          <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)} className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ${tab === id ? "border-(--primary) text-(--foreground)" : "border-transparent text-(--muted-foreground) hover:text-(--foreground)"}`}>{label}</button>
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-5">
@@ -110,11 +110,11 @@ function VersionsTab({ bot, reload }: { bot: Bot; reload: () => Promise<void> })
   };
   return (
     <div className="max-w-[720px] space-y-4">
-      <p className="text-[13px] leading-5 text-[--muted-foreground]">Every configuration, tool, memory, and skill change creates an immutable checkpoint. Restoring replaces the current policy and explicit grants, then saves the restored state as a new checkpoint.</p>
+      <p className="text-[13px] leading-5 text-(--muted-foreground)">Every configuration, tool, memory, and skill change creates an immutable checkpoint. Restoring replaces the current policy and explicit grants, then saves the restored state as a new checkpoint.</p>
       {error ? <Notice action={<Button onClick={() => void load()}>Retry</Button>}>{error}</Notice> : null}
-      {!versions ? <p className="text-[13px] text-[--muted-foreground]" aria-busy="true">Loading versions…</p> : null}
+      {!versions ? <p className="text-[13px] text-(--muted-foreground)" aria-busy="true">Loading versions…</p> : null}
       {versions?.length === 0 ? <Empty title="No checkpoints yet">The next saved configuration change creates the first checkpoint.</Empty> : null}
-      {versions?.length ? <ul className="divide-y divide-[--border] overflow-hidden rounded-lg border border-[--border] bg-[--card]">{versions.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-3 p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium">Version {item.version}</p><p className="text-[12px] text-[--muted-foreground]">{item.reason.replaceAll("_", " ")} · {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p></div><Button variant="secondary" busy={restoring === item.version} disabled={item.version === versions[0]?.version} onClick={() => void restore(item.version)}>Restore</Button></li>)}</ul> : null}
+      {versions?.length ? <ul className="divide-y divide-(--border) overflow-hidden rounded-lg border border-(--border) bg-(--card)">{versions.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-3 p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium">Version {item.version}</p><p className="text-[12px] text-(--muted-foreground)">{item.reason.replaceAll("_", " ")} · {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p></div><Button variant="secondary" busy={restoring === item.version} disabled={item.version === versions[0]?.version} onClick={() => void restore(item.version)}>Restore</Button></li>)}</ul> : null}
     </div>
   );
 }
@@ -145,7 +145,7 @@ function OverviewTab({ bot, reload }: { bot: Bot; reload: () => Promise<void> })
       </div>
       <Field label="Output preferences"><TextArea rows={2} value={f.outputPreferences} onChange={(e) => setF({ ...f, outputPreferences: e.target.value })} /></Field>
       <fieldset className="space-y-2"><legend className="text-[12px] font-medium">Working method</legend>
-        <p className="text-[11px] text-[--muted-foreground]">Told to the bot as its steps. Mark a step deterministic when code or a tool should do it instead of the model.</p>
+        <p className="text-[11px] text-(--muted-foreground)">Told to the bot as its steps. Mark a step deterministic when code or a tool should do it instead of the model.</p>
         {workflow.map((s, i) => (
           <div key={i} className="flex gap-2"><TextInput aria-label={`Step ${i + 1}`} value={s.label} onChange={(e) => setWorkflow(workflow.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /><Select aria-label="Step type" className="w-[150px]" value={s.kind} onChange={(e) => setWorkflow(workflow.map((x, j) => (j === i ? { ...x, kind: e.target.value } : x)))}><option value="llm">Model</option><option value="tool">Tool</option><option value="deterministic">Deterministic</option></Select><Button variant="ghost" aria-label={`Remove step ${i + 1}`} onClick={() => setWorkflow(workflow.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
         ))}
@@ -177,7 +177,7 @@ function ModelTab({ bot, meta, reload }: { bot: Bot; meta: Meta; reload: () => P
         <Field label="Reasoning effort"><Select value={m.effort} onChange={(e) => setM({ ...m, effort: e.target.value })}><option value="">Host default</option>{["none", "low", "medium", "high", "xhigh", "max"].map((x) => <option key={x}>{x}</option>)}</Select></Field>
         <Field label="Memory context budget (tokens)" hint="Caps the memory block placed in front of the bot."><TextInput type="number" min={500} value={m.maxContextTokens} onChange={(e) => setM({ ...m, maxContextTokens: e.target.value })} /></Field>
       </div>
-      {meta.models?.unsupported.length ? <p className="text-[12px] text-[--muted-foreground]">Not offered because Hermes cannot apply it per session: {meta.models.unsupported.join(", ")}.</p> : null}
+      {meta.models?.unsupported.length ? <p className="text-[12px] text-(--muted-foreground)">Not offered because Hermes cannot apply it per session: {meta.models.unsupported.join(", ")}.</p> : null}
       <h3 className="pt-2 text-[14px] font-medium">Limits</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Tasks at once"><TextInput type="number" min={1} max={20} value={l.maxConcurrentTasks} onChange={(e) => setL({ ...l, maxConcurrentTasks: e.target.value as never })} /></Field>
@@ -210,35 +210,35 @@ function SkillsTab({ bot, detail, reload }: { bot: Bot; detail: Detail; reload: 
       <section>
         <h3 className="mb-2 text-[14px] font-medium">Installed on this bot</h3>
         {detail.skills.length ? <ul className="space-y-1">{detail.skills.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 rounded-md border border-[--border] px-3 py-2 text-[13px]">
-            <label className="flex flex-1 items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={s.enabled} onChange={(e) => run("t" + s.id, () => api(`/api/bots/${bot.id}/skills`, { method: "PATCH", body: { skillId: s.id, enabled: e.target.checked } }))} /><span className="font-medium">{s.name}</span><span className="text-[--muted-foreground]">{s.description}</span></label>
+          <li key={s.id} className="flex items-center gap-3 rounded-md border border-(--border) px-3 py-2 text-[13px]">
+            <label className="flex flex-1 items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={s.enabled} onChange={(e) => run("t" + s.id, () => api(`/api/bots/${bot.id}/skills`, { method: "PATCH", body: { skillId: s.id, enabled: e.target.checked } }))} /><span className="font-medium">{s.name}</span><span className="text-(--muted-foreground)">{s.description}</span></label>
             <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => run("r" + s.id, () => api(`/api/bots/${bot.id}/skills?skillId=${s.id}`, { method: "DELETE" }), "Removed.")}><Trash2 className="h-4 w-4" /></Button>
           </li>))}</ul> : <Empty title="No skills installed">Skills are instructions the bot follows. Assign an approved one below, or install one from a Hermes skill file.</Empty>}
       </section>
       <section>
         <h3 className="mb-2 text-[14px] font-medium">Workspace skills</h3>
         {library.filter((s) => !assigned.has(s.id)).length ? <ul className="space-y-1">{library.filter((s) => !assigned.has(s.id)).map((s) => (
-          <li key={s.id} className="flex items-center gap-3 rounded-md border border-[--border] px-3 py-2 text-[13px]">
-            <span className="min-w-0 flex-1"><span className="font-medium">{s.name}</span> <span className="text-[--muted-foreground]">v{s.version}. {s.description}</span>{s.requiredTools.length ? <span className="block text-[11px] text-[--muted-foreground]">Wants tools: {s.requiredTools.join(", ")}</span> : null}</span>
+          <li key={s.id} className="flex items-center gap-3 rounded-md border border-(--border) px-3 py-2 text-[13px]">
+            <span className="min-w-0 flex-1"><span className="font-medium">{s.name}</span> <span className="text-(--muted-foreground)">v{s.version}. {s.description}</span>{s.requiredTools.length ? <span className="block text-[11px] text-(--muted-foreground)">Wants tools: {s.requiredTools.join(", ")}</span> : null}</span>
             {s.status === "active" ? <Button busy={busy === "a" + s.id} onClick={() => run("a" + s.id, async () => { const r = await api<{ unmetTools: string[] }>(`/api/bots/${bot.id}/skills`, { method: "POST", body: { skillId: s.id } }); setMsg({ tone: r.unmetTools.length ? "info" : "good", text: r.unmetTools.length ? `Assigned. It wants tools this bot has no access to: ${r.unmetTools.join(", ")}. Grant them on the Tools tab if you want it to use them.` : "Assigned." }); })}>Assign</Button>
               : <Button onClick={() => api<{ review: NonNullable<typeof review> }>(`/api/bots/skills/${s.id}`).then((d) => setReview(d.review)).catch((e) => setMsg({ tone: "bad", text: errorMessage(e) }))}>Review</Button>}
             <Pill tone={s.status === "active" ? "good" : "warn"}>{s.status === "active" ? "Approved" : "Awaiting review"}</Pill>
-          </li>))}</ul> : <p className="text-[13px] text-[--muted-foreground]">Nothing else in this workspace yet.</p>}
+          </li>))}</ul> : <p className="text-[13px] text-(--muted-foreground)">Nothing else in this workspace yet.</p>}
       </section>
       <section className="space-y-2">
         <h3 className="text-[14px] font-medium">Install a skill</h3>
-        <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">Hermes SKILL.md files. Sentinel stores the text only, never runs anything from it, and nothing can be assigned until an admin has read it and approved that exact text.</p>
+        <p className="max-w-[70ch] text-[12px] leading-5 text-(--muted-foreground)">Hermes SKILL.md files. Sentinel stores the text only, never runs anything from it, and nothing can be assigned until an admin has read it and approved that exact text.</p>
         <Field label="From a URL"><TextInput value={src.url} onChange={(e) => setSrc({ ...src, url: e.target.value })} placeholder="https://github.com/org/repo/blob/main/skills/hook-writer/SKILL.md" /></Field>
         <Field label="Or paste the file"><TextArea rows={4} value={src.content} onChange={(e) => setSrc({ ...src, content: e.target.value })} /></Field>
         <Button busy={busy === "propose"} disabled={!src.url.trim() && !src.content.trim()} onClick={() => run("propose", async () => { const d = await api<{ review: NonNullable<typeof review> }>("/api/bots/skills", { method: "POST", body: { workspaceId: bot.workspaceId, ...(src.url.trim() ? { url: src.url.trim() } : { content: src.content }) } }); setReview(d.review); setSrc({ url: "", content: "" }); })}>Fetch for review</Button>
       </section>
       {review ? (
-        <section aria-label="Skill review" className="space-y-3 rounded-lg border border-amber-500/40 bg-[--card] p-4">
+        <section aria-label="Skill review" className="space-y-3 rounded-lg border border-amber-500/40 bg-(--card) p-4">
           <h3 className="text-[14px] font-medium">Review {review.name}</h3>
-          <p className="text-[13px] text-[--muted-foreground]">{review.description}</p>
+          <p className="text-[13px] text-(--muted-foreground)">{review.description}</p>
           {review.requiredTools.length ? <p className="text-[12px]">Asks for tools: {review.requiredTools.join(", ")}. Approving does not grant them.</p> : null}
-          <p className="text-[12px] text-[--muted-foreground]">Source: {String(review.source.url ?? review.source.kind)}. SHA-256 <code>{review.sha256.slice(0, 16)}…</code></p>
-          <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-[--border] bg-[--background] p-3 text-[12px] leading-5">{review.body}</pre>
+          <p className="text-[12px] text-(--muted-foreground)">Source: {String(review.source.url ?? review.source.kind)}. SHA-256 <code>{review.sha256.slice(0, 16)}…</code></p>
+          <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--border) bg-(--background) p-3 text-[12px] leading-5">{review.body}</pre>
           <div className="flex gap-2">
             <Button variant="primary" busy={busy === "approve"} onClick={() => run("approve", async () => { await api(`/api/bots/skills/${review.skillId}`, { method: "POST", body: { action: "approve", sha256: review.sha256 } }); setReview(null); }, "Approved. You can assign it now.")}>Approve this text</Button>
             <Button variant="danger" busy={busy === "reject"} onClick={() => run("reject", async () => { await api(`/api/bots/skills/${review.skillId}`, { method: "POST", body: { action: "reject" } }); setReview(null); }, "Rejected.")}>Reject</Button>
@@ -269,39 +269,39 @@ function ToolsTab({ bot, detail, catalog, reload }: { bot: Bot; detail: Detail; 
   };
   return (
     <div className="max-w-[820px] space-y-5">
-      <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">A bot starts with no tools. Set access per server, then override per tool. Read only covers tools the server itself marks read-only. On a Hermes host with Sentinel&apos;s pre-execution gate installed, each call is checked before it runs and a call outside these grants is refused. On any other host Sentinel checks each call as Hermes reports it and stops the task; it cannot block that call before Hermes makes it. Each task records which applied.</p>
+      <p className="max-w-[70ch] text-[12px] leading-5 text-(--muted-foreground)">A bot starts with no tools. Set access per server, then override per tool. Read only covers tools the server itself marks read-only. On a Hermes host with Sentinel&apos;s pre-execution gate installed, each call is checked before it runs and a call outside these grants is refused. On any other host Sentinel checks each call as Hermes reports it and stops the task; it cannot block that call before Hermes makes it. Each task records which applied.</p>
       {msg ? <Notice tone="info">{msg}</Notice> : null}
       <ul className="space-y-2">
         {catalog.map((s) => {
           const perms = grant(s.id, "*");
           const isOpen = open[s.id];
           return (
-            <li key={s.id} className="rounded-lg border border-[--border] bg-[--card]">
+            <li key={s.id} className="rounded-lg border border-(--border) bg-(--card)">
               <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-                <button className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]" aria-expanded={!!isOpen} onClick={() => setOpen({ ...open, [s.id]: !isOpen })}>{isOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}<span className="truncate text-[14px] font-medium">{s.name}</span><span className="text-[12px] text-[--muted-foreground]">{s.tools.length} tools</span>{s.kind === "registered" ? <Pill tone={s.status === "connected" ? "good" : s.status === "error" ? "bad" : "neutral"}>{s.status}</Pill> : null}{!s.enabled ? <Pill tone="warn">Disabled</Pill> : null}</button>
+                <button className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)" aria-expanded={!!isOpen} onClick={() => setOpen({ ...open, [s.id]: !isOpen })}>{isOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}<span className="truncate text-[14px] font-medium">{s.name}</span><span className="text-[12px] text-(--muted-foreground)">{s.tools.length} tools</span>{s.kind === "registered" ? <Pill tone={s.status === "connected" ? "good" : s.status === "error" ? "bad" : "neutral"}>{s.status}</Pill> : null}{!s.enabled ? <Pill tone="warn">Disabled</Pill> : null}</button>
                 <Select aria-label={`Access to ${s.name}`} className="h-8 w-[160px] py-0" value={perms} onChange={(e) => set(s.id, "*", e.target.value)}><option value="">No access</option>{PERMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
               </div>
               {isOpen ? (
-                <div className="border-t border-[--border] px-3 py-2">
-                  {s.description ? <p className="mb-2 text-[12px] text-[--muted-foreground]">{s.description}</p> : null}
-                  {s.kind === "registered" ? <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]"><span className="text-[--muted-foreground]">{s.url}</span>{s.lastDiscoveredAt ? <span className="text-[--muted-foreground]">Checked {formatDistanceToNow(new Date(s.lastDiscoveredAt), { addSuffix: true })}</span> : null}{s.lastError ? <span className="text-red-400">{s.lastError}</span> : null}<Button variant="ghost" className="h-7" busy={busy === s.id + "refresh"} onClick={() => server(s.id, "refresh")}><RefreshCw className="h-3.5 w-3.5" aria-hidden />Refresh tools</Button><Button variant="ghost" className="h-7" onClick={() => server(s.id, s.enabled ? "disable" : "enable")}>{s.enabled ? "Disable server" : "Enable server"}</Button><Button variant="ghost" className="h-7 text-red-400" onClick={() => server(s.id, "delete")}>Remove</Button></div> : null}
-                  {s.tools.length ? <ul className="divide-y divide-[--border]">{s.tools.map((t) => (
+                <div className="border-t border-(--border) px-3 py-2">
+                  {s.description ? <p className="mb-2 text-[12px] text-(--muted-foreground)">{s.description}</p> : null}
+                  {s.kind === "registered" ? <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]"><span className="text-(--muted-foreground)">{s.url}</span>{s.lastDiscoveredAt ? <span className="text-(--muted-foreground)">Checked {formatDistanceToNow(new Date(s.lastDiscoveredAt), { addSuffix: true })}</span> : null}{s.lastError ? <span className="text-red-400">{s.lastError}</span> : null}<Button variant="ghost" className="h-7" busy={busy === s.id + "refresh"} onClick={() => server(s.id, "refresh")}><RefreshCw className="h-3.5 w-3.5" aria-hidden />Refresh tools</Button><Button variant="ghost" className="h-7" onClick={() => server(s.id, s.enabled ? "disable" : "enable")}>{s.enabled ? "Disable server" : "Enable server"}</Button><Button variant="ghost" className="h-7 text-red-400" onClick={() => server(s.id, "delete")}>Remove</Button></div> : null}
+                  {s.tools.length ? <ul className="divide-y divide-(--border)">{s.tools.map((t) => (
                     <li key={t.name} className="flex flex-wrap items-center gap-2 py-1.5 text-[13px]">
                       <code className="text-[12px]">{t.name}</code>
                       <Pill>{t.readOnly === true ? "Read only" : t.readOnly === false ? "Changes state" : "Unlabelled"}</Pill>
                       {t.risk === "high" ? <Pill tone="bad">Bypasses Sentinel</Pill> : null}
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-[--muted-foreground]">{t.description}</span>
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-(--muted-foreground)">{t.description}</span>
                       <Select aria-label={`Access to ${t.name}`} className="h-7 w-[140px] py-0 text-[12px]" value={grant(s.id, t.name)} onChange={(e) => set(s.id, t.name, e.target.value)}><option value="">Follow server</option>{PERMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
-                    </li>))}</ul> : <p className="text-[13px] text-[--muted-foreground]">No tools discovered yet. Refresh to ask the server what it offers.</p>}
+                    </li>))}</ul> : <p className="text-[13px] text-(--muted-foreground)">No tools discovered yet. Refresh to ask the server what it offers.</p>}
                 </div>
               ) : null}
             </li>
           );
         })}
       </ul>
-      <section className="space-y-2 rounded-lg border border-[--border] p-4">
+      <section className="space-y-2 rounded-lg border border-(--border) p-4">
         <h3 className="text-[14px] font-medium">Connect an MCP server</h3>
-        <p className="text-[12px] text-[--muted-foreground]">For example an image or video generation provider. Sentinel asks it for its tool list. Secrets stay in server environment variables; only the variable name is stored.</p>
+        <p className="text-[12px] text-(--muted-foreground)">For example an image or video generation provider. Sentinel asks it for its tool list. Secrets stay in server environment variables; only the variable name is stored.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="URL"><TextInput value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/mcp" /></Field>
@@ -322,13 +322,13 @@ function MemoryTab({ bot, meta, reload }: { bot: Bot; meta: Meta; reload: () => 
   const { saving, msg, save } = useSaver(reload);
   const flip = (key: "readScopes" | "writeScopes", scope: string, on: boolean) => setP({ ...p, [key]: on ? [...p[key], scope] : p[key].filter((s: string) => s !== scope) });
   const grid = (key: "readScopes" | "writeScopes", title: string, hint: string) => (
-    <fieldset disabled={!p.enabled} className="disabled:opacity-50"><legend className="text-[13px] font-medium">{title}</legend><p className="mb-1 text-[11px] text-[--muted-foreground]">{hint}</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">{meta.memoryScopes.map((s) => <label key={s} className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={(p[key] as string[]).includes(s)} onChange={(e) => flip(key, s, e.target.checked)} />{MEMORY_SCOPE_LABEL[s]}</label>)}</div></fieldset>
+    <fieldset disabled={!p.enabled} className="disabled:opacity-50"><legend className="text-[13px] font-medium">{title}</legend><p className="mb-1 text-[11px] text-(--muted-foreground)">{hint}</p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">{meta.memoryScopes.map((s) => <label key={s} className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={(p[key] as string[]).includes(s)} onChange={(e) => flip(key, s, e.target.checked)} />{MEMORY_SCOPE_LABEL[s]}</label>)}</div></fieldset>
   );
   return (
     <div className="max-w-[720px] space-y-5">
-      <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">Bots use the one memory system Sentinel has. Reads and writes follow your existing permissions; this only narrows what this bot may touch. What it writes carries its name, even at shared scopes.</p>
-      <label className="flex items-center gap-2 text-[14px] font-medium"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={p.enabled} onChange={(e) => setP({ ...p, enabled: e.target.checked })} />Memory on</label>
+      <p className="max-w-[70ch] text-[12px] leading-5 text-(--muted-foreground)">Bots use the one memory system Sentinel has. Reads and writes follow your existing permissions; this only narrows what this bot may touch. What it writes carries its name, even at shared scopes.</p>
+      <label className="flex items-center gap-2 text-[14px] font-medium"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={p.enabled} onChange={(e) => setP({ ...p, enabled: e.target.checked })} />Memory on</label>
       {grid("readScopes", "Can read", "Where it may retrieve from. Private means only this bot's own notes, for you.")}
       {grid("writeScopes", "Can write", "Where it may store what it learns. After each task it offers a summary to Sentinel's memory gate, which may decline it. Session scope is unavailable to bot tasks.")}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -352,17 +352,17 @@ function DelegationTab({ bot, meta, reload }: { bot: Bot; meta: Meta; reload: ()
   const callers = [["user", "People in this workspace (Test and manual runs)"], ...meta.callers.agents.map((a) => [a, `Agent ${a.replace("agent:", "")}`]), ...meta.callers.clients.map((c) => [c.key, `Connected client: ${c.name}`])];
   return (
     <div className="max-w-[720px] space-y-5">
-      <fieldset><legend className="text-[13px] font-medium">Who can hand this bot work</legend><p className="mb-2 text-[11px] text-[--muted-foreground]">Nobody outside this list can see or use it. Agents connect through a client, so pick the client their Sentinel connection uses.</p>
-        <ul className="space-y-1">{callers.map(([value, label]) => <li key={value}><label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={p.allowedCallers.includes(value)} onChange={(e) => flip("allowedCallers", value, e.target.checked)} />{label}</label></li>)}</ul>
+      <fieldset><legend className="text-[13px] font-medium">Who can hand this bot work</legend><p className="mb-2 text-[11px] text-(--muted-foreground)">Nobody outside this list can see or use it. Agents connect through a client, so pick the client their Sentinel connection uses.</p>
+        <ul className="space-y-1">{callers.map(([value, label]) => <li key={value}><label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={p.allowedCallers.includes(value)} onChange={(e) => flip("allowedCallers", value, e.target.checked)} />{label}</label></li>)}</ul>
       </fieldset>
       <fieldset><legend className="text-[13px] font-medium">Can it hand work to other bots</legend>
-        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={p.canDelegate} onChange={(e) => setP({ ...p, canDelegate: e.target.checked })} />Allow this bot to delegate</label>
-        <fieldset disabled={!p.canDelegate} className="mt-2 space-y-1 disabled:opacity-50"><legend className="text-[11px] text-[--muted-foreground]">Only to these bots. Each must also list this bot as a caller.</legend>
-          {others.length ? others.map((o) => <label key={o.id} className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-[--primary]" checked={p.allowedChildBots.includes(o.id)} onChange={(e) => flip("allowedChildBots", o.id, e.target.checked)} />{o.name}</label>) : <p className="text-[13px] text-[--muted-foreground]">No other bots yet.</p>}
+        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={p.canDelegate} onChange={(e) => setP({ ...p, canDelegate: e.target.checked })} />Allow this bot to delegate</label>
+        <fieldset disabled={!p.canDelegate} className="mt-2 space-y-1 disabled:opacity-50"><legend className="text-[11px] text-(--muted-foreground)">Only to these bots. Each must also list this bot as a caller.</legend>
+          {others.length ? others.map((o) => <label key={o.id} className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4 accent-(--primary)" checked={p.allowedChildBots.includes(o.id)} onChange={(e) => flip("allowedChildBots", o.id, e.target.checked)} />{o.name}</label>) : <p className="text-[13px] text-(--muted-foreground)">No other bots yet.</p>}
           <Field label="Chain depth"><Select value={p.maxDepth} onChange={(e) => setP({ ...p, maxDepth: Number(e.target.value) })} className="w-[120px]">{[1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
         </fieldset>
       </fieldset>
-      <p className="text-[12px] text-[--muted-foreground]">Bots can never create or change bots. That stays an admin action on this screen.</p>
+      <p className="text-[12px] text-(--muted-foreground)">Bots can never create or change bots. That stays an admin action on this screen.</p>
       <SaveBar saving={saving} msg={msg} onSave={() => save(() => api(`/api/bots/${bot.id}`, { method: "PUT", body: { delegationPolicy: p } }))} />
     </div>
   );
@@ -402,7 +402,7 @@ function TestTab({ bot, detail }: { bot: Bot; detail: Detail }) {
   };
   return (
     <div className="max-w-[820px] space-y-4">
-      <p className="max-w-[70ch] text-[12px] leading-5 text-[--muted-foreground]">Runs the bot for real, on {bot.runtimeAgentId}, with its actual tools and memory. It goes through the same queue as delegated work, so it waits for a worker and can be cancelled. {detail.grants.length === 0 ? "This bot has no tool grants, so any tool call will stop it." : ""}</p>
+      <p className="max-w-[70ch] text-[12px] leading-5 text-(--muted-foreground)">Runs the bot for real, on {bot.runtimeAgentId}, with its actual tools and memory. It goes through the same queue as delegated work, so it waits for a worker and can be cancelled. {detail.grants.length === 0 ? "This bot has no tool grants, so any tool call will stop it." : ""}</p>
       <Field label="Prompt"><TextArea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></Field>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Model role"><Select value={role} onChange={(e) => setRole(e.target.value)} className="w-[160px]">{["primary", "fast", "reasoning", "vision"].map((r) => <option key={r}>{r}</option>)}</Select></Field>
@@ -410,8 +410,8 @@ function TestTab({ bot, detail }: { bot: Bot; detail: Detail }) {
       </div>
       {error ? <Notice>{error}</Notice> : null}
       {pollError ? <Notice tone="warn">Could not read the task: {pollError}</Notice> : null}
-      {taskId && !task && !pollError ? <p className="text-[13px] text-[--muted-foreground]" aria-busy="true">Waiting for the task…</p> : null}
-      {task ? <><TaskView task={task} onChanged={() => void refresh()} />{task.status === "QUEUED" ? <p className="text-[12px] text-[--muted-foreground]">Queued. It starts when the orchestration worker picks it up.</p> : null}</> : null}
+      {taskId && !task && !pollError ? <p className="text-[13px] text-(--muted-foreground)" aria-busy="true">Waiting for the task…</p> : null}
+      {task ? <><TaskView task={task} onChanged={() => void refresh()} />{task.status === "QUEUED" ? <p className="text-[12px] text-(--muted-foreground)">Queued. It starts when the orchestration worker picks it up.</p> : null}</> : null}
     </div>
   );
 }
@@ -425,17 +425,17 @@ function ActivityTab({ bot }: { bot: Bot }) {
   useEffect(() => { void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [load]);
   const { task, refresh } = usePolledTask(selected);
   if (error && !data) return <Notice action={<Button onClick={() => void load()}>Retry</Button>}>{error}</Notice>;
-  if (!data) return <p className="text-[13px] text-[--muted-foreground]" aria-busy="true">Loading activity…</p>;
+  if (!data) return <p className="text-[13px] text-(--muted-foreground)" aria-busy="true">Loading activity…</p>;
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_1fr]">
       <div className="space-y-3">
         <p className="text-[13px]">Today: {data.usageToday.tasks} task(s), {data.usageToday.tokens.toLocaleString()} tokens{data.usageToday.pricedTasks ? `, $${data.usageToday.costUsd.toFixed(2)}` : ", cost not priced"}.</p>
         {data.tasks.length === 0 ? <Empty title="No tasks yet">Run a test, or wait for an agent to delegate something.</Empty> : (
           <ul className="space-y-1">{data.tasks.map((t) => (
-            <li key={t.id}><button onClick={() => setSelected(t.id)} aria-current={selected === t.id} className={`w-full rounded-md border px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring] ${selected === t.id ? "border-[--primary]/60 bg-[--accent]" : "border-[--border] hover:bg-[--accent]"}`}>
-              <span className="flex items-center gap-2"><Pill tone={statusTone(t.status)}>{t.status}</Pill>{t.mode === "test" ? <Pill>Test</Pill> : null}<span className="text-[11px] text-[--muted-foreground]">{formatDistanceToNow(new Date(t.createdAt), { addSuffix: true })}</span></span>
+            <li key={t.id}><button onClick={() => setSelected(t.id)} aria-current={selected === t.id} className={`w-full rounded-md border px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ${selected === t.id ? "border-(--primary)/60 bg-(--accent)" : "border-(--border) hover:bg-(--accent)"}`}>
+              <span className="flex items-center gap-2"><Pill tone={statusTone(t.status)}>{t.status}</Pill>{t.mode === "test" ? <Pill>Test</Pill> : null}<span className="text-[11px] text-(--muted-foreground)">{formatDistanceToNow(new Date(t.createdAt), { addSuffix: true })}</span></span>
               <span className="mt-1 line-clamp-2 block text-[13px]">{t.task}</span>
-              <span className="mt-0.5 block text-[11px] text-[--muted-foreground]">{t.origin ?? "unknown caller"}{t.model ? `, ${t.model}` : ""}{t.totalTokens ? `, ${t.totalTokens.toLocaleString()} tokens` : ""}{t.latencyMs ? `, ${(t.latencyMs / 1000).toFixed(1)}s` : ""}</span>
+              <span className="mt-0.5 block text-[11px] text-(--muted-foreground)">{t.origin ?? "unknown caller"}{t.model ? `, ${t.model}` : ""}{t.totalTokens ? `, ${t.totalTokens.toLocaleString()} tokens` : ""}{t.latencyMs ? `, ${(t.latencyMs / 1000).toFixed(1)}s` : ""}</span>
             </button></li>))}</ul>)}
       </div>
       <div className="min-w-0">{task ? <TaskView task={task} onChanged={() => { void refresh(); void load(); }} /> : <Empty title="Pick a task">Its tools, memory use, model, tokens and events appear here.</Empty>}</div>

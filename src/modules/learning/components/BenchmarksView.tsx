@@ -33,20 +33,20 @@ function ResultsPanel({ benchmarkId }: { benchmarkId: string }) {
       .catch(() => setResults([]));
   }, [benchmarkId]);
 
-  if (results === null) return <p className="text-xs text-[--muted-foreground] pl-6">Loading results…</p>;
-  if (results.length === 0) return <p className="text-xs text-[--muted-foreground] pl-6">No runs recorded yet.</p>;
+  if (results === null) return <p className="text-xs text-(--muted-foreground) pl-6">Loading results…</p>;
+  if (results.length === 0) return <p className="text-xs text-(--muted-foreground) pl-6">No runs recorded yet.</p>;
 
   return (
     <div className="pl-6 space-y-1.5">
       {results.map((r) => (
         <div key={r.id} className="flex items-center gap-2 text-xs">
-          <span className={r.candidateId ? "text-[--foreground]" : "text-[--muted-foreground] italic"}>
+          <span className={r.candidateId ? "text-(--foreground)" : "text-(--muted-foreground) italic"}>
             {r.candidateId ? `candidate ${r.candidateId.slice(0, 8)}` : "baseline"}
           </span>
-          <span className="text-[10px] text-[--muted-foreground]">
+          <span className="text-[10px] text-(--muted-foreground)">
             score {r.overallScore?.toFixed(2) ?? "—"}
           </span>
-          {r.accuracy !== null && <span className="text-[10px] text-[--muted-foreground]">acc {r.accuracy.toFixed(2)}</span>}
+          {r.accuracy !== null && <span className="text-[10px] text-(--muted-foreground)">acc {r.accuracy.toFixed(2)}</span>}
           {r.safetyViolations > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400">
               {r.safetyViolations} safety violation(s)
@@ -84,24 +84,24 @@ export function BenchmarksView() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <h1 className="text-lg font-semibold text-[--foreground] mb-1 flex items-center gap-2">
-        <Gauge className="w-4 h-4 text-[--primary]" /> Benchmarks
+      <h1 className="text-lg font-semibold text-(--foreground) mb-1 flex items-center gap-2">
+        <Gauge className="w-4 h-4 text-(--primary)" /> Benchmarks
       </h1>
-      <p className="text-sm text-[--muted-foreground] mb-6">
+      <p className="text-sm text-(--muted-foreground) mb-6">
         Baseline vs. candidate, with hard guardrails (accuracy regression, safety violations,
         cost/latency ceilings) that gate promotion regardless of the blended score — a cheaper but
         less accurate candidate fails, a faster but unsafe one fails.
       </p>
 
       {!loaded ? (
-        <div className="text-xs text-[--muted-foreground]">Loading…</div>
+        <div className="text-xs text-(--muted-foreground)">Loading…</div>
       ) : error ? (
         <div className="text-xs text-red-400 border border-red-500/20 rounded-lg p-6 text-center">
           {error}{" "}
           <button type="button" onClick={load} className="underline hover:no-underline">Retry</button>
         </div>
       ) : definitions.length === 0 ? (
-        <div className="text-xs text-[--muted-foreground] border border-dashed border-[--sidebar-border] rounded-lg p-6 text-center">
+        <div className="text-xs text-(--muted-foreground) border border-dashed border-(--sidebar-border) rounded-lg p-6 text-center">
           No benchmark definitions yet.
         </div>
       ) : (
@@ -109,11 +109,11 @@ export function BenchmarksView() {
           {definitions.map((def) => {
             const isOpen = expanded === def.id;
             return (
-              <div key={def.id} className="rounded-lg border border-[--sidebar-border] bg-[--card] p-3">
+              <div key={def.id} className="rounded-lg border border-(--sidebar-border) bg-(--card) p-3">
                 <button className="flex items-center gap-2 w-full text-left" onClick={() => setExpanded(isOpen ? null : def.id)}>
-                  <span className="text-sm text-[--foreground] flex-1 truncate">{def.name}</span>
-                  <span className="text-[10px] text-[--muted-foreground]">{def.category}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${def.enabled ? "bg-emerald-500/15 text-emerald-400" : "bg-white/5 text-[--muted-foreground]"}`}>
+                  <span className="text-sm text-(--foreground) flex-1 truncate">{def.name}</span>
+                  <span className="text-[10px] text-(--muted-foreground)">{def.category}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${def.enabled ? "bg-emerald-500/15 text-emerald-400" : "bg-white/5 text-(--muted-foreground)"}`}>
                     {def.enabled ? "enabled" : "disabled"}
                   </span>
                 </button>

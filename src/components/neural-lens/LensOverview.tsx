@@ -34,8 +34,8 @@ export function relativeTime(at: Date): string {
 
 function Panel({ title, icon: Icon, children }: { title: string; icon: ElementType; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-[--canvas-card-border] bg-[--canvas-card] p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[--muted-foreground]">
+    <div className="rounded-lg border border-(--canvas-card-border) bg-(--canvas-card) p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--muted-foreground)">
         <Icon className="h-3.5 w-3.5" />
         {title}
       </div>
@@ -45,7 +45,7 @@ function Panel({ title, icon: Icon, children }: { title: string; icon: ElementTy
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="py-2 text-xs text-[--muted-foreground]">{children}</p>;
+  return <p className="py-2 text-xs text-(--muted-foreground)">{children}</p>;
 }
 
 /**
@@ -98,7 +98,7 @@ export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: Le
   return (
     <div className="grid h-full min-h-[560px] grid-rows-[minmax(420px,1fr)_auto] gap-3 p-3">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="relative min-h-[420px] overflow-hidden rounded-xl border border-[--canvas-card-border] bg-[#01040a]">
+        <div className="relative min-h-[420px] overflow-hidden rounded-xl border border-(--canvas-card-border) bg-[#01040a]">
           <NeuralLens apiRef={apiRef} initialDemoMode={initialDemoMode} />
           <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-md border border-white/10 bg-black/55 px-2.5 py-1 text-[9px] font-medium uppercase tracking-wide text-white/70 backdrop-blur-md">
             <span
@@ -116,9 +116,9 @@ export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: Le
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {stats.statusItems.map((item) => (
-                  <div key={item.label} className="rounded-md border border-[--border] px-2 py-1.5">
-                    <div className="text-[15px] font-semibold text-[--canvas-foreground]">{item.value}</div>
-                    <div className="text-[10px] text-[--muted-foreground]">{item.label}</div>
+                  <div key={item.label} className="rounded-md border border-(--border) px-2 py-1.5">
+                    <div className="text-[15px] font-semibold text-(--canvas-foreground)">{item.value}</div>
+                    <div className="text-[10px] text-(--muted-foreground)">{item.label}</div>
                   </div>
                 ))}
               </div>
@@ -134,8 +134,8 @@ export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: Le
                   <li key={run.id} className="flex items-start gap-2 text-xs">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
                     <span className="min-w-0">
-                      <span className="block truncate text-[--canvas-foreground]">{run.label}</span>
-                      <span className="text-[10px] text-[--muted-foreground]">{run.detail}</span>
+                      <span className="block truncate text-(--canvas-foreground)">{run.label}</span>
+                      <span className="text-[10px] text-(--muted-foreground)">{run.detail}</span>
                     </span>
                   </li>
                 ))}
@@ -158,8 +158,8 @@ export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: Le
                       aria-hidden
                     />
                     <span className="min-w-0">
-                      <span className="block truncate text-[--canvas-foreground]">{alert.label}</span>
-                      <span className="text-[10px] text-[--muted-foreground]">{alert.detail}</span>
+                      <span className="block truncate text-(--canvas-foreground)">{alert.label}</span>
+                      <span className="text-[10px] text-(--muted-foreground)">{alert.detail}</span>
                     </span>
                   </li>
                 ))}
@@ -178,11 +178,11 @@ export function LensOverview({ lens, stats, initialDemoMode = true }: { lens: Le
               {stats.recentChanges.map((change) => (
                 <div
                   key={change.id}
-                  className="flex items-center gap-2 rounded-md border border-[--border] bg-[--background]/40 px-2.5 py-1.5 text-[11px]"
+                  className="flex items-center gap-2 rounded-md border border-(--border) bg-(--background)/40 px-2.5 py-1.5 text-[11px]"
                 >
-                  <span className="text-[--canvas-foreground]">{change.label}</span>
-                  {change.detail ? <span className="text-[--muted-foreground]">· {change.detail}</span> : null}
-                  <span className="text-[--muted-foreground]">· {relativeTime(change.at)}</span>
+                  <span className="text-(--canvas-foreground)">{change.label}</span>
+                  {change.detail ? <span className="text-(--muted-foreground)">· {change.detail}</span> : null}
+                  <span className="text-(--muted-foreground)">· {relativeTime(change.at)}</span>
                 </div>
               ))}
             </div>

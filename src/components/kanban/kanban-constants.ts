@@ -18,7 +18,7 @@ export type TaskPriority = (typeof PRIORITIES)[number];
 
 export const PRIORITY_BAR: Record<TaskPriority, string> = {
   low: "bg-slate-500",
-  medium: "bg-[--primary]",
+  medium: "bg-(--primary)",
   high: "bg-amber-400",
   urgent: "bg-rose-500",
 };
