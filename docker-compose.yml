@@ -129,6 +129,15 @@ services:
       HERMES_NATHAN2_SESSION_TOKEN: ${HERMES_NATHAN2_SESSION_TOKEN:-}
       HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
+      # Who may create a new account (src/lib/auth/signup-policy.ts). Unset:
+      # invitation-only, existing accounts unaffected.
+      SENTINEL_SIGNUP_ALLOWLIST: ${SENTINEL_SIGNUP_ALLOWLIST:-}
+      SENTINEL_OPEN_SIGNUP: ${SENTINEL_OPEN_SIGNUP:-}
+      MOBILE_TOKEN_TTL_SECONDS: ${MOBILE_TOKEN_TTL_SECONDS:-}
+      # Workspace image policy (src/lib/agent-workspaces/policy.ts). Unset uses
+      # sentinel/agent-workspace:base and allows no other image.
+      AGENT_WORKSPACE_IMAGE: ${AGENT_WORKSPACE_IMAGE:-}
+      AGENT_WORKSPACE_ALLOWED_IMAGES: ${AGENT_WORKSPACE_ALLOWED_IMAGES:-}
       HOST_CONTROL_URL: ${HOST_CONTROL_URL:-http://host.docker.internal:8977}
       HOST_CONTROL_TOKEN: ${HOST_CONTROL_TOKEN:-}
       HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
