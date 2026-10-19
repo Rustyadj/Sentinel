@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { normalizeEmailOrNull } from "@/lib/auth/email";
 import { findCredentialIdentity, findEmailIdentities } from "@/lib/auth/identity";
-import { AUTH_RATE_LIMITS, clientAddress, consumeAuthAttempt } from "@/lib/auth/rate-limit";
+import { isSignInThrottled, recordSignInFailure } from "@/lib/auth/rate-limit";
 import { isSignupAllowed } from "@/lib/auth/signup-policy";
 
 /** Surfaces to the sign-in form as `result.code === "rate_limited"`. */
@@ -35,24 +35,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials, request) {
         if (typeof credentials?.email !== "string" || typeof credentials?.password !== "string") return null;
 
-        // Both limits are counted before the password check, so a guess costs
-        // an attempt whether or not it is right.
-        const [accountOk, addressOk] = await Promise.all([
-          consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAccount, normalizeEmailOrNull(credentials.email) ?? ""),
-          consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAddress, clientAddress(request.headers)),
-        ]);
-        if (!accountOk || !addressOk) throw new RateLimitedSignin();
+        if (await isSignInThrottled(credentials.email, request.headers)) throw new RateLimitedSignin();
 
         const user = await findCredentialIdentity(credentials.email);
-
-        if (!user?.passwordHash) return null;
-
-        const valid = await bcrypt.compare(
-          credentials.password,
-          user.passwordHash
-        );
-
-        if (!valid) return null;
+        const valid = Boolean(user?.passwordHash) && await bcrypt.compare(credentials.password, user!.passwordHash!);
+        if (!user || !valid) {
+          await recordSignInFailure(credentials.email, request.headers);
+          return null;
+        }
 
         return { id: user.id, email: user.email, name: user.name };
       },

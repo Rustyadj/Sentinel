@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { AUTH_RATE_LIMITS, consumeAuthAttempt, resetMemoryRateLimits } from "@/lib/auth/rate-limit";
+import { AUTH_RATE_LIMITS, isAuthThrottled, recordAuthFailure, resetMemoryRateLimits } from "@/lib/auth/rate-limit";
 import { emailMatchesAllowlist, isSignupAllowed } from "@/lib/auth/signup-policy";
 import { isMobileTokenRevoked, signMobileToken, verifyMobileToken } from "@/lib/mobile-auth";
 import { requireApiUser } from "@/lib/current-user";
@@ -12,8 +12,8 @@ import * as revokeRoute from "@/app/api/auth/mobile/revoke/route";
 const suffix = `${process.pid}-${Date.now().toString(36)}`;
 const createdEmails: string[] = [];
 let address = 0;
-/** A fresh client address per test, so limits from one test never leak into another. */
-const nextAddress = () => `10.9.${Math.floor(++address / 250)}.${address % 250}`;
+/** A fresh client address per call and per run: counters live in Redis, which outlives the run. */
+const nextAddress = () => `test-${suffix}-${++address}`;
 
 function post(url: string, body: unknown, ip: string, headers: Record<string, string> = {}) {
   return new NextRequest(url, {
@@ -88,12 +88,25 @@ describe("POST /api/auth/register", () => {
 });
 
 describe("login rate limiting", () => {
-  it("allows exactly `max` attempts per subject per window", async () => {
-    const subject = `subject-${suffix}`;
-    for (let i = 0; i < AUTH_RATE_LIMITS.loginPerAccount.max; i += 1) {
-      expect(await consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAccount, subject)).toBe(true);
+  it("throttles a subject after `max` recorded failures", async () => {
+    const limit = AUTH_RATE_LIMITS.loginPerAccount;
+    const subject = `subject-${suffix}`; // unique per run, like nextAddress()
+    for (let i = 0; i < limit.max; i += 1) {
+      expect(await isAuthThrottled(limit, subject)).toBe(false);
+      await recordAuthFailure(limit, subject);
     }
-    expect(await consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAccount, subject)).toBe(false);
+    expect(await isAuthThrottled(limit, subject)).toBe(true);
+  });
+
+  it("does not count successful sign-ins", async () => {
+    const email = `frequent-${suffix}@example.com`;
+    createdEmails.push(email);
+    const bcrypt = (await import("bcryptjs")).default;
+    await db.user.create({ data: { email, passwordHash: await bcrypt.hash("correct-password", 4) } });
+    const ip = nextAddress();
+    for (let i = 0; i < AUTH_RATE_LIMITS.loginPerAccount.max + 5; i += 1) {
+      expect((await mobileLoginRoute.POST(post("http://x", { email, password: "correct-password" }, ip))).status).toBe(200);
+    }
   });
 
   it("locks out password guessing on the mobile endpoint even with the right password later", async () => {
@@ -107,6 +120,15 @@ describe("login rate limiting", () => {
       expect(res.status).toBe(401);
     }
     const res = await mobileLoginRoute.POST(post("http://x", { email, password: "correct-password" }, nextAddress()));
+    expect(res.status).toBe(429);
+  });
+
+  it("throttles password spraying across accounts from one address", async () => {
+    const ip = nextAddress();
+    for (let i = 0; i < AUTH_RATE_LIMITS.loginPerAddress.max; i += 1) {
+      await mobileLoginRoute.POST(post("http://x", { email: `spray-${i}-${suffix}@example.com`, password: "guess" }, ip));
+    }
+    const res = await mobileLoginRoute.POST(post("http://x", { email: `spray-last-${suffix}@example.com`, password: "guess" }, ip));
     expect(res.status).toBe(429);
   });
 });
