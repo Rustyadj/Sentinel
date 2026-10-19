@@ -119,7 +119,7 @@ const TERMINAL_EVENT_TYPES = new Set(["message.complete", "error"]);
 
 /**
  * Real Hermes chat adapter. Verified live against `hermes-lisa` on
- * srv1427612.hstgr.cloud (docs/reviews/HERMES_OPENCLAW_CHAT_TRANSPORT.md):
+ * srv1427612.hstgr.cloud (docs/archive/reviews/HERMES_OPENCLAW_CHAT_TRANSPORT.md):
  * `/api/ws?ticket=...` JSON-RPC over WebSocket, `session.create` /
  * `prompt.submit` / `session.interrupt` / `session.resume` RPCs, and the
  * `message.*` / `reasoning.*` / `thinking.*` / `tool.*` / `status.update` /

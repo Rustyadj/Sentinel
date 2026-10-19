@@ -2,7 +2,7 @@
 
 > This document also serves as the "Workstream 1 — Reconcile PR #21" deliverable for the
 > "Sentinel OS — Make It Ready as My Default VPS UI" spec, which asked for a new
-> `docs/reviews/PR21_DEFAULT_UI_RECONCILIATION.md`. A second file was deliberately not created —
+> `docs/archive/reviews/PR21_DEFAULT_UI_RECONCILIATION.md`. A second file was deliberately not created —
 > this doc already inspects every PR #21 commit against current `main` with the exact fields that
 > spec requested (SHA, defect, main-status, patch-apply/conflict, decision, resulting commit,
 > validation), it's the authoritative single audit narrative referenced by that spec's own
@@ -21,7 +21,7 @@ instruction not to trust stale PR metadata.
 
 Audit doc reviewed for content (not ported as a file — superseded by this doc and by PR #20's
 own final release report, both of which already exist for this repo):
-`docs/reviews/LEARNING_CORE_RELEASE_AUDIT.md` at commit `444fcddc`.
+`docs/archive/reviews/LEARNING_CORE_RELEASE_AUDIT.md` at commit `444fcddc`.
 
 ## Classification legend
 

@@ -1,6 +1,6 @@
 # Production Workflow Verification — Phase 3 (in progress)
 
-Follow-up to `docs/reviews/POST_CODEX_REVIEW.md`, which reviewed the PR #13/#14 diffs but explicitly deferred manual workflow verification. This document is that verification, done incrementally — it covers **Mission Control** and **Organization** only. Chat, Knowledge/Neural Lens, Agents, Settings, viewport QA, workspace features, and voice remain unverified and are not claimed here.
+Follow-up to `docs/archive/reviews/POST_CODEX_REVIEW.md`, which reviewed the PR #13/#14 diffs but explicitly deferred manual workflow verification. This document is that verification, done incrementally — it covers **Mission Control** and **Organization** only. Chat, Knowledge/Neural Lens, Agents, Settings, viewport QA, workspace features, and voice remain unverified and are not claimed here.
 
 **Method:** real dev server (`npm run dev`) against a scratch Postgres, a real registered user (`/api/auth/register` + credentials sign-in, not a mock session), driven with Playwright against the actual rendered app — not code reading, not assumptions from the diff.
 
