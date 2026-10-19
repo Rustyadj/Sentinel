@@ -129,6 +129,11 @@ services:
       HERMES_NATHAN2_SESSION_TOKEN: ${HERMES_NATHAN2_SESSION_TOKEN:-}
       HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
+      # Set WORKSPACE_RUNNER_URL=http://workspace-runner:8790 to send every Docker
+      # operation through the workspace-runner service instead of this
+      # container's socket. Unset keeps the in-process provider.
+      WORKSPACE_RUNNER_URL: ${WORKSPACE_RUNNER_URL:-}
+      WORKSPACE_RUNNER_SECRET: ${WORKSPACE_RUNNER_SECRET:-}
       # Who may create a new account (src/lib/auth/signup-policy.ts). Unset:
       # invitation-only, existing accounts unaffected.
       SENTINEL_SIGNUP_ALLOWLIST: ${SENTINEL_SIGNUP_ALLOWLIST:-}
@@ -324,6 +329,40 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Workspace runner — the one service meant to hold the host Docker socket
+  # (docs/SECURITY_REMEDIATION.md §3). The app reaches it over sentinel_net with
+  # HMAC-signed requests; it publishes no port and has no Traefik route. Every
+  # argument is re-validated (src/lib/agent-workspaces/runner/guard.ts), so a
+  # compromised app can only manage workspace containers and volumes.
+  # Behind a profile until rolled out (§4-D):
+  #   docker compose --profile workspace-runner up -d workspace-runner
+  workspace-runner:
+    profiles: ["workspace-runner"]
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA:-local}
+    build: *worker-build
+    command: node_modules/.bin/tsx src/workers/workspace-runner.ts
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
+      # Required, >= 32 characters (openssl rand -hex 32); the runner refuses to start without it.
+      WORKSPACE_RUNNER_SECRET: ${WORKSPACE_RUNNER_SECRET:-}
+      SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
+      AGENT_WORKSPACE_IMAGE: ${AGENT_WORKSPACE_IMAGE:-}
+      AGENT_WORKSPACE_ALLOWED_IMAGES: ${AGENT_WORKSPACE_ALLOWED_IMAGES:-}
+      AGENT_WORKSPACE_SNAPSHOT_DIR: /var/lib/sentinel/workspace-snapshots
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-988}"
+    healthcheck: *worker-healthcheck
+    networks:
+      - sentinel_net
+    depends_on:
+      postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

@@ -58,6 +58,10 @@ const STATUS_BY_CODE: Record<WorkspaceErrorCode, number> = {
   not_implemented: 501,
 };
 
+export function isWorkspaceErrorCode(value: unknown): value is WorkspaceErrorCode {
+  return typeof value === "string" && Object.hasOwn(STATUS_BY_CODE, value);
+}
+
 export class WorkspaceError extends Error {
   readonly code: WorkspaceErrorCode;
   readonly status: number;

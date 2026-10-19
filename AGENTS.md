@@ -110,7 +110,10 @@ before claiming a regression is yours.
   permission before reading or writing tenant data.
 - Nothing that reaches the host Docker daemon takes free-form input. Workspace images
   come from `AGENT_WORKSPACE_ALLOWED_IMAGES`; argv is built with `execFile`, never a shell.
-- Do not add the Docker socket, host credential directories, or host networking to
-  any additional service. See `docs/SECURITY_REMEDIATION.md` for the isolation plan.
+- Only `workspace-runner` is meant to hold the Docker socket; `app` keeps it only
+  until the rollout in `docs/SECURITY_REMEDIATION.md` §4-D completes. New Docker
+  operations go through `src/lib/agent-workspaces/runner/` with guard validation,
+  never a new socket mount. Do not add host credential directories or host
+  networking to any service.
 - Client components (`"use client"`) import only client-safe modules — never a barrel
   such as `@/lib/workspaces` that re-exports server code.

@@ -53,6 +53,22 @@ shell), bounded command timeouts and output capture, per-exec secret injection
 with redaction of captured output, full event + audit trail. The Docker socket
 is never mounted into a workspace and agents never reach the daemon.
 
+## Workspace runner
+
+With `WORKSPACE_RUNNER_URL` set, the app holds no Docker access of its own:
+`getRuntimeProvider("docker")` returns `RemoteWorkspaceProvider`, which sends each
+provider call to the `workspace-runner` service over the internal network,
+HMAC-signed with `WORKSPACE_RUNNER_SECRET`. The runner hosts the unchanged
+`DockerWorkspaceProvider` and re-validates every argument
+(`src/lib/agent-workspaces/runner/guard.ts`): IDs restricted to `[A-Za-z0-9_-]`,
+volume names derived from the workspace ID, images on the allowlist, limits
+re-clamped. A compromised app can therefore manage workspace containers and
+volumes, and nothing else on the host. Read-only `inspect`/`logs` for the control
+plane and the Hermes adapter go through the runner too, with inspect output
+reduced to the fields those callers read (no container environment).
+
+Unset, the app uses the in-process provider exactly as before.
+
 ## Operating
 
 Build the base image once per host and set the host env described in

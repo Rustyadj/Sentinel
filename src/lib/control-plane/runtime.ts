@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { RemoteContainers, runnerClient } from "@/lib/agent-workspaces/runner/client";
 import {
   isObserved,
   observed,
@@ -53,6 +54,10 @@ export interface RuntimeSources {
 
 export const localDockerSources: RuntimeSources = {
   async inspect(names) {
+    // With the workspace runner enabled the app has no Docker socket; the
+    // runner returns the same payload shape, reduced to the fields read here.
+    const runner = runnerClient();
+    if (runner) return JSON.stringify(await new RemoteContainers(runner).inspect(names));
     // execFile with an argv array: container names come from the database and
     // are never allowed to become docker flags or shell input.
     const { stdout } = await run(DOCKER_BIN, ["inspect", ...names], {
