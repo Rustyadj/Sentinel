@@ -9,6 +9,7 @@ export type { ClusterId, NodeCategory };
 export interface LensNode {
   id: string;
   label: string;
+  operationalImpact?: "confirmed" | "predicted" | "unknown";
   type: string;
   /** Draw radius weight. */
   val: number;

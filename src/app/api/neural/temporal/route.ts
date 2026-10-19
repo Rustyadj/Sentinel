@@ -1,3 +1,4 @@
+import { filterOperationalNodes, filterOperationalEdges, operationalGraphAsOf } from "@/lib/knowledge/operational-graph";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { getReadableProjectIds } from "@/lib/knowledge/access";
@@ -39,20 +40,24 @@ export async function GET(req: NextRequest) {
       { userId: user.id, readableProjectIds },
       { projectId, workspaceId },
     );
-    const nodes = objects.map(toKnowledgeNode);
+    const nodes = (await filterOperationalNodes(user.id, objects)).filter(record => !(record.metadata as { operational?: boolean }).operational).map(toKnowledgeNode);
+    const operational = projectId ? { nodes: [], edges: [], partial: false } : await operationalGraphAsOf(user.id, at, workspaceId);
+    nodes.push(...operational.nodes.map(toKnowledgeNode));
 
     const edgeRecords = await listKnowledgeEdgesAsOf(
       at,
       nodes.map((n) => n.id),
     );
-    const edges = edgeRecords.map((e) => ({
+    const operationalIds = new Set(operational.nodes.map(node => node.id));
+    const edges = (await filterOperationalEdges(user.id, edgeRecords)).filter(edge => !operationalIds.has(edge.fromObjectId) && !operationalIds.has(edge.toObjectId)).map((e) => ({
       fromObjectId: e.fromObjectId,
       toObjectId: e.toObjectId,
       weight: e.weight,
       type: e.type,
     }));
 
-    return NextResponse.json({ nodes, edges, at: at.toISOString(), source: "temporal" });
+    edges.push(...operational.edges.map(edge => ({ fromObjectId: edge.fromObjectId, toObjectId: edge.toObjectId, weight: edge.weight, type: edge.type })));
+    return NextResponse.json({ nodes, edges, partial: operational.partial, at: at.toISOString(), source: "temporal" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Temporal graph query failed";
     const status = message === "Unauthorized" ? 401 : message.includes("not found") ? 404 : 500;

@@ -48,6 +48,8 @@ export interface IngestionVerdict {
 }
 
 export interface IngestionInput {
+  /** Set by validated operational ingestion, never inferred from free-form prose. */
+  eventKind?: "incident";
   content: string;
   /** "user" | "agent" | "system" | "tool" — who asserted it. */
   speaker?: string;
@@ -260,7 +262,12 @@ export function classifyForIngestion(input: IngestionInput): IngestionVerdict {
   let futureUsefulness: number;
   let confidence: number;
 
-  if (matchesAny(content, PREFERENCE_PATTERNS)) {
+  if (input.eventKind === "incident") {
+    lane = "EPISODIC";
+    futureUsefulness = 0.85;
+    confidence = 0.8;
+    reasons.push("Validated incident observation; describes an event rather than a reusable remediation procedure.");
+  } else if (matchesAny(content, PREFERENCE_PATTERNS)) {
     lane = "PREFERENCE";
     futureUsefulness = 0.9;
     confidence = 0.8;
