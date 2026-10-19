@@ -33,7 +33,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: hermes
-      POSTGRES_PASSWORD: hermes
+      # Only applied when the data volume is first initialised. To rotate an
+      # existing database, ALTER USER first, then set this (see
+      # docs/SECURITY_REMEDIATION.md). Generate with: openssl rand -hex 32
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hermes}
       POSTGRES_DB: hermesos
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -54,7 +57,7 @@ services:
       args: *release-build-args
     command: npx prisma@6 migrate deploy
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
     networks:
       - sentinel_net
     depends_on:
@@ -72,13 +75,21 @@ services:
     # connecting a real Queue/Worker against this policy in this session
     # (see the PR — this isn't a guess). Nothing else using this instance
     # (src/lib/redis.ts's health-check client) depends on eviction behavior.
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    #
+    # REDIS_PASSWORD (optional, hex) turns on AUTH and is threaded into every
+    # REDIS_URL below. Unset keeps the previous unauthenticated behaviour.
+    # REDISCLI_AUTH lets in-container redis-cli (healthcheck, release.sh SAVE)
+    # authenticate; empty, redis-cli only prints a warning.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     networks:
       - sentinel_net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # Match PONG: redis-cli exits 0 on a NOAUTH error too.
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -94,8 +105,8 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL:-https://sentinel.srv1427612.hstgr.cloud}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -227,10 +238,10 @@ services:
     command: node_modules/.bin/tsx src/workers/learning-worker.ts
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
       MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
       MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       LEARNING_WORKER_CONCURRENCY: ${LEARNING_WORKER_CONCURRENCY:-2}
       NEURAL_SWEEP_SECRET: ${NEURAL_SWEEP_SECRET:-}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
@@ -264,10 +275,10 @@ services:
     command: node_modules/.bin/tsx src/workers/orchestration-worker.ts
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
       MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
       MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       ORCHESTRATION_WORKER_CONCURRENCY: ${ORCHESTRATION_WORKER_CONCURRENCY:-1}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
