@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { canEditConfig, getControlPlaneUser, forbidden, unauthorized } from "@/lib/agents/permissions";
+import { getControlPlaneUser, requireInstanceConfigEditor, unauthorized } from "@/lib/agents/permissions";
 import {
   customModuleCreateSchema, iframeContentIsHttps, invalidBody, IFRAME_CONTENT_ERROR,
 } from "@/lib/modules/custom-modules";
@@ -12,9 +12,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const user = await getControlPlaneUser();
-  if (!user) return unauthorized();
-  if (!canEditConfig(user.role)) return forbidden("create custom modules");
+  const editor = await requireInstanceConfigEditor("create custom modules");
+  if (editor instanceof Response) return editor;
   let raw: unknown;
   try {
     raw = await req.json();

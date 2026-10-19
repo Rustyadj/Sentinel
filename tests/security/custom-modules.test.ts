@@ -1,19 +1,19 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const session = vi.hoisted(() => ({ role: "owner" as "owner" | "admin" | "member" | null }));
-vi.mock("@/lib/agents/permissions", async () => {
-  const { canEditConfig } = await import("@/lib/agents/policy");
-  return {
-    canEditConfig,
-    getControlPlaneUser: async () => (session.role ? { id: "u", email: "t@t", role: session.role, workspaceId: "w" } : null),
-    forbidden: (action: string) => Response.json({ error: `Forbidden: ${action}` }, { status: 403 }),
-    unauthorized: () => Response.json({ error: "Unauthorized" }, { status: 401 }),
-  };
-});
+// Only the session is faked; authorization runs the real permission code
+// against the database. The seeded "default" workspace is owned by
+// seed@sentinel.test (scripts/test/seed-test-db.sh).
+const session = vi.hoisted(() => ({ email: null as string | null }));
+vi.mock("@/auth", () => ({
+  auth: async () => (session.email ? { user: { id: "ignored", email: session.email } } : null),
+  handlers: {}, signIn: vi.fn(), signOut: vi.fn(),
+}));
 
+const INSTANCE_OWNER = "seed@sentinel.test";
 import { db } from "@/lib/db";
 import * as listRoute from "@/app/api/modules/custom/route";
 import * as itemRoute from "@/app/api/modules/custom/[id]/route";
+import * as moduleRoute from "@/app/api/modules/[moduleId]/route";
 
 const json = (body: unknown, method = "POST") =>
   new Request("http://x/api", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -28,8 +28,21 @@ async function createModule(body: Record<string, unknown> = { label: "Sec test" 
   return mod;
 }
 
-beforeEach(() => { session.role = "owner"; });
-afterAll(async () => { await db.customModule.deleteMany({ where: { id: { in: created } } }); });
+const suffix = `${process.pid}-${Date.now().toString(36)}`;
+const selfMadeOwner = `own-workspace-${suffix}@example.com`;
+
+beforeAll(async () => {
+  // Owns a workspace of their own — which any signed-in user can create —
+  // and nothing else. Must not be able to change instance-wide settings.
+  const user = await db.user.create({ data: { email: selfMadeOwner } });
+  await db.workspace.create({ data: { slug: `self-made-${suffix}`, name: "Mine", ownerId: user.id } });
+});
+beforeEach(() => { session.email = INSTANCE_OWNER; });
+afterAll(async () => {
+  await db.customModule.deleteMany({ where: { id: { in: created } } });
+  await db.workspace.deleteMany({ where: { slug: `self-made-${suffix}` } });
+  await db.user.deleteMany({ where: { email: selfMadeOwner } });
+});
 
 describe("PUT /api/modules/custom/[id] mass assignment", () => {
   it("rejects server-owned columns instead of writing them", async () => {
@@ -58,11 +71,14 @@ describe("PUT /api/modules/custom/[id] mass assignment", () => {
     expect(res.status).toBe(400);
   });
 
-  it("keeps member and anonymous callers out", async () => {
+  it("keeps owners of other workspaces and anonymous callers out", async () => {
     const mod = await createModule();
-    session.role = "member";
+    session.email = selfMadeOwner;
     expect((await itemRoute.PUT(json({ label: "x" }, "PUT"), ctx(mod.id))).status).toBe(403);
-    session.role = null;
+    expect((await itemRoute.DELETE(json({}, "DELETE"), ctx(mod.id))).status).toBe(403);
+    expect((await listRoute.POST(json({ label: "x" }))).status).toBe(403);
+    expect((await moduleRoute.PUT(json({ enabled: false }, "PUT"), { params: Promise.resolve({ moduleId: "kanban" }) })).status).toBe(403);
+    session.email = null;
     expect((await itemRoute.PUT(json({ label: "x" }, "PUT"), ctx(mod.id))).status).toBe(401);
   });
 

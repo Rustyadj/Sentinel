@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { canEditConfig, getControlPlaneUser, forbidden, unauthorized } from "@/lib/agents/permissions";
+import { requireInstanceConfigEditor } from "@/lib/agents/permissions";
 import {
   customModuleUpdateSchema, iframeContentIsHttps, invalidBody, IFRAME_CONTENT_ERROR,
 } from "@/lib/modules/custom-modules";
@@ -8,9 +8,8 @@ import {
 type Params = { params: Promise<{ id: string }> };
 
 export async function PUT(req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user) return unauthorized();
-  if (!canEditConfig(user.role)) return forbidden("edit custom modules");
+  const editor = await requireInstanceConfigEditor("edit custom modules");
+  if (editor instanceof Response) return editor;
   const { id } = await params;
 
   let raw: unknown;
@@ -35,9 +34,8 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user) return unauthorized();
-  if (!canEditConfig(user.role)) return forbidden("delete custom modules");
+  const editor = await requireInstanceConfigEditor("delete custom modules");
+  if (editor instanceof Response) return editor;
   const { id } = await params;
   await db.customModule.delete({ where: { id } });
   return NextResponse.json({ ok: true });
