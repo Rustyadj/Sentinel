@@ -43,7 +43,10 @@ describe("signup policy", () => {
   });
 
   it("is closed by default once any account exists", async () => {
-    expect(await db.user.count()).toBeGreaterThan(0); // the seeded owner
+    // A freshly migrated database (CI) may have no users yet; make sure one exists.
+    const existingEmail = `existing-${suffix}@example.com`;
+    createdEmails.push(existingEmail);
+    await db.user.create({ data: { email: existingEmail } });
     expect(await isSignupAllowed(`stranger-${suffix}@example.com`)).toBe(false);
     process.env.SENTINEL_SIGNUP_ALLOWLIST = "@example.com";
     expect(await isSignupAllowed(`stranger-${suffix}@example.com`)).toBe(true);

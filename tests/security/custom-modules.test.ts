@@ -1,15 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the session is faked; authorization runs the real permission code
-// against the database. The seeded "default" workspace is owned by
-// seed@sentinel.test (scripts/test/seed-test-db.sh).
+// against the database.
 const session = vi.hoisted(() => ({ email: null as string | null }));
 vi.mock("@/auth", () => ({
   auth: async () => (session.email ? { user: { id: "ignored", email: session.email } } : null),
   handlers: {}, signIn: vi.fn(), signOut: vi.fn(),
 }));
 
-const INSTANCE_OWNER = "seed@sentinel.test";
 import { db } from "@/lib/db";
 import * as listRoute from "@/app/api/modules/custom/route";
 import * as itemRoute from "@/app/api/modules/custom/[id]/route";
@@ -31,17 +29,34 @@ async function createModule(body: Record<string, unknown> = { label: "Sec test" 
 const suffix = `${process.pid}-${Date.now().toString(36)}`;
 const selfMadeOwner = `own-workspace-${suffix}@example.com`;
 
+// The owner of the "default" workspace administers the instance. A seeded
+// test database already has one; a freshly migrated one (CI) does not.
+let instanceOwner = "";
+const createdUsers: string[] = [];
+let createdDefaultWorkspace = false;
+
 beforeAll(async () => {
+  const existing = await db.workspace.findUnique({ where: { slug: "default" }, include: { owner: true } });
+  if (existing) {
+    instanceOwner = existing.owner.email;
+  } else {
+    instanceOwner = `instance-owner-${suffix}@example.com`;
+    const owner = await db.user.create({ data: { email: instanceOwner } });
+    createdUsers.push(instanceOwner);
+    await db.workspace.create({ data: { slug: "default", name: "Default", ownerId: owner.id } });
+    createdDefaultWorkspace = true;
+  }
   // Owns a workspace of their own — which any signed-in user can create —
   // and nothing else. Must not be able to change instance-wide settings.
   const user = await db.user.create({ data: { email: selfMadeOwner } });
+  createdUsers.push(selfMadeOwner);
   await db.workspace.create({ data: { slug: `self-made-${suffix}`, name: "Mine", ownerId: user.id } });
 });
-beforeEach(() => { session.email = INSTANCE_OWNER; });
+beforeEach(() => { session.email = instanceOwner; });
 afterAll(async () => {
   await db.customModule.deleteMany({ where: { id: { in: created } } });
-  await db.workspace.deleteMany({ where: { slug: `self-made-${suffix}` } });
-  await db.user.deleteMany({ where: { email: selfMadeOwner } });
+  await db.workspace.deleteMany({ where: { slug: { in: [`self-made-${suffix}`, ...(createdDefaultWorkspace ? ["default"] : [])] } } });
+  await db.user.deleteMany({ where: { email: { in: createdUsers } } });
 });
 
 describe("PUT /api/modules/custom/[id] mass assignment", () => {
