@@ -19,6 +19,8 @@ model User {
   email                    String                   @unique
   name                     String?
   passwordHash             String?
+  /// Mobile bearer tokens issued at or before this instant are rejected.
+  mobileTokensRevokedAt    DateTime?
   createdAt                DateTime                 @default(now())
   projects                 Project[]
   chatRooms                ChatRoom[]

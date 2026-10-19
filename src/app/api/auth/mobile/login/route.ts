@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { findCredentialIdentity } from "@/lib/auth/identity";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
+import { normalizeEmailOrNull } from "@/lib/auth/email";
+import { AUTH_RATE_LIMITS, clientAddress, consumeAuthAttempt, tooManyAttempts } from "@/lib/auth/rate-limit";
 
 export function OPTIONS() {
   return corsPreflightResponse();
@@ -31,9 +33,17 @@ async function handlePost(request: NextRequest): Promise<Response> {
   }
 
   const { email, password } = body;
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
+
+  // Shares its counters with the web Credentials provider, so an attacker
+  // gains nothing by alternating between the two sign-in surfaces.
+  const [accountOk, addressOk] = await Promise.all([
+    consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAccount, normalizeEmailOrNull(email) ?? ""),
+    consumeAuthAttempt(AUTH_RATE_LIMITS.loginPerAddress, clientAddress(request.headers)),
+  ]);
+  if (!accountOk || !addressOk) return tooManyAttempts();
 
   const user = await findCredentialIdentity(email);
   if (!user?.passwordHash) {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getActiveWorkspace } from "@/lib/workspaces";
+import { getActiveWorkspace } from "@/lib/workspaces/navigation";
 
 interface WorkspaceHeaderProps {
   title: string;
