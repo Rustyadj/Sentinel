@@ -1,150 +1,51 @@
 # Module System
 
-## Principle
+This describes what the code does today. The earlier self-registering
+`moduleRegistry` (`src/lib/modules/registry.ts` plus a `manifest.ts` per module)
+was write-only — nothing read it after the old Settings page was retired — and
+was removed. Do not reintroduce a second registry; extend the pieces below.
 
-The shell knows nothing about module internals.  
-Modules know nothing about each other.
+## The four pieces
 
-This is the constraint that makes the system extensible.
+| Concern | Source of truth | Notes |
+|---|---|---|
+| Shell navigation | `src/lib/navigation.ts` (`SHELL_NAV_GROUPS`, `PRIMARY_NAV`) | The rail is a static list. Domain modules are deliberately not in it; they are reached from `/workspaces`. |
+| Module code | `src/modules/<name>/components/*` | Imported directly by App Router pages under `src/app/`. A module may expose an `index.ts` barrel. |
+| Installable catalog | `src/lib/modules/manifests.ts` (`MODULE_MANIFESTS`, manifest v2) | What `/marketplace` lists. Install/enable state lives in `installed_modules`. |
+| Custom modules | `custom_modules` table, rendered at `/modules/[id]` | Markdown or an https iframe. Created/edited through `/api/modules/custom` (owner/admin only, fields allowlisted in `src/lib/modules/custom-modules.ts`). There is currently no UI for creating them. |
 
----
-
-## Module Definition
-
-Every module exports a `manifest` that conforms to `ModuleDefinition`:
+## Catalog manifest (v2)
 
 ```ts
-interface ModuleDefinition {
-  id: string              // unique, kebab-case
-  label: string           // display name
-  icon: string            // lucide-react icon name (string key)
-  href: string            // Next.js route
-  category: "core" | "installable"
-  order: number           // nav sort order (lower = higher)
-  description?: string    // shown in Module Manager
+interface ModuleManifestV2 {
+  manifestVersion: 2;
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  category: string;
+  href: string;
+  declaredPermissions: Array<{ resource: string; actions: string[] }>;
 }
 ```
 
----
+Catalog entries today: `kanban`, `knowledge-graph`, `organization`,
+`cybersecurity`. There are no ICF, CRM or Finance modules.
 
-## Registration
+## Adding a module
 
-Modules self-register by importing their manifest into the registry:
-
-```ts
-// src/modules/marketing/manifest.ts
-import { moduleRegistry } from "@/lib/modules";
-
-export const manifest: ModuleDefinition = {
-  id: "marketing",
-  label: "Marketing",
-  icon: "BarChart3",
-  href: "/marketing",
-  category: "installable",
-  order: 150,
-  description: "CRM, campaigns, leads, SEO, and analytics",
-};
-
-moduleRegistry.register(manifest);
-```
-
-```ts
-// src/modules/marketing/index.ts
-export { MarketingPage } from "./components/MarketingPage";
-import "./manifest";  // triggers registration
-```
-
-```ts
-// src/modules/index.ts — import order = nav order
-import "./dashboard";
-import "./chat";
-import "./agents";
-import "./memory";
-import "./knowledge";
-import "./workflows";
-import "./kanban";
-import "./organization";
-import "./cybersecurity";
-import "./studio";
-import "./marketing";
-import "./settings";
-```
-
----
-
-## Registry API
-
-```ts
-class ModuleRegistry {
-  register(def: ModuleDefinition): void
-  get(id: string): ModuleDefinition | undefined
-  getAll(): ModuleDefinition[]
-  getNav(): ModuleDefinition[]       // excludes settings, ordered by .order
-  getBottom(): ModuleDefinition[]    // settings and bottom-rail items
-}
-```
-
----
-
-## Categories
-
-### Core
-Cannot be disabled. Always present in the nav rail.
-
-- `dashboard`, `chat`, `agents`, `memory`, `knowledge`, `workflows`, `kanban`, `organization`, `settings`
-
-### Installable
-Can be enabled/disabled via Settings → Modules. State persisted in `installed_modules` table.
-
-- `cybersecurity`, `studio`, `marketing`, `icf`, `crm`, `finance`
-- User-created custom modules
-
----
-
-## Creating a Module
-
-1. Create directory: `src/modules/<id>/`
-2. Create `manifest.ts` — define and register the module
-3. Create `index.ts` — export components, import manifest
-4. Create `components/<Name>Page.tsx` — the page component
-5. Create Next.js route: `src/app/<route>/page.tsx` → `export { XPage as default } from "@/modules/<id>"`
-6. Add import to `src/modules/index.ts`
-
----
-
-## Custom Modules (User-Created)
-
-Users can create custom modules via Settings → Modules → Create. These are stored in the `custom_modules` table and rendered at `/modules/[id]`.
-
-Custom modules support:
-- Markdown content
-- iframe embed
-- Title, icon, description
-
----
+1. `src/modules/<name>/components/<Name>Page.tsx` — the UI.
+2. `src/app/<route>/page.tsx` — a server page that authorizes the user and renders it.
+3. If it should be installable, add a `MODULE_MANIFESTS` entry.
+4. If it belongs in the shell rail (rare — the rail is intentionally small), add it to `src/lib/navigation.ts`.
 
 ## Persistence
 
-Module enable/disable state is stored in `installed_modules`:
+`installed_modules` holds per-module enable state and config; `custom_modules`
+holds user-created modules. Both are global (not workspace-scoped).
 
-```sql
-CREATE TABLE installed_modules (
-  id           TEXT PRIMARY KEY,
-  module_id    TEXT UNIQUE NOT NULL,
-  enabled      BOOLEAN DEFAULT true,
-  config       JSONB DEFAULT '{}',
-  installed_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ DEFAULT NOW()
-);
-```
+## Invariants
 
-The Module Manager (Settings → Modules) provides the UI for toggling installable modules.
-
----
-
-## Design Invariants
-
-- A module must never import from another module
-- A module must never add navigation items outside the registry
-- A module must never create its own sidebar or icon rail
-- The shell must never import module component code directly
+- A module never imports from another module.
+- A module never renders its own sidebar or icon rail.
+- Navigation comes only from `src/lib/navigation.ts`.

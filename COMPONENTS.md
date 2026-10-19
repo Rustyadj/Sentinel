@@ -1,12 +1,12 @@
 # Sentinel OS Component Rules
 
-Exactly how every component should behave. Visual tokens live in [DESIGN.md](DESIGN.md); interaction/motion/keyboard rules live in [UX_RULES.md](UX_RULES.md). Prefer the Radix/shadcn primitives already in `src/components/ui` (`button.tsx`, `card.tsx`, `input.tsx`, `badge.tsx`, `tabs.tsx`, `tooltip.tsx`, `avatar.tsx`, `progress.tsx`, `scroll-area.tsx`, `separator.tsx`) before adding a new one.
+Exactly how every component should behave. Visual tokens live in [DESIGN.md](DESIGN.md); interaction/motion/keyboard rules live in [UX_RULES.md](UX_RULES.md). Prefer the primitives already in `src/components/ui` (`badge.tsx`, `button.tsx`, `card.tsx`, `input.tsx`, `scroll-area.tsx`, `switch.tsx`, `tabs.tsx`) before adding a new one. Add a primitive only together with its first real consumer; unused wrappers (and their Radix packages) are removed.
 
 ## Button
 
 - Variants: `primary` (one per local context — the single main action), `secondary`, `ghost`, `destructive`, `icon`.
 - Primary is the only variant that carries the accent fill; everything else stays neutral/matte.
-- Icon-only buttons always require an accessible name (`aria-label`) and a visible `Tooltip` — `title` alone is not sufficient.
+- Icon-only buttons always require an accessible name (`aria-label`) and a visible tooltip — `title` alone is not sufficient. There is no Tooltip primitive today; add one (with `@radix-ui/react-tooltip`) alongside the first button that needs it.
 - Disabled buttons keep a visible disabled affordance (reduced opacity + `cursor-not-allowed`) and retain a tooltip when the disabled reason isn't obvious from context.
 - Loading buttons keep their width, swap label for a spinner or keep the label and add a leading spinner — never collapse to a bare spinner that shifts layout.
 - Destructive actions (delete workspace, remove agent, revoke access) always confirm via a modal before firing; never fire a destructive action directly from a button click.
