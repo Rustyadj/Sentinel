@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canEditConfig, getControlPlaneUser, forbidden, unauthorized } from "@/lib/agents/permissions";
+import {
+  customModuleCreateSchema, iframeContentIsHttps, invalidBody, IFRAME_CONTENT_ERROR,
+} from "@/lib/modules/custom-modules";
 
 export async function GET() {
   if (!(await getControlPlaneUser())) return unauthorized();
@@ -12,10 +15,20 @@ export async function POST(req: Request) {
   const user = await getControlPlaneUser();
   if (!user) return unauthorized();
   if (!canEditConfig(user.role)) return forbidden("create custom modules");
-  const body = await req.json() as {
-    label: string; icon?: string; description?: string;
-    contentType?: string; content?: string; order?: number;
-  };
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const parsed = customModuleCreateSchema.safeParse(raw);
+  if (!parsed.success) return invalidBody(parsed.error);
+  const body = parsed.data;
+  const contentType = body.contentType ?? "markdown";
+  const content = body.content ?? `# ${body.label}\n\nCustom module content goes here.`;
+  if (!iframeContentIsHttps({ contentType, content })) {
+    return NextResponse.json({ error: IFRAME_CONTENT_ERROR }, { status: 400 });
+  }
   const moduleId = `custom-${body.label.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
   const mod = await db.customModule.create({
     data: {
@@ -23,8 +36,8 @@ export async function POST(req: Request) {
       label: body.label,
       icon: body.icon ?? "Puzzle",
       description: body.description ?? "",
-      contentType: body.contentType ?? "markdown",
-      content: body.content ?? `# ${body.label}\n\nCustom module content goes here.`,
+      contentType,
+      content,
       order: body.order ?? 200,
     },
   });
