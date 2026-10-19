@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { UnsupportedRuntimeCapabilityError, RuntimeError } from "./errors";
 import { nodeRuntimeProcessRunner, type RuntimeProcessRunner } from "./runner";
+import { RemoteContainers, runnerClient } from "@/lib/agent-workspaces/runner/client";
 import { runtimeSessionStore, type RuntimeSessionStore } from "./store";
 import type {
   AgentRuntimeAdapter,
@@ -50,9 +51,16 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
     let processRunning = false;
     if (runtime.containerName) {
       try {
-        const result = await this.runner.run("docker", ["inspect", "--format", "{{.State.Running}}", runtime.containerName], { timeoutMs: 5_000 });
-        installed = result.exitCode === 0;
-        processRunning = result.exitCode === 0 && result.stdout.trim() === "true";
+        const remote = runnerClient();
+        if (remote) {
+          const [container] = await new RemoteContainers(remote).inspect([runtime.containerName]);
+          installed = Boolean(container);
+          processRunning = container?.State?.Running === true;
+        } else {
+          const result = await this.runner.run("docker", ["inspect", "--format", "{{.State.Running}}", runtime.containerName], { timeoutMs: 5_000 });
+          installed = result.exitCode === 0;
+          processRunning = result.exitCode === 0 && result.stdout.trim() === "true";
+        }
       } catch {
         processRunning = false;
       }
@@ -123,7 +131,10 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
     const runtime = await this.requireRuntime(session.runtimeInstanceId);
     const limit = Math.min(Math.max(query.limit ?? 200, 1), 500);
     if (runtime.logSource?.kind === "docker" && runtime.containerName) {
-      const result = await this.runner.run("docker", ["logs", "--tail", String(limit), runtime.containerName], { timeoutMs: 8_000 });
+      const remote = runnerClient();
+      const result = remote
+        ? await new RemoteContainers(remote).logs(runtime.containerName, limit)
+        : await this.runner.run("docker", ["logs", "--tail", String(limit), runtime.containerName], { timeoutMs: 8_000 });
       return { lines: `${result.stdout}\n${result.stderr}`.split("\n").filter(Boolean), hasMore: false };
     }
     if (runtime.logSource?.kind === "file") {
