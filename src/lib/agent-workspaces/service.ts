@@ -2,14 +2,13 @@ import type { AgentWorkspace, AgentWorkspaceRuntime, Prisma } from "@prisma/clie
 import { db } from "@/lib/db";
 import { WorkspaceError } from "./errors";
 import { recordWorkspaceEvent } from "./events";
-import { DEFAULT_LIMITS, DEFAULT_POLICY, parseLimits, parsePolicy } from "./policy";
+import { DEFAULT_LIMITS, DEFAULT_POLICY, parseLimits, parsePolicy, resolveHomePath, resolveWorkspaceImage } from "./policy";
 import { getRuntimeProvider } from "./providers";
 import type {
   CreateWorkspaceSpec, RuntimeClient, RuntimeDescriptor, RuntimeState, RuntimeStats,
   WorkspaceDisplayState, WorkspaceIdentity,
 } from "./types";
 
-const DEFAULT_IMAGE = process.env.AGENT_WORKSPACE_IMAGE || "sentinel/agent-workspace:base";
 
 export interface ActorContext {
   userId?: string | null;
@@ -100,8 +99,8 @@ export async function createAgentWorkspace(input: CreateAgentWorkspaceInput) {
       slug,
       description: input.description?.trim() || null,
       runtimeType,
-      image: input.image?.trim() || DEFAULT_IMAGE,
-      homePath: input.homePath?.trim() || "/workspace",
+      image: resolveWorkspaceImage(input.image),
+      homePath: resolveHomePath(input.homePath),
       resourceLimits: parseLimits(input.resourceLimits) as unknown as Prisma.InputJsonValue,
       policy: parsePolicy(input.policy) as unknown as Prisma.InputJsonValue,
       // Creating an additional/special-purpose workspace is never an implicit

@@ -22,6 +22,50 @@ export const MAX_LIMITS: WorkspaceResourceLimits = {
   network: "bridge",
 };
 
+export const DEFAULT_WORKSPACE_IMAGE = "sentinel/agent-workspace:base";
+export const DEFAULT_HOME_PATH = "/workspace";
+
+/**
+ * Images a workspace may be created from: AGENT_WORKSPACE_ALLOWED_IMAGES
+ * (comma-separated), always including the configured default. A workspace
+ * image is pulled and run by the host Docker daemon, so it is an operator
+ * decision, never a free-form request field.
+ */
+export function allowedWorkspaceImages(): string[] {
+  const configuredDefault = process.env.AGENT_WORKSPACE_IMAGE || DEFAULT_WORKSPACE_IMAGE;
+  const extra = (process.env.AGENT_WORKSPACE_ALLOWED_IMAGES ?? "").split(",").map((image) => image.trim()).filter(Boolean);
+  return [...new Set([configuredDefault, ...extra])];
+}
+
+/** An image reference that cannot be mistaken for a docker CLI flag or carry whitespace. */
+export function isSafeImageReference(image: string): boolean {
+  return /^[a-z0-9][a-z0-9._\/:@-]{0,254}$/i.test(image);
+}
+
+export function resolveWorkspaceImage(requested?: string | null): string {
+  const allowed = allowedWorkspaceImages();
+  const image = requested?.trim();
+  if (!image) return allowed[0];
+  if (!isSafeImageReference(image) || !allowed.includes(image)) {
+    throw new WorkspaceError("That workspace image is not on this host's allowlist.", "invalid_body");
+  }
+  return image;
+}
+
+/**
+ * The in-container mount point for the workspace volume. Absolute, normalized,
+ * not "/", and free of the ":" / "," separators docker's -v syntax would parse.
+ */
+export function resolveHomePath(requested?: string | null): string {
+  const raw = requested?.trim();
+  if (!raw) return DEFAULT_HOME_PATH;
+  const normalized = posix.normalize(raw);
+  if (!posix.isAbsolute(normalized) || normalized === "/" || !/^[A-Za-z0-9._\/-]{2,200}$/.test(normalized)) {
+    throw new WorkspaceError("homePath must be an absolute path such as /workspace.", "invalid_body");
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
 export const DEFAULT_POLICY: WorkspacePolicy = {
   // Enforced in `assertDelegationAllowed`, not merely stated in a prompt.
   crossAgentDelegation: "explicit-only",
