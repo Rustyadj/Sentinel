@@ -15,6 +15,19 @@ import httpx
 
 log = logging.getLogger(__name__)
 _locks = {}
+# Hermes's plain-text fallback keeps only content[:3500]; never send more per call.
+_CHUNK_CHARS = 3500
+
+
+def _chunks(text):
+    """Split on line boundaries where possible so each part survives the fallback whole."""
+    parts = []
+    while len(text) > _CHUNK_CHARS:
+        cut = text.rfind("\n", 0, _CHUNK_CHARS)
+        cut = cut if cut > 0 else _CHUNK_CHARS
+        parts.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    return parts + [text] if text else parts
 
 
 def _settings():
@@ -58,9 +71,10 @@ async def _dispatch(event, gateway, **_):
         # Native delivery path: retries transient failures and falls back to
         # plain text when the platform rejects formatting (Telegram MarkdownV2).
         send = getattr(adapter, "_send_with_retry", None) or adapter.send
-        result = await send(chat_id=source.chat_id, content=text, metadata=metadata)
-        if result is not None and getattr(result, "success", True) is False:
-            raise RuntimeError("Channel reply delivery failed: %s" % (getattr(result, "error", None) or "unknown error"))
+        for part in _chunks(text):
+            result = await send(chat_id=source.chat_id, content=part, metadata=metadata)
+            if result is not None and getattr(result, "success", True) is False:
+                raise RuntimeError("Channel reply delivery failed: %s" % (getattr(result, "error", None) or "unknown error"))
 
     try:
         paused = gateway._hm_estop_gate(event, source, False)

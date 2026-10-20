@@ -102,6 +102,15 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         await plugin._dispatch(self.event, self.gateway)
         self.assertEqual(self.post.await_count, 2)
 
+    async def test_long_reply_is_chunked_within_fallback_limit(self):
+        long_text = ("line " * 100 + "\n") * 20
+        self.post.return_value = SimpleNamespace(status_code=200, json=lambda: {"text": long_text, "roomId": "room"})
+        await plugin._dispatch(self.event, self.gateway)
+        sent = [c.kwargs["content"] for c in self.adapter.send.call_args_list]
+        self.assertGreater(len(sent), 1)
+        self.assertTrue(all(len(part) <= plugin._CHUNK_CHARS for part in sent))
+        self.assertEqual("".join(sent).replace("\n", ""), long_text.replace("\n", ""))
+
     async def test_native_maintenance_commands_stay_in_gateway(self):
         self.event.get_command = lambda: "status"
         self.assertIsNone(await plugin._dispatch(self.event, self.gateway))
