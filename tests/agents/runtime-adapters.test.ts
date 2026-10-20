@@ -1,3 +1,5 @@
+// Protocol tests isolate the process transport; personal-computer routing has its own suite.
+vi.mock("@/lib/agents/runtime/workspace-runner", () => ({ isPersonalComputer: () => false }));
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ClaudeCodeRuntimeAdapter } from "@/lib/agents/runtime/claude-code";
 import { CodexRuntimeAdapter } from "@/lib/agents/runtime/codex";
 import { HttpAgentRuntimeAdapter } from "@/lib/agents/runtime/http-adapter";
-import { safeRuntimeEnvironment, type CommandResult, type RuntimeProcessRunner, type SpawnedRuntimeProcess } from "@/lib/agents/runtime/runner";
+import { safeRuntimeEnvironment, nodeRuntimeProcessRunner, type CommandResult, type RuntimeProcessRunner, type SpawnedRuntimeProcess } from "@/lib/agents/runtime/runner";
 import { containsSensitiveRuntimeConfig } from "@/lib/agents/runtime/sensitive-config";
 import type { RuntimeSessionStore } from "@/lib/agents/runtime/store";
 import type { AgentSession, RuntimeEvent, RuntimeEventType, RuntimeInstance, SessionQuery, StartSessionInput } from "@/lib/agents/runtime/types";
@@ -161,7 +163,7 @@ describe("unified runtime discovery and readiness", () => {
 
   it("supports Claude resume with a validated opaque provider session id", async () => {
     const store = new MemoryStore();
-    const original = await store.create({ runtimeId: claudeRuntime.id, userId: "user-1" }, "claude-code", "claude-code", "/tmp", "provider-session-1");
+    const original = await store.create({ runtimeId: claudeRuntime.id, userId: "user-1" }, "claude-code", "claude-code", "/allowed", "provider-session-1");
     await store.update(original.id, { metadata: { requestedModel: "claude-opus-5", requestedEffort: "low" } });
     const adapter = new ClaudeCodeRuntimeAdapter(async () => claudeRuntime, store, new FakeRunner());
     await expect(adapter.resumeSession({ runtimeId: claudeRuntime.id, externalSessionId: "provider-session-1", userId: "user-1" }))
@@ -248,7 +250,7 @@ describe("CLI runtime execution and process cleanup", () => {
     ].join("\n"));
 
     class TestCodexAdapter extends CodexRuntimeAdapter {
-      readReportedSession(thread: string, start: string) { return this.reportedSessionModel(thread, start); }
+      readReportedSession(thread: string, start: string) { return this.reportedSessionModel(thread, start, nodeRuntimeProcessRunner); }
     }
 
     try {
@@ -284,6 +286,16 @@ describe("CLI runtime execution and process cleanup", () => {
       else process.env.CODEX_HOME = previousCodexHome;
       await rm(codexHome, { recursive: true, force: true });
     }
+  });
+
+  it("does not launch a process when the running-session audit write fails", async () => {
+    const runner = new FakeRunner(), store = new MemoryStore();
+    const session = await store.create({ runtimeId: claudeRuntime.id, userId: "user-1" }, "claude-code", "claude-code", "/allowed");
+    session.metadata = { requestedModel: "claude-opus-5", requestedEffort: "low" };
+    vi.spyOn(store, "update").mockRejectedValueOnce(new Error("database unavailable"));
+    const adapter = new ClaudeCodeRuntimeAdapter(async () => claudeRuntime, store, runner);
+    await expect(collect(adapter.send({ sessionId: session.id, userId: "user-1", prompt: "must not launch" }))).rejects.toThrow("database unavailable");
+    expect(runner.spawned).toHaveLength(0);
   });
 
   it("marks non-zero exit as failed and retains stderr", async () => {

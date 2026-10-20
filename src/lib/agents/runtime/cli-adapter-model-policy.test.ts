@@ -1,6 +1,8 @@
+// Protocol tests isolate the process transport; personal-computer routing has its own suite.
+vi.mock("@/lib/agents/runtime/workspace-runner", () => ({ isPersonalComputer: () => false }));
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { ClaudeCodeRuntimeAdapter } from "./claude-code";
 import { CodexRuntimeAdapter } from "./codex";
 import type { RuntimeProcessRunner } from "./runner";

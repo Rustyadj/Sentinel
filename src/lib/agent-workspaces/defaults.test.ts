@@ -60,6 +60,21 @@ describe("canonical agent workspace resolver", () => {
     expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
+  it("recovers a recorded default whose first volume provisioning failed", async () => {
+    defaultFinds([], []);
+    mocks.tx.agent.findUnique.mockResolvedValue({ id: "hermes-lisa" });
+    mocks.tx.agentWorkspace.findFirst.mockResolvedValue(null);
+    mocks.tx.agentWorkspace.create.mockResolvedValue({ ...lisa, volumeName: null });
+    mocks.provider.createWorkspace.mockRejectedValueOnce(new Error("backend unavailable"));
+    const provisioning = { tenantWorkspaceId: "tenant-1", ownerUserId: "operator", actor: { client: "system" as const } };
+    await expect(resolveDefaultAgentWorkspace({ agentId: "hermes-lisa", provisioning })).rejects.toThrow("backend unavailable");
+    defaultFinds([{ ...lisa, volumeName: null }]);
+    const repaired = await resolveDefaultAgentWorkspace({ agentId: "hermes-lisa", provisioning });
+    expect(repaired.volumeName).toBe("created-volume");
+    expect(mocks.tx.agentWorkspace.create).toHaveBeenCalledTimes(1);
+    expect(mocks.provider.createWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it("returns the same default repeatedly across chats, sessions, restarts, and runtime recreation", async () => {
     defaultFinds([lisa]);
     const first = await resolveDefaultAgentWorkspace({ agentId: "hermes-lisa" });

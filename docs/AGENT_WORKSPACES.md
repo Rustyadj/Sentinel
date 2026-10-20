@@ -1,6 +1,6 @@
 # Agent Workspaces
 
-A durable, isolated computer per Hermes agent. Closing a conversation, stopping
+A durable, isolated computer per agent, including Hermes, Claude Code and Codex. Closing a conversation, stopping
 a runtime or destroying a container never destroys workspace data.
 
 ## Layers
@@ -54,6 +54,9 @@ with redaction of captured output, full event + audit trail. The Docker socket
 is never mounted into a workspace and agents never reach the daemon.
 
 ## Operating
+
+For coding runtime provisioning, credentials, routing and recovery, see
+[Claude Code and Codex personal computers](CODING_AGENT_COMPUTERS.md).
 
 Build the base image once per host and set the host env described in
 `docker/agent-workspace/README.md`. Idle compute is released by

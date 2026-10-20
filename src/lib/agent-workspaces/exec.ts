@@ -14,8 +14,14 @@ export interface RunCommandInput {
   cwd?: string;
   timeoutMs?: number;
   stdin?: string;
+  signal?: AbortSignal;
+  loginShell?: boolean;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
   /** Injected per-exec; redacted from stored output. */
   secrets?: Record<string, string>;
+  env?: Record<string, string>;
+  touchActivity?: boolean;
   actor: ActorContext;
   /** Free-form provenance, e.g. { via: "git.clone" }. */
   metadata?: Record<string, unknown>;
@@ -59,6 +65,20 @@ export async function runCommand(input: RunCommandInput): Promise<RunCommandOutp
     },
   });
 
+  // Buffer partial lines so a credential split across transport chunks cannot
+  // escape redaction into runtime/session events.
+  const forward = (callback?: (chunk: string) => void) => {
+    let pending = "";
+    return {
+      write(chunk: string) {
+        pending += chunk;
+        const end = pending.lastIndexOf("\n");
+        if (end >= 0) { callback?.(redactSecrets(pending.slice(0, end + 1), secrets)); pending = pending.slice(end + 1); }
+      },
+      end() { if (pending) callback?.(redactSecrets(pending, secrets)); },
+    };
+  };
+  const out = forward(input.onStdout), err = forward(input.onStderr);
   let result: ExecResult;
   try {
     result = await getRuntimeProvider(workspace.runtimeType).executeCommand({
@@ -66,8 +86,12 @@ export async function runCommand(input: RunCommandInput): Promise<RunCommandOutp
       command: input.command,
       cwd,
       timeoutMs,
-      env: secrets,
+      env: { ...input.env, ...secrets },
       stdin: input.stdin,
+      signal: input.signal,
+      loginShell: input.loginShell,
+      onStdout: out.write,
+      onStderr: err.write,
     });
   } catch (error) {
     const message = error instanceof WorkspaceError ? error.message : "Command execution failed.";
@@ -78,6 +102,7 @@ export async function runCommand(input: RunCommandInput): Promise<RunCommandOutp
     throw error;
   }
 
+  out.end(); err.end();
   const stdout = redactSecrets(result.stdout, secrets).slice(0, MAX_CAPTURED_OUTPUT_BYTES);
   const stderr = redactSecrets(result.stderr, secrets).slice(0, MAX_CAPTURED_OUTPUT_BYTES);
   const status = result.timedOut ? "timed_out" : result.exitCode === 0 ? "succeeded" : "failed";
@@ -94,7 +119,7 @@ export async function runCommand(input: RunCommandInput): Promise<RunCommandOutp
       durationMs: result.durationMs,
     },
   });
-  await db.agentWorkspace.update({ where: { id: workspace.id }, data: { lastActiveAt: new Date() } });
+  if (input.touchActivity !== false) await db.agentWorkspace.update({ where: { id: workspace.id }, data: { lastActiveAt: new Date() } });
 
   await recordWorkspaceEvent({
     agentWorkspaceId: workspace.id,

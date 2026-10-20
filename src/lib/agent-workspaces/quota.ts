@@ -13,16 +13,17 @@ const lockTails = new Map<string, Promise<void>>();
 export interface WorkspaceDiskQuota {
   limitBytes: number;
   homePath: string;
+  volumeName: string | null;
 }
 
 export async function loadWorkspaceDiskQuota(workspaceId: string): Promise<WorkspaceDiskQuota> {
   const workspace = await db.agentWorkspace.findUnique({
     where: { id: workspaceId },
-    select: { resourceLimits: true, homePath: true },
+    select: { resourceLimits: true, homePath: true, volumeName: true },
   });
   if (!workspace) throw new WorkspaceError("Workspace not found.", "workspace_not_found");
   const limits = parseLimits(workspace.resourceLimits);
-  return { limitBytes: Math.floor(limits.diskGb * 1024 ** 3), homePath: workspace.homePath };
+  return { limitBytes: Math.floor(limits.diskGb * 1024 ** 3), homePath: workspace.homePath, volumeName: workspace.volumeName };
 }
 
 /** Serialises provider mutations in this server process so two checked writes cannot both reserve the same free bytes. */

@@ -147,18 +147,20 @@ export class ModelUnavailableError extends Error {
 }
 
 /** Catalog evidence comes from the installed CLI, never a universal effort list. */
-export async function installedEffortOptions(runtime: { kind: AgentRuntimeKind; executable?: string }, model: string): Promise<EffortLevel[]> {
-  if (!runtime.executable || !isManagedWorkerKind(runtime.kind)) return [];
-  if (runtime.kind === "claude-code") {
-    const { nodeRuntimeProcessRunner } = await import("./runtime/runner");
-    const help = await nodeRuntimeProcessRunner.run(runtime.executable, ["--help"], { timeoutMs: 5000 }).catch(() => null);
-    const line = help?.stdout.split("\n").find(line => line.includes("--effort"));
-    return (["low", "medium", "high"] as EffortLevel[]).filter(level => line && new RegExp(`\\b${level}\\b`).test(line));
-  }
-  const { readFile } = await import("node:fs/promises");
-  const { join } = await import("node:path");
+export async function installedEffortOptions(runtime: { kind: AgentRuntimeKind; executable?: string; id?: string; agentId?: string }, model: string): Promise<EffortLevel[]> {
+  if (!isManagedWorkerKind(runtime.kind)) return [];
   try {
-    const cache = JSON.parse(await readFile(join(process.env.CODEX_HOME ?? join(process.env.HOME ?? "/nonexistent", ".codex"), "models_cache.json"), "utf8"));
+    const { personalComputerRunner } = await import("./runtime/workspace-runner");
+    const computer = await personalComputerRunner({ id: runtime.id ?? `runtime-${runtime.kind}`, agentId: runtime.agentId ?? runtime.kind,
+      kind: runtime.kind, transport: "process" });
+    if (runtime.kind === "claude-code") {
+      const help = await computer.runner.run(computer.executable, ["--help"], { timeoutMs: 5000 });
+      const line = help.stdout.split("\n").find(line => line.includes("--effort"));
+      return (["low", "medium", "high"] as EffortLevel[]).filter(level => line && new RegExp(`\\b${level}\\b`).test(line));
+    }
+    const result = await computer.runner.run("node", ["-e", "process.stdout.write(require('node:fs').readFileSync(process.env.CODEX_HOME + '/models_cache.json','utf8'))"]);
+    if (result.exitCode !== 0) return [];
+    const cache = JSON.parse(result.stdout);
     const entry = cache.models?.find((value: { slug?: string }) => value.slug === model);
     const supported = entry?.supported_reasoning_levels?.map((value: { effort: string }) => value.effort) ?? [];
     return (["low", "medium", "high", "xhigh", "max"] as EffortLevel[]).filter(level => supported.includes(level));

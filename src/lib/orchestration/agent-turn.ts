@@ -79,12 +79,12 @@ export async function runAgentTurn(input: { roomId: string; agentId: string; use
  * session id instead — stable across repeated direct messages from the
  * same agent in the same room, isolated from every other room/task.
  */
-async function ensureDirectWorkingDirectory(roomId: string, agentId: string): Promise<string | undefined> {
+async function ensureDirectWorkingDirectory(roomId: string, agentId: string, userId: string): Promise<string | undefined> {
   const kind = getVpsAgent(agentId)?.kind;
   if (kind !== "claude-code" && kind !== "codex") return undefined;
   const runtime = await resolveAgentRuntime(agentId);
   const instance = asRuntimeInstance(runtime);
-  const worktree = await ensureTaskWorktree({ runtime: instance, taskId: `direct-${roomId}`, agentId });
+  const worktree = await ensureTaskWorktree({ runtime: instance, taskId: `direct-${roomId}`, agentId, userId });
   return worktree.path;
 }
 
@@ -94,7 +94,7 @@ export async function runDirectAgentReply(roomId: string, agentId: string, userI
     // If worktree setup itself fails, this throws and falls straight into
     // the catch below — execution is blocked, not silently retried against
     // the shared primary tree.
-    const workingDirectory = await ensureDirectWorkingDirectory(roomId, agentId);
+    const workingDirectory = await ensureDirectWorkingDirectory(roomId, agentId, userId);
     // Only Hermes Lisa (the lead) is ever given the launchImplementationMission
     // vocabulary — a direct @mention reply from claude-code/codex etc. is
     // never eligible to bridge back into Lisa's orchestration loop.

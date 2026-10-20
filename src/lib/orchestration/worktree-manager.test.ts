@@ -1,7 +1,9 @@
+// Protocol tests isolate the process transport; personal-computer routing has its own suite.
+vi.mock("@/lib/agents/runtime/workspace-runner", () => ({ isPersonalComputer: () => false }));
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { nodeRuntimeProcessRunner } from "@/lib/agents/runtime/runner";
 import type { RuntimeInstance } from "@/lib/agents/runtime/types";
 import { ensureTaskWorktree, removeTaskWorktree } from "./worktree-manager";
@@ -18,7 +20,7 @@ async function makeRepo(): Promise<string> {
 }
 
 function runtimeAt(root: string): RuntimeInstance {
-  return { id: "runtime-test", agentId: "test-agent", kind: "claude-code", transport: "process", workingDirectoryRoot: root };
+  return { id: "runtime-test", agentId: "claude-code", kind: "claude-code", transport: "process", workingDirectoryRoot: root };
 }
 
 const cleanupRoots: string[] = [];
@@ -62,9 +64,21 @@ describe("worktree manager", () => {
     cleanupRoots.push(root);
     const runtime = runtimeAt(root);
 
-    const first = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "codex" });
-    const second = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "codex" });
+    const first = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "claude-code" });
+    const second = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "claude-code" });
     expect(second.path).toBe(first.path);
+  });
+
+  it("reuses a detached task branch without resetting its committed data", async () => {
+    const root = await makeRepo(); cleanupRoots.push(root);
+    const runtime = runtimeAt(root);
+    const first = await ensureTaskWorktree({ runtime, taskId: "TASK-RECOVERY", agentId: "claude-code" });
+    await writeFile(join(first.path, "durable.txt"), "committed data");
+    await nodeRuntimeProcessRunner.run("git", ["add", "."], { cwd: first.path });
+    await nodeRuntimeProcessRunner.run("git", ["commit", "-qm", "Keep task data"], { cwd: first.path });
+    await removeTaskWorktree(runtime, first.path);
+    const recovered = await ensureTaskWorktree({ runtime, taskId: "TASK-RECOVERY", agentId: "claude-code" });
+    expect(await readFile(join(recovered.path, "durable.txt"), "utf8")).toBe("committed data");
   });
 
   it("removes a worktree cleanly", async () => {
@@ -72,7 +86,7 @@ describe("worktree manager", () => {
     cleanupRoots.push(root);
     const runtime = runtimeAt(root);
 
-    const worktree = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "codex" });
+    const worktree = await ensureTaskWorktree({ runtime, taskId: "TASK-1", agentId: "claude-code" });
     await removeTaskWorktree(runtime, worktree.path);
 
     const list = await nodeRuntimeProcessRunner.run("git", ["worktree", "list", "--porcelain"], { cwd: root });

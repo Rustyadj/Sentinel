@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { WorkspaceError, translateRuntimeFailure } from "../errors";
 import { MAX_CAPTURED_OUTPUT_BYTES } from "../policy";
@@ -33,13 +34,13 @@ interface RawResult { code: number; stdout: string; stderr: string; timedOut: bo
  * string — so no caller-supplied value can be reinterpreted as a docker flag
  * or a host shell command.
  */
-function docker(args: string[], options: { timeoutMs?: number; stdin?: string; maxBytes?: number } = {}): Promise<RawResult> {
+function docker(args: string[], options: { timeoutMs?: number; stdin?: string; maxBytes?: number; env?: Record<string, string>; onStdout?: (chunk: string) => void; onStderr?: (chunk: string) => void } = {}): Promise<RawResult> {
   const maxBytes = options.maxBytes ?? MAX_CAPTURED_OUTPUT_BYTES;
   return new Promise((resolvePromise) => {
     const child = execFile(
       DOCKER_BIN,
       args,
-      { timeout: options.timeoutMs ?? 60_000, maxBuffer: maxBytes * 4, encoding: "utf8", killSignal: "SIGKILL" },
+      { timeout: options.timeoutMs ?? 60_000, maxBuffer: maxBytes * 4, encoding: "utf8", env: { ...process.env, ...options.env }, killSignal: "SIGKILL" },
       (error, stdout, stderr) => {
         const err = error as (Error & { code?: number | string; killed?: boolean; signal?: string }) | null;
         const truncated = stdout.length > maxBytes || stderr.length > maxBytes;
@@ -52,6 +53,8 @@ function docker(args: string[], options: { timeoutMs?: number; stdin?: string; m
         });
       },
     );
+    child.stdout?.on("data", (chunk) => options.onStdout?.(String(chunk)));
+    child.stderr?.on("data", (chunk) => options.onStderr?.(String(chunk)));
     if (options.stdin !== undefined) {
       child.stdin?.end(options.stdin);
     } else {
@@ -76,6 +79,15 @@ function execScriptArgs(workspaceId: string, script: string, args: string[] = []
   if (cwd) flags.push("-w", cwd);
   for (const [key, value] of Object.entries(env)) flags.push("-e", `${key}=${value}`);
   return [...flags, containerNameFor(workspaceId), "sh", "-c", script, "sentinel-workspace", ...args];
+}
+
+async function assertRuntimeBinding(workspaceId: string, volumeName: string | null, homePath: string) {
+  const result = await dockerOrThrow(["inspect", containerNameFor(workspaceId), "--format", "{{json .Config.Labels}}\n{{json .Mounts}}"]);
+  const [labels, mounts] = result.stdout.trim().split("\n").map(value => JSON.parse(value));
+  if (labels?.[`${LABEL_PREFIX}.workspace`] !== workspaceId ||
+      !mounts.some((mount: { Type: string; Name: string; Destination: string }) => mount.Type === "volume" && mount.Name === volumeName && mount.Destination === homePath)) {
+    throw new WorkspaceError("Runtime identity or persistent volume binding does not match this workspace.", "workspace_forbidden");
+  }
 }
 
 function parseState(status: string, running: boolean, paused: boolean, exitCode: number) {
@@ -161,12 +173,24 @@ export class DockerWorkspaceProvider implements WorkspaceRuntimeProvider {
         "sh", "-c", `chown -R ${RUN_USER.replace(":", ":")} /data && chmod 750 /data`,
       ], { timeoutMs: 120_000 });
     }
+    const owned = await docker(["volume", "inspect", volumeName, "--format", `{{index .Labels "${LABEL_PREFIX}.workspace"}}`]);
+    if (owned.code !== 0 || owned.stdout.trim() !== spec.workspaceId) throw new WorkspaceError("Workspace volume ownership does not match.", "workspace_forbidden");
+    await dockerOrThrow(["run", "--rm", "-v", `${volumeName}:/data`, HELPER_IMAGE,
+      "sh", "-c", `chown ${RUN_USER} /data && chmod 750 /data`]);
     return { volumeName };
   }
 
   async startWorkspace(spec: CreateWorkspaceSpec & { volumeName: string }): Promise<RuntimeDescriptor> {
     const name = containerNameFor(spec.workspaceId);
+    // Docker otherwise silently creates an empty volume on a missing mount.
+    const volume = await docker(["volume", "inspect", spec.volumeName, "--format", `{{index .Labels "${LABEL_PREFIX}.workspace"}}`]);
+    if (volume.code !== 0) {
+      if (/no such volume/i.test(volume.stderr)) throw new WorkspaceError("Workspace volume is missing; restore it before starting compute.", "volume_missing");
+      throw translateRuntimeFailure(volume.stderr);
+    }
+    if (volume.stdout.trim() !== spec.workspaceId) throw new WorkspaceError("Workspace volume ownership does not match.", "workspace_forbidden");
     const existing = await this.getStatus(spec.workspaceId);
+    if (existing) await assertRuntimeBinding(spec.workspaceId, spec.volumeName, spec.homePath);
     if (existing?.state === "RUNNING") return existing;
     if (existing?.state === "PAUSED") return this.resumeWorkspace(spec.workspaceId);
     if (existing) {
@@ -304,6 +328,7 @@ export class DockerWorkspaceProvider implements WorkspaceRuntimeProvider {
         throw new WorkspaceError(`The workspace runtime is ${status.state.toLowerCase()}. Start it before running commands.`, "runtime_not_running");
       }
       const quota = await loadWorkspaceDiskQuota(request.workspaceId);
+      await assertRuntimeBinding(request.workspaceId, quota.volumeName, quota.homePath);
       const usedBefore = await workspaceDiskUsage(request.workspaceId, quota.homePath);
       await assertProjectedDiskUsage({
         workspaceId: request.workspaceId,
@@ -313,13 +338,16 @@ export class DockerWorkspaceProvider implements WorkspaceRuntimeProvider {
       });
 
       const quotaScript = [
-        'limit="$1"; root="$2"; command="$3"',
-        'bash -lc "$command" 0<&0 & command_pid=$!',
+        'limit="$1"; root="$2"; command="$3"; pidfile="$4"; seconds="$5"',
+        'setsid timeout -k 2s "$seconds" bash "$6" "$command" 0<&0 & command_pid=$!',
+        'printf "%s" "$command_pid" > "$pidfile"',
+        'if test -f "$pidfile.cancel"; then kill -TERM -- -"$command_pid" 2>/dev/null || true; fi',
+        `trap 'rm -f "$pidfile" "$pidfile.cancel"' EXIT`,
         'quota_hit=0',
         'while kill -0 "$command_pid" 2>/dev/null; do',
         '  used=$(du -sb "$root" 2>/dev/null | cut -f1)',
         '  if test -n "$used" && test "$used" -gt "$limit"; then',
-        '    quota_hit=1; kill -TERM "$command_pid" 2>/dev/null || true; sleep 0.2; kill -KILL "$command_pid" 2>/dev/null || true; break',
+        '    quota_hit=1; kill -TERM -- -"$command_pid" 2>/dev/null || true; sleep 0.2; kill -KILL -- -"$command_pid" 2>/dev/null || true; break',
         '  fi',
         '  sleep 0.2',
         'done',
@@ -327,16 +355,26 @@ export class DockerWorkspaceProvider implements WorkspaceRuntimeProvider {
         `if test "$quota_hit" -eq 1; then printf '${QUOTA_EXCEEDED_MARKER}\\n' >&2; exit 125; fi`,
         'exit "$command_code"',
       ].join("\n");
+      const pidfile = `/tmp/sentinel-exec-${randomUUID()}.pid`;
       const args = ["exec", "-i", "-u", RUN_USER];
       if (request.cwd) args.push("-w", request.cwd);
-      for (const [key, value] of Object.entries(request.env ?? {})) args.push("-e", `${key}=${value}`);
+      for (const key of Object.keys(request.env ?? {})) args.push("-e", key);
       args.push(
         containerNameFor(request.workspaceId),
         "bash", "-c", quotaScript, "sentinel-quota",
-        String(quota.limitBytes), quota.homePath, request.command,
+        String(quota.limitBytes), quota.homePath, request.command, pidfile, String((request.timeoutMs ?? 120_000) / 1000), request.loginShell === false ? "-c" : "-lc",
       );
 
-      const result = await docker(args, { timeoutMs: request.timeoutMs ?? 120_000, stdin: request.stdin });
+      const cancel = () => { void docker(execScriptArgs(request.workspaceId,
+        'touch "$1.cancel"; if test -f "$1"; then pid=$(cat "$1"); kill -TERM -$pid 2>/dev/null || true; sleep 2; kill -KILL -$pid 2>/dev/null || true; fi', [pidfile])); };
+      if (request.signal?.aborted) throw new WorkspaceError("Command cancelled.", "command_failed");
+      request.signal?.addEventListener("abort", cancel, { once: true });
+      let result: RawResult;
+      try {
+        result = await docker(args, { timeoutMs: (request.timeoutMs ?? 120_000) + 5_000, stdin: request.stdin,
+          env: request.env, onStdout: request.onStdout, onStderr: request.onStderr });
+        if (result.code === 124) result.timedOut = true;
+      } finally { request.signal?.removeEventListener("abort", cancel); }
       const usedAfter = await workspaceDiskUsage(request.workspaceId, quota.homePath).catch(() => usedBefore);
       if (result.stderr.includes(QUOTA_EXCEEDED_MARKER) || /no space left on device/i.test(result.stderr) || usedAfter > quota.limitBytes) {
         await throwDiskFull({

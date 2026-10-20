@@ -12,7 +12,7 @@ export interface CommandResult {
 export type SpawnedRuntimeProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 export interface RuntimeProcessRunner {
-  run(executable: string, args: string[], options?: { cwd?: string; timeoutMs?: number }): Promise<CommandResult>;
+  run(executable: string, args: string[], options?: { cwd?: string; timeoutMs?: number; probe?: boolean }): Promise<CommandResult>;
   spawn(executable: string, args: string[], options: SpawnOptionsWithoutStdio): SpawnedRuntimeProcess;
   realpath(path: string): Promise<string>;
 }
