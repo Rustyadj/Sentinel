@@ -79,6 +79,38 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await plugin._dispatch(self.event, self.gateway))["action"], "skip")
         self.post.assert_awaited_once()
 
+    async def test_replies_use_native_retrying_delivery(self):
+        self.adapter._send_with_retry = create_autospec(adapter_send, return_value=SimpleNamespace(success=True))
+        await plugin._dispatch(self.event, self.gateway)
+        self.assertEqual(self.adapter._send_with_retry.call_args.kwargs["content"], "Sentinel reply")
+        self.adapter.send.assert_not_awaited()
+
+    async def test_non_json_refusal_still_answers_sender(self):
+        def not_json():
+            raise ValueError("Expecting value")
+        self.post.return_value = SimpleNamespace(status_code=502, json=not_json)
+        with self.assertLogs(plugin.log, logging.ERROR):
+            await plugin._dispatch(self.event, self.gateway)
+        self.assertIn("HTTP 502", self.adapter.send.call_args.kwargs["content"])
+
+    async def test_failed_delivery_is_logged_not_marked_delivered(self):
+        self.adapter.send.return_value = SimpleNamespace(success=False, error="Bad Request: can't parse entities")
+        with self.assertLogs(plugin.log, logging.ERROR) as logs:
+            await plugin._dispatch(self.event, self.gateway)
+        self.assertIn("can't parse entities", str(logs.records[0].exc_info[1]))
+        self.adapter.send.return_value = SimpleNamespace(success=True)
+        await plugin._dispatch(self.event, self.gateway)
+        self.assertEqual(self.post.await_count, 2)
+
+    async def test_long_reply_is_chunked_within_fallback_limit(self):
+        long_text = ("line " * 100 + "\n") * 20
+        self.post.return_value = SimpleNamespace(status_code=200, json=lambda: {"text": long_text, "roomId": "room"})
+        await plugin._dispatch(self.event, self.gateway)
+        sent = [c.kwargs["content"] for c in self.adapter.send.call_args_list]
+        self.assertGreater(len(sent), 1)
+        self.assertTrue(all(len(part) <= plugin._CHUNK_CHARS for part in sent))
+        self.assertEqual("".join(sent).replace("\n", ""), long_text.replace("\n", ""))
+
     async def test_native_maintenance_commands_stay_in_gateway(self):
         self.event.get_command = lambda: "status"
         self.assertIsNone(await plugin._dispatch(self.event, self.gateway))

@@ -15,6 +15,19 @@ import httpx
 
 log = logging.getLogger(__name__)
 _locks = {}
+# Hermes's plain-text fallback keeps only content[:3500]; never send more per call.
+_CHUNK_CHARS = 3500
+
+
+def _chunks(text):
+    """Split on line boundaries where possible so each part survives the fallback whole."""
+    parts = []
+    while len(text) > _CHUNK_CHARS:
+        cut = text.rfind("\n", 0, _CHUNK_CHARS)
+        cut = cut if cut > 0 else _CHUNK_CHARS
+        parts.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    return parts + [text] if text else parts
 
 
 def _settings():
@@ -40,18 +53,30 @@ async def _dispatch(event, gateway, **_):
         "pause", "resume", "status", "restart", "approve", "deny", "help",
     }:
         return None  # Native gateway controls, never task or skill shortcuts.
+    # Resolve delivery before any Sentinel work so every failure below can
+    # still tell the sender; a hook that drops the message silently looks
+    # exactly like Lisa ignoring them.
     try:
         adapter = gateway._delivery_adapter_for(source)
-        if adapter is None:
-            return {"action": "skip", "reason": "sentinel-no-delivery-adapter"}
         from gateway.platforms.base import _thread_metadata_for_source
         metadata = _thread_metadata_for_source(source, getattr(event, "message_id", None))
+    except Exception:
+        log.exception("Sentinel channel could not resolve reply delivery")
+        return {"action": "skip", "reason": "sentinel-no-delivery-adapter"}
+    if adapter is None:
+        log.error("Sentinel channel has no delivery adapter: platform=%s chat=%s", platform, source.chat_id)
+        return {"action": "skip", "reason": "sentinel-no-delivery-adapter"}
 
-        async def reply(text):
-            result = await adapter.send(chat_id=source.chat_id, content=text, metadata=metadata)
+    async def reply(text):
+        # Native delivery path: retries transient failures and falls back to
+        # plain text when the platform rejects formatting (Telegram MarkdownV2).
+        send = getattr(adapter, "_send_with_retry", None) or adapter.send
+        for part in _chunks(text):
+            result = await send(chat_id=source.chat_id, content=part, metadata=metadata)
             if result is not None and getattr(result, "success", True) is False:
-                raise RuntimeError("Channel reply delivery failed")
+                raise RuntimeError("Channel reply delivery failed: %s" % (getattr(result, "error", None) or "unknown error"))
 
+    try:
         paused = gateway._hm_estop_gate(event, source, False)
         if paused:
             await reply(paused)
@@ -61,8 +86,15 @@ async def _dispatch(event, gateway, **_):
         home, settings = _settings()
         async def submit(payload):
             async with httpx.AsyncClient(timeout=1800, trust_env=False) as client:
-                return await client.post(settings["url"], json=payload,
+                response = await client.post(settings["url"], json=payload,
                     headers={"Authorization": "Bearer " + settings["secret"]})
+            try:
+                return response.status_code, response.json()
+            except ValueError:
+                # A proxy error page or wrong URL is not JSON; say so instead of
+                # failing with an opaque decode error.
+                log.error("Sentinel channel returned non-JSON: status=%s url=%s", response.status_code, settings["url"])
+                return response.status_code, {"error": "Sentinel returned an unexpected response (HTTP %s)." % response.status_code}
 
         payload = {
             "platform": platform, "senderId": str(source.user_id or ""),
@@ -72,8 +104,7 @@ async def _dispatch(event, gateway, **_):
         # /stop must reach Sentinel immediately while this chat's main turn
         # holds the serialization lock. New/reset wait for its completion.
         if command == "stop":
-            response = await submit({**payload, "text": "/stop"})
-            answer = response.json()
+            _, answer = await submit({**payload, "text": "/stop"})
             await reply(answer.get("text") or answer.get("error") or "Sentinel could not stop this turn.")
             return {"action": "skip", "reason": "sentinel-stop"}
         key = json.dumps([platform, source.user_id, source.chat_id, getattr(source, "thread_id", None)])
@@ -99,9 +130,9 @@ async def _dispatch(event, gateway, **_):
                 return {"action": "skip", "reason": "sentinel-no-content"}
             payload["text"] = "/" + command if command in {"new", "reset"} else text
             # No automatic POST retry: timeout may mean real work already ran.
-            response = await submit(payload)
-            answer = response.json()
-            if response.status_code != 200:
+            status, answer = await submit(payload)
+            if status != 200:
+                log.warning("Sentinel channel refused turn: status=%s error=%s", status, answer.get("error"))
                 await reply(answer.get("error") or "Sentinel is unavailable. Please try again shortly.")
                 return {"action": "skip", "reason": "sentinel-refused"}
             _, clean_text = adapter.extract_media(answer["text"])
