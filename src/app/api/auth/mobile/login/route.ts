@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { findCredentialIdentity } from "@/lib/auth/identity";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
+import { isSignInThrottled, recordSignInFailure, tooManyAttempts } from "@/lib/auth/rate-limit";
 
 export function OPTIONS() {
   return corsPreflightResponse();
@@ -31,17 +32,18 @@ async function handlePost(request: NextRequest): Promise<Response> {
   }
 
   const { email, password } = body;
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
 
-  const user = await findCredentialIdentity(email);
-  if (!user?.passwordHash) {
-    return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
-  }
+  // Shares its failure counters with the web Credentials provider, so an
+  // attacker gains nothing by alternating between the two sign-in surfaces.
+  if (await isSignInThrottled(email, request.headers)) return tooManyAttempts();
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
+  const user = await findCredentialIdentity(email);
+  const valid = Boolean(user?.passwordHash) && await bcrypt.compare(password, user!.passwordHash!);
+  if (!user || !valid) {
+    await recordSignInFailure(email, request.headers);
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
   }
 

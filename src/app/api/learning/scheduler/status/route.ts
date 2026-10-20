@@ -8,7 +8,7 @@ import { getQueueStatus } from "@/lib/learning/queue";
 // design. Its `result`/`error` fields can reference candidate/agent/
 // workspace identifiers from any tenant. This repository has no
 // system/organization-admin authorization model (see
-// docs/reviews/PR21_POST_MERGE_RECONCILIATION.md and
+// docs/archive/reviews/PR21_POST_MERGE_RECONCILIATION.md and
 // src/lib/learning/authorization.ts's requireFeatureFlagAccess default
 // case for the same gap) — so per the fail-closed rule, recent run detail
 // is not exposed to any authenticated user here, only aggregate queue

@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 import Credentials from "next-auth/providers/credentials";
@@ -6,6 +6,13 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { normalizeEmailOrNull } from "@/lib/auth/email";
 import { findCredentialIdentity, findEmailIdentities } from "@/lib/auth/identity";
+import { isSignInThrottled, recordSignInFailure } from "@/lib/auth/rate-limit";
+import { isSignupAllowed } from "@/lib/auth/signup-policy";
+
+/** Surfaces to the sign-in form as `result.code === "rate_limited"`. */
+class RateLimitedSignin extends CredentialsSignin {
+  code = "rate_limited";
+}
 
 declare module "next-auth" {
   interface Session {
@@ -25,19 +32,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+      async authorize(credentials, request) {
+        if (typeof credentials?.email !== "string" || typeof credentials?.password !== "string") return null;
 
-        const user = await findCredentialIdentity(credentials.email as string);
+        if (await isSignInThrottled(credentials.email, request.headers)) throw new RateLimitedSignin();
 
-        if (!user?.passwordHash) return null;
-
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          user.passwordHash
-        );
-
-        if (!valid) return null;
+        const user = await findCredentialIdentity(credentials.email);
+        const valid = Boolean(user?.passwordHash) && await bcrypt.compare(credentials.password, user!.passwordHash!);
+        if (!user || !valid) {
+          await recordSignInFailure(credentials.email, request.headers);
+          return null;
+        }
 
         return { id: user.id, email: user.email, name: user.name };
       },
@@ -56,6 +61,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/auth/signin",
   },
   callbacks: {
+    // A first OAuth sign-in creates an account (see jwt below), so it is
+    // subject to the same signup policy as credentials registration. Existing
+    // accounts are unaffected; credentials sign-in already requires one.
+    async signIn({ account, user }) {
+      if (!account || account.provider === "credentials") return true;
+      const email = normalizeEmailOrNull(user?.email);
+      if (!email) return false;
+      if ((await findEmailIdentities(email)).length > 0) return true;
+      return isSignupAllowed(email);
+    },
     authorized({ auth: session }) {
       return !!session;
     },

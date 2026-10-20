@@ -146,7 +146,7 @@ export class HttpAgentRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   // The app container has no Docker socket or CLI by design (see
-  // docs/reviews/RUNTIME_ADAPTER_LAYER.md), so restart/reload are delegated
+  // docs/archive/reviews/RUNTIME_ADAPTER_LAYER.md), so restart/reload are delegated
   // to a narrow, loopback + docker-bridge-only, bearer-token-authenticated
   // host service (/opt/host-control on the VPS host) rather than shelling
   // out to a local `docker` binary that doesn't exist in this container.
