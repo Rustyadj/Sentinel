@@ -38,3 +38,10 @@ An execution receipt prevents an uncertain delivery retry from running work
 twice. A gateway SQLite receipt suppresses duplicate outbound replies. After an
 uncertain failure, inspect the Sentinel room before deliberately resubmitting a
 new message. The private endpoint does not accept browser session credentials.
+
+If Lisa stops answering on a channel, first confirm the gateway runs the
+current `sentinel-channel` (`plugin.yaml` version) — the plugin is copied into
+`$HERMES_HOME/plugins/` by hand, so a repository fix is not live until it is
+recopied and the gateway restarted. Then search the gateway log for
+`Sentinel channel`: every refused turn, non-JSON response and failed reply
+delivery is logged there with its cause.
