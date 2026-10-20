@@ -706,6 +706,9 @@ export class GlobeScene {
           alpha = normalNodeOpacity(node.id);
         }
 
+        if (node.operationalImpact === "confirmed") this.scratchColor.set("#ef4444");
+        else if (node.operationalImpact === "predicted") this.scratchColor.set("#f59e0b");
+
         if (lensClusterId !== null) {
           if (inLens) {
             this.scratchColor.lerp(isHub ? lensHub : lensAccent, isHub ? 0.75 : 0.45);

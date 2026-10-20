@@ -25,7 +25,11 @@ export function GraphMinimap({ graph, scene }: { graph: LensGraph; scene: GlobeS
   const scaleRef = useRef({ scale: 1, offsetX: 0, offsetY: 0 });
 
   useEffect(() => {
-    if (graph.nodes.length === 0) return;
+    if (graph.nodes.length === 0) {
+      baseRef.current = null;
+      canvasRef.current?.getContext("2d")?.clearRect(0, 0, WIDTH, HEIGHT);
+      return;
+    }
     const base = document.createElement("canvas");
     base.width = WIDTH;
     base.height = HEIGHT;
