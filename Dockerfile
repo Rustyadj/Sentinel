@@ -128,6 +128,11 @@ RUN ln -s /opt/runtime-bin/claude /usr/local/bin/claude \
  && printf '#!/bin/sh\nexec /opt/runtime-bin/codex "$@"\n' > /usr/local/bin/codex \
  && chmod +x /usr/local/bin/codex
 
+# The docker client, for the workspace-runner service only (same image as the
+# workers). Without the socket — which only workspace-runner mounts — it can
+# reach nothing.
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+
 LABEL org.opencontainers.image.revision=$SENTINEL_COMMIT
 
 # Install and generate as the runtime user, so nothing needs a recursive chown afterwards
