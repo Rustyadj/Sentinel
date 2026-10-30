@@ -2,7 +2,7 @@ import { Prisma, type AgentWorkspace } from "@prisma/client";
 import { db } from "@/lib/db";
 import { WorkspaceError } from "./errors";
 import { recordWorkspaceEvent } from "./events";
-import { DEFAULT_LIMITS, DEFAULT_POLICY, parseLimits, parsePolicy } from "./policy";
+import { DEFAULT_LIMITS, DEFAULT_POLICY, parseLimits, parsePolicy, resolveHomePath, resolveWorkspaceImage } from "./policy";
 import { getRuntimeProvider } from "./providers";
 import { slugify, type ActorContext } from "./service";
 
@@ -64,8 +64,8 @@ function creationData(agentId: string, input: DefaultWorkspaceProvisioning, slug
     slug,
     description: input.description?.trim() || null,
     runtimeType: input.runtimeType?.trim() || "docker",
-    image: input.image?.trim() || process.env.AGENT_WORKSPACE_IMAGE || "sentinel/agent-workspace:base",
-    homePath: input.homePath?.trim() || "/workspace",
+    image: resolveWorkspaceImage(input.image),
+    homePath: resolveHomePath(input.homePath),
     resourceLimits: parseLimits(input.resourceLimits) as unknown as Prisma.InputJsonValue,
     policy: parsePolicy(input.policy) as unknown as Prisma.InputJsonValue,
     isDefault: true,

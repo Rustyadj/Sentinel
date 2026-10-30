@@ -27,29 +27,16 @@ Services the shell provides to all modules via hooks and context:
 
 ```
 useAgentStore     — agent list, status, CRUD
-useMemoryStore    — memory CRUD, scoped queries
 useKeyStore       — browser-stored API keys
 useAppStore       — global UI state
 ```
 
 ### 3. Module Layer
 
-All feature surfaces live here. Modules self-register at app startup via manifests.
-
-```ts
-// Every module exports a manifest
-export const manifest: ModuleDefinition = {
-  id: string,
-  label: string,
-  icon: string,            // lucide-react icon name
-  href: string,            // route
-  category: "core" | "installable",
-  order: number,
-  description?: string,
-}
-```
-
-The Module Registry (`src/lib/modules/registry.ts`) holds all registrations. The Sidebar reads from the registry — it never imports module components directly.
+Feature surfaces live in `src/modules/<name>/components` and are imported
+directly by App Router pages. Navigation is the static list in
+`src/lib/navigation.ts`; the installable catalog is `MODULE_MANIFESTS` in
+`src/lib/modules/manifests.ts`. See [MODULE_SYSTEM.md](MODULE_SYSTEM.md).
 
 ---
 

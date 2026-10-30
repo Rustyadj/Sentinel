@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { getVpsAgent } from "./registry";
+import { canEditConfig } from "./policy";
 export { canEditConfig, canRestartAgent, canViewAgent } from "./policy";
 import type { ControlPlaneRole } from "./policy";
 export type { ControlPlaneRole } from "./policy";
@@ -104,6 +105,24 @@ export async function requireAgentRecordUser(agentId: string, write = false) {
   }
   const global = await getControlPlaneUser();
   return global && global.role !== "member" ? global : null;
+}
+
+/**
+ * Instance-wide settings (the global module catalog and custom modules) belong
+ * to whoever administers the "default" workspace — the same anchor the VPS
+ * agent registry uses (src/lib/agents/registry.ts). getControlPlaneUser()
+ * without an agent returns the caller's highest role in *any* workspace, and
+ * any user may create a workspace and own it, so it must not gate global state.
+ */
+export const INSTANCE_WORKSPACE_SLUG = "default";
+
+export async function requireInstanceConfigEditor(action: string): Promise<AuthorizedUser | Response> {
+  const user = await currentDbUser();
+  if (!user) return unauthorized();
+  const workspace = await db.workspace.findUnique({ where: { slug: INSTANCE_WORKSPACE_SLUG }, select: { id: true } });
+  const role = workspace ? await resolveWorkspaceRole(user.id, workspace.id) : null;
+  if (!role || !canEditConfig(role)) return forbidden(action);
+  return { id: user.id, email: user.email, role, workspaceId: workspace!.id };
 }
 
 export function unauthorized() { return Response.json({ error: "Unauthorized" }, { status: 401 }); }

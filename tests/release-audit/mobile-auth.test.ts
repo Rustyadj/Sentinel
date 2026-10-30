@@ -20,7 +20,9 @@ describe("mobile-auth — bearer token sign/verify", () => {
 
   it("round-trips a valid token", () => {
     const token = signMobileToken({ sub: "user-1", email: "a@example.com" });
-    expect(verifyMobileToken(token)).toEqual({ sub: "user-1", email: "a@example.com" });
+    // iat is returned so requireApiUser can compare it with the user's
+    // mobileTokensRevokedAt.
+    expect(verifyMobileToken(token)).toEqual({ sub: "user-1", email: "a@example.com", iat: expect.any(Number) });
   });
 
   it("rejects a token signed under a different secret", () => {

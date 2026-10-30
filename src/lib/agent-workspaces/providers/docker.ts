@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { WorkspaceError, translateRuntimeFailure } from "../errors";
-import { MAX_CAPTURED_OUTPUT_BYTES } from "../policy";
+import { MAX_CAPTURED_OUTPUT_BYTES, isSafeImageReference } from "../policy";
 import {
   assertProjectedDiskUsage,
   loadWorkspaceDiskQuota,
@@ -177,6 +177,12 @@ export class DockerWorkspaceProvider implements WorkspaceRuntimeProvider {
       await docker(["rm", "-f", name]);
     }
 
+    // Rows are validated on creation; this guards the argv itself, since an
+    // image beginning with "-" would be parsed by docker as a flag and a ":"
+    // in the mount point would change the -v volume specification.
+    if (!isSafeImageReference(spec.image) || spec.homePath.includes(":") || spec.homePath.includes(",")) {
+      throw new WorkspaceError("The workspace image or home path is not valid for this runtime.", "policy_violation");
+    }
     const { limits } = spec;
     const args = [
       "run", "-d",

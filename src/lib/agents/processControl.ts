@@ -12,7 +12,7 @@ function containerName(agentId: string) {
 }
 
 // The app container has no Docker socket or CLI by design (see
-// docs/reviews/RUNTIME_ADAPTER_LAYER.md). Docker control is delegated to a
+// docs/archive/reviews/RUNTIME_ADAPTER_LAYER.md). Docker control is delegated to a
 // narrow, loopback-only, bearer-token-authenticated host service
 // (/opt/host-control on the VPS host) instead of mounting the socket into
 // the browser-facing app.

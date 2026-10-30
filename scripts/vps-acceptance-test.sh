@@ -68,7 +68,7 @@ done
 # is absent there.
 if docker compose ps --status running app >/dev/null 2>&1; then
   # The app container intentionally has no Docker socket or CLI (see
-  # docs/reviews/RUNTIME_ADAPTER_LAYER.md) — restart/reload/logs are
+  # docs/archive/reviews/RUNTIME_ADAPTER_LAYER.md) — restart/reload/logs are
   # delegated to a narrow, authenticated host-side service instead
   # (/opt/host-control on the VPS host). So the correct boundary check is
   # "can the app reach that service", not "does the app have a docker
