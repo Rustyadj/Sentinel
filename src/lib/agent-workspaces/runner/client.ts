@@ -141,10 +141,27 @@ export class RemoteContainers {
 
 let shared: RunnerClient | null = null;
 
-/** The configured runner client, or null when the app talks to Docker itself. */
+/**
+ * The configured runner client, or null when this process may talk to Docker
+ * itself — which is only ever outside production. In production there is no
+ * local fallback: without WORKSPACE_RUNNER_URL every Docker operation fails
+ * closed rather than reaching for a socket the app must not hold.
+ */
 export function runnerClient(): RunnerClient | null {
   const url = workspaceRunnerUrl();
-  if (!url) return null;
+  if (!url) {
+    if (process.env.NODE_ENV === "production") {
+      throw new WorkspaceError(
+        "WORKSPACE_RUNNER_URL is not configured. In production Docker is reached only through the workspace runner.",
+        "runtime_unavailable",
+      );
+    }
+    return null;
+  }
   shared ??= new RunnerClient(url, runnerSecret());
   return shared;
+}
+
+export function resetRunnerClientForTests() {
+  shared = null;
 }

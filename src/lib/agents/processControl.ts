@@ -1,3 +1,4 @@
+import { RemoteContainers, runnerClient } from "@/lib/agent-workspaces/runner/client";
 import { ALLOWED_AGENT_IDS, getVpsAgent } from "./registry";
 
 function assertAgentId(agentId: string) {
@@ -12,10 +13,10 @@ function containerName(agentId: string) {
 }
 
 // The app container has no Docker socket or CLI by design (see
-// docs/archive/reviews/RUNTIME_ADAPTER_LAYER.md). Docker control is delegated to a
-// narrow, loopback-only, bearer-token-authenticated host service
-// (/opt/host-control on the VPS host) instead of mounting the socket into
-// the browser-facing app.
+// docs/SECURITY_REMEDIATION.md §3). Logs go through the workspace runner;
+// restart/reload, which mutate host containers, are delegated to a narrow,
+// loopback-only, bearer-token-authenticated host service (/opt/host-control
+// on the VPS host). Outside production, without a runner, logs use it too.
 async function hostControlRequest(path: string, init?: RequestInit) {
   const baseUrl = process.env.HOST_CONTROL_URL;
   const token = process.env.HOST_CONTROL_TOKEN;
@@ -46,6 +47,11 @@ async function hostControlAction(path: string, init?: RequestInit) {
 export async function getContainerLogs(agentId: string, lines: number) {
   const name = containerName(agentId);
   const clamped = Math.min(Math.max(lines, 1), 500);
+  // Reading logs is a read-only verb the workspace runner serves with its own
+  // name/tail validation (runner/containers.ts). In production it is the only
+  // path; runnerClient() throws rather than fall back when it is unconfigured.
+  const runner = runnerClient();
+  if (runner) return new RemoteContainers(runner).logs(name, clamped);
   const body = await hostControlAction(`/containers/${encodeURIComponent(name)}/logs?lines=${clamped}`);
   return { stdout: (body.lines ?? []).join("\n"), stderr: "" };
 }

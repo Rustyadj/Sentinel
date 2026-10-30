@@ -7,6 +7,9 @@ import { GeminiRuntimeAdapter } from "./gemini";
 import { COMPATIBILITY_RUNTIMES, asRuntimeInstance, compatibilityRuntime } from "./config";
 import { HermesRuntimeAdapter } from "./hermes";
 import { RuntimeError } from "./errors";
+import { forbiddenProcessRunner, RemoteCliRuntimeAdapter } from "./remote-adapter";
+import { cliRuntimeExecution, isCliRuntimeKind, queueRuntimeCallTransport, type CliRuntimeKind, type RuntimeCallTransport } from "./remote-execution";
+import { runtimeSessionStore } from "./store";
 import type {
   AgentRuntimeAdapter,
   AgentRuntimeKind,
@@ -79,7 +82,31 @@ const adapters: Record<AgentRuntimeKind, AgentRuntimeAdapter> = {
   hermes: new HermesRuntimeAdapter(resolveRuntimeInstance),
 };
 
+const CLI_ADAPTER_CLASSES = { "claude-code": ClaudeCodeRuntimeAdapter, codex: CodexRuntimeAdapter, gemini: GeminiRuntimeAdapter } as const;
+let remoteAdapters: Partial<Record<CliRuntimeKind, RemoteCliRuntimeAdapter>> = {};
+let callTransport: RuntimeCallTransport = queueRuntimeCallTransport;
+
+/**
+ * Where the CLI runtimes execute is decided here and nowhere else
+ * (remote-execution.ts). In the app they are remote: the operations that run
+ * the CLI go to orchestration-worker, and the local half that serves session
+ * reads is built with a process runner that refuses to spawn.
+ */
+function remoteAdapter(kind: CliRuntimeKind): RemoteCliRuntimeAdapter {
+  return remoteAdapters[kind] ??= new RemoteCliRuntimeAdapter(
+    kind,
+    new CLI_ADAPTER_CLASSES[kind](resolveRuntimeInstance, runtimeSessionStore, forbiddenProcessRunner),
+    callTransport,
+  );
+}
+
 export function getRuntimeAdapter(kind: AgentRuntimeKind): AgentRuntimeAdapter {
+  if (isCliRuntimeKind(kind) && cliRuntimeExecution() === "worker") return remoteAdapter(kind);
+  return getLocalRuntimeAdapter(kind);
+}
+
+/** The in-process adapter, for the process that executes runtimes (orchestration-worker's execution host). */
+export function getLocalRuntimeAdapter(kind: AgentRuntimeKind): AgentRuntimeAdapter {
   const adapter = adapters[kind];
   if (!adapter) throw new RuntimeError("Runtime adapter not found", "runtime_not_found", 404);
   return adapter;
@@ -93,4 +120,9 @@ export async function getAdapterForRuntime(id: string) {
 
 export function setRuntimeAdapterForTests(kind: AgentRuntimeKind, adapter: AgentRuntimeAdapter) {
   adapters[kind] = adapter;
+}
+
+export function setRuntimeCallTransportForTests(transport: RuntimeCallTransport = queueRuntimeCallTransport) {
+  callTransport = transport;
+  remoteAdapters = {};
 }

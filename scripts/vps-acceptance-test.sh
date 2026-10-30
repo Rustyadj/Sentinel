@@ -62,30 +62,30 @@ for binary in claude codex; do
   fi
 done
 
-# Sentinel currently executes coding adapters in the app process. A host-only
-# binary is not sufficient when that process runs in Docker, so verify the
-# actual app execution boundary separately and leave the runtime Partial if it
-# is absent there.
+# The app container holds neither the Docker socket nor the CLI runtimes
+# (docs/SECURITY_REMEDIATION.md §3): Docker is reached through workspace-runner
+# and claude/codex run only in orchestration-worker. Finding either inside the
+# app is a regression, not a pass condition.
 if docker compose ps --status running app >/dev/null 2>&1; then
-  # The app container intentionally has no Docker socket or CLI (see
-  # docs/archive/reviews/RUNTIME_ADAPTER_LAYER.md) — restart/reload/logs are
-  # delegated to a narrow, authenticated host-side service instead
-  # (/opt/host-control on the VPS host). So the correct boundary check is
-  # "can the app reach that service", not "does the app have a docker
-  # socket" — the latter would be a regression, not a pass condition.
-  if docker compose exec -T app sh -lc 'command -v docker' >"$EVIDENCE_DIR/docker-app-boundary.txt" 2>&1; then
+  if docker compose exec -T app sh -lc 'command -v docker || test -S /var/run/docker.sock' >"$EVIDENCE_DIR/docker-app-boundary.txt" 2>&1; then
     record FAIL "Docker control boundary" "app container has a docker CLI/socket — this is a regression, not the intended architecture"
-  elif docker compose exec -T app sh -lc 'wget -qO- --timeout=5 "$HOST_CONTROL_URL/health"' >"$EVIDENCE_DIR/host-control-boundary.txt" 2>&1 \
-      && grep -q '"ok":true' "$EVIDENCE_DIR/host-control-boundary.txt"; then
-    record PASS "Docker control boundary" "no docker CLI in app container; host-control service reachable"
   else
-    record FAIL "Docker control boundary" "app cannot reach host-control service for restart/reload/logs"
+    record PASS "Docker control boundary" "no docker CLI or socket in app container"
+  fi
+  # Container restart/reload are still delegated to the host-control service.
+  if docker compose exec -T app sh -lc 'wget -qO- --timeout=5 "$HOST_CONTROL_URL/health"' >"$EVIDENCE_DIR/host-control-boundary.txt" 2>&1 \
+      && grep -q '"ok":true' "$EVIDENCE_DIR/host-control-boundary.txt"; then
+    record PASS "host-control reachable" "restart/reload delegated to host-control"
+  else
+    record FAIL "host-control reachable" "app cannot reach host-control service for restart/reload"
   fi
   for binary in claude codex; do
-    if docker compose exec -T app sh -lc "command -v '$binary' && '$binary' --version" >"$EVIDENCE_DIR/$binary-app-boundary.txt" 2>&1; then
-      record PASS "$binary app boundary" "$binary-app-boundary.txt"
+    if docker compose exec -T app sh -lc "command -v '$binary' || test -d /opt/runtime-home" >"$EVIDENCE_DIR/$binary-app-boundary.txt" 2>&1; then
+      record FAIL "$binary app boundary" "$binary or the runtime credential home is inside the app container"
+    elif docker compose exec -T orchestration-worker sh -lc "command -v '$binary' && '$binary' --version" >"$EVIDENCE_DIR/$binary-worker-boundary.txt" 2>&1; then
+      record PASS "$binary app boundary" "absent from app; runs in orchestration-worker ($binary-worker-boundary.txt)"
     else
-      record FAIL "$binary app boundary" "binary/auth runtime unavailable inside app container"
+      record FAIL "$binary app boundary" "binary/auth runtime unavailable inside orchestration-worker"
     fi
   done
 else
