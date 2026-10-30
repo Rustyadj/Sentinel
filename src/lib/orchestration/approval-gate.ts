@@ -55,6 +55,8 @@ export interface RequestApprovalInput {
    *  stashes `guardianDecisionId` here so the approvals route can resolve
    *  the originating GuardianDecision when a human decides this request. */
   extraPayload?: Record<string, unknown>;
+  /** fingerprintAction() of the exact action this request authorizes (approval-binding.ts). Only an approval with the same fingerprint can clear it. */
+  actionFingerprint?: string;
 }
 
 export async function requestApprovalGate(input: RequestApprovalInput) {
@@ -69,6 +71,7 @@ export async function requestApprovalGate(input: RequestApprovalInput) {
       requesterAgentId: input.requesterAgentId,
       chatRoomId: input.chatRoomId,
       taskId: input.taskId,
+      actionFingerprint: input.actionFingerprint,
       risk,
       payload: {
         command: input.command,
