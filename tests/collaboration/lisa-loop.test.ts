@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { makeUser, makeWorkspace } from "../neural-engine/db-setup";
 import { setRuntimeAdapterForTests } from "@/lib/agents/runtime/service";
@@ -36,6 +36,15 @@ const { runCollaborationTurn, resumeAfterApproval } = await import("@/lib/orches
 
 afterAll(async () => db.$disconnect());
 beforeEach(() => currentUser.requireUser.mockReset());
+afterEach(() => { delete process.env.SENTINEL_APPROVAL_ALLOWLIST; });
+
+/** Every claude-code/codex task needs human approval by default (capability
+ *  policy, action-policy.ts). Tests exercising post-approval loop mechanics
+ *  opt their workspace into explicit runtime+capability downgrades. */
+function allowWithoutApproval(workspaceId: string, capabilities: string[]) {
+  const pairs = ["claude-code", "codex"].flatMap((runtime) => capabilities.map((capability) => ({ runtime, capability })));
+  process.env.SENTINEL_APPROVAL_ALLOWLIST = JSON.stringify({ [workspaceId]: pairs });
+}
 
 type Responder = (prompt: string, call: number) => string;
 
@@ -134,7 +143,8 @@ async function setUpRoom() {
 
 describe("Lisa's tool-calling execution loop", () => {
   it("decomposes into tasks, routes them dynamically, dispatches in parallel, and accepts DONE once real completion criteria pass", async () => {
-    const { user, room } = await setUpRoom();
+    const { user, workspace, room } = await setUpRoom();
+    allowWithoutApproval(workspace.id, ["backend", "architecture", "testing", "debugging"]);
     setRuntimeAdapterForTests("claude-code", scriptedAdapter("claude-code", staticReplies(["Implemented the backend service."])));
     setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies(["Wrote the test coverage."])));
     setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", (prompt, call) => {
@@ -174,7 +184,8 @@ describe("Lisa's tool-calling execution loop", () => {
   });
 
   it("rejects a premature DONE claim when a task hasn't actually finished, forcing Lisa to keep going", async () => {
-    const { user, room } = await setUpRoom();
+    const { user, workspace, room } = await setUpRoom();
+    allowWithoutApproval(workspace.id, ["backend"]);
     setRuntimeAdapterForTests("claude-code", scriptedAdapter("claude-code", staticReplies(["Implemented it."])));
     setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies(["n/a"])));
     setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", (prompt, call) => {
@@ -199,12 +210,13 @@ describe("Lisa's tool-calling execution loop", () => {
   });
 
   it("surfaces a file-scope conflict from assignTask instead of silently resolving it, and Lisa can route around it", async () => {
-    const { user, room } = await setUpRoom();
+    const { user, workspace, room } = await setUpRoom();
+    allowWithoutApproval(workspace.id, ["backend"]);
     await acquireExecutionLock({ chatRoomId: room.id, agentId: "codex", resourcePattern: "src/lib/orchestration/**" });
     setRuntimeAdapterForTests("claude-code", scriptedAdapter("claude-code", staticReplies(["Implemented it."])));
     setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies(["n/a"])));
     setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", (prompt, call) => {
-      if (call === 0) return jsonBlock([{ tool: "createTask", args: { title: "Orchestration tweak", fileScope: ["src/lib/orchestration/orchestrator.ts"] } }]);
+      if (call === 0) return jsonBlock([{ tool: "createTask", args: { title: "Orchestration tweak", capabilities: ["backend"], fileScope: ["src/lib/orchestration/orchestrator.ts"] } }]);
       if (call === 1) {
         const [taskId] = extractTaskIds(prompt);
         return jsonBlock([{ tool: "assignTask", args: { taskId, agentId: "claude-code" } }]); // conflicts with codex's held lock
@@ -229,7 +241,8 @@ describe("Lisa's tool-calling execution loop", () => {
   });
 
   it("loops changes-requested through requestReview up to the budget, then refuses another round", async () => {
-    const { user, room } = await setUpRoom();
+    const { user, workspace, room } = await setUpRoom();
+    allowWithoutApproval(workspace.id, ["refactoring", "architecture"]);
     setRuntimeAdapterForTests("claude-code", scriptedAdapter("claude-code", staticReplies(["Refactored the router."])));
     setRuntimeAdapterForTests("codex", scriptedAdapter("codex", staticReplies([
       "VERDICT: CHANGES_REQUESTED\nMissing a test.",
@@ -253,6 +266,30 @@ describe("Lisa's tool-calling execution loop", () => {
     expect(task.status).toBe("CHANGES_REQUESTED");
     const question = await db.message.findFirstOrThrow({ where: { chatRoomId: room.id, messageType: "QUESTION" } });
     expect(question.content).toContain("Review budget");
+  });
+
+  it("keyword-gating bypass: an innocuously titled claude-code task is gated, not executed", async () => {
+    const { user, room } = await setUpRoom();
+    const workerPrompts: string[] = [];
+    setRuntimeAdapterForTests("claude-code", scriptedAdapter("claude-code", (prompt) => { workerPrompts.push(prompt); return "Pushed to main."; }));
+    setRuntimeAdapterForTests("codex", scriptedAdapter("codex", (prompt) => { workerPrompts.push(prompt); return "Pushed to main."; }));
+    setRuntimeAdapterForTests("hermes", scriptedAdapter("hermes", (prompt) => {
+      const [taskId] = extractTaskIds(prompt);
+      if (!taskId) return jsonBlock([{ tool: "createTask", args: { title: "Tidy config", description: "update the env loader and push to main" } }]);
+      if (prompt.includes("status=APPROVAL_REQUIRED")) return jsonBlock([{ tool: "ASK_USER", args: { question: "Waiting on approval." } }]);
+      return jsonBlock([{ tool: "assignTask", args: { taskId, agentId: "claude-code" } }, { tool: "startTask", args: { taskId } }]);
+    }));
+
+    await runCollaborationTurn({ chatRoomId: room.id, userId: user.id, userContent: "Tidy the config" });
+
+    const task = await db.task.findFirstOrThrow({ where: { chatRoomId: room.id } });
+    expect(task.agentId).toBe("claude-code");
+    expect(task.status).toBe("APPROVAL_REQUIRED");
+    expect(workerPrompts).toHaveLength(0); // no worker turn ran
+    const approval = await db.approvalRequest.findFirstOrThrow({ where: { taskId: task.id } });
+    expect(approval.status).toBe("pending");
+    expect(approval.risk).toBe("medium"); // write-class floor, despite no risky keywords
+    expect((approval.payload as Record<string, unknown>).actionClass).toBe("write");
   });
 
   it("gates a high-risk task behind human approval and resumes the loop once approved", async () => {

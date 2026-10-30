@@ -72,6 +72,7 @@ services:
       OPENAI_API_KEY: ""
       OPENROUTER_API_KEY: ""
       SYSTEM_ONE_MODE: "off"
+      SENTINEL_CLI_RUNTIME_HOST: "false"
       SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA}
     volumes: [agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
     depends_on:
@@ -88,6 +89,8 @@ services:
     environment:
       <<: *env
       ORCHESTRATION_WORKER_CONCURRENCY: "2"
+      # The app delegates every CLI runtime operation here, as in production.
+      SENTINEL_CLI_RUNTIME_HOST: "true"
       SENTINEL_INTERRUPT_RETRY_MS: "50"
     volumes: [agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
     depends_on:

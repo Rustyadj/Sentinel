@@ -31,6 +31,7 @@ import { createBot } from "@/lib/bots/service";
 import { delegateToBot, getBotTask } from "@/lib/bots/tasks";
 import { botInput, makeWorkspace } from "./fixtures";
 import { resetScript, script, toolCall } from "./fake-runtime";
+import { evaluateGuardian, resolveGuardianReview } from "@/lib/learning/guardian";
 
 let owner: { id: string }; let workspace: { id: string };
 const patch = (id: string, body: unknown) => approvalRoute.PATCH(new Request("http://x", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }) as never, { params: Promise.resolve({ id }) });
@@ -118,5 +119,46 @@ describe("deciding a bot tool approval from the approvals route", () => {
     expect(row).toMatchObject({ status: "rejected", decisionNote: "Not on a Friday.", reviewerUserId: owner.id });
     const audit = await db.auditLog.findFirst({ where: { approvalRequestId: approval.id, action: "approval.rejected" } });
     expect(audit?.details).toMatchObject({ decisionNote: "Not on a Friday." });
+  });
+});
+
+describe("deciding a Guardian-held approval from the approvals route", () => {
+  async function heldApproval() {
+    const held = await evaluateGuardian({ action: `change tool routing policy ${Date.now()}-${Math.random()}`, actor: "agent:test", riskLevel: "medium", workspaceId: workspace.id });
+    expect(held.verdict).toBe("hold");
+    const approval = await db.approvalRequest.create({
+      data: { workspaceId: workspace.id, title: "Guardian review required", type: "agent_execution", payload: { guardianDecisionId: held.decision.id } },
+    });
+    return { decisionId: held.decision.id, approval };
+  }
+  const decisionOf = (id: string) => db.guardianDecision.findUniqueOrThrow({ where: { id } });
+
+  it("approving resolves the hold to allow, together with the approval", async () => {
+    const { decisionId, approval } = await heldApproval();
+    expect((await patch(approval.id, { status: "approved" })).status).toBe(200);
+    expect((await decisionOf(decisionId)).guardianDecision).toBe("allow");
+  });
+
+  it("a second PATCH approving an already-rejected approval is a 409 and the hold stays blocked", async () => {
+    const { decisionId, approval } = await heldApproval();
+    expect((await patch(approval.id, { status: "rejected" })).status).toBe(200);
+    expect((await decisionOf(decisionId)).guardianDecision).toBe("block");
+
+    const again = await patch(approval.id, { status: "approved" });
+    expect(again.status).toBe(409);
+    const decision = await decisionOf(decisionId);
+    expect(decision.guardianDecision).toBe("block");
+    expect(decision.blocked).toBe(true);
+    expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } })).status).toBe("rejected");
+  });
+
+  it("if the hold was already resolved elsewhere, the approval decision rolls back with it", async () => {
+    const { decisionId, approval } = await heldApproval();
+    const other = await db.user.create({ data: { email: `guardian-reviewer-${Date.now()}@test.sentinel` } });
+    await resolveGuardianReview({ decisionId, reviewerId: other.id, approve: false });
+
+    expect((await patch(approval.id, { status: "approved" })).status).toBe(409);
+    expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } })).status).toBe("pending");
+    expect((await decisionOf(decisionId)).guardianDecision).toBe("block");
   });
 });

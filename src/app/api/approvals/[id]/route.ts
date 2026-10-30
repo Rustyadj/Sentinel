@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { decideApproval } from "@/lib/workspaces";
+import { ApprovalAlreadyDecidedError, decideApprovalIn } from "@/lib/workspaces/approvals";
 import { requireUser } from "@/lib/current-user";
 import { accessErrorResponse, requireWorkspacePermission, WorkspaceAccessError } from "@/lib/workspaces/authorization";
 import { resumeAfterApproval, resumeMissionAfterApproval } from "@/lib/orchestration/orchestrator";
-import { resolveGuardianReview } from "@/lib/learning/guardian";
+import { GuardianReviewAlreadyResolvedError, resolveGuardianReview } from "@/lib/learning/guardian";
 import { HttpError, errorResponse as botErrorResponse, requireBotAdmin } from "@/lib/bots/api";
 import { resolveBotTaskApproval } from "@/lib/bots/tasks";
 
@@ -48,12 +48,30 @@ export async function PATCH(req: NextRequest, { params }: Context) {
     // own hold via resolveGuardianReview, since that's the only thing that
     // ever flips a "review"-mode GuardianDecision away from "hold" (lisa-loop's
     // ensureGuardianCleared never re-derives this from the approval alone).
+    //
+    // The approval is decided first and the hold resolved after it, in one
+    // transaction: only the request that wins the pending -> decided update
+    // may touch the GuardianDecision. A repeated PATCH loses at the first step
+    // and leaves the decision as it was, and a hold that is somehow already
+    // resolved rolls the approval decision back with it.
     const payload = approval.payload as Record<string, unknown> | null;
     const guardianDecisionId = typeof payload?.guardianDecisionId === "string" ? payload.guardianDecisionId : undefined;
-    if (guardianDecisionId) {
-      await resolveGuardianReview({ decisionId: guardianDecisionId, reviewerId: user.id, approve: body.status === "approved", notes: body.decisionNote });
+    const status = body.status;
+    let decided;
+    try {
+      decided = await db.$transaction(async (tx) => {
+        const row = await decideApprovalIn(tx, id, status, user.id, body.decisionNote);
+        if (guardianDecisionId) {
+          await resolveGuardianReview({ decisionId: guardianDecisionId, reviewerId: user.id, approve: status === "approved", notes: body.decisionNote }, tx);
+        }
+        return row;
+      });
+    } catch (error) {
+      if (error instanceof ApprovalAlreadyDecidedError || error instanceof GuardianReviewAlreadyResolvedError) {
+        return NextResponse.json({ error: "This approval has already been decided" }, { status: 409 });
+      }
+      throw error;
     }
-    const decided = await decideApproval(id, body.status, user.id, body.decisionNote);
     if (body.status === "rejected") {
       const { recordProductionFailure } = await import("@/lib/learning/production-failures");
       await recordProductionFailure("rejected_approval", { sourceId: id, workspaceId: approval.workspaceId, userId: user.id, context: { decisionNote: body.decisionNote, taskId: approval.taskId } }).catch(() => undefined);

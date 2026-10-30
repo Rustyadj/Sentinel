@@ -1,10 +1,13 @@
-import type { Task } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import type { ApprovalRequest, Task } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { MUTUALLY_EXCLUSIVE_CONCURRENT, wouldSplitAcrossCodingRuntimes } from "@/lib/agents/coexecution-policy";
 import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
-import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
+import { classifyTaskAction, displayRiskFloor, escalateRisk, guardianRiskFloor, requiresHumanApproval, workspaceApprovalAllowlist } from "./action-policy";
+import { assessRisk, requestApprovalGate, resolveWorkspaceId } from "./approval-gate";
+import { consumeApproval, fingerprintAction } from "./approval-binding";
 import { evaluateGuardian } from "@/lib/learning/guardian";
 import { AGENT_CAPABILITY_KEYS, type AgentCapabilityKey } from "./capabilities";
 import { buildAgentContext } from "./context-builder";
@@ -131,18 +134,64 @@ export async function assertTaskNotSplitAcrossCodingRuntimes(taskId: string, own
   }
 }
 
-async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolean> {
-  const risk = assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`);
-  if (!requiresApproval(risk)) return true;
-  const decided = await db.approvalRequest.findFirst({ where: { taskId: task.id }, orderBy: { createdAt: "desc" } });
-  if (decided?.status === "approved") return true;
-  if (decided?.status === "pending") return false;
+/**
+ * One startTask execution's standing with the approval gates. `fingerprint`
+ * identifies the exact action about to run (approval-binding.ts); `approval`
+ * is the approval this execution spent, if any. Both gates share it, so one
+ * human approval clears one execution through both, and nothing approved for
+ * a different action, or spent by an earlier run, counts.
+ */
+export interface ActionClearance {
+  runId: string;
+  fingerprint: string;
+  approval: ApprovalRequest | null;
+}
+
+/** Exported for tests: each call is a new execution (a new run id). */
+export function actionClearance(task: Task, runtimeKind: string): ActionClearance {
+  return {
+    runId: randomUUID(),
+    fingerprint: fingerprintAction({
+      taskId: task.id, runtimeKind, agentId: task.agentId!, title: task.title, description: task.description,
+      fileScope: task.fileScope, capabilities: task.capabilities, command: task.title,
+    }),
+    approval: null,
+  };
+}
+
+/** Spend this action's approval for this execution, once; later calls in the same execution reuse it. */
+async function spendApproval(task: Task, clearance: ActionClearance): Promise<ApprovalRequest | null> {
+  clearance.approval ??= await consumeApproval({ taskId: task.id, actionFingerprint: clearance.fingerprint, runId: clearance.runId });
+  return clearance.approval;
+}
+
+/**
+ * Human-approval gate. Whether approval is needed comes from
+ * classifyTaskAction (runtime kind, declared capabilities, file scope) —
+ * never from the task's title/description, which Lisa wrote herself. The
+ * keyword risk only raises the displayed label. Which approval counts comes
+ * from the clearance: only an unspent approval for this exact action.
+ */
+export async function ensureApprovalCleared(roomId: string, task: Task, clearance: ActionClearance): Promise<boolean> {
+  // An unresolvable runtime classifies as write (fail closed).
+  const runtime = task.agentId ? await resolveAgentRuntime(task.agentId).catch(() => null) : null;
+  const actionClass = classifyTaskAction(task, runtime);
+  const workspaceId = process.env.SENTINEL_APPROVAL_ALLOWLIST
+    ? task.workspaceId ?? await resolveWorkspaceId(roomId).catch(() => null)
+    : null;
+  const allowlist = workspaceApprovalAllowlist(workspaceId);
+  if (!requiresHumanApproval(actionClass, { runtimeKind: runtime?.kind, capabilities: task.capabilities, allowlist })) return true;
+  const risk = escalateRisk(displayRiskFloor(actionClass), assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`));
+  if (await spendApproval(task, clearance)) return true;
+  const pending = await db.approvalRequest.findFirst({ where: { taskId: task.id, actionFingerprint: clearance.fingerprint, status: "pending" } });
+  if (pending) return false;
   const approval = await requestApprovalGate({
     chatRoomId: roomId, taskId: task.id, requesterAgentId: task.agentId ?? task.createdByAgentId ?? "hermes-lisa",
     title: `Approval required: ${task.title}`, description: task.description ?? undefined, command: task.title,
+    actionFingerprint: clearance.fingerprint, actionClass,
   });
   await setTaskStatus(task.id, "APPROVAL_REQUIRED");
-  await emitCollaborationEvent(roomId, "approval.requested", { taskId: task.id, approvalId: approval.id, risk });
+  await emitCollaborationEvent(roomId, "approval.requested", { taskId: task.id, approvalId: approval.id, risk, actionClass });
   return false;
 }
 
@@ -151,56 +200,61 @@ async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolea
  * addition to — never instead of — `ensureApprovalCleared` above. Per
  * guardian.ts's own doc comment, Guardian "does not replace the canonical
  * risk gate, it observes/reviews/blocks around it," so both must pass
- * before a coding worker is dispatched (defense in depth): approval-gate's
- * regex risk model doesn't know about prompt-hierarchy-override,
+ * before a coding worker is dispatched (defense in depth): the capability
+ * policy (action-policy.ts) never reads task text, so it can't see
+ * prompt-hierarchy-override,
  * credential-exfiltration, path-traversal, or fake-approval-marker attempts,
  * which are exactly the categories Guardian hard-blocks on deterministically.
  *
  * Guardian's tier/verdict system doesn't map onto a single "recheck with
  * humanAuthorized=true" loop for every tier, so this branches by mode:
  *  - Tier 3 ("block" pending human authorization): re-evaluated fresh each
- *    attempt, with `humanAuthorized` derived from whether an ApprovalRequest
- *    for this task has already been approved — same pattern already used
- *    for candidate promotion elsewhere (learning-service.ts, skill-versions.ts).
+ *    attempt, with `humanAuthorized` true only when this execution spent an
+ *    approval for this exact action (same fingerprint, consumed by this run).
+ *    An approval for an earlier version of the task, or one an earlier run
+ *    already spent, does not authorize anything.
  *  - Tier 2 ("hold", mode "review"): evaluateGuardian never turns this into
  *    "allow" on its own, by design — only a human calling
  *    resolveGuardianReview() on that *specific* GuardianDecision does. So the
  *    decision id is stashed on the ApprovalRequest's payload, and the
  *    approvals PATCH route resolves it when a human decides that request
  *    (see src/app/api/approvals/[id]/route.ts). Re-evaluating Guardian fresh
- *    here would just mint another "hold" forever.
+ *    here would just mint another "hold" forever. That approval is bound to
+ *    the action and spent like any other.
  *  - Hard blocks (deterministic patterns, self-elevation, denied model
  *    review): terminal — the task is marked BLOCKED and does not get an
  *    approval path, matching guardian.ts's "BLOCK: Guardian can prevent
  *    execution... without waiting for a human" mode.
  */
-async function ensureGuardianCleared(ctx: LoopContext, task: Task, runtimeKind: string): Promise<boolean> {
+export async function ensureGuardianCleared(ctx: Pick<LoopContext, "roomId">, task: Task, runtimeKind: string, clearance: ActionClearance): Promise<boolean> {
   const ownerAgentId = task.agentId!;
   const actionText = `${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`;
 
-  const existingRequests = await db.approvalRequest.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "desc" } });
-  const guardianRequest = existingRequests.find((request) => {
-    const payload = request.payload as Record<string, unknown> | null;
-    return typeof payload?.guardianDecisionId === "string";
-  });
-
-  if (guardianRequest) {
-    if (guardianRequest.status === "pending") return false;
-    if (guardianRequest.status === "rejected") return false; // already surfaced as BLOCKED when it was resolved
-    const payload = guardianRequest.payload as Record<string, unknown>;
-    const decision = await db.guardianDecision.findUnique({ where: { id: payload.guardianDecisionId as string } });
-    if (decision?.guardianDecision === "allow") return true;
-    return false;
+  // A human-resolved Tier 2 hold for this exact action, spent by this execution.
+  const approval = await spendApproval(task, clearance);
+  const approvalPayload = approval?.payload as Record<string, unknown> | null | undefined;
+  if (typeof approvalPayload?.guardianDecisionId === "string") {
+    const decision = await db.guardianDecision.findUnique({ where: { id: approvalPayload.guardianDecisionId } });
+    return decision?.guardianDecision === "allow";
   }
 
-  const priorApproval = existingRequests.find((request) => request.status === "approved");
-  const risk = assessRisk(actionText);
+  // An open request for this exact action: wait for the human. A refused
+  // Guardian review stays refused (it was surfaced as BLOCKED when resolved);
+  // changing the task changes the fingerprint and starts a fresh review.
+  const open = await db.approvalRequest.findMany({
+    where: { taskId: task.id, actionFingerprint: clearance.fingerprint, consumedAt: null, status: { in: ["pending", "rejected"] } },
+  });
+  if (open.some((request) => request.status === "pending")) return false;
+  if (open.some((request) => typeof (request.payload as Record<string, unknown> | null)?.guardianDecisionId === "string")) return false;
+
+  const actionClass = classifyTaskAction(task, { kind: runtimeKind });
+  const risk = escalateRisk(guardianRiskFloor(actionClass), assessRisk(actionText));
   const evaluation = await evaluateGuardian({
     action: actionText,
     actor: ownerAgentId,
     runtime: runtimeKind,
     riskLevel: risk,
-    humanAuthorized: Boolean(priorApproval),
+    humanAuthorized: approval !== null,
   });
 
   if (evaluation.verdict === "allow") return true;
@@ -210,7 +264,8 @@ async function ensureGuardianCleared(ctx: LoopContext, task: Task, runtimeKind: 
     const approval = await requestApprovalGate({
       chatRoomId: ctx.roomId, taskId: task.id, requesterAgentId: ownerAgentId,
       title: `Guardian review required: ${task.title}`, description: task.description ?? undefined, command: task.title,
-      extraPayload: evaluation.mode === "review" ? { guardianDecisionId: evaluation.decision.id } : {},
+      extraPayload: evaluation.mode === "review" ? { guardianDecisionId: evaluation.decision.id } : {}, actionClass,
+      actionFingerprint: clearance.fingerprint,
     });
     await setTaskStatus(task.id, "APPROVAL_REQUIRED");
     await emitCollaborationEvent(ctx.roomId, "approval.requested", {
@@ -234,17 +289,16 @@ async function reviewCycleCount(chatRoomId: string, taskId: string): Promise<num
   return db.collaborationEvent.count({ where: { chatRoomId, type: "task.review_failed", payload: { path: ["taskId"], equals: taskId } } });
 }
 
-async function runImplementation(ctx: LoopContext, task: Task): Promise<Record<string, unknown>> {
+async function runImplementation(ctx: LoopContext, task: Task, runtime: Awaited<ReturnType<typeof resolveAgentRuntime>>, clearance: ActionClearance): Promise<Record<string, unknown>> {
   const ownerAgentId = task.agentId!;
   await assertTaskNotSplitAcrossCodingRuntimes(task.id, ownerAgentId);
-  const runtime = await resolveAgentRuntime(ownerAgentId);
 
   // Guardian gate — additive to ensureApprovalCleared above, not a
   // replacement (see ensureGuardianCleared's doc comment). Checked before
   // the task ever flips to RUNNING so a block/hold never sits in the event
   // stream as a started-then-reverted task.
   if (runtime.kind === "claude-code" || runtime.kind === "codex") {
-    if (!(await ensureGuardianCleared(ctx, task, runtime.kind))) {
+    if (!(await ensureGuardianCleared(ctx, task, runtime.kind, clearance))) {
       const latest = await db.task.findUnique({ where: { id: task.id } });
       return {
         status: latest?.status ?? "BLOCKED",
@@ -356,11 +410,14 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       const unmet = await unmetDependencies(task.dependsOnTaskIds);
       if (unmet.length) return { error: `Blocked on incomplete dependencies: ${unmet.join(", ")}` };
 
-      if (!(await ensureApprovalCleared(ctx.roomId, task))) {
+      // The runtime is part of the action a human approves, so it is resolved before the gates.
+      const runtime = await resolveAgentRuntime(task.agentId!);
+      const clearance = actionClearance(task, runtime.kind);
+      if (!(await ensureApprovalCleared(ctx.roomId, task, clearance))) {
         return { status: "APPROVAL_REQUIRED", message: "Awaiting human approval before this task can run. Move on to other work or ASK_USER if you're blocked on it." };
       }
 
-      return runImplementation(ctx, task);
+      return runImplementation(ctx, task, runtime, clearance);
     }
 
     case "pauseTask": {
