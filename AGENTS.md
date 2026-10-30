@@ -110,10 +110,13 @@ before claiming a regression is yours.
   permission before reading or writing tenant data.
 - Nothing that reaches the host Docker daemon takes free-form input. Workspace images
   come from `AGENT_WORKSPACE_ALLOWED_IMAGES`; argv is built with `execFile`, never a shell.
-- Only `workspace-runner` is meant to hold the Docker socket; `app` keeps it only
-  until the rollout in `docs/SECURITY_REMEDIATION.md` §4-D completes. New Docker
-  operations go through `src/lib/agent-workspaces/runner/` with guard validation,
-  never a new socket mount. Do not add host credential directories or host
-  networking to any service.
+- Only `workspace-runner` holds the Docker socket. New Docker operations go
+  through `src/lib/agent-workspaces/runner/` with guard validation, never a new
+  socket mount, and never a local fallback in production.
+- Only `orchestration-worker` runs the claude/codex/gemini CLIs and holds their
+  credentials. The app reaches them through `RemoteCliRuntimeAdapter`
+  (`src/lib/agents/runtime/remote-execution.ts`). Never mount `runtime-agents`
+  into `app`, and do not add host credential directories or host networking to
+  any service. `scripts/verify/check-app-isolation.sh` enforces this in CI.
 - Client components (`"use client"`) import only client-safe modules — never a barrel
   such as `@/lib/workspaces` that re-exports server code.

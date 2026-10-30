@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy, verify or roll back ONE immutable release revision across everything
-# that runs Sentinel code: the app, the migration job, and both workers.
+# that runs Sentinel code: the app, the migration job, both workers and the workspace runner.
 #
 #   release.sh deploy   <sha>         back up, snapshot what is running, build every image at <sha>, migrate, start, verify
 #   release.sh restore  <backup-dir>  put every service back on the exact images that were running before that deploy
@@ -23,7 +23,9 @@
 set -Eeuo pipefail
 umask 077
 
-SERVICES=(app learning-worker orchestration-worker)
+# workspace-runner is the only holder of the Docker socket; the app reaches Docker only through it. It runs the worker
+# image, so building the workers builds it.
+SERVICES=(app learning-worker orchestration-worker workspace-runner)
 BUILD_SERVICES=(app migrate learning-worker orchestration-worker)
 APP_DIR="${APP_DIR:-$PWD}"
 HEALTH_URL="${SENTINEL_HEALTH_URL:-http://127.0.0.1:3000}"
@@ -212,6 +214,8 @@ cmd_deploy() {
 
   # ---- gates: nothing running has been touched yet ----------------------------------
   [ -f .env ] || die ".env is missing in $APP_DIR"
+  # Without it the runner refuses to start and the app, which has no socket, cannot reach Docker at all.
+  grep -Eq '^WORKSPACE_RUNNER_SECRET=.{32,}$' .env || die ".env has no WORKSPACE_RUNNER_SECRET of at least 32 characters (openssl rand -hex 32)"
   [ -z "$(git status --porcelain --untracked-files=no)" ] || die "the checkout has uncommitted changes; refusing to deploy over them (see git status)"
   git fetch --quiet --prune origin main
   git cat-file -e "$release^{commit}" 2>/dev/null || die "$release is not a commit on origin"

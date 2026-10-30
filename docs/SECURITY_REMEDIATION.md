@@ -13,7 +13,7 @@ be verified from the repository and need someone on the VPS.
 
 | ID | Finding | Evidence | Status |
 |---|---|---|---|
-| C1 | **The internet-facing app holds the host Docker daemon.** `app` mounts `/var/run/docker.sock`, joins the socket's group (`group_add: DOCKER_GID`) and ships the docker CLI. Any code execution in the Next.js process (about 280 routes plus their dependencies) means root on the host. `/api/chat` runs agent runtimes in-process (`routeRuntimeChat`), so a prompt-injected CLI agent that can run shell commands is in the same container as the socket. Codex runs with `--sandbox workspace-write` (whether that blocks the unix socket is _host check_). Gemini is configured `--approval-mode yolo` but is not mounted today. | `docker-compose.yml` app volumes and `group_add`; `Dockerfile` copies `/usr/local/bin/docker`; `src/lib/agents/runtime/config.ts` | **In progress**: workspace runner implemented behind `WORKSPACE_RUNNER_URL` (#59). Rollout and socket removal need approval (§4-D) |
+| C1 | **The internet-facing app holds the host Docker daemon.** `app` mounts `/var/run/docker.sock`, joins the socket's group (`group_add: DOCKER_GID`) and ships the docker CLI. Any code execution in the Next.js process (about 280 routes plus their dependencies) means root on the host. `/api/chat` runs agent runtimes in-process (`routeRuntimeChat`), so a prompt-injected CLI agent that can run shell commands is in the same container as the socket. Codex runs with `--sandbox workspace-write` (whether that blocks the unix socket is _host check_). Gemini is configured `--approval-mode yolo` but is not mounted today. | `docker-compose.yml` app volumes and `group_add`; `Dockerfile` copies `/usr/local/bin/docker`; `src/lib/agents/runtime/config.ts` | **Fixed in repo**: socket, group and docker CLI removed from `app`; Docker only through `workspace-runner`, and production fails closed without it. CLI runtimes run only in `orchestration-worker`. Deploy per §4-D |
 | C2 | **Anyone on the internet could create an account and join the operator's workspaces.** `/api/auth/register` and a first Google or GitHub sign-in created users with no restriction. `listWorkspaces()` then made every user a Member of the shared default workspaces, giving read access to projects, tasks, documents, approvals, meetings and agent computers, plus the ability to create tasks and approval requests. | `src/app/api/auth/register/route.ts`, `src/auth.ts` jwt callback, `src/lib/workspaces/objects.ts` `ensureDefaultWorkspaces` | **Fixed** |
 
 ### High
@@ -22,7 +22,7 @@ be verified from the repository and need someone on the VPS.
 |---|---|---|---|
 | H1 | **Any user could change instance-wide settings.** Without an agent ID, `getControlPlaneUser()` returns the caller's highest role in *any* workspace. Any user can `POST /api/workspaces` and become owner of the new workspace, which made them "owner" of the global `custom_modules` and `installed_modules` tables. That was enough to publish an iframe module that every user sees. | `src/lib/agents/permissions.ts`, `src/app/api/workspaces/route.ts` | **Fixed** |
 | H2 | **Workspace `image` and `homePath` were passed from the request body to `docker run` on the host.** Callers could pull and run any image, and an image value starting with `-` is parsed by docker as a flag. | `src/app/api/agent-workspaces/route.ts` → `providers/docker.ts` | **Fixed** |
-| H3 | **Host CLI OAuth credentials are mounted read-write into the internet-facing app.** `./runtime-agents/home` (`.claude/.credentials.json`, `.codex/auth.json`) is mounted into both `app` and `orchestration-worker`. | `docker-compose.yml` | **Open**, §3 step 4 |
+| H3 | **Host CLI OAuth credentials are mounted read-write into the internet-facing app.** `./runtime-agents/home` (`.claude/.credentials.json`, `.codex/auth.json`) is mounted into both `app` and `orchestration-worker`. | `docker-compose.yml` | **Fixed in repo**: only `orchestration-worker` mounts them (§3 step 4) |
 | H4 | **Hermes hub runs as root with host networking.** It sets `HERMES_UID/GID 0` and `HERMES_ALLOW_ROOT_GATEWAY`, uses `network_mode: host`, and mounts another profile's data. The compose label advertises the public IP on port 4860, and the agent docs say Nathan2 binds `0.0.0.0:4864`. Ports 4860–4864 and 8977 did not answer from this sandbox, but the sandbox may block those ports, so public exposure is unconfirmed (_host check_). | `docker-compose.hermes.yml` | **Open**, §4-C |
 | H5 | **Login and registration had no rate limiting.** | `src/auth.ts`, `src/app/api/auth/*` | **Fixed** |
 
@@ -144,28 +144,44 @@ Rollback: restore the previous compose file and the previous ownership (record `
 
 ### D. Workspace isolation
 
-Steps 1–3 of §3 are implemented (`src/lib/agent-workspaces/runner/`, the
-`workspace-runner` compose service). Step 4 (moving CLI execution out of the
-app) is still open, so the `runtime-agents` mounts stay on `app` for now.
+All four steps of §3 are implemented. `app` mounts no Docker socket, no
+`runtime-agents` binaries or credential home and no host group, and its image
+has no docker CLI and no CLI symlinks:
 
-Before starting:
+- Docker: `workspace-runner` is in the default stack. In production every
+  Docker operation (workspace provider, Hermes container inspect and logs,
+  control-plane inspect) goes through it. Without `WORKSPACE_RUNNER_URL` the
+  operation throws: there is no local fallback (`runner/client.ts`).
+- CLI runtimes: in production the app's Claude Code, Codex and Gemini adapters
+  are `RemoteCliRuntimeAdapter`s (`src/lib/agents/runtime/remote-adapter.ts`).
+  Everything that runs the CLI is a job on the `runtime-calls` BullMQ queue,
+  which `orchestration-worker` consumes alongside `orchestration`: health,
+  readiness, session start and resume, send, cancel, and the effort catalog.
+  Replies stream back on a per-call Redis stream. Session reads and logs stay
+  database reads in the app. The worker re-resolves every runtime by id, so a
+  request can never choose an executable. `SENTINEL_CLI_RUNTIME_HOST`
+  (`true` on the worker, `false` on the app) picks the side. If it is unset,
+  production delegates.
+- CI asserts both on every build: `scripts/verify/check-app-isolation.sh` on
+  the rendered compose config, and a check inside the built app image.
+
+Before deploying:
 
 1. Check that every existing workspace's volume and image will pass the runner's guard. Both queries must return no rows:
    `SELECT id, "volumeName" FROM agent_workspaces WHERE "volumeName" IS NOT NULL AND "volumeName" <> 'sentinel-ws-data-' || id;`
    `SELECT DISTINCT image FROM agent_workspaces;`, after removing everything listed in `AGENT_WORKSPACE_IMAGE` / `AGENT_WORKSPACE_ALLOWED_IMAGES`.
-2. If the VPS has a `docker-compose.override.yml`, check it for workspace environment variables and socket mounts.
+2. If the VPS has a `docker-compose.override.yml`, check it for workspace environment variables and for socket or `runtime-agents` mounts on `app`. An override would quietly undo this change.
+3. Set `WORKSPACE_RUNNER_SECRET` (`openssl rand -hex 32`) in `.env`. `release.sh deploy` refuses to run without it.
 
 Rollout:
 
-1. Set `WORKSPACE_RUNNER_SECRET` (`openssl rand -hex 32`) in `.env`. Deploy as usual, then start the runner on the same release: `docker compose --profile workspace-runner up -d workspace-runner`. Wait for it to report healthy.
-2. Set `WORKSPACE_RUNNER_URL=http://workspace-runner:8790` and recreate `app`. The app still holds the socket but no longer uses it.
-3. Run the acceptance test through the runner:
-   `docker compose run --rm -e WORKSPACE_RUNNER_URL=http://workspace-runner:8790 -e WORKSPACE_RUNNER_SECRET orchestration-worker node_modules/.bin/tsx scripts/agent-workspace-acceptance.ts`
-   Then check in the UI that an agent computer starts, runs a command, lists files and takes a snapshot, and that control-plane container status and Hermes logs still load.
-4. Once it has run cleanly for a while (separate approval): remove the `docker.sock` mount, `group_add` and the snapshot-dir mount from `app`, and drop the `docker-cli` copy from the `runner` image stage.
-5. Verify from inside the app container: `ls /var/run/docker.sock` fails and `docker` is not found.
+1. Deploy with `release.sh deploy`. It now also starts and verifies `workspace-runner`.
+2. Run the acceptance test through the runner:
+   `docker compose run --rm orchestration-worker node_modules/.bin/tsx scripts/agent-workspace-acceptance.ts`
+   (the worker has `WORKSPACE_RUNNER_URL` and no socket, so it can only pass through the runner). Then check in the UI that an agent computer starts, runs a command, lists files and takes a snapshot, that control-plane container status and Hermes logs load, and that a Claude Code chat turn streams a reply.
+3. Verify from inside the app container: `ls /var/run/docker.sock` and `ls /opt/runtime-home` fail, and `docker`, `claude` and `codex` are not found.
 
-Rollback: before step 4, unset `WORKSPACE_RUNNER_URL` and recreate `app`. It falls back to its own socket immediately. After step 4, restore the previous compose file. Workspaces and volumes are untouched either way, because only the process that talks to Docker changes.
+Rollback: `release.sh restore <backup-dir>` puts every service back on its previous image. Workspaces, volumes and sessions are untouched, because only the process that talks to Docker or runs the CLI changes. Note that the restored app mounts the socket and credentials again.
 
 ## 5. Architecture map
 

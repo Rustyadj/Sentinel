@@ -1,8 +1,17 @@
 import { db } from "@/lib/db";
 import { emitLearningEvent } from "@/lib/learning/event-service";
 import { writeAuditLog } from "@/lib/workspaces/audit";
-import { installedEffortOptions, MODEL_CHOICES, resolveEffectiveAgentModel, sentinelModelDefault, validateModelConfiguration } from "./model-policy";
-import { getRuntimeView } from "./runtime/service";
+import { installedEffortOptions, MODEL_CHOICES, resolveEffectiveAgentModel, sentinelModelDefault, validateModelConfiguration, type EffortLevel } from "./model-policy";
+import { RemoteCliRuntimeAdapter } from "./runtime/remote-adapter";
+import { getRuntimeAdapter, getRuntimeView } from "./runtime/service";
+import type { RuntimeView } from "./runtime/types";
+
+/** Effort levels the installed CLI accepts, per model — read where the CLI is installed (orchestration-worker in production). */
+async function effortOptionsFor(runtime: RuntimeView, models: string[]): Promise<Record<string, EffortLevel[]>> {
+  const adapter = getRuntimeAdapter(runtime.kind);
+  if (adapter instanceof RemoteCliRuntimeAdapter) return adapter.effortOptions(runtime, models).catch(() => ({}));
+  return Object.fromEntries(await Promise.all(models.map(async id => [id, await installedEffortOptions(runtime, id)])));
+}
 
 export async function saveAgentModel(agentId: string, user: { id: string; workspaceId: string }, input: { model?: unknown; reasoningEffort?: unknown; reset?: boolean }) {
   const runtime = await getRuntimeView(agentId);
@@ -27,16 +36,16 @@ export async function getAgentModelSettings(agentId: string, userId: string) {
   const config = await resolveEffectiveAgentModel(agentId, runtime.kind);
   const sessions = await db.agentSession.findMany({ where: { agentId, userId }, orderBy: { startedAt: "desc" }, take: 30 });
   const choices = [...new Set([...MODEL_CHOICES[runtime.kind], config.runtimeModelId])];
-  const effortOptions = Object.fromEntries(await Promise.all(choices.map(async id => [id, await installedEffortOptions(runtime, id)])));
+  const effortOptions = await effortOptionsFor(runtime, choices);
   const options = choices.map(id => {
     const evidence = sessions.find(s => { const m = s.metadata as Record<string, unknown>; return m.requestedModel === id && (m.modelUnavailable === true || (s.status === "completed" && m.actualModel === id)); });
     const metadata = evidence?.metadata as Record<string, unknown> | undefined;
     // A request is not evidence that the provider actually used it.
     const state = metadata?.modelUnavailable ? "unavailable" : evidence?.status === "completed" && metadata?.actualModel === id ? "AVAILABLE" : id === config.runtimeModelId ? "configured" : "unverified";
-    return { id, state, efforts: effortOptions[id] };
+    return { id, state, efforts: effortOptions[id] ?? [] };
   });
   return { runtime: runtime.kind, provider: runtime.kind === "claude-code" ? "anthropic" : runtime.kind === "codex" ? "openai" : "Hermes provider (session-reported)", config, options,
-    efforts: await installedEffortOptions(runtime, config.runtimeModelId),
+    efforts: effortOptions[config.runtimeModelId] ?? [],
     effect: "new_sessions", availability: options.find(o => o.id === config.runtimeModelId)?.state,
     lastSession: sessions[0] ? { id: sessions[0].id, status: sessions[0].status, metadata: sessions[0].metadata } : null };
 }

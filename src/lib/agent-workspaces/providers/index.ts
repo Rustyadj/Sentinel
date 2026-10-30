@@ -6,9 +6,11 @@ import { DockerWorkspaceProvider } from "./docker";
 let registry: Map<RuntimeProviderId, WorkspaceRuntimeProvider> | null = null;
 
 /**
- * The Docker backend is reached directly, or — when WORKSPACE_RUNNER_URL is set
- * — through the workspace runner, the only process holding the Docker socket
- * (docs/SECURITY_REMEDIATION.md §3). Same interface either way.
+ * The Docker backend is reached through the workspace runner, the only process
+ * holding the Docker socket (docs/SECURITY_REMEDIATION.md §3). Outside
+ * production, with WORKSPACE_RUNNER_URL unset, it is reached directly. In
+ * production an unset URL throws (runnerClient) instead of falling back.
+ * Same interface either way.
  */
 function buildRegistry() {
   const client = runnerClient();
@@ -33,4 +35,8 @@ export function getRuntimeProvider(runtimeType: string): WorkspaceRuntimeProvide
 export function listRuntimeProviders() {
   registry ??= buildRegistry();
   return [...registry.keys()];
+}
+
+export function resetRuntimeProvidersForTests() {
+  registry = null;
 }
