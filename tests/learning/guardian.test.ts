@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { evaluateGuardian, resolveGuardianReview, matchesHardBlockPattern } from "@/lib/learning/guardian";
+import { evaluateGuardian, GuardianReviewAlreadyResolvedError, resolveGuardianReview, matchesHardBlockPattern } from "@/lib/learning/guardian";
 import { makeUser, uid } from "../neural-engine/db-setup";
 
 afterAll(async () => {
@@ -89,5 +89,31 @@ describe("Sentinel Guardian", () => {
     });
     expect(resolved.guardianDecision).toBe("allow");
     expect(resolved.blocked).toBe(false);
+  });
+
+  it("a Tier 2 hold is resolved once: resolving it again throws and changes nothing", async () => {
+    const decision = await evaluateGuardian({ action: `change tool routing policy ${uid("nonce")}`, actor: "agent:test", riskLevel: "medium" });
+    const reviewer = await makeUser();
+    const other = await makeUser();
+    await resolveGuardianReview({ decisionId: decision.decision.id, reviewerId: reviewer.id, approve: false, notes: "no" });
+
+    await expect(resolveGuardianReview({ decisionId: decision.decision.id, reviewerId: other.id, approve: true }))
+      .rejects.toThrowError(GuardianReviewAlreadyResolvedError);
+    const row = await db.guardianDecision.findUniqueOrThrow({ where: { id: decision.decision.id } });
+    expect(row.guardianDecision).toBe("block");
+    expect(row.blocked).toBe(true);
+    expect((row.evidence as Record<string, unknown>).reviewedBy).toBe(reviewer.id);
+  });
+
+  it("two concurrent resolutions of one hold: exactly one wins", async () => {
+    const decision = await evaluateGuardian({ action: `enable a new tool ${uid("nonce")}`, actor: "agent:test", riskLevel: "medium" });
+    const [a, b] = [await makeUser(), await makeUser()];
+    const results = await Promise.allSettled([
+      resolveGuardianReview({ decisionId: decision.decision.id, reviewerId: a.id, approve: true }),
+      resolveGuardianReview({ decisionId: decision.decision.id, reviewerId: b.id, approve: false }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(GuardianReviewAlreadyResolvedError);
   });
 });

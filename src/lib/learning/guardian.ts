@@ -199,28 +199,41 @@ export interface ReviewGuardianDecisionInput {
   notes?: string;
 }
 
+export class GuardianReviewAlreadyResolvedError extends Error {
+  constructor(decisionId: string) {
+    super(`GuardianDecision ${decisionId} has already been resolved.`);
+    this.name = "GuardianReviewAlreadyResolvedError";
+  }
+}
+
 /**
  * Human resolution of a Tier 2 "hold". Guardian itself never converts its
  * own hold into an allow — a human reviewer id is required, and a reviewer
  * cannot resolve their own guardian-authored elevation request (mirrors the
  * "Guardian cannot self-approve its own privilege elevation" test
  * requirement at the review step too).
+ *
+ * A hold is resolved once. The update is conditional on the decision still
+ * being "hold", so a second resolution (a repeated PATCH, or a concurrent
+ * reviewer) throws GuardianReviewAlreadyResolvedError instead of flipping an
+ * earlier block to allow. Pass `client` to resolve inside the caller's
+ * transaction, as the approvals route does with the approval decision itself.
  */
-export async function resolveGuardianReview(input: ReviewGuardianDecisionInput) {
-  const decision = await db.guardianDecision.findUniqueOrThrow({ where: { id: input.decisionId } });
+export async function resolveGuardianReview(input: ReviewGuardianDecisionInput, client: Prisma.TransactionClient | typeof db = db) {
+  const decision = await client.guardianDecision.findUniqueOrThrow({ where: { id: input.decisionId } });
   if (decision.mode !== "review") {
     throw new Error(`GuardianDecision ${input.decisionId} is not in review mode (mode="${decision.mode}").`);
   }
   if (decision.actor === input.reviewerId) {
     throw new Error("A reviewer cannot resolve their own guardian review.");
   }
-  const reviewer = await db.user.findUnique({ where: { id: input.reviewerId }, select: { id: true } });
+  const reviewer = await client.user.findUnique({ where: { id: input.reviewerId }, select: { id: true } });
   if (!reviewer) {
     throw new Error("Guardian review requires an authenticated human reviewer.");
   }
 
-  const updated = await db.guardianDecision.update({
-    where: { id: input.decisionId },
+  const resolved = await client.guardianDecision.updateMany({
+    where: { id: input.decisionId, mode: "review", guardianDecision: "hold" },
     data: {
       guardianDecision: input.approve ? "allow" : "block",
       blocked: !input.approve,
@@ -231,6 +244,8 @@ export async function resolveGuardianReview(input: ReviewGuardianDecisionInput) 
       } as Prisma.InputJsonValue,
     },
   });
+  if (resolved.count === 0) throw new GuardianReviewAlreadyResolvedError(input.decisionId);
+  const updated = await client.guardianDecision.findUniqueOrThrow({ where: { id: input.decisionId } });
 
   await emitLearningEvent({
     eventType: `guardian.review_${input.approve ? "approved" : "rejected"}`,

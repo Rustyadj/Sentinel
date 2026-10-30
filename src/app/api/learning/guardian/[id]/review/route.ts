@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { requireLearningWorkspaceAccess } from "@/lib/learning/authorization";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
-import { resolveGuardianReview } from "@/lib/learning/guardian";
+import { GuardianReviewAlreadyResolvedError, resolveGuardianReview } from "@/lib/learning/guardian";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser().catch(() => null);
@@ -26,6 +26,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json(decision);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: error instanceof GuardianReviewAlreadyResolvedError ? 409 : 400 });
   }
 }
