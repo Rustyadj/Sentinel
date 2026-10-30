@@ -30,14 +30,17 @@ beforeEach(() => { guardian.calls.length = 0; });
 
 const HIGH_RISK = "Run prisma migrate deploy against production";
 const MEDIUM_RISK = "Deploy the staging preview";
+// devops classifies as a deploy action, whose Guardian floor is high (action-policy.ts),
+// so Tier 2 scenarios need a task without it.
+const NON_DEPLOY = ["backend"];
 
-async function setUp(title = HIGH_RISK) {
+async function setUp(title = HIGH_RISK, capabilities = ["devops", "backend"]) {
   const user = await makeUser();
   await makeWorkspace(user.id, "Approval binding workspace");
   const room = await db.chatRoom.create({ data: { name: "Approval binding room", userId: user.id, agentIds: ["hermes-lisa", "codex"] } });
   const task = await createRoomTask({
     chatRoomId: room.id, title, description: "Apply the pending schema change.", createdByAgentId: "hermes-lisa",
-    ownerAgentId: "codex", capabilities: ["devops", "backend"], fileScope: ["prisma/migrations/**", "prisma/schema.prisma"],
+    ownerAgentId: "codex", capabilities, fileScope: ["prisma/migrations/**", "prisma/schema.prisma"],
   });
   return { user, room, task };
 }
@@ -191,7 +194,7 @@ describe("the Guardian gate", () => {
   });
 
   it("a resolved Tier 2 hold clears one execution of that action", async () => {
-    const { user, room, task } = await setUp(MEDIUM_RISK);
+    const { user, room, task } = await setUp(MEDIUM_RISK, NON_DEPLOY);
     expect(await ensureGuardianCleared({ roomId: room.id }, task, "codex", actionClearance(task, "codex"))).toBe(false);
     const [held] = await requestsFor(task);
     const guardianDecisionId = (held.payload as { guardianDecisionId?: string }).guardianDecisionId;
@@ -212,7 +215,7 @@ describe("the Guardian gate", () => {
   });
 
   it("a refused Tier 2 review stays refused for that action", async () => {
-    const { user, room, task } = await setUp(MEDIUM_RISK);
+    const { user, room, task } = await setUp(MEDIUM_RISK, NON_DEPLOY);
     await ensureGuardianCleared({ roomId: room.id }, task, "codex", actionClearance(task, "codex"));
     const [held] = await requestsFor(task);
     await decideApproval(held.id, "rejected", user.id);
