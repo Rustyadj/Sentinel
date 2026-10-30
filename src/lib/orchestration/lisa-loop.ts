@@ -4,7 +4,8 @@ import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { MUTUALLY_EXCLUSIVE_CONCURRENT, wouldSplitAcrossCodingRuntimes } from "@/lib/agents/coexecution-policy";
 import { getAgentRoutingStats, recordExecutionOutcome } from "./adaptive-routing";
 import { resolveAgentRuntime, runAgentTurn } from "./agent-turn";
-import { assessRisk, requestApprovalGate, requiresApproval } from "./approval-gate";
+import { classifyTaskAction, displayRiskFloor, escalateRisk, guardianRiskFloor, requiresHumanApproval, workspaceApprovalAllowlist } from "./action-policy";
+import { assessRisk, requestApprovalGate, resolveWorkspaceId } from "./approval-gate";
 import { evaluateGuardian } from "@/lib/learning/guardian";
 import { AGENT_CAPABILITY_KEYS, type AgentCapabilityKey } from "./capabilities";
 import { buildAgentContext } from "./context-builder";
@@ -131,18 +132,31 @@ export async function assertTaskNotSplitAcrossCodingRuntimes(taskId: string, own
   }
 }
 
+/**
+ * Human-approval gate. Whether approval is needed comes from
+ * classifyTaskAction (runtime kind, declared capabilities, file scope) —
+ * never from the task's title/description, which Lisa wrote herself. The
+ * keyword risk only raises the displayed label.
+ */
 async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolean> {
-  const risk = assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`);
-  if (!requiresApproval(risk)) return true;
+  // An unresolvable runtime classifies as write (fail closed).
+  const runtime = task.agentId ? await resolveAgentRuntime(task.agentId).catch(() => null) : null;
+  const actionClass = classifyTaskAction(task, runtime);
+  const workspaceId = process.env.SENTINEL_APPROVAL_ALLOWLIST
+    ? task.workspaceId ?? await resolveWorkspaceId(roomId).catch(() => null)
+    : null;
+  const allowlist = workspaceApprovalAllowlist(workspaceId);
+  if (!requiresHumanApproval(actionClass, { runtimeKind: runtime?.kind, capabilities: task.capabilities, allowlist })) return true;
+  const risk = escalateRisk(displayRiskFloor(actionClass), assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`));
   const decided = await db.approvalRequest.findFirst({ where: { taskId: task.id }, orderBy: { createdAt: "desc" } });
   if (decided?.status === "approved") return true;
   if (decided?.status === "pending") return false;
   const approval = await requestApprovalGate({
     chatRoomId: roomId, taskId: task.id, requesterAgentId: task.agentId ?? task.createdByAgentId ?? "hermes-lisa",
-    title: `Approval required: ${task.title}`, description: task.description ?? undefined, command: task.title,
+    title: `Approval required: ${task.title}`, description: task.description ?? undefined, command: task.title, actionClass,
   });
   await setTaskStatus(task.id, "APPROVAL_REQUIRED");
-  await emitCollaborationEvent(roomId, "approval.requested", { taskId: task.id, approvalId: approval.id, risk });
+  await emitCollaborationEvent(roomId, "approval.requested", { taskId: task.id, approvalId: approval.id, risk, actionClass });
   return false;
 }
 
@@ -151,8 +165,9 @@ async function ensureApprovalCleared(roomId: string, task: Task): Promise<boolea
  * addition to — never instead of — `ensureApprovalCleared` above. Per
  * guardian.ts's own doc comment, Guardian "does not replace the canonical
  * risk gate, it observes/reviews/blocks around it," so both must pass
- * before a coding worker is dispatched (defense in depth): approval-gate's
- * regex risk model doesn't know about prompt-hierarchy-override,
+ * before a coding worker is dispatched (defense in depth): the capability
+ * policy (action-policy.ts) never reads task text, so it can't see
+ * prompt-hierarchy-override,
  * credential-exfiltration, path-traversal, or fake-approval-marker attempts,
  * which are exactly the categories Guardian hard-blocks on deterministically.
  *
@@ -194,7 +209,8 @@ async function ensureGuardianCleared(ctx: LoopContext, task: Task, runtimeKind: 
   }
 
   const priorApproval = existingRequests.find((request) => request.status === "approved");
-  const risk = assessRisk(actionText);
+  const actionClass = classifyTaskAction(task, { kind: runtimeKind });
+  const risk = escalateRisk(guardianRiskFloor(actionClass), assessRisk(actionText));
   const evaluation = await evaluateGuardian({
     action: actionText,
     actor: ownerAgentId,
@@ -210,7 +226,7 @@ async function ensureGuardianCleared(ctx: LoopContext, task: Task, runtimeKind: 
     const approval = await requestApprovalGate({
       chatRoomId: ctx.roomId, taskId: task.id, requesterAgentId: ownerAgentId,
       title: `Guardian review required: ${task.title}`, description: task.description ?? undefined, command: task.title,
-      extraPayload: evaluation.mode === "review" ? { guardianDecisionId: evaluation.decision.id } : {},
+      extraPayload: evaluation.mode === "review" ? { guardianDecisionId: evaluation.decision.id } : {}, actionClass,
     });
     await setTaskStatus(task.id, "APPROVAL_REQUIRED");
     await emitCollaborationEvent(ctx.roomId, "approval.requested", {

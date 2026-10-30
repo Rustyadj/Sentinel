@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
+import { displayRiskFloor, escalateRisk, type ActionClass } from "./action-policy";
 
 const HIGH_RISK_PATTERNS = [
   /prisma\s+migrate\s+(deploy|reset)/i,
@@ -20,17 +21,18 @@ const MEDIUM_RISK_PATTERNS = [
   /auth(entication)?\s+config/i,
 ];
 
+/**
+ * Keyword risk over free text. Escalator only: it may raise a displayed risk
+ * label or Guardian tier, but whether approval is required at all is decided
+ * by action-policy.ts from structured data — never from this.
+ */
 export function assessRisk(text: string): "low" | "medium" | "high" {
   if (HIGH_RISK_PATTERNS.some((re) => re.test(text))) return "high";
   if (MEDIUM_RISK_PATTERNS.some((re) => re.test(text))) return "medium";
   return "low";
 }
 
-export function requiresApproval(risk: "low" | "medium" | "high"): boolean {
-  return risk !== "low";
-}
-
-async function resolveWorkspaceId(chatRoomId: string): Promise<string> {
+export async function resolveWorkspaceId(chatRoomId: string): Promise<string> {
   const room = await db.chatRoom.findUnique({
     where: { id: chatRoomId },
     select: { userId: true, project: { select: { workspaceId: true } } },
@@ -55,11 +57,15 @@ export interface RequestApprovalInput {
    *  stashes `guardianDecisionId` here so the approvals route can resolve
    *  the originating GuardianDecision when a human decides this request. */
   extraPayload?: Record<string, unknown>;
+  /** Capability class from action-policy.ts; sets the floor of the displayed
+   *  risk label (keywords can only raise it) and is recorded on the payload. */
+  actionClass?: ActionClass;
 }
 
 export async function requestApprovalGate(input: RequestApprovalInput) {
   const workspaceId = await resolveWorkspaceId(input.chatRoomId);
-  const risk = assessRisk(`${input.title} ${input.description ?? ""} ${input.command}`);
+  const keywordRisk = assessRisk(`${input.title} ${input.description ?? ""} ${input.command}`);
+  const risk = input.actionClass ? escalateRisk(displayRiskFloor(input.actionClass), keywordRisk) : keywordRisk;
   return db.approvalRequest.create({
     data: {
       workspaceId,
@@ -73,6 +79,7 @@ export async function requestApprovalGate(input: RequestApprovalInput) {
       payload: {
         command: input.command,
         environment: input.environment ?? "workspace",
+        ...(input.actionClass ? { actionClass: input.actionClass } : {}),
         ...input.extraPayload,
       } as Prisma.InputJsonValue,
     },

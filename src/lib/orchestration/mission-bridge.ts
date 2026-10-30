@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { evaluateGuardian } from "@/lib/learning/guardian";
+import { classifyTaskAction, escalateRisk, guardianRiskFloor, maxClass, type ActionClass } from "./action-policy";
 import { assessRisk, requestApprovalGate } from "./approval-gate";
 import { emitCollaborationEvent } from "./event-bus";
 import { parseDirectives, runLisaLoop } from "./lisa-loop";
@@ -69,6 +70,12 @@ function extractMissionDirective(replyText: string): ParsedMissionDirective | nu
   return { objective, workers };
 }
 
+/** The mission has no task capabilities yet, so each worker is classified
+ *  on its runtime alone (which fails closed to at least write). */
+function missionActionClass(workers: string[]): ActionClass {
+  return workers.map((kind) => classifyTaskAction({ capabilities: [], fileScope: [] }, { kind })).reduce(maxClass, "write");
+}
+
 export interface EvaluateMissionDirectiveInput {
   roomId: string;
   userId: string;
@@ -91,7 +98,13 @@ export async function evaluateMissionDirective(input: EvaluateMissionDirectiveIn
   if (parsed === "malformed") return { status: "malformed" };
 
   const room = await db.chatRoom.findUniqueOrThrow({ where: { id: input.roomId } });
-  const risk = assessRisk(parsed.objective);
+  // The launch's class comes from the workers it will start (coding
+  // runtimes => write), not from the objective text Lisa wrote; keywords in
+  // the objective can only escalate Guardian's tier. Launching only starts
+  // the planning loop — every task it dispatches still passes
+  // ensureApprovalCleared's own capability gate before any worker runs.
+  const actionClass = missionActionClass(parsed.workers);
+  const risk = escalateRisk(guardianRiskFloor(actionClass), assessRisk(parsed.objective));
   const evaluation = await evaluateGuardian({
     action: parsed.objective, actor: input.leadAgentId, runtime: "mission-bridge", riskLevel: risk,
   });
@@ -116,14 +129,14 @@ export async function evaluateMissionDirective(input: EvaluateMissionDirectiveIn
     const approval = await requestApprovalGate({
       chatRoomId: input.roomId, requesterAgentId: input.leadAgentId,
       title: "Guardian review required: implementation mission",
-      description: parsed.objective, command: parsed.objective,
+      description: parsed.objective, command: parsed.objective, actionClass,
       extraPayload: {
         missionLaunch: true, objective: parsed.objective, workers: parsed.workers, leadAgentId: input.leadAgentId,
         ...(isGenuineHold ? { guardianDecisionId: evaluation.decision.id } : {}),
       },
     });
     await emitCollaborationEvent(input.roomId, "mission.approval_requested", {
-      approvalId: approval.id, risk, guardianTier: evaluation.tier, guardianDecisionId: evaluation.decision.id,
+      approvalId: approval.id, risk, actionClass, guardianTier: evaluation.tier, guardianDecisionId: evaluation.decision.id,
     });
     return { status: "pending_approval", approvalId: approval.id };
   }
