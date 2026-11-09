@@ -28,7 +28,9 @@ export function CredentialsForm() {
       redirect: false,
     });
     setLoading(false);
-    if (result?.error) {
+    if (result?.code === "rate_limited") {
+      setError("Too many sign-in attempts. Try again in a few minutes.");
+    } else if (result?.error) {
       setError("Invalid email or password.");
     } else {
       router.push(callbackUrl);

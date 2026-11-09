@@ -4,7 +4,7 @@ import WebSocket from "ws";
  * Newline-delimited JSON-RPC 2.0 client for Hermes's `tui_gateway` WebSocket
  * (`/api/ws`). Verified against the live Hermes source (`tui_gateway/ws.py`,
  * `tui_gateway/server.py`) on srv1427612.hstgr.cloud — see
- * docs/reviews/HERMES_OPENCLAW_CHAT_TRANSPORT.md. Not a guessed protocol.
+ * docs/archive/reviews/HERMES_OPENCLAW_CHAT_TRANSPORT.md. Not a guessed protocol.
  *
  * Wire shape:
  *   → request:  {"jsonrpc":"2.0","method":<rpc>,"params":{...},"id":<n>}

@@ -41,7 +41,6 @@ A typical AI dashboard gives you a chat box. Sentinel OS gives you:
 Sentinel OS
 ├── Shell                  # Auth, routing, permissions, org engine
 │   ├── Navigation Rail    # Expandable left rail, icons-only collapsed
-│   ├── Module Loader      # Dynamic module registration and rendering
 │   ├── Org Engine         # Hierarchy, roles, approval routing
 │   ├── Memory Engine      # Multi-scoped memory (session → org)
 │   └── Knowledge Engine   # Notes, graph, search, backlinks
@@ -57,14 +56,12 @@ Sentinel OS
 │   ├── Marketplace
 │   └── Settings
 │
-└── Installable Modules    # Optional, plug-in via registry
+└── Installable Modules    # Listed in the marketplace catalog
+    ├── Kanban
+    ├── Knowledge Graph
+    ├── Organization
     ├── Cybersecurity
-    ├── Studio
-    ├── Marketing
-    ├── ICF (Construction)
-    ├── CRM
-    ├── Finance
-    └── Custom (user-created)
+    └── Custom (user-created, markdown or https iframe)
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full system design.
@@ -73,21 +70,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full system design.
 
 ## Module System
 
-Every feature outside the core shell is a module. Modules self-register via a manifest:
-
-```ts
-export const manifest: ModuleDefinition = {
-  id: "marketing",
-  label: "Marketing",
-  icon: "BarChart3",
-  href: "/marketing",
-  category: "installable",
-  order: 150,
-  component: () => import("./components/MarketingPage"),
-};
-```
-
-The shell renders any registered module without knowing its internals.
+Feature modules live in `src/modules/<name>` and are rendered by App Router
+pages. Shell navigation is a static list (`src/lib/navigation.ts`) and the
+installable catalog is `src/lib/modules/manifests.ts`.
 
 See [docs/MODULE_SYSTEM.md](docs/MODULE_SYSTEM.md) for the full spec.
 

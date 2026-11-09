@@ -900,7 +900,7 @@ async function rollbackCandidateInTransaction(
       // inverse is defined for them yet. This is a real limitation, not a
       // silent gap: policy-service's classification for these types should
       // treat them as manual_rollback_only rather than advertising automatic
-      // rollback (see docs/reviews/PR21_POST_MERGE_RECONCILIATION.md).
+      // rollback (see docs/archive/reviews/PR21_POST_MERGE_RECONCILIATION.md).
       break;
   }
 

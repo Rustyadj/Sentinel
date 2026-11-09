@@ -7,11 +7,10 @@ x-release-build-args: &release-build-args
   SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA:-unknown}
   SENTINEL_BUILT_AT: ${SENTINEL_BUILT_AT:-unknown}
 
-# What a worker needs to reach its runtimes. The orchestration worker is the
-# process that actually executes a claude-code/codex run, so it needs exactly what
-# the app has: the CLI binaries and their credentials (bind-mounted, never baked
-# into an image), a resolvable host.docker.internal for the Hermes dashboards, and
-# the same project root.
+# What a worker needs to reach its runtimes. The orchestration worker is the only
+# process that executes claude-code/codex/gemini, for orchestration runs and for the
+# app's chat turns alike, so it alone gets the CLI binaries and their credentials
+# (bind-mounted, never baked into an image), plus the project root.
 x-runtime-mounts: &runtime-mounts
   - agent_configs:/opt/sentinel-os/agents
   - agent_logs:/opt/sentinel-os/logs
@@ -33,7 +32,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: hermes
-      POSTGRES_PASSWORD: hermes
+      # Only applied when the data volume is first initialised. To rotate an
+      # existing database, ALTER USER first, then set this (see
+      # docs/SECURITY_REMEDIATION.md). Generate with: openssl rand -hex 32
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hermes}
       POSTGRES_DB: hermesos
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -54,7 +56,7 @@ services:
       args: *release-build-args
     command: npx prisma@6 migrate deploy
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
     networks:
       - sentinel_net
     depends_on:
@@ -72,13 +74,21 @@ services:
     # connecting a real Queue/Worker against this policy in this session
     # (see the PR — this isn't a guess). Nothing else using this instance
     # (src/lib/redis.ts's health-check client) depends on eviction behavior.
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    #
+    # REDIS_PASSWORD (optional, hex) turns on AUTH and is threaded into every
+    # REDIS_URL below. Unset keeps the previous unauthenticated behaviour.
+    # REDISCLI_AUTH lets in-container redis-cli (healthcheck, release.sh SAVE)
+    # authenticate; empty, redis-cli only prints a warning.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     networks:
       - sentinel_net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # Match PONG: redis-cli exits 0 on a NOAUTH error too.
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -94,8 +104,8 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL:-https://sentinel.srv1427612.hstgr.cloud}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -118,6 +128,20 @@ services:
       HERMES_NATHAN2_SESSION_TOKEN: ${HERMES_NATHAN2_SESSION_TOKEN:-}
       HERMES_SESSION_TOKEN: ${HERMES_SESSION_TOKEN:-}
       HERMES_LISA_CONTAINER: ${HERMES_LISA_CONTAINER:-hermes-lisa}
+      # This container holds no Docker socket: every Docker operation goes through
+      # workspace-runner, and in production an unset URL fails closed
+      # (src/lib/agent-workspaces/runner/client.ts). The secret has no default.
+      WORKSPACE_RUNNER_URL: ${WORKSPACE_RUNNER_URL:-http://workspace-runner:8790}
+      WORKSPACE_RUNNER_SECRET: ${WORKSPACE_RUNNER_SECRET:-}
+      # Who may create a new account (src/lib/auth/signup-policy.ts). Unset:
+      # invitation-only, existing accounts unaffected.
+      SENTINEL_SIGNUP_ALLOWLIST: ${SENTINEL_SIGNUP_ALLOWLIST:-}
+      SENTINEL_OPEN_SIGNUP: ${SENTINEL_OPEN_SIGNUP:-}
+      MOBILE_TOKEN_TTL_SECONDS: ${MOBILE_TOKEN_TTL_SECONDS:-}
+      # Workspace image policy (src/lib/agent-workspaces/policy.ts). Unset uses
+      # sentinel/agent-workspace:base and allows no other image.
+      AGENT_WORKSPACE_IMAGE: ${AGENT_WORKSPACE_IMAGE:-}
+      AGENT_WORKSPACE_ALLOWED_IMAGES: ${AGENT_WORKSPACE_ALLOWED_IMAGES:-}
       HOST_CONTROL_URL: ${HOST_CONTROL_URL:-http://host.docker.internal:8977}
       HOST_CONTROL_TOKEN: ${HOST_CONTROL_TOKEN:-}
       HERMES_LISA_NATIVE_URL: ${HERMES_LISA_NATIVE_URL:-/legacy/hermes}
@@ -163,35 +187,24 @@ services:
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
       AGENT_PROJECT_ROOT: /opt/sentinel-os/projects
-      # claude/codex binaries + auth are copied from the host (see
-      # /opt/sentinel-os/runtime-agents/) and mounted below — this VPS
-      # already has both installed and authenticated interactively; the
-      # container reuses those same credentials rather than a fresh login.
+      # The claude/codex/gemini CLIs and their credentials are NOT in this
+      # container. Every CLI operation (health checks included) runs in
+      # orchestration-worker (src/lib/agents/runtime/remote-execution.ts);
+      # "false" states that explicitly, production would delegate anyway.
+      SENTINEL_CLI_RUNTIME_HOST: "false"
       CLAUDE_CODE_EXECUTABLE: ${CLAUDE_CODE_EXECUTABLE:-/opt/runtime-bin/claude}
       CLAUDE_CODE_PROJECT_ROOT: /opt/sentinel-os/projects
       CLAUDE_CODE_WORKSPACE_ID: ${CLAUDE_CODE_WORKSPACE_ID:-}
       CODEX_EXECUTABLE: ${CODEX_EXECUTABLE:-/opt/runtime-bin/codex}
       CODEX_PROJECT_ROOT: /opt/sentinel-os/projects
       CODEX_WORKSPACE_ID: ${CODEX_WORKSPACE_ID:-}
-      HOME: /opt/runtime-home
-      CLAUDE_CONFIG_DIR: /opt/runtime-home/.claude
-      CODEX_HOME: /opt/runtime-home/.codex
-      # The provider passes this host-visible path to short-lived snapshot
-      # helpers through the Docker daemon. It is intentionally never mounted
-      # into an agent workspace.
-      AGENT_WORKSPACE_SNAPSHOT_DIR: /var/lib/sentinel/workspace-snapshots
+    # Internet-facing, so it mounts no Docker socket, no runtime binaries and no
+    # CLI credential home, and joins no host group (docs/SECURITY_REMEDIATION.md
+    # C1/H3). The CI docker job asserts this on the rendered config.
     volumes:
       - agent_configs:/opt/sentinel-os/agents
       - agent_logs:/opt/sentinel-os/logs
       - ${AGENT_PROJECT_ROOT_HOST:-./runtime-projects}:/opt/sentinel-os/projects
-      - ./runtime-agents/bin:/opt/runtime-bin:ro
-      - ./runtime-agents/home:/opt/runtime-home:rw
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/sentinel/workspace-snapshots:/var/lib/sentinel/workspace-snapshots:rw
-    # The non-root app user needs the Docker socket's host group. Set
-    # DOCKER_GID explicitly on hosts where the socket group differs.
-    group_add:
-      - "${DOCKER_GID:-988}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -209,6 +222,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      workspace-runner:
+        condition: service_started
     # Traefik routing is managed via /etc/traefik/dynamic/sentinel.yml on the host
 
   # Learning Core worker — BullMQ consumer for the recurring jobs registered
@@ -227,10 +242,10 @@ services:
     command: node_modules/.bin/tsx src/workers/learning-worker.ts
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
       MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
       MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       LEARNING_WORKER_CONCURRENCY: ${LEARNING_WORKER_CONCURRENCY:-2}
       NEURAL_SWEEP_SECRET: ${NEURAL_SWEEP_SECRET:-}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
@@ -246,10 +261,12 @@ services:
         condition: service_completed_successfully
 
   # Durable external orchestration worker — consumes the BullMQ "orchestration"
-  # queue that /api/mcp's route_task and the bot task API enqueue. Without this
-  # service a run is queued and never executed.
+  # queue that /api/mcp's route_task and the bot task API enqueue, and the
+  # "runtime-calls" queue through which the app runs every CLI operation (chat
+  # turns, health checks). Without this service a run is queued and never
+  # executed, and Claude Code/Codex chat is unavailable.
   #
-  # It executes the runtimes, so it is configured like the app for them: the CLI
+  # It is the only service that executes the CLI runtimes: the CLI
   # binaries and credentials mounted from the host, HOME/CLAUDE_CONFIG_DIR/CODEX_HOME
   # pointing at the mounted home, and host.docker.internal resolvable (the Nathan2
   # dashboard is only reachable through it). Before this, claude-code runs failed with
@@ -264,11 +281,18 @@ services:
     command: node_modules/.bin/tsx src/workers/orchestration-worker.ts
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermesos
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
       MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
       MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379
       ORCHESTRATION_WORKER_CONCURRENCY: ${ORCHESTRATION_WORKER_CONCURRENCY:-1}
+      # The one process that runs the CLI runtimes, for orchestration runs and for the
+      # app's runtime calls (chat turns, health checks) alike.
+      SENTINEL_CLI_RUNTIME_HOST: "true"
+      RUNTIME_CALL_CONCURRENCY: ${RUNTIME_CALL_CONCURRENCY:-16}
+      # Hermes container inspection goes through the runner here too; the worker has no socket.
+      WORKSPACE_RUNNER_URL: ${WORKSPACE_RUNNER_URL:-http://workspace-runner:8790}
+      WORKSPACE_RUNNER_SECRET: ${WORKSPACE_RUNNER_SECRET:-}
       SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
@@ -304,6 +328,38 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Workspace runner — the one service meant to hold the host Docker socket
+  # (docs/SECURITY_REMEDIATION.md §3). The app reaches it over sentinel_net with
+  # HMAC-signed requests; it publishes no port and has no Traefik route. Every
+  # argument is re-validated (src/lib/agent-workspaces/runner/guard.ts), so a
+  # compromised app can only manage workspace containers and volumes.
+  # Part of the default stack: the app has no other way to reach Docker.
+  workspace-runner:
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA:-local}
+    build: *worker-build
+    command: node_modules/.bin/tsx src/workers/workspace-runner.ts
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
+      # Required, >= 32 characters (openssl rand -hex 32); the runner refuses to start without it.
+      WORKSPACE_RUNNER_SECRET: ${WORKSPACE_RUNNER_SECRET:-}
+      SENTINEL_RELEASE_SHA: ${SENTINEL_RELEASE_SHA:-unknown}
+      AGENT_WORKSPACE_IMAGE: ${AGENT_WORKSPACE_IMAGE:-}
+      AGENT_WORKSPACE_ALLOWED_IMAGES: ${AGENT_WORKSPACE_ALLOWED_IMAGES:-}
+      AGENT_WORKSPACE_SNAPSHOT_DIR: /var/lib/sentinel/workspace-snapshots
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-988}"
+    healthcheck: *worker-healthcheck
+    networks:
+      - sentinel_net
+    depends_on:
+      postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

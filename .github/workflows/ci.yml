@@ -71,6 +71,8 @@ jobs:
       # The deployed unit is the app, the migration job and BOTH workers, all from one revision.
       - name: Compose file resolves (output suppressed because it would print the environment)
         run: docker compose config --quiet
+      - name: The internet-facing app holds no Docker socket, CLI credentials or host group
+        run: scripts/verify/check-app-isolation.sh
       - name: Build every image the release deploys
         run: docker compose build app migrate learning-worker orchestration-worker
       - name: Every image carries the release revision
@@ -94,6 +96,14 @@ jobs:
               ! find / -xdev \( -name .credentials.json -o -name .claude.json -o -path "*/runtime-agents" -o -path "*/runtime-projects" \) -not -path "/proc/*" 2>/dev/null | grep -q .
             ' || { echo "::error::$image contains host runtime credentials or state"; exit 1; }
           done
+      - name: App image has no Docker socket, docker CLI, runtime home or CLI binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "sentinel-os-app:$GITHUB_SHA" -c '
+            test ! -S /var/run/docker.sock && test ! -d /opt/runtime-home && test ! -e /opt/runtime-bin \
+              && ! command -v docker && ! command -v claude && ! command -v codex && ! command -v gemini
+          ' || { echo "::error::the app image carries Docker or CLI runtime access"; exit 1; }
       - name: Worker image can run the bind-mounted CLIs (glibc) and starts as non-root
         shell: bash
         run: |

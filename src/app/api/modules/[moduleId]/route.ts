@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getModuleManifest } from "@/lib/modules/manifests";
-import { canEditConfig, getControlPlaneUser, forbidden, unauthorized } from "@/lib/agents/permissions";
+import { getControlPlaneUser, requireInstanceConfigEditor, unauthorized } from "@/lib/agents/permissions";
 
 type Params = { params: Promise<{ moduleId: string }> };
 
@@ -14,9 +14,8 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user) return unauthorized();
-  if (!canEditConfig(user.role)) return forbidden("edit module configuration");
+  const editor = await requireInstanceConfigEditor("edit module configuration");
+  if (editor instanceof Response) return editor;
   const { moduleId } = await params;
   const body = await req.json() as { enabled?: boolean; config?: object };
   const manifest = getModuleManifest(moduleId);
@@ -32,9 +31,8 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  const user = await getControlPlaneUser();
-  if (!user) return unauthorized();
-  if (!canEditConfig(user.role)) return forbidden("remove modules");
+  const editor = await requireInstanceConfigEditor("remove modules");
+  if (editor instanceof Response) return editor;
   const { moduleId } = await params;
   await db.installedModule.deleteMany({ where: { moduleId } });
   return new NextResponse(null, { status: 204 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessRisk, requiresApproval } from "./approval-gate";
+import { classifyTaskAction, displayRiskFloor, escalateRisk, requiresHumanApproval } from "./action-policy";
+import { assessRisk } from "./approval-gate";
 
 describe("assessRisk", () => {
   it("flags destructive operations as high risk", () => {
@@ -20,10 +21,16 @@ describe("assessRisk", () => {
   });
 });
 
-describe("requiresApproval", () => {
-  it("only gates medium and high risk", () => {
-    expect(requiresApproval("low")).toBe(false);
-    expect(requiresApproval("medium")).toBe(true);
-    expect(requiresApproval("high")).toBe(true);
+describe("assessRisk as an escalator only", () => {
+  it("never lowers a capability-derived requirement: a keyword-free coding task is still gated", () => {
+    const cls = classifyTaskAction({ capabilities: ["backend"], fileScope: [] }, { kind: "claude-code" });
+    expect(assessRisk("Tidy config")).toBe("low");
+    expect(requiresHumanApproval(cls)).toBe(true);
+    expect(escalateRisk(displayRiskFloor(cls), assessRisk("Tidy config"))).toBe("medium");
+  });
+
+  it("raises the displayed label above the class floor when keywords warrant it", () => {
+    expect(escalateRisk(displayRiskFloor("read"), assessRisk("apply this straight to production"))).toBe("high");
+    expect(escalateRisk(displayRiskFloor("deploy"), assessRisk("add a unit test"))).toBe("high");
   });
 });

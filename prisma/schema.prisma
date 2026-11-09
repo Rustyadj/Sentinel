@@ -19,6 +19,8 @@ model User {
   email                    String                   @unique
   name                     String?
   passwordHash             String?
+  /// Mobile bearer tokens issued at or before this instant are rejected.
+  mobileTokensRevokedAt    DateTime?
   createdAt                DateTime                 @default(now())
   projects                 Project[]
   chatRooms                ChatRoom[]
@@ -734,6 +736,13 @@ model ApprovalRequest {
   taskId     String?
   risk       String  @default("low") // low, medium, high
 
+  // --- Single-use, action-bound approval (additive). SHA-256 of the exact
+  // action the human saw (orchestration/approval-binding.ts); an approval
+  // clears only that action, and only once.
+  actionFingerprint String?
+  consumedAt        DateTime?
+  consumedByRunId   String?
+
   workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   requesterUser      User?               @relation("ApprovalRequesterUser", fields: [requesterUserId], references: [id], onDelete: SetNull)
@@ -746,6 +755,7 @@ model ApprovalRequest {
   @@index([workspaceId, status])
   @@index([projectId])
   @@index([chatRoomId, status])
+  @@index([taskId, actionFingerprint])
   @@map("approval_requests")
 }
 

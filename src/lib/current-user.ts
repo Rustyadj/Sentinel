@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { verifyMobileToken } from "@/lib/mobile-auth";
+import { isMobileTokenRevoked, verifyMobileToken } from "@/lib/mobile-auth";
 import { normalizeEmail } from "@/lib/auth/email";
 import { findEmailIdentities } from "@/lib/auth/identity";
+import { isSignupAllowed } from "@/lib/auth/signup-policy";
 
 export async function requireUser() {
   const session = await auth();
@@ -27,6 +28,9 @@ export async function requireUser() {
     throw new Error("Account identity requires administrator reconciliation.");
   }
   if (candidates[0]) return candidates[0];
+  // A session with no matching row (e.g. the account was removed) may only
+  // recreate it under the same policy as any other new account.
+  if (!(await isSignupAllowed(email))) throw new Error("Unauthorized");
   return db.user.create({ data: { email, name: session.user.name ?? undefined } });
 }
 
@@ -45,6 +49,7 @@ export async function requireApiUser(request: NextRequest) {
     if (!payload) throw new Error("Unauthorized");
     const user = await db.user.findUnique({ where: { id: payload.sub } });
     if (!user || user.email !== payload.email) throw new Error("Unauthorized");
+    if (isMobileTokenRevoked(payload, user.mobileTokensRevokedAt)) throw new Error("Unauthorized");
     return user;
   }
   return requireUser();

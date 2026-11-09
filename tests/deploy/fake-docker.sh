@@ -23,7 +23,7 @@ case "$1" in
       run)    [ "${FAKE_MIGRATE_FAIL:-}" = 1 ] && { echo "migration failed" >&2; exit 1; }; echo migrated >> "$S/events.log"; exit 0 ;;
       up)
         for name in $(named "$@" | grep -v '^d$'); do
-          case "$name" in app|learning-worker|orchestration-worker)
+          case "$name" in app|learning-worker|orchestration-worker|workspace-runner)
             if [ -n "$override" ]; then
               [ "${FAKE_RESTORE_FAIL:-}" = 1 ] && { echo "compose up failed" >&2; exit 1; }
               # Re-create from the snapshot image the override names for this service.
@@ -51,7 +51,7 @@ case "$1" in
     esac ;;
   tag)
     # docker tag <image-id> <tag>: remember which image (and commit) the tag points at.
-    for n in app learning-worker orchestration-worker; do
+    for n in app learning-worker orchestration-worker workspace-runner; do
       if [ "$(cat "$(img_file "$n")" 2>/dev/null)" = "$2" ]; then echo "$2 $(sha_of "$n")" > "$tag_dir/$3"; fi
     done; exit 0 ;;
   image)

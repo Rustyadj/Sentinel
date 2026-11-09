@@ -20,9 +20,9 @@ const commit = (cwd: string, name: string) => { writeFileSync(join(cwd, name), n
 const calls = () => (existsSync(join(fake, "calls.log")) ? readFileSync(join(fake, "calls.log"), "utf8").split("\n").filter(Boolean) : []);
 const events = () => (existsSync(join(fake, "events.log")) ? readFileSync(join(fake, "events.log"), "utf8").split("\n").filter(Boolean) : []);
 const running = (service: string) => (existsSync(join(fake, `svc.${service}.sha`)) ? readFileSync(join(fake, `svc.${service}.sha`), "utf8").trim() : null);
-const setRunning = (sha: string) => { for (const s of ["app", "learning-worker", "orchestration-worker"]) { writeFileSync(join(fake, `svc.${s}.sha`), `${sha}\n`); writeFileSync(join(fake, `svc.${s}.img`), `sha256:img-${s}-${sha}\n`); } };
+const setRunning = (sha: string) => { for (const s of ["app", "learning-worker", "orchestration-worker", "workspace-runner"]) { writeFileSync(join(fake, `svc.${s}.sha`), `${sha}\n`); writeFileSync(join(fake, `svc.${s}.img`), `sha256:img-${s}-${sha}\n`); } };
 const image = (service: string) => (existsSync(join(fake, `svc.${service}.img`)) ? readFileSync(join(fake, `svc.${service}.img`), "utf8").trim() : null);
-const SERVICES_BLOCK = "  postgres:\n    image: pgvector/pgvector:pg16\n  migrate:\n    build: .\n  learning-worker:\n    build: .\n  orchestration-worker:\n    build: .\n";
+const SERVICES_BLOCK = "  postgres:\n    image: pgvector/pgvector:pg16\n  migrate:\n    build: .\n  learning-worker:\n    build: .\n  orchestration-worker:\n    build: .\n  workspace-runner:\n    build: .\n";
 
 function run(args: string[], env: Record<string, string> = {}) {
   const result = spawnSync("bash", [SCRIPT, ...args], {
@@ -49,7 +49,7 @@ beforeEach(() => {
   writeFileSync(join(app, "docker-compose.yml"), `services:\n  app:\n    image: sentinel-os-app:\${SENTINEL_RELEASE_SHA:-local}\n${SERVICES_BLOCK}`);
   shaNew = commit(app, "new"); git(app, "push", "-q", "origin", "HEAD:main");
   git(app, "checkout", "-q", "--detach", shaOld);
-  writeFileSync(join(app, ".env"), "AUTH_SECRET=SUPER-SECRET-VALUE\n");   // untracked, as on the host
+  writeFileSync(join(app, ".env"), `AUTH_SECRET=SUPER-SECRET-VALUE\nWORKSPACE_RUNNER_SECRET=${"f".repeat(64)}\n`);   // untracked, as on the host
   setRunning(shaOld);
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -64,8 +64,8 @@ describe("deploy", () => {
     expect(builds).toHaveLength(1);
     for (const service of ["app", "migrate", "learning-worker", "orchestration-worker"]) expect(builds[0]).toContain(service);
 
-    expect(events()).toEqual(["migrated", `up app ${shaNew}`, `up learning-worker ${shaNew}`, `up orchestration-worker ${shaNew}`]);
-    expect([running("app"), running("learning-worker"), running("orchestration-worker")]).toEqual([shaNew, shaNew, shaNew]);
+    expect(events()).toEqual(["migrated", `up app ${shaNew}`, `up learning-worker ${shaNew}`, `up orchestration-worker ${shaNew}`, `up workspace-runner ${shaNew}`]);
+    expect([running("app"), running("learning-worker"), running("orchestration-worker"), running("workspace-runner")]).toEqual([shaNew, shaNew, shaNew, shaNew]);
     expect(git(app, "rev-parse", "HEAD")).toBe(shaNew);
 
     const releases = join(app, "backups/releases"); const [dir] = readdirSync(releases);
@@ -77,6 +77,16 @@ describe("deploy", () => {
     const { out } = run(["deploy", shaNew]);
     expect(out).not.toContain("SUPER-SECRET-VALUE");
     expect(calls().every((c) => !c.startsWith("compose config") || c.includes("--quiet"))).toBe(true);
+  });
+
+  it("refuses to deploy without a workspace runner secret, since the app reaches Docker only through the runner", () => {
+    writeFileSync(join(app, ".env"), "AUTH_SECRET=SUPER-SECRET-VALUE\nWORKSPACE_RUNNER_SECRET=short\n");
+    const { status, out } = run(["deploy", shaNew]);
+    expect(status).not.toBe(0);
+    expect(out).toMatch(/WORKSPACE_RUNNER_SECRET/);
+    expect(out).not.toContain("short");
+    expect(calls().some((c) => c.startsWith("compose up") || c.startsWith("compose build"))).toBe(false);
+    expect(running("app")).toBe(shaOld);
   });
 
   it("refuses a dirty checkout before touching anything", () => {
@@ -161,13 +171,13 @@ describe("restore (the rollback a failed deploy uses)", () => {
     const deployed = run(["deploy", shaNew]);
     expect(deployed.status, deployed.out).toBe(0);
     const dir = readdirSync(join(app, "backups/releases")).map((d) => join(app, "backups/releases", d))[0];
-    expect(readFileSync(join(dir, "snapshot.tsv"), "utf8").trim().split("\n")).toHaveLength(3);
+    expect(readFileSync(join(dir, "snapshot.tsv"), "utf8").trim().split("\n")).toHaveLength(4);
     expect(readFileSync(join(dir, "restore.compose.yml"), "utf8")).toMatch(/image: sentinel-os-rollback-app:/);
     expect(image("app")).toBe(`sha256:img-app-${shaNew}`);
 
     const restored = run(["restore", dir]);
     expect(restored.status, restored.out).toBe(0);
-    for (const service of ["app", "learning-worker", "orchestration-worker"]) {
+    for (const service of ["app", "learning-worker", "orchestration-worker", "workspace-runner"]) {
       expect(image(service)).toBe(`sha256:img-${service}-${shaOld}`);
       expect(running(service)).toBe(shaOld);
     }
