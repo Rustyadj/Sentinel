@@ -40,6 +40,8 @@ case "$1" in
         done; exit 0 ;;
       ps)
         name="$(named "$@" | grep -v '^q$' | head -n1)"
+        # Like real docker compose: a service the checked-out compose file does not define is an error, not "not running".
+        grep -q "^  $name:$" docker-compose.yml 2>/dev/null || { echo "no such service: $name" >&2; exit 1; }
         [ -f "$(svc_file "$name").sha" ] && echo "cid-$name"; exit 0 ;;
       exec)
         case "$*" in

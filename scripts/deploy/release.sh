@@ -142,7 +142,9 @@ snapshot_running() {
   : > "$dir/snapshot.tsv"
   printf 'services:\n' > "$dir/restore.compose.yml"
   for service in "${SERVICES[@]}"; do
-    cid="$(compose ps -q "$service" | head -n1)"
+    # The running revision's compose file may not define a service this release adds (workspace-runner on the first
+    # deploy after #67); compose errors on it, which here means the same as "not running".
+    cid="$(compose ps -q "$service" 2>/dev/null | head -n1 || true)"
     [ -n "$cid" ] || { log "snapshot: $service is not running; a restore will leave it stopped"; continue; }
     image="$(docker inspect "$cid" --format '{{.Image}}')"
     commit="$(docker inspect "$cid" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^SENTINEL_COMMIT=//p' | head -n1)"

@@ -73,6 +73,24 @@ describe("deploy", () => {
     expect(readFileSync(join(releases, dir, "postgres.dump")).length).toBeGreaterThan(1024);
   });
 
+  it("deploys a release that adds a service the running revision's compose file does not define", () => {
+    // Production before #67: no workspace-runner in the checked-out compose file, and none running.
+    git(app, "checkout", "-q", "main");
+    writeFileSync(join(app, "docker-compose.yml"), `services:\n  app:\n    build: .\n${SERVICES_BLOCK.replace("  workspace-runner:\n    build: .\n", "")}`);
+    const legacy = commit(app, "legacy-without-runner"); git(app, "checkout", "-q", shaNew, "--", "docker-compose.yml");
+    const release = commit(app, "release-adds-runner"); git(app, "push", "-q", "origin", "HEAD:main");
+    git(app, "checkout", "-q", "--detach", legacy);
+    setRunning(legacy); rmSync(join(fake, "svc.workspace-runner.sha")); rmSync(join(fake, "svc.workspace-runner.img"));
+
+    const { status, out } = run(["deploy", release], { FAKE_LEGACY_SHA: legacy });
+    expect(out).toContain("snapshot: workspace-runner is not running");
+    expect(out).toContain("deployed immutable release");
+    expect(status).toBe(0);
+    expect(running("workspace-runner")).toBe(release);
+    const releases = join(app, "backups/releases"); const [dir] = readdirSync(releases);
+    expect(readFileSync(join(releases, dir, "snapshot.tsv"), "utf8").trim().split("\n")).toHaveLength(3);
+  });
+
   it("never prints the compose config or the environment", () => {
     const { out } = run(["deploy", shaNew]);
     expect(out).not.toContain("SUPER-SECRET-VALUE");
