@@ -61,7 +61,10 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     executionVerified: true,
     capabilities: HERMES_CAPABILITIES,
     sentinelControl: "partial",
-    nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL ?? "/legacy/hermes-nathan2",
+    // No default: nothing serves /legacy/hermes-nathan2, and Nathan2's dashboard (:4864) is
+    // not exposed publicly, so a default link only ever led to an error page. Set
+    // HERMES_NATHAN2_NATIVE_URL once it has a reachable host.
+    nativeUiUrl: process.env.HERMES_NATHAN2_NATIVE_URL || undefined,
     model: process.env.HERMES_NATHAN2_MODEL ?? "gpt-5.6-luna",
   },
   {

@@ -26,6 +26,12 @@ describe("legacy agent registry compatibility", () => {
     }
   });
 
+  it("offers no native UI link for Nathan2 unless one is configured", () => {
+    if (process.env.HERMES_NATHAN2_NATIVE_URL) return;
+    expect(COMPATIBILITY_RUNTIMES.find((runtime) => runtime.agentId === "hermes-nathan2")?.nativeUiUrl).toBeUndefined();
+    expect(getVpsAgent("hermes-nathan2")?.legacyPath).toBeNull();
+  });
+
   it("uses Nathan2's verified runtime port in both registry fields", () => {
     const nathan = getVpsAgent("hermes-nathan2");
     expect(nathan?.endpoint).toBe("http://127.0.0.1:4864");
