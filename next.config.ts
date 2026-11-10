@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // playwright-core reads browsers.json with fs at runtime, which file tracing
+  // cannot see; without this the standalone app image ships it without the file.
+  outputFileTracingIncludes: {
+    "/**": ["./node_modules/playwright-core/browsers.json"],
+  },
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   images: {
     remotePatterns: [
