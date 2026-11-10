@@ -89,6 +89,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // arbitrary authority boundary. An operator must reconcile it.
             throw new Error("Account identity requires administrator reconciliation.");
           }
+          // This is a User-creation path too: a still-valid JWT for a deleted
+          // account must not resurrect it unless the signup policy allows it.
+          if (!candidates[0] && !(await isSignupAllowed(email))) {
+            throw new Error("Account registration is by invitation only.");
+          }
           const dbUser = candidates[0] ?? await db.user.create({
             data: { email, name: user?.name ?? token.name ?? undefined },
           });
