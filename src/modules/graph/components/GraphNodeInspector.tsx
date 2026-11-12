@@ -1,5 +1,6 @@
 "use client";
 
+import { OperationalNodeDetails } from "./OperationalLenses";
 import { useEffect, useState } from "react";
 import { ArrowRight, Crosshair, Loader2 } from "lucide-react";
 import { clusterOf } from "@/lib/graph/semantics";
@@ -53,6 +54,7 @@ export function GraphNodeInspector({ nodeId, onFocus }: { nodeId: string; onFocu
 
   return (
     <div className="space-y-4 py-2">
+      <OperationalNodeDetails node={detail.node} />
       {detail.node.summary ? (
         <p className="text-[13px] leading-relaxed text-(--foreground)">{detail.node.summary}</p>
       ) : null}

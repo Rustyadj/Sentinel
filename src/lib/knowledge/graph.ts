@@ -1,5 +1,7 @@
 // Knowledge Engine — authenticated graph snapshot builder
 
+import { readableWorkspaceIds } from "./memory-scope";
+import { filterOperationalNodes, filterOperationalEdges } from "./operational-graph";
 import { db } from "@/lib/db";
 import { toKnowledgeNode } from "./objects";
 import type {
@@ -50,6 +52,7 @@ export async function buildGraphData(
 
     if (filter.roomId && !room) throw new Error("Room not found");
 
+    const workspaceIds = await readableWorkspaceIds(userId);
     const projectId = filter.projectId ?? room?.projectId ?? undefined;
     if (projectId && !readableProjectIds.includes(projectId)) {
       throw new Error("Project not found");
@@ -63,6 +66,7 @@ export async function buildGraphData(
           {
             OR: [
               { userId },
+              { scope: "workspace", workspaceId: { in: workspaceIds }, sourceType: { startsWith: "operational:" } },
               ...(readableProjectIds.length > 0
                 ? [{ projectId: { in: readableProjectIds } }]
                 : []),
@@ -85,7 +89,7 @@ export async function buildGraphData(
       take: 250,
     });
 
-    const nodes = objectRecords.map(toKnowledgeNode);
+    const nodes = (await filterOperationalNodes(userId, objectRecords)).map(toKnowledgeNode);
     const nodeIds = nodes.map((node) => node.id);
     const edgeRecords =
       nodeIds.length === 0
@@ -101,7 +105,7 @@ export async function buildGraphData(
 
     return {
       nodes,
-      edges: edgeRecords.map(toKnowledgeEdge),
+      edges: (await filterOperationalEdges(userId, edgeRecords)).map(toKnowledgeEdge),
     };
   } catch (err) {
     throw new Error(

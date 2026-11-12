@@ -3,6 +3,8 @@
 import type { KnowledgeObjectType } from "./types";
 
 export const KNOWLEDGE_NODE_COLORS: Record<KnowledgeObjectType | "default", string> = {
+  Service: "#58b7c9", Incident: "#cf7d7d", Alert: "#e0a94a", Team: "#b0a2d8",
+  Action: "#6aa6de", Resolution: "#5cc9b0", Deployment: "#8b95a3", InfrastructureResource: "#9aa8e8",
   Agent: "#c4b8f3",
   Person: "#dfa4c4",
   Conversation: "#8f9af5",

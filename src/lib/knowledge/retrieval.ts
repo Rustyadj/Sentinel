@@ -253,13 +253,30 @@ export async function retrieveContext(ctx: RetrievalContext): Promise<{
     sessionAllowed ? retrieveSessionMemory(ctx.roomId) : Promise.resolve([]),
   ]);
 
+  let operationalSignals = new Map<string, { semantic: number; graph: number }>();
+  if (ctx.workspaceId && /\b(incident|outage|failed|failure|root cause)\b/i.test(query)) {
+    const { incidentMemoryCandidates, operationalMemorySignals } = await import("./operational-retrieval");
+    const operational = await incidentMemoryCandidates(ctx);
+    operationalSignals = await operationalMemorySignals(ctx, operational.memories);
+    const seen = new Set(memoriesRaw.map(memory => memory.id));
+    for (const memory of operational.memories) if (!seen.has(memory.id)) memoriesRaw.push(memory);
+  }
+
   let ranked: RankedMemory<(typeof memoriesRaw)[number]>[] = query
     ? rankMemories(query, memoriesRaw, {
-        limit: maxItems,
+        limit: operationalSignals.size ? memoriesRaw.length : maxItems,
         temporalIntent: temporal.intent,
         asOf: temporal.asOf,
       })
     : memoriesRaw.slice(0, maxItems).map((memory) => ({ memory, score: 0, factors: [] }));
+
+  if (operationalSignals.size) {
+    ranked = ranked.map(entry => {
+      const signal = operationalSignals.get(entry.memory.id);
+      if (!signal) return entry;
+      return { ...entry, score: entry.score + signal.semantic * 5 + signal.graph * 3, factors: [...entry.factors, { name: "operational_semantic", weight: 5, score: signal.semantic, detail: "Matching provider/model/version; unavailable vectors contribute zero" }, { name: "operational_graph", weight: 3, score: signal.graph }] };
+    }).sort((a, b) => b.score - a.score).slice(0, maxItems);
+  }
 
   // Relevance is a fraction of the best score the ranker can award, so a
   // policy threshold means the same thing whatever the weights are tuned to.
