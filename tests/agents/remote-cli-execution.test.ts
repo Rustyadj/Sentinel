@@ -59,6 +59,9 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
+vi.mock("@/lib/orchestration/access", () => ({
+  requireRoomAccess: vi.fn().mockResolvedValue({ id: "room-a", projectId: "project-a" }),
+}));
 vi.mock("@/lib/chat/persistence", () => ({ persistChatExchange: m.persistChatExchange }));
 vi.mock("@/lib/knowledge/retrieval", () => ({ appendSessionMemory: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/neural-engine/chat-capture", () => ({ captureAgentTurn: vi.fn().mockResolvedValue(undefined) }));
