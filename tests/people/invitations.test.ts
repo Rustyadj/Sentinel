@@ -74,6 +74,12 @@ describe("creating invitations", () => {
     await expectInvitationError(createInvitation({ scope: "organization", role: "owner" }, owner.id), 400);
   });
 
+  it("does not let a guest invite anyone, even to a project of their own", async () => {
+    const guest = await makeUser("guest-inviter", "guest");
+    const own = await db.project.create({ data: { name: `Guest's own ${tag}`, userId: guest.id, agents: [], tags: [] } });
+    await expectInvitationError(createInvitation({ scope: "project", role: "editor", projectId: own.id }, guest.id), 403);
+  });
+
   it("hides a project the inviter cannot share", async () => {
     const stranger = await makeUser("stranger");
     await expectInvitationError(createInvitation({ scope: "project", role: "editor", projectId }, stranger.id), 404);

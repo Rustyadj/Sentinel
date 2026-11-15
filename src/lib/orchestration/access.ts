@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
-import { reachableProjectIds, userCanOnProject } from "@/lib/people/project-access";
+import { userCanOnProject } from "@/lib/people/project-access";
 
 export type RoomAccessMode = "read" | "write";
 
@@ -25,14 +25,6 @@ export async function requireRoomAccess(roomId: string, userId: string, mode: Ro
   }
   // Missing and forbidden look the same from outside.
   throw new RuntimeError("Room not found", "room_not_found", 404);
-}
-
-/** Prisma filter for every room a person can at least read. */
-export async function readableRoomsWhere(userId: string) {
-  const projectIds = await reachableProjectIds(userId);
-  return projectIds.length
-    ? { OR: [{ userId }, { projectId: { in: projectIds } }] }
-    : { userId };
 }
 
 export function collaborationErrorResponse(error: unknown) {

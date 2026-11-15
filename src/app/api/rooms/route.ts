@@ -119,7 +119,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
     if (!name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
-    if (projectId) await requireProjectPermission(projectId, "project.read");
+    // Opening a room in a project is writing to it: a viewer can read rooms, not make them.
+    if (projectId) await requireProjectPermission(projectId, "project.update");
 
     const room = await db.chatRoom.create({
       data: {

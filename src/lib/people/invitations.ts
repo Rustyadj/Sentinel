@@ -34,6 +34,11 @@ export async function createInvitation(input: CreateInvitationInput, inviterId: 
   const email = input.email?.trim() ? normalizeEmail(input.email) : null;
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InvitationError("That email address is not valid.", 400);
 
+  // Inviting is something the team does. A guest was let in to one project;
+  // that does not include letting further people in, even to a project of their own.
+  const inviter = await db.user.findUnique({ where: { id: inviterId }, select: { accessScope: true } });
+  if (inviter?.accessScope !== "member") throw new InvitationError("Only people on the team can invite others.", 403);
+
   let projectId: string | null = null;
   if (input.scope === "organization") {
     if (!isInvitableOrgRole(input.role)) throw new InvitationError("Choose admin, operator or member.", 400);
