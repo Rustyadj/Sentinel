@@ -6,6 +6,7 @@ import { MessageSquare, MessagesSquare, Plus } from "lucide-react";
 import { ROLE_COPY } from "@/lib/people/roles";
 import { cn } from "@/lib/utils";
 import { InviteForm } from "./InviteForm";
+import { ProjectAgents } from "./ProjectAgents";
 import { Initial, Notice, QuietButton, fieldClass, readError } from "./ui";
 
 interface Person { id: string; name: string; email: string | null }
@@ -105,6 +106,8 @@ export function ProjectHub({ project, canWrite }: { project: { id: string; name:
             ))}
           </ul>
         </section>
+
+        <ProjectAgents projectId={project.id} canWrite={canWrite} />
 
         <section aria-labelledby="project-people-heading">
           <h2 id="project-people-heading" className="mb-3 font-display text-[18px] font-semibold tracking-tight">People on this project</h2>
