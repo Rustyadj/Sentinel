@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApiUser } from "@/lib/current-user";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
+import { reachableProjectIds } from "@/lib/people/project-access";
 import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 
 export function OPTIONS() {
@@ -24,6 +25,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
       createdAt: true,
       isPrimary: true,
       mode: true,
+      project: { select: { name: true } },
       _count: { select: { messages: true } },
     } as const;
 
@@ -32,6 +34,26 @@ async function handleGet(request: NextRequest): Promise<Response> {
       orderBy: { createdAt: "asc" },
       select: roomSelect,
     });
+
+    // Rooms of projects this person was added to. They belong to someone
+    // else, so none of the primary-room bookkeeping below applies to them.
+    const sharedProjectIds = await reachableProjectIds(user.id);
+    const sharedRooms = sharedProjectIds.length
+      ? await db.chatRoom.findMany({
+          where: { projectId: { in: sharedProjectIds }, NOT: { userId: user.id } },
+          orderBy: { createdAt: "asc" },
+          select: { ...roomSelect, user: { select: { name: true } } },
+        })
+      : [];
+    const shared = sharedRooms.map(({ project, user: owner, ...room }) => ({
+      ...room, shared: true, projectName: project?.name ?? null, ownerName: owner?.name ?? null,
+    }));
+    // The wire shape carries the project's name, not the relation.
+    const flat = <T extends { project: { name: string } | null }>({ project, ...room }: T) => ({ ...room, projectName: project?.name ?? null });
+
+    // A guest has no agents to command, so no Mission Control is made for
+    // them: they see the rooms they were invited into and nothing else.
+    if (rooms.length === 0 && user.accessScope === "guest") return NextResponse.json(shared);
 
     // Auto-create a default "Mission Control" room if the user has none.
     // This is always the primary room: the one that normal Mission Control
@@ -74,7 +96,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
       rooms = rooms.map((room) => (room.id === reset.id ? reset : room));
     }
 
-    return NextResponse.json(rooms);
+    return NextResponse.json([...rooms.map(flat), ...shared]);
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -97,7 +119,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
     if (!name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
-    if (projectId) await requireProjectPermission(projectId, "project.read");
+    // Opening a room in a project is writing to it: a viewer can read rooms, not make them.
+    if (projectId) await requireProjectPermission(projectId, "project.update");
 
     const room = await db.chatRoom.create({
       data: {

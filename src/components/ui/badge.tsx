@@ -15,9 +15,9 @@ const badgeVariants = cva(
           "border-transparent bg-(--destructive)/15 text-(--destructive)",
         outline: "border-(--border) text-(--foreground)",
         success:
-          "border-transparent bg-[rgba(95,207,154,0.14)] text-(--status-online)",
+          "border-transparent bg-[color-mix(in_srgb,var(--status-online)_14%,transparent)] text-(--status-online)",
         warning:
-          "border-transparent bg-[rgba(232,176,74,0.14)] text-(--status-busy)",
+          "border-transparent bg-[color-mix(in_srgb,var(--status-busy)_14%,transparent)] text-(--status-busy)",
       },
     },
     defaultVariants: {

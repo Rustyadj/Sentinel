@@ -54,6 +54,10 @@ export interface Message {
   toolCalls?: ToolCall[];
   reasoning?: string;
   isStreaming?: boolean;
+  /** Who wrote a user message, when it was someone else in a shared room. */
+  authorName?: string;
+  /** False for a user message written by another person. Absent means mine. */
+  mine?: boolean;
 }
 
 export interface ToolCall {
@@ -71,6 +75,9 @@ export interface ChatRoom {
   messages: Message[];
   createdAt: Date;
   projectId?: string;
+  /** True for a room that belongs to someone else's shared project. */
+  shared?: boolean;
+  projectName?: string;
 }
 
 export type MemoryType =

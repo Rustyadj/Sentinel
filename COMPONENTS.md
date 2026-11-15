@@ -60,16 +60,17 @@ Exactly how every component should behave. Visual tokens live in [DESIGN.md](DES
 - Zoom/pan controls are always visible, not hover-only, since graph navigation is a primary task.
 - Respect `prefers-reduced-motion`: disable graph pulse/particle animation and any continuous motion; keep discrete transitions (node select, edge highlight) since those carry information.
 
-### The Strata graph (behind Chat)
+### The watch (beside Chat, and on its own at /graph)
 
-`src/components/strata/` — the graph as atmosphere behind the conversation. Same data source as the globe (`useOrreryData`), different job: show what the current conversation touches, not support exploration.
+`src/components/watch/` — the live graph. Same data source as the globe (`useOrreryData`), different job: show what every agent is doing right now, not support exploration.
 
-- **Four strata, fixed order.** Agents, Projects, Tasks, Memory. `stratumOf(type)` is the only mapping; unknown types settle into Memory.
-- **Deterministic seats.** A node's position is a pure function of its id and its links to the strata above it, so a project sits beneath its agents and the threads fall roughly vertically.
-- **Context, never invention.** Focus ids come from the room's agents' graph nodes, the room and its project, and nodes those agents touched in recent events. Ids the graph does not hold are ignored. The brass context column drops only through a focused agent node that exists.
-- **Pulses are events.** A bead travels a thread only when `dispatch` reports a real activity event.
-- **Legible over pretty.** Dimmed to 30% in Focus mode; labels avoid collisions and defer to the hover readout; the layer key names and counts each stratum and doubles as a keyboard-reachable emphasis control.
-- **Reduced motion.** Idle sway, breathing rings and pulses stop; heat and focus still render statically, and the canvas only redraws on change.
+- **Agents at the centre, four rings, fixed order.** Agents' company, Projects, Tasks, Memory. `stratumOf(type)` in `src/components/strata/strata-model.ts` is the only mapping; unknown types settle into Memory.
+- **Deterministic seats.** A node's position is a pure function of its id, its links toward the centre, and where the agents stand, so a project sits out from its agents and a task out from its project.
+- **A beam is an event.** An agent casts a beam onto a node only when `dispatch` reports a real activity event touching it. The beam holds while that agent is working and fades after.
+- **A turning light is a working agent.** Working comes from a live session or run on the server, or from the surface saying it is waiting on that agent. Nothing else makes a light turn.
+- **Captions are DOM text.** Each agent's name, and what it is doing while it works, sit beside its light. They thin out as the canvas gets smaller: all names, then working agents only, then none in a thin band.
+- **Context, never invention.** Focus ids are the room's agents' graph nodes, the room and its project. Ids the graph does not hold are ignored.
+- **Reduced motion.** Lights do not turn and nothing travels along a beam; beams, heat, focus and captions still render, and the canvas only redraws on change.
 
 ### The canonical graph (Neural Lens globe)
 

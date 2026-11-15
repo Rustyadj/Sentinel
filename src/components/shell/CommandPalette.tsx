@@ -158,7 +158,7 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-start justify-center bg-[rgba(4,7,8,0.62)] px-3 pt-[10vh] backdrop-blur-[2px] sm:px-4"
+      className="fixed inset-0 z-[80] flex items-start justify-center bg-[color-mix(in_srgb,var(--canvas)_80%,transparent)] px-3 pt-[10vh] sm:px-4"
       onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}
     >
       <div role="dialog" aria-modal="true" aria-label="Search and commands" className="animate-fade-in w-full max-w-xl overflow-hidden rounded-lg border border-(--border-strong) bg-(--panel) shadow-[var(--shadow-lg)]">

@@ -24,9 +24,9 @@ export const NEUTRAL_NODE = "#a3b3ad";
 /** Structural hubs (Workspace/Project/Repository/…): same family, brighter. */
 export const HUB_NODE = "#d8d6cc";
 /** The hub currently targeted by the active lens. */
-export const LENS_HUB_NODE = "#e6c486";
+export const LENS_HUB_NODE = "#ffe07a";
 /** Sentinel purple, as the graph uses it: emphasis, never decoration. */
-export const LENS_ACCENT = "#d4a95a";
+export const LENS_ACCENT = "#ffd23f";
 /** A user-selected node — a near-white core inside a purple bloom. */
 export const SELECTED_NODE = "#fff6e2";
 export const SELECTED_GLOW = "#c99a48";

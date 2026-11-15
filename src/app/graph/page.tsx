@@ -1,5 +1,5 @@
-import { GraphSurface } from "@/modules/graph/components/GraphSurface";
+import { WatchSurface } from "@/modules/watch/WatchSurface";
 
 export default function GraphPage() {
-  return <GraphSurface />;
+  return <WatchSurface />;
 }

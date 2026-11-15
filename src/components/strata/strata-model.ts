@@ -18,10 +18,10 @@ export interface Stratum {
 }
 
 export const STRATA: readonly Stratum[] = [
-  { id: "agents", label: "Agents", token: "--entity-agent", hex: "#86a9e8" },
-  { id: "projects", label: "Projects", token: "--entity-project", hex: "#74c2ab" },
-  { id: "tasks", label: "Tasks", token: "--entity-task", hex: "#e7926f" },
-  { id: "memory", label: "Memory", token: "--entity-memory", hex: "#b9a0e6" },
+  { id: "agents", label: "Agents", token: "--entity-agent", hex: "#ff7aa8" },
+  { id: "projects", label: "Projects", token: "--entity-project", hex: "#45d6c2" },
+  { id: "tasks", label: "Tasks", token: "--entity-task", hex: "#ff9f5a" },
+  { id: "memory", label: "Memory", token: "--entity-memory", hex: "#8fa4ff" },
 ];
 
 /**

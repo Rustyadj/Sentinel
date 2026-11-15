@@ -5,7 +5,8 @@ export function listProjects(filter: { workspaceId?: string; userId?: string } =
   return db.project.findMany({
     where: {
       ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
-      ...(filter.userId ? { userId: filter.userId } : {}),
+      // "Mine" means projects I own and projects I was added to.
+      ...(filter.userId ? { OR: [{ userId: filter.userId }, { members: { some: { userId: filter.userId } } }] } : {}),
     },
     include: { workspace: { select: { id: true, name: true, slug: true } }, _count: { select: { documents: true, tasks: true } } },
     orderBy: { updatedAt: "desc" },

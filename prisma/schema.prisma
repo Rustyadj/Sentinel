@@ -21,7 +21,16 @@ model User {
   passwordHash             String?
   /// Mobile bearer tokens issued at or before this instant are rejected.
   mobileTokensRevokedAt    DateTime?
+  /// "member" accounts are enrolled in the shared default workspaces.
+  /// "guest" accounts were created by a project invitation and can reach
+  /// only the projects they were added to.
+  accessScope              String                   @default("member")
   createdAt                DateTime                 @default(now())
+  organizationMemberships  OrganizationMember[]
+  projectMemberships       ProjectMember[]
+  invitationsSent          Invitation[]             @relation("InvitationInviter")
+  invitationsAccepted      Invitation[]             @relation("InvitationAcceptor")
+  discussionsStarted       Discussion[]
   projects                 Project[]
   chatRooms                ChatRoom[]
   ownedWorkspaces          Workspace[]              @relation("WorkspaceOwner")
@@ -70,6 +79,9 @@ model Project {
   approvals         ApprovalRequest[]
   auditLogs         AuditLog[]
   orchestrationRuns OrchestrationRun[]
+  members           ProjectMember[]
+  invitations       Invitation[]
+  discussions       Discussion[]
 
   @@index([workspaceId])
   @@index([teamId])
@@ -159,6 +171,9 @@ model Message {
   provider              String?
   model                 String?
   agentRuntimeSessionId String?
+  /// Which person wrote a role="user" message. Null on rows written before
+  /// rooms could be shared, where the room owner is the only possible author.
+  authorUserId          String?
   createdAt             DateTime @default(now())
 
   // --- Collaboration Room (additive) — structured AgentMessage protocol.
@@ -623,12 +638,11 @@ model Workspace {
   agents            Agent[]
   agentWorkspaces   AgentWorkspace[]
   memories          Memory[]
+  bots              Bot[]
+  mcpServers        McpServerRegistration[]
 
   @@index([ownerId])
   @@index([organizationId])
-  bots               Bot[]
-  mcpServers         McpServerRegistration[]
-
   @@map("workspaces")
 }
 
@@ -1128,8 +1142,126 @@ model Organization {
 
   departments Department[]
   workspaces  Workspace[]
+  members     OrganizationMember[]
+  invitations Invitation[]
 
   @@map("neural_organizations")
+}
+
+// --- People and invitations ---------------------------------------------
+// Membership is explicit rows, never inferred from having an account. An
+// organization member is enrolled in the shared workspaces with the role the
+// inviter chose; a project member reaches one project and nothing else.
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   @default("member") // owner, admin, operator, member
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("editor") // editor, viewer
+  addedById String?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+/// A single-use link that admits one person. Only the SHA-256 of the token is
+/// stored, so a database read never yields a usable invitation.
+model Invitation {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  scope          String // organization, project
+  organizationId String?
+  projectId      String?
+  role           String
+  /// When set, only this address may accept.
+  email          String?
+  note           String?
+  invitedById    String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy    User          @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedBy   User?         @relation("InvitationAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([invitedById])
+  @@map("invitations")
+}
+
+// --- Roundtable -----------------------------------------------------------
+// Agents discussing a topic with each other, in turns, through their real
+// runtimes. A turn row exists from the moment an agent starts speaking, so
+// the page can show who is talking before the words arrive.
+
+model Discussion {
+  executionId String    @default(uuid())
+  id          String    @id @default(cuid())
+  title       String
+  topic       String
+  projectId   String?
+  createdById String
+  agentIds    String[]
+  rounds      Int       @default(2)
+  status      String    @default("running") // running, completed, failed, cancelled
+  error       String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  turns     DiscussionTurn[]
+
+  @@index([createdById, createdAt])
+  @@index([projectId, createdAt])
+  @@map("discussions")
+}
+
+model DiscussionTurn {
+  id           String    @id @default(cuid())
+  discussionId String
+  sequence     Int
+  round        Int
+  kind         String // opening, response, synthesis, human
+  agentId      String?
+  authorUserId String?
+  content      String    @default("")
+  /// One line: where this speaker stands. Parsed from the agent's own reply.
+  position     String?
+  status       String    @default("speaking") // speaking, done, failed
+  error        String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  discussion Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+
+  @@unique([discussionId, sequence])
+  @@map("discussion_turns")
 }
 
 model Department {

@@ -39,35 +39,41 @@ export const PRIMARY_NAV: NavItem[] = [
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [];
 
 /**
- * The product shell rail. Grouped by what the operator is doing: talking and
- * understanding, running agents, and holding them to account. Projects, files
- * and artifacts stay contextual — they appear inside these surfaces rather
- * than as destinations of their own.
+ * The product sidebar. Grouped by what you came to do: work with people and
+ * agents, watch what the agents are doing, run them, and look after the team.
+ * `guest` marks the entries a project guest can reach; the rest are hidden
+ * from them because the server would refuse them anyway.
  */
-export interface NavGroup { id: string; label: string; items: NavItem[] }
+export interface NavGroup { id: string; label: string; items: Array<NavItem & { guest?: boolean }> }
 
 export const SHELL_NAV_GROUPS: NavGroup[] = [
   {
-    id: "think", label: "Think", items: [
-      { id: "chat",   label: "Chat",   icon: "MessageSquare", href: "/chat" },
-      { id: "graph",  label: "Graph",  icon: "Network",       href: "/graph" },
-      { id: "memory", label: "Memory", icon: "BookOpen",      href: "/memory" },
+    id: "work", label: "Work", items: [
+      { id: "chat",       label: "Chat",       icon: "MessageSquare", href: "/chat", guest: true },
+      { id: "roundtable", label: "Roundtable", icon: "MessagesSquare", href: "/roundtable", guest: true },
+      { id: "projects",   label: "Projects",   icon: "FolderKanban",  href: "/projects", guest: true },
+      { id: "tasks",      label: "Tasks",      icon: "ListChecks",    href: "/tasks" },
+    ],
+  },
+  {
+    id: "watch", label: "Watch", items: [
+      { id: "graph",    label: "Live graph", icon: "Radar",    href: "/graph" },
+      { id: "activity", label: "Activity",   icon: "Activity", href: "/activity" },
+      { id: "memory",   label: "Memory",     icon: "BookOpen", href: "/memory" },
     ],
   },
   {
     id: "run", label: "Run", items: [
-      { id: "agents",     label: "Agents",     icon: "Bot",        href: "/agents" },
-      { id: "bots",       label: "Bots",       icon: "Boxes",      href: "/bots" },
-      { id: "tasks",      label: "Tasks",      icon: "ListChecks", href: "/tasks" },
-      { id: "workspaces", label: "Workspaces", icon: "HardDrive",  href: "/agent-workspaces" },
+      { id: "agents",     label: "Agents",     icon: "Bot",       href: "/agents" },
+      { id: "bots",       label: "Bots",       icon: "Boxes",     href: "/bots" },
+      { id: "workspaces", label: "Workspaces", icon: "HardDrive", href: "/agent-workspaces" },
     ],
   },
   {
-    id: "oversee", label: "Oversee", items: [
-      { id: "activity", label: "Activity", icon: "Activity",  href: "/activity" },
-      // Accountability's other half: Activity is what happened, Control is where
-      // each change currently sits and whether production matches main.
-      { id: "control",  label: "Control",  icon: "GitBranch", href: "/control" },
+    id: "team", label: "Team", items: [
+      { id: "people",  label: "People",  icon: "Users",     href: "/people" },
+      // Where each change currently sits and whether production matches main.
+      { id: "control", label: "Control", icon: "GitBranch", href: "/control" },
     ],
   },
 ];

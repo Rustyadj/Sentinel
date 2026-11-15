@@ -27,12 +27,12 @@ export function OrreryStatusStrip({ notices, onRetry }: { notices: ReturnType<ty
   if (!notices.length) return null;
   const hasError = notices.some((n) => n.tone === "error");
   return (
-    <div data-orrery-ui role="status" aria-live="polite" className="pointer-events-none absolute left-3.5 right-3.5 top-3.5 z-[4] flex flex-col items-center gap-1.5 lg:left-[calc(min(468px,40%)+1.75rem)] xl:right-[calc(300px+1.75rem)]">
+    <div data-orrery-ui role="status" aria-live="polite" className="pointer-events-none absolute inset-x-3 top-3 z-[4] flex flex-col items-center gap-1.5">
       {notices.map((notice) => (
         <div
           key={notice.id}
           data-testid={`orrery-notice-${notice.id}`}
-          className="pointer-events-auto flex max-w-[34rem] items-start gap-2 rounded-lg border border-(--glass-border) bg-(--glass) px-3 py-1.5 text-[12px] text-(--foreground) backdrop-blur"
+          className="pointer-events-auto flex max-w-[34rem] items-start gap-2 rounded-(--radius-md) border border-(--border-strong) bg-(--card) px-3 py-1.5 text-[12px] text-(--foreground)"
         >
           {notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--status-busy)" aria-hidden /> : null}
           <span>{notice.text}</span>
@@ -42,7 +42,7 @@ export function OrreryStatusStrip({ notices, onRetry }: { notices: ReturnType<ty
         <button
           type="button"
           onClick={onRetry}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-(--glass-border) bg-(--glass) px-2.5 py-1 text-[12px] text-(--muted-foreground) backdrop-blur hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+          className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-(--border-strong) bg-(--card) px-3 py-1 text-[12px] text-(--muted-foreground) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
         >
           <RefreshCw className="h-3 w-3" aria-hidden /> Retry now
         </button>
