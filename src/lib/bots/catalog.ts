@@ -13,6 +13,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
+import { isPublicAddress } from "@/lib/net/public-address";
+import { publicOnlyFetch } from "@/lib/net/public-fetch";
 import { slugify } from "./schema";
 import type { CatalogServer, CatalogTool } from "./policy";
 
@@ -124,35 +126,34 @@ export function activeCatalog(entries: readonly CatalogEntry[]): CatalogServer[]
 
 // ------------------------------------------------------ registration ----
 
-function isPrivateAddress(address: string): boolean {
-  if (isIP(address) === 6) {
-    const lower = address.toLowerCase();
-    return lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80") || lower.startsWith("::ffff:127.") || lower.startsWith("::ffff:10.") || lower.startsWith("::ffff:192.168.");
-  }
-  const [a, b] = address.split(".").map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-}
-
 export class McpRegistrationError extends Error {
   constructor(message: string, readonly status = 400) { super(message); this.name = "McpRegistrationError"; }
+}
+
+/** MCP_CATALOG_ALLOW_PRIVATE=1 is the operator's explicit opt-in to internal servers. */
+function allowPrivateMcpTargets(): boolean {
+  return process.env.MCP_CATALOG_ALLOW_PRIVATE === "1";
 }
 
 /**
  * A registered URL is fetched from the server, so it is an SSRF vector. Only
  * https to public addresses is accepted unless MCP_CATALOG_ALLOW_PRIVATE=1 (for
- * a deliberately internal server). Hostnames are resolved and every address is
- * checked; a name that later re-resolves elsewhere is not defended against.
+ * a deliberately internal server). This check rejects bad URLs early with a
+ * clear message; it is not what stops DNS rebinding. The connection itself goes
+ * through `publicOnlyFetch`, which validates the address each socket actually
+ * connects to (and every redirect hop), so a short-TTL name that answers public
+ * here and private later is still refused.
  */
 export async function assertSafeMcpUrl(raw: string): Promise<URL> {
   let url: URL;
   try { url = new URL(raw); } catch { throw new McpRegistrationError("url is not a valid URL"); }
-  const allowPrivate = process.env.MCP_CATALOG_ALLOW_PRIVATE === "1";
+  const allowPrivate = allowPrivateMcpTargets();
   if (url.username || url.password) throw new McpRegistrationError("url must not embed credentials");
   if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) throw new McpRegistrationError("url must use https");
   if (allowPrivate) return url;
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => { throw new McpRegistrationError("url host does not resolve"); })).map((entry) => entry.address);
-  if (addresses.some(isPrivateAddress) || host === "localhost") throw new McpRegistrationError("url resolves to a private or loopback address");
+  if (host === "localhost" || addresses.some((address) => !isPublicAddress(address))) throw new McpRegistrationError("url resolves to a private or loopback address");
   return url;
 }
 
@@ -168,7 +169,10 @@ export async function discoverMcpTools(input: { url: string; authMode: string; s
     headers.Authorization = `Bearer ${secret}`;
   }
   const client = new Client({ name: "sentinel-bot-catalog", version: "1.0.0" });
-  const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers } });
+  const transport = new StreamableHTTPClientTransport(url, {
+    requestInit: { headers },
+    fetch: allowPrivateMcpTargets() ? undefined : publicOnlyFetch,
+  });
   try {
     await client.connect(transport, { timeout: 15_000 });
     const tools: CatalogTool[] = [];
