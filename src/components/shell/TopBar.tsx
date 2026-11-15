@@ -10,6 +10,7 @@ import { TopBarNotifications } from "@/components/layout/TopBarNotifications";
 import { TopBarProfileMenu } from "@/components/layout/TopBarProfileMenu";
 import { VoiceControls } from "@/components/voice/VoiceControls";
 import { IconButton } from "./primitives";
+import { cn } from "@/lib/utils";
 
 type TopBarMenu = "agents" | "approvals" | "notifications" | "profile" | null;
 
@@ -61,12 +62,18 @@ export function TopBar({ left, title }: { left?: React.ReactNode; title?: React.
   });
 
   return (
-    <header className="relative z-[60] flex h-14 shrink-0 items-center gap-2 border-b border-(--border) bg-(--background) px-2 sm:gap-3 sm:px-4">
+    <header className={cn(
+      "relative z-[60] flex h-14 shrink-0 items-center gap-2 border-b border-(--border) bg-(--background) px-2 sm:gap-3 sm:px-4",
+      left && "h-auto min-h-14 flex-wrap py-1 sm:h-14 sm:flex-nowrap sm:py-0",
+    )}>
       <IconButton label="Open navigation" className="lg:hidden" onClick={() => setMobileNavOpen(true)}>
         <Menu className="h-[18px] w-[18px]" />
       </IconButton>
 
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+      <div className={cn(
+        "flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2",
+        left && "order-last w-full flex-none sm:order-none sm:w-auto sm:flex-1",
+      )}>
         {title ? <h1 className="truncate font-display text-[19px] font-semibold tracking-tight text-(--foreground)">{title}</h1> : null}
         {left}
       </div>
@@ -84,9 +91,10 @@ export function TopBar({ left, title }: { left?: React.ReactNode; title?: React.
         <Search className="h-4 w-4" />
       </IconButton>
 
-      <div ref={actionsRef} className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-        <div className="hidden items-center border-r border-(--border) pr-2 xl:flex">
+      <div ref={actionsRef} className="ml-auto flex shrink-0 items-center gap-0.5 sm:ml-0 sm:gap-1">
+        <div className="flex items-center xl:border-r xl:border-(--border) xl:pr-2">
           <VoiceControls
+            compactOnMobile
             // The global voice control is Lisa's, deliberately: she is the
             // orchestrator, and this control is not scoped to a conversation.
             agentId="hermes-lisa"
