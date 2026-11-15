@@ -49,6 +49,8 @@ model User {
   oauthAuthorizationCodes  OAuthAuthorizationCode[]
   oauthAccessTokens        OAuthAccessToken[]
   orchestrationRuns        OrchestrationRun[]
+  projectAgentsOwned       ProjectAgent[]           @relation("ProjectAgentOwner")
+  agentLinkRulesSet        AgentLinkRule[]          @relation("AgentLinkRuleSetter")
 
   @@map("users")
 }
@@ -82,6 +84,8 @@ model Project {
   members           ProjectMember[]
   invitations       Invitation[]
   discussions       Discussion[]
+  projectAgents     ProjectAgent[]
+  agentLinkRules    AgentLinkRule[]
 
   @@index([workspaceId])
   @@index([teamId])
@@ -3623,4 +3627,63 @@ model RoutineRun {
   @@index([workflowId, createdAt])
   @@index([status, createdAt])
   @@map("routine_runs")
+}
+
+// ─── Agents people bring to a shared project ─────────────────────────────────
+// Builds on ProjectMember / Invitation (people). See docs/PROJECT_AGENTS.md.
+
+/// An agent a person brought into a project. agentId is the registry id
+/// (src/lib/agents/registry.ts) used by Message.agentId and ChatRoom.agentIds,
+/// so it has no foreign key and this is not a second agent system.
+model ProjectAgent {
+  id          String  @id @default(cuid())
+  projectId   String
+  agentId     String
+  /// The person this agent answers to. Only they may pause, move or control it.
+  ownerUserId String
+  /// sentinel | claude-code | codex | a2a
+  origin       String  @default("sentinel")
+  /// For origin "a2a": where the agent publishes its Agent Card.
+  agentCardUrl String?
+  /// connecting | connected | disabled
+  status       String  @default("connected")
+
+  canReadProjectMemory  Boolean @default(true)
+  canWriteProjectMemory Boolean @default(false)
+  canMessageOtherOwners Boolean @default(true)
+  canUseComputer        Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner   User    @relation("ProjectAgentOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, agentId])
+  @@index([ownerUserId])
+  @@map("project_agents")
+}
+
+/// One owner's side of the rule between their agent and someone else's.
+/// The other owner writes the mirror row; the stricter of the two applies,
+/// and a missing row counts as ASK.
+model AgentLinkRule {
+  id          String   @id @default(cuid())
+  projectId   String
+  /// The agent whose owner set this rule.
+  agentId     String
+  /// The agent, owned by someone else, that the rule is about.
+  peerAgentId String
+  setByUserId String
+  /// ALLOW | ASK | BLOCK
+  rule        String   @default("ASK")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  setBy   User    @relation("AgentLinkRuleSetter", fields: [setByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, agentId, peerAgentId])
+  @@index([projectId, peerAgentId])
+  @@map("agent_link_rules")
 }
