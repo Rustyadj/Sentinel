@@ -14,6 +14,8 @@ interface VoiceControlsProps {
    * swap at runtime.
    */
   agentId: string;
+  /** Keep the global microphone touch-sized without crowding a narrow header. */
+  compactOnMobile?: boolean;
   /** Required by LiveKitVoiceProvider to scope the voice session's token to a real conversation. */
   roomId?: string;
   onTranscript: (text: string) => void;
@@ -34,9 +36,9 @@ const STATUS_LABELS: Record<VoiceStatus, string> = {
 /**
  * Mic toggle + live waveform. The waveform animates only while listening or
  * speaking; transcription state shows a spinner. Uses the existing voice
- * provider factory (browser STT / mock).
+ * configured voice provider.
  */
-export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }: VoiceControlsProps) {
+export function VoiceControls({ agentId, roomId, compactOnMobile = false, onTranscript, onStatusChange }: VoiceControlsProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -81,18 +83,27 @@ export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }:
         setStatus("error");
         onStatusChange?.("error");
       },
+    }).catch((reason: unknown) => {
+      // Some providers report onError and then reject; keep a denied mobile
+      // microphone request in the control rather than an unhandled rejection.
+      const message = reason instanceof Error ? reason.message : "Voice could not start";
+      setError(message === "not-allowed" ? "Microphone permission denied" : message);
+      setStatus("error");
+      onStatusChange?.("error");
     });
   }, [isActive, agentId, roomId, onStatusChange, onTranscript]);
 
   return (
-    <div className="flex min-w-0 items-center gap-2" aria-live="polite">
+    <div className="relative flex min-w-0 items-center gap-2" aria-live="polite">
       <button
         type="button"
         onClick={handleToggle}
         aria-label={isActive ? "Stop voice input" : "Start voice input"}
         aria-pressed={isActive}
+        title={error ?? (isActive ? "Stop voice chat" : "Start voice chat")}
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400/60",
+          compactOnMobile && "h-11 w-11 xl:h-7 xl:w-7",
           status === "idle" && "text-(--muted-foreground) hover:bg-white/[0.06] hover:text-(--foreground)",
           status === "listening" && "bg-emerald-500/15 text-emerald-400",
           status === "transcribing" && "bg-amber-500/15 text-amber-400",
@@ -115,6 +126,7 @@ export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }:
         aria-hidden
         className={cn(
           "flex h-5 items-center gap-[2px] overflow-hidden transition-opacity",
+          compactOnMobile && "hidden xl:flex",
           waveActive ? "opacity-100" : "opacity-25"
         )}
       >
@@ -130,9 +142,17 @@ export function VoiceControls({ agentId, roomId, onTranscript, onStatusChange }:
         ))}
       </div>
 
-      <span className="min-w-0 truncate text-[10px] text-(--muted-foreground)">
+      <span className={cn(
+        "min-w-0 truncate text-[10px] text-(--muted-foreground)",
+        compactOnMobile && "sr-only xl:not-sr-only",
+      )}>
         {error ?? (transcript || STATUS_LABELS[status])}
       </span>
+      {compactOnMobile && error ? (
+        <span role="alert" className="absolute right-0 top-full z-50 mt-2 w-max max-w-[calc(100vw-2rem)] whitespace-normal rounded-md border border-(--border) bg-(--popover) px-3 py-2 text-xs text-(--foreground) shadow-lg xl:hidden">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }
