@@ -7,7 +7,11 @@ export function roundtableErrorResponse(error: unknown): Response {
   if (error instanceof RoundtableError) return NextResponse.json({ error: error.message }, { status: error.status });
   if (error instanceof WorkspaceAccessError) {
     // Missing agents.runtime.execute, said in terms of what the person was trying to do.
-    const message = error.status === 403 ? "Your role does not allow running agents. An admin can make you an operator." : error.message;
+    // Only a missing permission is about the person's role. Anything else (an
+    // agent whose runtime is not set up, say) is reported as what it is.
+    const message = error.message.startsWith("Missing permission")
+      ? "Your role does not allow running agents. An admin can make you an operator."
+      : error.message;
     return NextResponse.json({ error: message }, { status: error.status });
   }
   if (error instanceof RuntimeError) return NextResponse.json({ error: error.message }, { status: error.status });

@@ -1,14 +1,16 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Sentinel — the Strata design language.
+   Sentinel — the Night Watch design language.
 
-   A lacquered petrol-slate ground, bone-white ink, and one brass signal used
-   for whatever is "yours right now": focus, the primary action, the selected
-   surface edge. Entity colour is mineral pigment — lapis agents, verdigris
-   projects, cinnabar tasks, amethyst memory — and appears only where it
-   encodes a type. Structure is carried by hairlines and stacked layers, never
-   by glow.
+   A sentinel keeps watch at night. The ground is deep navy (a real hue, not
+   tinted black), the ink is cool paper white, and one high-visibility signal
+   yellow marks whatever is "yours, right now": focus, the primary action, the
+   place you are standing. Entity colour is light — rose agents, aqua projects,
+   orange tasks, periwinkle memory — and appears only where it encodes a type.
+   Surfaces are solid. Nothing is frosted, and nothing glows for decoration:
+   the only light in the product is an agent's beam in the graph, and it means
+   that agent is working on that thing.
    --------------------------------------------------------------------------- */
 
 @theme inline {
@@ -42,116 +44,117 @@
 
 /* Palette remap. Legacy screens still reach for Tailwind's violet/indigo/
    purple (the old accent), cyan/sky (old info) and slate/gray (old neutrals).
-   Re-pointing those scales retints every one of them into Strata without
-   touching each file: the old accent becomes brass, info becomes lapis, and
-   neutrals pick up the petrol cast of the ground. */
+   Re-pointing those scales retints every one of them into Night Watch without
+   touching each file: the old accent becomes signal yellow, purple becomes
+   periwinkle, sky a harbour blue, cyan aqua, and neutrals take the navy cast
+   of the ground. */
 @theme {
-  --color-violet-50: #fbf6ea;  --color-violet-100: #f5e8c8; --color-violet-200: #eed9a8;
-  --color-violet-300: #e6c486; --color-violet-400: #dcb26b; --color-violet-500: #d4a95a;
-  --color-violet-600: #b88c3e; --color-violet-700: #946d2c; --color-violet-800: #6e5022;
-  --color-violet-900: #4a3617; --color-violet-950: #2a1f0d;
+  --color-violet-50: #fffbea;  --color-violet-100: #fff3c2; --color-violet-200: #ffe999;
+  --color-violet-300: #ffe07a; --color-violet-400: #ffd85c; --color-violet-500: #ffd23f;
+  --color-violet-600: #d9ad1f; --color-violet-700: #a8840f; --color-violet-800: #7a5f0c;
+  --color-violet-900: #4d3c08; --color-violet-950: #2b2104;
 
-  --color-indigo-50: #fbf6ea;  --color-indigo-100: #f5e8c8; --color-indigo-200: #eed9a8;
-  --color-indigo-300: #e6c486; --color-indigo-400: #dcb26b; --color-indigo-500: #d4a95a;
-  --color-indigo-600: #b88c3e; --color-indigo-700: #946d2c; --color-indigo-800: #6e5022;
-  --color-indigo-900: #4a3617; --color-indigo-950: #2a1f0d;
+  --color-indigo-50: #fffbea;  --color-indigo-100: #fff3c2; --color-indigo-200: #ffe999;
+  --color-indigo-300: #ffe07a; --color-indigo-400: #ffd85c; --color-indigo-500: #ffd23f;
+  --color-indigo-600: #d9ad1f; --color-indigo-700: #a8840f; --color-indigo-800: #7a5f0c;
+  --color-indigo-900: #4d3c08; --color-indigo-950: #2b2104;
 
-  --color-purple-50: #f6f1fd;  --color-purple-100: #ebe0fb; --color-purple-200: #d9c8f4;
-  --color-purple-300: #c7b2ee; --color-purple-400: #b9a0e6; --color-purple-500: #a487d8;
-  --color-purple-600: #8a6cc0; --color-purple-700: #6e549c; --color-purple-800: #523f74;
-  --color-purple-900: #382b50; --color-purple-950: #221a31;
+  --color-purple-50: #f1f3ff;  --color-purple-100: #e0e5ff; --color-purple-200: #c6cfff;
+  --color-purple-300: #aab8ff; --color-purple-400: #8fa4ff; --color-purple-500: #7388f0;
+  --color-purple-600: #5a6dd0; --color-purple-700: #4555a6; --color-purple-800: #323e7a;
+  --color-purple-900: #222a54; --color-purple-950: #151a36;
 
-  --color-sky-50: #eef4fd;  --color-sky-100: #dbe7fa; --color-sky-200: #bdd2f4;
-  --color-sky-300: #a3c0ef; --color-sky-400: #86a9e8; --color-sky-500: #6b90d6;
-  --color-sky-600: #5576bb; --color-sky-700: #435e96; --color-sky-800: #324670;
-  --color-sky-900: #22304c; --color-sky-950: #151d2f;
+  --color-sky-50: #eef8ff;  --color-sky-100: #d8eeff; --color-sky-200: #b5ddff;
+  --color-sky-300: #92cfff; --color-sky-400: #6fc3ff; --color-sky-500: #4fa8ea;
+  --color-sky-600: #3a88c4; --color-sky-700: #2c6a9a; --color-sky-800: #204d70;
+  --color-sky-900: #15334b; --color-sky-950: #0c1f2e;
 
-  --color-cyan-50: #ecf8f4;  --color-cyan-100: #d3efe6; --color-cyan-200: #b0e2d3;
-  --color-cyan-300: #93d4c1; --color-cyan-400: #74c2ab; --color-cyan-500: #5aa991;
-  --color-cyan-600: #468c78; --color-cyan-700: #376f5f; --color-cyan-800: #285247;
-  --color-cyan-900: #1b3730; --color-cyan-950: #10221d;
+  --color-cyan-50: #e9fbf8;  --color-cyan-100: #c9f4ee; --color-cyan-200: #9de9df;
+  --color-cyan-300: #70dfd0; --color-cyan-400: #45d6c2; --color-cyan-500: #2bb8a5;
+  --color-cyan-600: #209485; --color-cyan-700: #197367; --color-cyan-800: #12544b;
+  --color-cyan-900: #0c3832; --color-cyan-950: #07221f;
 
-  --color-slate-50: #f4f2ec;  --color-slate-100: #e6e3da; --color-slate-200: #cfd2cc;
-  --color-slate-300: #b4bbb8; --color-slate-400: #9aa5a3; --color-slate-500: #7a8785;
-  --color-slate-600: #5d6a6a; --color-slate-700: #3d4a4c; --color-slate-800: #243134;
-  --color-slate-900: #172022; --color-slate-950: #0c1213;
+  --color-slate-50: #f4f5fb;  --color-slate-100: #e4e7f5; --color-slate-200: #cdd2ea;
+  --color-slate-300: #b6bcdc; --color-slate-400: #a3abcf; --color-slate-500: #7781ad;
+  --color-slate-600: #566089; --color-slate-700: #37427a; --color-slate-800: #232b52;
+  --color-slate-900: #161d3b; --color-slate-950: #0a0e1f;
 }
 
 :root {
   color-scheme: dark;
 
   /* Ground and surfaces, darkest to lightest. */
-  --background: #0e1416;
-  --sidebar: #0a0f11;
-  --sidebar-border: #1e292c;
-  --canvas: #0b1012;
-  --panel: #121a1d;
-  --card: #151e21;
-  --muted: #1b2629;
-  --accent: #213034;
+  --background: #0d1226;
+  --sidebar: #0a0e1f;
+  --sidebar-border: #1c2447;
+  --canvas: #080b19;
+  --panel: #121832;
+  --card: #161d3b;
+  --muted: #1c2447;
+  --accent: #252e58;
 
-  --foreground: #ebe6da;
-  --card-foreground: #ebe6da;
-  --accent-foreground: #ebe6da;
-  --muted-foreground: #9aa5a3;
-  --text-faint: #6f7c7b;
+  --foreground: #eef0fa;
+  --card-foreground: #eef0fa;
+  --accent-foreground: #eef0fa;
+  --muted-foreground: #a3abcf;
+  --text-faint: #7781ad;
 
-  --border: #243134;
-  --border-strong: #33454a;
+  --border: #232b52;
+  --border-strong: #37427a;
 
   /* Brass: the one signal colour. */
-  --primary: #d4a95a;
-  --primary-soft: #e6c486;
-  --primary-foreground: #1c1508;
-  --primary-wash: rgba(212, 169, 90, 0.12);
-  --ring: #e0b768;
-  --lens: #e6c486;
+  --primary: #ffd23f;
+  --primary-soft: #ffe07a;
+  --primary-foreground: #1b1600;
+  --primary-wash: rgba(255, 210, 63, 0.12);
+  --ring: #ffe07a;
+  --lens: #ffe07a;
 
-  --destructive: #ef6b5e;
+  --destructive: #ff6b7a;
 
-  --canvas-foreground: #ebe6da;
-  --canvas-muted: #9aa5a3;
-  --canvas-card: #131b1e;
-  --canvas-card-foreground: #ebe6da;
-  --canvas-card-border: #243134;
+  --canvas-foreground: #eef0fa;
+  --canvas-muted: #a3abcf;
+  --canvas-card: #121832;
+  --canvas-card-foreground: #eef0fa;
+  --canvas-card-border: #232b52;
 
-  /* Translucent surfaces that sit in front of the graph. Mostly opaque: the
-     graph is atmosphere, the conversation is the subject. */
-  --glass: rgba(14, 20, 22, 0.9);
-  --glass-strong: rgba(18, 26, 29, 0.96);
-  --glass-border: rgba(64, 86, 90, 0.5);
+  /* These were translucent once. Night Watch surfaces are solid; the names
+     stay because many components read them. */
+  --glass: #121832;
+  --glass-strong: #161d3b;
+  --glass-border: #2c366a;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(3, 5, 14, 0.4);
+  --shadow-md: 0 6px 18px rgba(3, 5, 14, 0.42);
+  --shadow-lg: 0 22px 56px rgba(3, 5, 14, 0.55);
 
-  /* Mineral pigments — one per entity type. Graph strata, entity chips and
+  /* Entity lights — one per entity type. The graph, entity chips and
      legends all read these; components never hold a literal. */
-  --entity-agent: #86a9e8;
-  --entity-project: #74c2ab;
-  --entity-task: #e7926f;
-  --entity-memory: #b9a0e6;
-  --entity-workspace: #9cc39a;
-  --entity-knowledge: #cdb8f0;
-  --entity-tool: #e0a070;
-  --entity-source: #86a9e8;
-  --entity-external: #c9a0d8;
-  --entity-conversation: #d4a95a;
+  --entity-agent: #ff7aa8;
+  --entity-project: #45d6c2;
+  --entity-task: #ff9f5a;
+  --entity-memory: #8fa4ff;
+  --entity-workspace: #7fd88a;
+  --entity-knowledge: #b9a6ff;
+  --entity-tool: #ffb86b;
+  --entity-source: #6fc3ff;
+  --entity-external: #e39cff;
+  --entity-conversation: #ffd23f;
 
-  --status-online: #5fcf9a;
-  --status-busy: #e8b04a;
-  --status-error: #ef6b5e;
-  --status-idle: #6f7c7b;
+  --status-online: #4ade9a;
+  --status-busy: #ffb347;
+  --status-error: #ff6b7a;
+  --status-idle: #6b7399;
 
-  --rail-carried: #ebe6da;
-  --rail-pending: #33454a;
-  --rail-attention: #e8b04a;
-  --rail-severed: #ef6b5e;
-  --rail-marker: #d4a95a;
+  --rail-carried: #eef0fa;
+  --rail-pending: #37427a;
+  --rail-attention: #ffb347;
+  --rail-severed: #ff6b7a;
+  --rail-marker: #ffd23f;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
 
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -176,7 +179,6 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  font-feature-settings: "ss01" 1, "cv11" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
@@ -213,33 +215,34 @@ h1, h2, h3 {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #263336;
+  background: #2c366a;
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #33454a;
+  background: #37427a;
   background-clip: padding-box;
 }
 * {
-  scrollbar-color: #263336 transparent;
+  scrollbar-color: #2c366a transparent;
   scrollbar-width: thin;
 }
 
 ::selection {
-  background: rgba(212, 169, 90, 0.32);
-  color: #fff8e8;
+  background: rgba(255, 210, 63, 0.3);
+  color: #ffffff;
 }
 
-/* ── Strata stage ─────────────────────────────────────────────────────────── */
+/* ── The watch (graph) ────────────────────────────────────────────────────── */
 
-/* The ground behind the graph: a single low light from above, as if the
-   strata were lit by the conversation in front of them. */
-.strata-ground {
+/* Open water at night: the darkest surface in the product, with a faint
+   chart grid so position reads even where there are no nodes. */
+.strata-ground,
+.watch-ground {
   background:
-    radial-gradient(120% 70% at 62% -10%, rgba(116, 194, 171, 0.07), transparent 60%),
-    radial-gradient(90% 60% at 70% 110%, rgba(212, 169, 90, 0.05), transparent 60%),
+    linear-gradient(to right, rgba(238, 240, 250, 0.022) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(to bottom, rgba(238, 240, 250, 0.022) 1px, transparent 1px) 0 0 / 56px 56px,
     var(--canvas);
 }
 
@@ -248,7 +251,7 @@ h1, h2, h3 {
   background-image: repeating-linear-gradient(
     180deg,
     transparent 0 27px,
-    rgba(235, 230, 218, 0.025) 27px 28px
+    rgba(238, 240, 250, 0.025) 27px 28px
   );
 }
 
@@ -256,8 +259,8 @@ h1, h2, h3 {
 
 .neural-space-canvas {
   background:
-    radial-gradient(circle at 50% 46%, rgba(116, 194, 171, 0.1), transparent 42%),
-    radial-gradient(circle at 74% 22%, rgba(134, 169, 232, 0.06), transparent 30%),
+    radial-gradient(circle at 50% 46%, rgba(69, 214, 194, 0.1), transparent 42%),
+    radial-gradient(circle at 74% 22%, rgba(143, 164, 255, 0.06), transparent 30%),
     var(--canvas);
 }
 
@@ -266,7 +269,7 @@ h1, h2, h3 {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at center, transparent 42%, rgba(6, 10, 11, 0.7) 100%);
+  background: radial-gradient(circle at center, transparent 42%, rgba(4, 6, 16, 0.7) 100%);
   opacity: 0.8;
 }
 
@@ -291,12 +294,12 @@ h1, h2, h3 {
 
 .org-neural-canvas {
   background:
-    radial-gradient(circle at 51% 42%, rgba(116, 194, 171, 0.08), transparent 34%),
+    radial-gradient(circle at 51% 42%, rgba(69, 214, 194, 0.08), transparent 34%),
     var(--canvas);
 }
 
 .org-neural-canvas .react-flow__edge-path {
-  stroke: #4b6064;
+  stroke: #46528f;
 }
 
 .org-neural-canvas .react-flow__edge.animated path {
@@ -383,7 +386,7 @@ h1, h2, h3 {
 }
 
 .sentinel-app-shell main :is(.text-\[\#aab0c0\], .text-\[\#5a5f6e\], .text-\[\#3a3f50\], .text-\[\#697084\], .text-\[\#4a5065\], .text-\[\#718095\], .text-\[\#66758c\]) {
-  color: #8b9795 !important;
+  color: #8a93bd !important;
 }
 
 .sentinel-app-shell main .hover\:bg-\[\#f5f6f9\]:hover,
@@ -392,7 +395,7 @@ h1, h2, h3 {
 }
 
 .sentinel-app-shell main .hover\:text-\[\#1a1d26\]:hover {
-  color: #fff8ea !important;
+  color: #ffffff !important;
 }
 
 /* ── Shared motion ────────────────────────────────────────────────────────── */
@@ -438,14 +441,14 @@ h1, h2, h3 {
 }
 
 .canvas-grid {
-  background-image: radial-gradient(circle at 1px 1px, rgba(235, 230, 218, 0.04) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(238, 240, 250, 0.04) 1px, transparent 0);
   background-size: 22px 22px;
 }
 
 .bg-grid {
   background-image:
-    linear-gradient(to right, rgba(235, 230, 218, 0.025) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(235, 230, 218, 0.025) 1px, transparent 1px);
+    linear-gradient(to right, rgba(238, 240, 250, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(238, 240, 250, 0.025) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
@@ -465,7 +468,7 @@ h1, h2, h3 {
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(180deg, rgba(235, 230, 218, 0.03), transparent 22%);
+  background: linear-gradient(180deg, rgba(238, 240, 250, 0.03), transparent 22%);
 }
 
 /* Release rail: the only self-moving thing on the control plane. */
@@ -527,14 +530,14 @@ h1, h2, h3 {
 .prose-sentinel ol { list-style: decimal; }
 .prose-sentinel li + li { margin-top: 0.3em; }
 .prose-sentinel li::marker { color: var(--text-faint); }
-.prose-sentinel a { color: var(--primary-soft); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(230, 196, 134, 0.4); }
+.prose-sentinel a { color: var(--primary-soft); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(255, 224, 122, 0.45); }
 .prose-sentinel a:hover { text-decoration-color: currentColor; }
-.prose-sentinel strong { font-weight: 650; color: #fff8ea; }
+.prose-sentinel strong { font-weight: 650; color: #ffffff; }
 .prose-sentinel :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.86em;
   padding: 0.1em 0.35em;
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--muted);
   border: 1px solid var(--border);
 }
@@ -543,7 +546,7 @@ h1, h2, h3 {
   font-size: 12.5px;
   line-height: 1.6;
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--canvas);
   border: 1px solid var(--border);
   overflow-x: auto;

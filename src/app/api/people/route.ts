@@ -7,8 +7,13 @@ import { canManagePeople } from "@/lib/people/roles";
 import { peopleErrorResponse } from "@/lib/people/http";
 import { userHasWorkspacePermission } from "@/lib/workspaces/authorization";
 
-/** Whether this person can make any agent do anything. Decides which composer they get. */
-async function canRunAgents(userId: string): Promise<boolean> {
+/**
+ * Whether this person can make any agent do anything. Decides which composer
+ * they get. Owners and admins always can: they hold every permission in every
+ * workspace of the organization, including ones a runtime is assigned to later.
+ */
+async function canRunAgents(userId: string, role: string | null): Promise<boolean> {
+  if (canManagePeople(role as Parameters<typeof canManagePeople>[0])) return true;
   const runtimes = await db.agentRuntime.findMany({ where: { workspaceId: { not: null } }, select: { workspaceId: true }, distinct: ["workspaceId"] });
   for (const { workspaceId } of runtimes) {
     if (workspaceId && (await userHasWorkspacePermission(userId, workspaceId, "agents.runtime.execute"))) return true;
@@ -22,7 +27,7 @@ export async function GET() {
     const role = await getOrgRole(user.id);
     const me = {
       id: user.id, name: user.name, email: user.email, role,
-      guest: user.accessScope === "guest", canManage: canManagePeople(role), canRunAgents: await canRunAgents(user.id),
+      guest: user.accessScope === "guest", canManage: canManagePeople(role), canRunAgents: await canRunAgents(user.id, role),
     };
     // The roster is for the team. A project guest learns who is on their
     // project from the project itself, not who else works here.

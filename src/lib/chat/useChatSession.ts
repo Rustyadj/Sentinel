@@ -83,6 +83,8 @@ interface ApiRoom {
   projectId: string | null;
   createdAt: string;
   _count: { messages: number };
+  shared?: boolean;
+  projectName?: string | null;
 }
 
 // Shape returned by GET /api/rooms/[roomId]/messages
@@ -93,6 +95,23 @@ interface ApiMessage {
   content: string;
   toolCalls: unknown;
   createdAt: string;
+  authorName?: string | null;
+  mine?: boolean;
+}
+
+/** How often a room other people can write in is re-read. */
+const SHARED_ROOM_POLL_MS = 4_000;
+
+function apiMessageToMessage(m: ApiMessage, roomId: string): Message {
+  return {
+    id: m.id,
+    chatId: roomId,
+    role: m.role === "user" ? "user" : m.role === "agent" ? "agent" : "system",
+    agentId: m.agentId ?? undefined,
+    content: m.content,
+    timestamp: new Date(m.createdAt),
+    ...(m.role === "user" && m.mine === false ? { mine: false, authorName: m.authorName ?? "Someone" } : {}),
+  };
 }
 
 function apiRoomToChatRoom(r: ApiRoom): ChatRoom {
@@ -103,6 +122,8 @@ function apiRoomToChatRoom(r: ApiRoom): ChatRoom {
     messages: [],
     createdAt: new Date(r.createdAt),
     ...(r.projectId ? { projectId: r.projectId } : {}),
+    ...(r.shared ? { shared: true } : {}),
+    ...(r.projectName ? { projectName: r.projectName } : {}),
   };
 }
 
@@ -129,6 +150,8 @@ export interface ChatSession {
   graphRefreshKey: number;
   setActiveRoom: (roomId: string) => void;
   handleSend: () => Promise<void>;
+  /** Sends the input to the people in the room without asking an agent. */
+  handleSendNote: () => Promise<void>;
   handleCreateRoom: () => Promise<void>;
   handleMentionAgent: (agentName: string) => void;
   handleAcceptCandidate: (candidate: ExtractionCandidate) => Promise<void>;
@@ -231,14 +254,7 @@ export function useChatSession(): ChatSession {
         if (!res.ok) return;
         if (!res.headers.get("content-type")?.includes("application/json")) return;
         const apiMessages = (await res.json()) as ApiMessage[];
-        const messages: Message[] = apiMessages.map((m) => ({
-          id: m.id,
-          chatId: activeRoomId,
-          role: m.role === "user" ? "user" : m.role === "agent" ? "agent" : "system",
-          agentId: m.agentId ?? undefined,
-          content: m.content,
-          timestamp: new Date(m.createdAt),
-        }));
+        const messages: Message[] = apiMessages.map((m) => apiMessageToMessage(m, activeRoomId));
         // Only hydrate if the room is still empty (don't overwrite optimistic messages)
         const room = rooms.find((r) => r.id === activeRoomId);
         if (room && room.messages.length === 0 && messages.length > 0) {
@@ -250,6 +266,37 @@ export function useChatSession(): ChatSession {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoomId, hydrated]);
+
+  // A room that belongs to a project can be written in by other people, so it
+  // is re-read on an interval. The server's transcript replaces the local one
+  // only while nothing is being sent or streamed, and never with a shorter
+  // list: an exchange is saved when its stream ends, and a read that lands
+  // just before that must not drop it from the page.
+  const activeProjectId = activeRoom?.projectId;
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = isThinking || !!streamingMsgId; }, [isThinking, streamingMsgId]);
+  useEffect(() => {
+    if (!hydrated || !activeRoomId || !activeProjectId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      if (document.hidden || busyRef.current) return;
+      try {
+        const res = await fetch(`/api/rooms/${activeRoomId}/messages?limit=200`, { cache: "no-store" });
+        if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) return;
+        const apiMessages = (await res.json()) as ApiMessage[];
+        if (cancelled || busyRef.current) return;
+        const current = useChatStore.getState().rooms.find((r) => r.id === activeRoomId)?.messages ?? [];
+        const last = apiMessages[apiMessages.length - 1]?.id;
+        if (apiMessages.length < current.length) return;
+        if (apiMessages.length === current.length && current[current.length - 1]?.id === last) return;
+        setRoomMessages(activeRoomId, apiMessages.map((m) => apiMessageToMessage(m, activeRoomId)));
+      } catch {
+        // The next tick tries again.
+      }
+    };
+    const timer = setInterval(() => void refresh(), SHARED_ROOM_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [hydrated, activeRoomId, activeProjectId, setRoomMessages]);
 
   // Reset candidates panel when room changes
   useEffect(() => {
@@ -319,6 +366,29 @@ export function useChatSession(): ChatSession {
     },
     [addMessage, updateMessage, updateAgentStatus, anthropicKey, openaiKey, openrouterKey]
   );
+
+  // A message to the people in the room. No agent is asked anything.
+  const handleSendNote = useCallback(async () => {
+    const content = input.trim();
+    if (!content || !activeRoomId) return;
+    setInput("");
+    try {
+      const res = await fetch(`/api/rooms/${activeRoomId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "The message was not sent.");
+      addMessage(activeRoomId, apiMessageToMessage((await res.json()) as ApiMessage, activeRoomId));
+    } catch (error) {
+      // Give the words back rather than lose them.
+      setInput(content);
+      addMessage(activeRoomId, {
+        id: `msg-system-${Date.now()}`, chatId: activeRoomId, role: "system",
+        content: error instanceof Error ? error.message : "The message was not sent.", timestamp: new Date(),
+      });
+    }
+  }, [input, activeRoomId, addMessage]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || !activeRoomId || isThinking) return;
@@ -583,6 +653,7 @@ export function useChatSession(): ChatSession {
     graphRefreshKey,
     setActiveRoom,
     handleSend,
+    handleSendNote,
     handleCreateRoom,
     handleMentionAgent,
     handleAcceptCandidate,

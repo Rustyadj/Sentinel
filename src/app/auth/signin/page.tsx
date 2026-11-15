@@ -23,40 +23,30 @@ function GitHubIcon() {
 }
 
 /**
- * The product's mark, drawn rather than described: four strata — agents,
- * projects, tasks, memory — with the brass context line dropping through
- * them. Static, decorative, hidden from assistive tech.
+ * The product's idea, drawn rather than described: agents at the centre of
+ * their rings, one of them casting its beam on the thing it is working on.
+ * Static, decorative, hidden from assistive tech.
  */
-function StrataMark() {
-  const planes = [
-    { y: 40, color: "var(--entity-agent)" },
-    { y: 104, color: "var(--entity-project)" },
-    { y: 168, color: "var(--entity-task)" },
-    { y: 232, color: "var(--entity-memory)" },
-  ];
-  const dots = [[-70, -8], [10, 14], [64, -18], [-24, 22], [92, 10], [-96, 6]];
+function WatchMark() {
+  const rings = [58, 100, 142];
+  const colors = ["var(--entity-project)", "var(--entity-task)", "var(--entity-memory)"];
+  const dots = rings.flatMap((r, ring) =>
+    Array.from({ length: 5 + ring * 4 }, (_, i) => {
+      const a = (i / (5 + ring * 4)) * Math.PI * 2 + ring * 0.7;
+      return { x: Math.cos(a) * r, y: Math.sin(a) * r, color: colors[ring], key: `${ring}-${i}` };
+    }),
+  );
+  const target = dots[9];
   return (
-    <svg viewBox="-200 0 400 300" aria-hidden className="h-auto w-full max-w-[420px]">
-      {planes.slice().reverse().map((p, k) => (
-        <g key={p.y}>
-          <path
-            d={`M -170 ${p.y} L 0 ${p.y - 34} L 170 ${p.y} L 0 ${p.y + 34} Z`}
-            fill={p.color}
-            fillOpacity={0.045}
-            stroke={p.color}
-            strokeOpacity={0.4}
-            strokeWidth={1}
-          />
-          {dots.map(([dx, dy], i) => (
-            <circle key={i} cx={dx * (0.8 + ((k + i) % 3) * 0.1)} cy={p.y + dy * 0.8} r={k === 3 ? 3.2 : 2.2} fill={p.color} fillOpacity={0.85} />
-          ))}
-        </g>
-      ))}
-      <line x1={10} y1={40 + 11} x2={10} y2={232 + 22} stroke="var(--primary)" strokeWidth={1.2} strokeDasharray="3 5" />
-      {[104, 168, 232].map((y) => (
-        <ellipse key={y} cx={10} cy={y + 11} rx={11} ry={3.6} fill="none" stroke="var(--primary)" strokeOpacity={0.6} />
-      ))}
-      <circle cx={10} cy={51} r={4.5} fill="var(--primary)" />
+    <svg viewBox="-160 -160 320 320" aria-hidden className="h-auto w-full max-w-[380px]">
+      {rings.map((r) => <circle key={r} r={r} fill="none" stroke="var(--foreground)" strokeOpacity={0.09} strokeDasharray="2 6" />)}
+      <path d={`M -14 8 L ${target.x - 9} ${target.y - 12} L ${target.x + 9} ${target.y + 12} Z`} fill="var(--entity-agent)" fillOpacity={0.22} />
+      <line x1={-14} y1={8} x2={target.x} y2={target.y} stroke="var(--entity-agent)" strokeWidth={1.4} />
+      {dots.map((d) => <circle key={d.key} cx={d.x} cy={d.y} r={d === target ? 5 : 3} fill={d.color} fillOpacity={d === target ? 1 : 0.8} />)}
+      <circle cx={target.x} cy={target.y} r={10} fill="none" stroke="var(--entity-agent)" strokeWidth={1.4} />
+      <circle cx={-14} cy={8} r={9} fill="var(--entity-agent)" />
+      <circle cx={16} cy={-10} r={9} fill="#6fc3ff" fillOpacity={0.5} />
+      <circle cx={6} cy={22} r={9} fill="#4ade9a" fillOpacity={0.5} />
     </svg>
   );
 }
@@ -67,17 +57,17 @@ export default function SignInPage({
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   return (
-    <div className="sentinel-app-shell strata-ground relative min-h-screen overflow-y-auto text-(--foreground)">
+    <div className="sentinel-app-shell watch-ground relative min-h-screen overflow-y-auto text-(--foreground)">
       <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center gap-10 px-4 py-10 sm:px-6 lg:flex-row lg:gap-16">
         <section className="hidden flex-1 flex-col lg:flex">
-          <StrataMark />
-          <h1 className="mt-8 font-display text-[44px] font-semibold leading-none tracking-tight">Sentinel</h1>
-          <p className="mt-4 max-w-sm text-[15px] leading-relaxed text-(--muted-foreground)">
-            Agents, the projects they serve, the work in flight, and everything they remember — in one operating picture.
+          <WatchMark />
+          <h1 className="mt-8 font-display text-[52px] font-semibold leading-none tracking-tight">Sentinel</h1>
+          <p className="mt-4 max-w-sm text-[15.5px] leading-relaxed text-(--muted-foreground)">
+            Work with your people and your agents in one place, and watch what every agent is doing as it does it.
           </p>
         </section>
 
-        <section className="w-full max-w-[400px] rounded-lg border border-(--border) bg-(--panel) p-6 shadow-[var(--shadow-lg)] sm:p-8">
+        <section className="w-full max-w-[400px] rounded-(--radius-lg) border border-(--border) bg-(--panel) p-6 shadow-(--shadow-lg) sm:p-8">
           <div className="mb-6">
             <div className="mb-5 flex items-center gap-2.5 lg:hidden">
               <span className="font-display text-[22px] font-semibold tracking-tight">Sentinel</span>

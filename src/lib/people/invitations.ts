@@ -1,10 +1,11 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { normalizeEmail } from "@/lib/auth/email";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { ensureHomeOrganization, getOrgRole, setOrgMember } from "./organization";
 import { userCanShareProject } from "./project-access";
 import { canManagePeople, isInvitableOrgRole, isProjectRole, type OrgRole } from "./roles";
+import { hashInvitationToken } from "./token";
 
 export class InvitationError extends Error {
   constructor(message: string, public readonly status: 400 | 403 | 404 | 409 | 410) {
@@ -15,10 +16,7 @@ export class InvitationError extends Error {
 const DEFAULT_DAYS = 7;
 const MAX_DAYS = 30;
 
-/** The token is the credential. Only its hash is stored, so reading the table never yields a working link. */
-export function hashInvitationToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+export { hashInvitationToken };
 
 export interface CreateInvitationInput {
   scope: "organization" | "project";

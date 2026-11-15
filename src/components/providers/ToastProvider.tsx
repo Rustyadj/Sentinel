@@ -28,9 +28,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="fixed bottom-5 right-5 z-[100] flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
         {items.map((item) => (
-          <div key={item.id} className="rounded-xl border border-white/10 bg-[#101722]/95 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur">
+          <div key={item.id} className="rounded-(--radius-md) border border-(--border-strong) bg-(--card) px-4 py-3 text-sm text-(--foreground) shadow-(--shadow-lg)">
             <div className="font-semibold">{item.title}</div>
-            {item.description ? <div className="mt-1 text-white/65">{item.description}</div> : null}
+            {item.description ? <div className="mt-1 text-(--muted-foreground)">{item.description}</div> : null}
           </div>
         ))}
       </div>

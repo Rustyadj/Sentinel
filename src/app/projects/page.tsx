@@ -1,57 +1,71 @@
 import Link from "next/link";
-import { FolderKanban, Plus } from "lucide-react";
-import { AppShell } from "@/components/layout/AppShell";
-import { WorkspaceCard } from "@/components/workspace/WorkspaceCard";
-import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
-import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
+import { Plus, Users } from "lucide-react";
+import { AppShell } from "@/components/shell/AppShell";
 import { requireUser } from "@/lib/current-user";
-import { listProjects, listWorkspaces } from "@/lib/workspaces";
+import { listProjects } from "@/lib/workspaces/projects";
+import { listWorkspaces } from "@/lib/workspaces/objects";
 import { createProjectAction } from "@/app/workspaces/actions";
 
-const field = "h-9 w-full rounded-md border border-(--border) bg-(--muted) px-3 text-sm text-(--foreground) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ring)";
+const field = "mt-1.5 h-10 w-full rounded-(--radius-md) border border-(--border) bg-(--background) px-3 text-[14px] text-(--foreground) hover:border-(--border-strong) focus-visible:border-(--ring) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)/40";
 
 export default async function ProjectsPage() {
   const user = await requireUser();
+  const guest = user.accessScope === "guest";
   const [projects, workspaces] = await Promise.all([listProjects({ userId: user.id }), listWorkspaces(user.id)]);
   return (
-    <AppShell>
-      <WorkspaceShell>
-        <WorkspaceHeader title="Projects" description="Project records across your workspaces." />
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-          <div className="space-y-3">
+    <AppShell title="Projects">
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto grid w-full max-w-[1180px] gap-8 px-4 py-6 sm:px-8 sm:py-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0">
+            <header className="mb-6">
+              <h2 className="font-display text-[30px] font-semibold leading-tight tracking-tight">{guest ? "Projects you were invited to" : "Your projects"}</h2>
+              <p className="mt-2 max-w-[60ch] text-[14px] leading-relaxed text-(--muted-foreground)">
+                A project has its own rooms, tasks and roundtables. Open one to see who is on it{guest ? "." : " or to invite someone."}
+              </p>
+            </header>
             {projects.length === 0 ? (
-              <WorkspaceCard>
-                <div className="py-10 text-center text-sm text-(--muted-foreground)">No projects yet. Create the first project.</div>
-              </WorkspaceCard>
-            ) : projects.map((project) => (
-              <Link key={project.id} href={project.workspace ? `/workspaces/${project.workspace.slug}/projects` : `/projects?project=${project.id}`}>
-                <WorkspaceCard className="mb-3 transition-colors hover:border-(--primary)/40">
-                  <div className="flex items-start gap-3">
-                    <FolderKanban className="mt-0.5 h-4 w-4 text-(--primary)" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-sm font-semibold">{project.name}</h2>
-                        <span className="rounded-full bg-(--muted) px-2 py-0.5 text-[10px] uppercase text-(--muted-foreground)">{project.status}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-(--muted-foreground)">{project.description ?? "No description"}</p>
-                      <p className="mt-3 text-[11px] text-(--muted-foreground)">{project.workspace?.name ?? "Personal"} · {project._count.tasks} tasks · {project._count.documents} files</p>
-                    </div>
-                  </div>
-                </WorkspaceCard>
-              </Link>
-            ))}
+              <p className="rounded-(--radius-lg) border border-dashed border-(--border-strong) px-6 py-12 text-center text-[14px] text-(--muted-foreground)">
+                {guest ? "No projects yet. When someone adds you to one, it appears here." : "No projects yet. Create the first one."}
+              </p>
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {projects.map((project) => {
+                  const mine = project.userId === user.id;
+                  return (
+                    <li key={project.id}>
+                      <Link href={`/projects/${project.id}`} className="card-hover flex h-full flex-col rounded-(--radius-lg) border border-(--border) bg-(--panel) p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)">
+                        <span className="flex items-start justify-between gap-3">
+                          <span className="font-display text-[19px] font-semibold leading-snug tracking-tight">{project.name}</span>
+                          {mine ? null : <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-(--border) px-2.5 py-0.5 text-[12px] text-(--entity-project)"><Users aria-hidden className="h-3 w-3" />Shared with you</span>}
+                        </span>
+                        <span className="mt-1.5 line-clamp-2 flex-1 text-[13.5px] leading-snug text-(--muted-foreground)">{project.description ?? "No description yet."}</span>
+                        <span className="mt-4 text-[12.5px] text-(--text-faint)">
+                          {project.workspace?.name ?? "Personal"}, {project._count.tasks} {project._count.tasks === 1 ? "task" : "tasks"}, {project._count.documents} {project._count.documents === 1 ? "file" : "files"}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
-          <WorkspaceCard title="New project" description="Create a persistent project record">
-            <form action={createProjectAction} className="space-y-3">
-              <label className="block text-xs text-(--muted-foreground)">Name<input name="name" required className={`${field} mt-1`} /></label>
-              <label className="block text-xs text-(--muted-foreground)">Description<input name="description" className={`${field} mt-1`} /></label>
-              <label className="block text-xs text-(--muted-foreground)">Workspace<select name="workspaceId" className={`${field} mt-1`}><option value="">Personal</option>{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></label>
-              <label className="block text-xs text-(--muted-foreground)">Tags<input name="tags" placeholder="design, launch" className={`${field} mt-1`} /></label>
-              <button className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-(--primary) px-4 text-sm font-medium text-(--primary-foreground)"><Plus className="h-4 w-4" />Create project</button>
-            </form>
-          </WorkspaceCard>
+
+          {guest ? null : (
+            <aside aria-labelledby="new-project-heading" className="h-fit rounded-(--radius-lg) border border-(--border) bg-(--panel) p-5 xl:sticky xl:top-6">
+              <h2 id="new-project-heading" className="mb-4 font-display text-[19px] font-semibold tracking-tight">New project</h2>
+              <form action={createProjectAction} className="space-y-4">
+                <label className="block text-[13px] font-medium">Name<input name="name" required maxLength={120} className={field} /></label>
+                <label className="block text-[13px] font-medium">What it is for<input name="description" maxLength={300} className={field} /></label>
+                <label className="block text-[13px] font-medium">Workspace
+                  <select name="workspaceId" className={field}><option value="">Personal</option>{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select>
+                </label>
+                <label className="block text-[13px] font-medium">Tags<input name="tags" placeholder="design, launch" className={field} /></label>
+                <button className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-(--primary) px-5 text-[13.5px] font-semibold text-(--primary-foreground) transition-colors hover:bg-(--primary-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 focus-visible:ring-offset-(--panel)"><Plus className="h-4 w-4" />Create project</button>
+              </form>
+            </aside>
+          )}
         </div>
-      </WorkspaceShell>
+      </div>
     </AppShell>
   );
 }

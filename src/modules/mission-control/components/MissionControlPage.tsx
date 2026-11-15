@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import type { MissionControlData, MissionControlService } from "@/lib/mission-control/types";
@@ -105,7 +106,7 @@ export function MissionControlEmpty() {
       <section className="w-full max-w-lg rounded-xl border border-(--canvas-card-border) bg-(--canvas-card) p-8 text-center shadow-2xl shadow-black/30" aria-labelledby="mission-empty-title">
         <h1 id="mission-empty-title" className="text-lg font-semibold">You are all caught up</h1>
         <p className="mt-2 text-sm text-[#9ca9ba]">No active work, agent activity, or decisions need your attention right now.</p>
-        <a href="/projects" className="mt-5 inline-flex h-9 items-center rounded-md bg-(--primary) px-4 text-xs font-medium text-(--primary-foreground) outline-none hover:bg-(--primary-soft) focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">Start a new project</a>
+        <Link href="/projects" className="mt-5 inline-flex h-9 items-center rounded-full bg-(--primary) px-4 text-xs font-medium text-(--primary-foreground) outline-none hover:bg-(--primary-soft) focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2">Start a new project</Link>
       </section>
     </div>
   );

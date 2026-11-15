@@ -25,6 +25,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
       createdAt: true,
       isPrimary: true,
       mode: true,
+      project: { select: { name: true } },
       _count: { select: { messages: true } },
     } as const;
 
@@ -41,12 +42,14 @@ async function handleGet(request: NextRequest): Promise<Response> {
       ? await db.chatRoom.findMany({
           where: { projectId: { in: sharedProjectIds }, NOT: { userId: user.id } },
           orderBy: { createdAt: "asc" },
-          select: { ...roomSelect, project: { select: { name: true } }, user: { select: { name: true } } },
+          select: { ...roomSelect, user: { select: { name: true } } },
         })
       : [];
     const shared = sharedRooms.map(({ project, user: owner, ...room }) => ({
       ...room, shared: true, projectName: project?.name ?? null, ownerName: owner?.name ?? null,
     }));
+    // The wire shape carries the project's name, not the relation.
+    const flat = <T extends { project: { name: string } | null }>({ project, ...room }: T) => ({ ...room, projectName: project?.name ?? null });
 
     // A guest has no agents to command, so no Mission Control is made for
     // them: they see the rooms they were invited into and nothing else.
@@ -93,7 +96,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
       rooms = rooms.map((room) => (room.id === reset.id ? reset : room));
     }
 
-    return NextResponse.json([...rooms, ...shared]);
+    return NextResponse.json([...rooms.map(flat), ...shared]);
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

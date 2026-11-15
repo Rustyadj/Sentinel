@@ -43,9 +43,9 @@ export async function POST(req: Request) {
   }
 
   // An invitation is the one thing besides the allowlist that admits a new
-  // account. It is checked in full here (exists, unspent, unexpired, issued to
-  // this address if it names one) and spent below, so a link admits one
-  // person once. Without one, the signup policy applies exactly as before.
+  // account, and the signup policy is where that is decided. Looking the
+  // invitation up first is only so a bad link gets a useful message (expired,
+  // already used, issued to someone else) instead of "by invitation only".
   const inviteToken = typeof body.inviteToken === "string" && body.inviteToken ? body.inviteToken : null;
   let invitation: Awaited<ReturnType<typeof findOpenInvitation>> | null = null;
   if (inviteToken) {
@@ -57,7 +57,8 @@ export async function POST(req: Request) {
     if (!invitationAdmits(invitation, email)) {
       return NextResponse.json({ error: "This invitation was issued to a different email address." }, { status: 403 });
     }
-  } else if (!(await isSignupAllowed(email))) {
+  }
+  if (!(await isSignupAllowed(email, inviteToken))) {
     return NextResponse.json({ error: SIGNUP_CLOSED_MESSAGE }, { status: 403 });
   }
 

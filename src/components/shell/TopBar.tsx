@@ -62,19 +62,19 @@ export function TopBar({ left, title }: { left?: React.ReactNode; title?: React.
 
   return (
     <header className="relative z-[60] flex h-14 shrink-0 items-center gap-2 border-b border-(--border) bg-(--background) px-2 sm:gap-3 sm:px-4">
-      <IconButton label="Open navigation" className="md:hidden" onClick={() => setMobileNavOpen(true)}>
+      <IconButton label="Open navigation" className="lg:hidden" onClick={() => setMobileNavOpen(true)}>
         <Menu className="h-[18px] w-[18px]" />
       </IconButton>
 
       <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
-        {title ? <h1 className="truncate font-display text-[17px] font-semibold tracking-tight text-(--foreground)">{title}</h1> : null}
+        {title ? <h1 className="truncate font-display text-[19px] font-semibold tracking-tight text-(--foreground)">{title}</h1> : null}
         {left}
       </div>
 
       <button
         type="button"
         onClick={() => setCommandPaletteOpen(true)}
-        className="hidden h-9 w-[min(260px,24vw)] items-center gap-2 rounded-md border border-(--border) bg-(--panel) px-3 text-[13px] text-(--muted-foreground) transition-colors hover:border-(--border-strong) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) lg:flex"
+        className="hidden h-9 w-[min(260px,24vw)] items-center gap-2 rounded-full border border-(--border) bg-(--panel) px-3.5 text-[13px] text-(--muted-foreground) transition-colors hover:border-(--border-strong) hover:text-(--foreground) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) lg:flex"
       >
         <Search aria-hidden className="h-3.5 w-3.5" />
         <span className="flex-1 text-left">Search or run a command</span>

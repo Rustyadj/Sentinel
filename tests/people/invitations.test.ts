@@ -190,7 +190,11 @@ describe("a project guest", () => {
 
 describe("registering with an invitation", () => {
   const post = (body: Record<string, unknown>) =>
-    register(new Request("http://sentinel.test/api/auth/register", { method: "POST", body: JSON.stringify(body) }));
+    // Its own client address: registration is rate limited per address, and
+    // other suites register from the default one at the same time.
+    register(new Request("http://sentinel.test/api/auth/register", {
+      method: "POST", body: JSON.stringify(body), headers: { "x-forwarded-for": `10.9.${tag.charCodeAt(0) % 250}.${tag.charCodeAt(1) % 250}` },
+    }));
 
   it("admits a new account past the closed signup policy, as a guest of the project", async () => {
     resetMemoryRateLimits();
