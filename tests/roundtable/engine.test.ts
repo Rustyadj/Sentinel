@@ -11,6 +11,8 @@ const heard: Array<{ agent: string; prompt: string }> = [];
 const script = vi.hoisted(() => ({
   reply: (agent: string, _prompt?: string): string => `${agent} view.\nPOSITION: ${agent} holds firm`,
   denied: new Set<string>(),
+  pause: null as null | (() => Promise<void>),
+  cancelled: [] as string[],
 }));
 
 vi.mock("@/lib/agents/runtime/authorization", () => ({
@@ -27,12 +29,13 @@ vi.mock("@/lib/agents/runtime/service", () => ({
   getRuntimeAdapter: () => ({
     readiness: async () => ({ ready: true }),
     startSession: async (input: { runtimeId: string }) => ({ id: `session-${input.runtimeId}-${randomUUID()}` }),
-    cancel: async () => ({ ok: true }),
+    cancel: async (sessionId: string) => { script.cancelled.push(sessionId); return { ok: true }; },
     send: async function* (input: { sessionId: string; prompt: string }) {
       const agent = /session-runtime-(hermes-[a-z0-9]+)/.exec(input.sessionId)![1];
       heard.push({ agent, prompt: input.prompt });
       const reply = script.reply(agent, input.prompt);
       if (reply === "__error__") { yield { type: "error", data: { reason: "runtime exploded" } }; return; }
+      if (script.pause) await script.pause();
       // In two chunks, as a runtime streams.
       yield { type: "assistant_delta", data: { text: reply.slice(0, 5) } };
       yield { type: "assistant_delta", data: { text: reply.slice(5) } };
@@ -43,7 +46,7 @@ vi.mock("@/lib/agents/runtime/service", () => ({
 
 import { db } from "@/lib/db";
 import { requireDiscussionAccess } from "@/lib/roundtable/access";
-import { cancelDiscussion, failIfStalled, interject, RoundtableError, runDiscussion, seatAgents, startDiscussion, STALLED_AFTER_MS } from "@/lib/roundtable/engine";
+import { cancelDiscussion, continueDiscussion, failIfStalled, interject, RoundtableError, runDiscussion, seatAgents, startDiscussion, STALLED_AFTER_MS } from "@/lib/roundtable/engine";
 import { splitPosition } from "@/lib/roundtable/prompts";
 
 const AGENTS = ["hermes-lisa", "hermes-nathan2"];
@@ -65,6 +68,8 @@ beforeAll(async () => {
 beforeEach(() => {
   heard.length = 0;
   script.denied.clear();
+  script.pause = null;
+  script.cancelled.length = 0;
   script.reply = (agent) => `${agent} view.\nPOSITION: ${agent} holds firm`;
 });
 
@@ -184,5 +189,28 @@ describe("reading a stance out of a reply", () => {
   });
   it("leaves a reply without one untouched", () => {
     expect(splitPosition("My position: unclear.\nMore words.")).toEqual({ content: "My position: unclear.\nMore words.", position: null });
+  });
+});
+
+
+describe("execution cancellation", () => {
+  it("cancels a blocked runtime and fences it off from a continuation", async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    script.pause = () => blocked;
+    const discussion = await startDiscussion({ topic: "Stop this slow runtime before continuing", agentIds: AGENTS, rounds: 1 }, user);
+    await vi.waitFor(() => expect(heard).toHaveLength(1));
+    const first = (await turnsOf(discussion.id))[0];
+    await cancelDiscussion(discussion.id);
+    script.pause = null;
+    await continueDiscussion(discussion.id, user);
+    expect((await settle(discussion.id)).status).toBe("completed");
+    await vi.waitFor(() => expect(script.cancelled).toHaveLength(1));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const turns = await turnsOf(discussion.id);
+    expect(turns.find((turn) => turn.id === first.id)?.status).toBe("failed");
+    expect(turns.filter((turn) => turn.round === 1)).toHaveLength(1);
+    expect((await db.discussion.findUniqueOrThrow({ where: { id: discussion.id } })).status).toBe("completed");
   });
 });

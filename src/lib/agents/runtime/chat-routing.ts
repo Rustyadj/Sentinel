@@ -1,5 +1,6 @@
 import { ModelUnavailableError } from "@/lib/agents/model-policy";
 import { db } from "@/lib/db";
+import { requireRoomAccess } from "@/lib/orchestration/access";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { appendSessionMemory } from "@/lib/knowledge/retrieval";
 import { captureAgentTurn } from "@/lib/neural-engine/chat-capture";
@@ -77,7 +78,7 @@ export async function routeRuntimeChat(input: {
   if (!readiness.ready) throw new RuntimeError(`Runtime unavailable: ${readiness.reason ?? "not ready"}`, "runtime_not_ready", 503);
 
   const room = input.roomId
-    ? await db.chatRoom.findFirst({ where: { id: input.roomId, userId: input.userId }, select: { id: true, projectId: true } })
+    ? await requireRoomAccess(input.roomId, input.userId, "write")
     : null;
   if (input.roomId && !room) throw new RuntimeError("Room not found", "room_not_found", 404);
   await validateSessionScope(runtime, input.userId, {

@@ -1220,6 +1220,7 @@ model Invitation {
 // the page can show who is talking before the words arrive.
 
 model Discussion {
+  executionId String    @default(uuid())
   id          String    @id @default(cuid())
   title       String
   topic       String

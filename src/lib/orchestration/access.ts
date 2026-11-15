@@ -14,7 +14,7 @@ export type RoomAccessMode = "read" | "write";
 export async function requireRoomAccess(roomId: string, userId: string, mode: RoomAccessMode = "write") {
   const room = await db.chatRoom.findUnique({ where: { id: roomId } });
   if (!room) throw new RuntimeError("Room not found", "room_not_found", 404);
-  if (room.userId === userId) return room;
+  if (!room.projectId && room.userId === userId) return room;
 
   if (room.projectId) {
     const project = await db.project.findUnique({

@@ -230,3 +230,20 @@ describe("registering with an invitation", () => {
     expect(await db.user.count({ where: { email: mail("impostor") } })).toBe(0);
   });
 });
+
+
+describe("project room creators retain only their current project permissions", () => {
+  it("revokes write on downgrade and all access on removal", async () => {
+    const guest = await makeUser("room-creator", "guest");
+    await db.projectMember.create({ data: { projectId, userId: guest.id, role: "editor" } });
+    const room = await db.chatRoom.create({ data: { name: "Guest created", userId: guest.id, projectId, agentIds: [] } });
+    expect((await requireRoomAccess(room.id, guest.id, "write")).id).toBe(room.id);
+    await db.projectMember.update({ where: { projectId_userId: { projectId, userId: guest.id } }, data: { role: "viewer" } });
+    expect((await requireRoomAccess(room.id, guest.id, "read")).id).toBe(room.id);
+    await expect(requireRoomAccess(room.id, guest.id, "write")).rejects.toMatchObject({ status: 404 });
+    await db.projectMember.delete({ where: { projectId_userId: { projectId, userId: guest.id } } });
+    await expect(requireRoomAccess(room.id, guest.id, "read")).rejects.toMatchObject({ status: 404 });
+    const privateRoom = await db.chatRoom.create({ data: { name: "Private", userId: guest.id, agentIds: [] } });
+    expect((await requireRoomAccess(privateRoom.id, guest.id, "write")).id).toBe(privateRoom.id);
+  });
+});

@@ -31,6 +31,9 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
+vi.mock("@/lib/orchestration/access", () => ({
+  requireRoomAccess: vi.fn().mockResolvedValue({ id: "room-a", projectId: "project-a" }),
+}));
 vi.mock("@/lib/chat/persistence", () => ({ persistChatExchange: mocks.persistChatExchange }));
 vi.mock("@/lib/knowledge/retrieval", () => ({ appendSessionMemory: mocks.appendSessionMemory }));
 vi.mock("@/lib/neural-engine/chat-capture", () => ({ captureAgentTurn: mocks.captureAgentTurn }));
@@ -95,6 +98,8 @@ describe("runtime chat routing", () => {
     });
     const body = await response.text();
 
+    const { requireRoomAccess } = await import("@/lib/orchestration/access");
+    expect(requireRoomAccess).toHaveBeenCalledWith("room-a", "user-a", "write");
     expect(mocks.persistChatExchange).toHaveBeenCalledWith(expect.objectContaining({
       roomId: "room-a",
       agentId: "hermes-lisa",

@@ -269,9 +269,8 @@ export function useChatSession(): ChatSession {
 
   // A room that belongs to a project can be written in by other people, so it
   // is re-read on an interval. The server's transcript replaces the local one
-  // only while nothing is being sent or streamed, and never with a shorter
-  // list: an exchange is saved when its stream ends, and a read that lands
-  // just before that must not drop it from the page.
+  // only while nothing is being sent or streamed. The response is the latest
+  // capped window, so its length need not match the local transcript.
   const activeProjectId = activeRoom?.projectId;
   const busyRef = useRef(false);
   useEffect(() => { busyRef.current = isThinking || !!streamingMsgId; }, [isThinking, streamingMsgId]);
@@ -287,7 +286,6 @@ export function useChatSession(): ChatSession {
         if (cancelled || busyRef.current) return;
         const current = useChatStore.getState().rooms.find((r) => r.id === activeRoomId)?.messages ?? [];
         const last = apiMessages[apiMessages.length - 1]?.id;
-        if (apiMessages.length < current.length) return;
         if (apiMessages.length === current.length && current[current.length - 1]?.id === last) return;
         setRoomMessages(activeRoomId, apiMessages.map((m) => apiMessageToMessage(m, activeRoomId)));
       } catch {

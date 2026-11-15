@@ -45,6 +45,7 @@ export function RoundtableSurface() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [composing, setComposing] = useState(false);
+  const [pollVersion, setPollVersion] = useState(0);
   const [error, setError] = useState("");
 
   const loadList = useCallback(async () => {
@@ -83,13 +84,16 @@ export function RoundtableSurface() {
     };
     void read();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [activeId, loadList]);
+  }, [activeId, loadList, pollVersion]);
 
   const open = (id: string | null) => { setComposing(false); setError(""); router.replace(id ? `/roundtable?id=${id}` : "/roundtable"); };
   const refresh = useCallback(async () => {
     if (!activeId) return;
     const res = await fetch(`/api/discussions/${activeId}`, { cache: "no-store" });
-    if (res.ok) setDiscussion((await res.json()) as Discussion);
+    if (res.ok) {
+      setDiscussion((await res.json()) as Discussion);
+      setPollVersion((version) => version + 1);
+    }
   }, [activeId]);
 
   // The discussion on screen is the one the address names; a previous one is never shown under a new id.
