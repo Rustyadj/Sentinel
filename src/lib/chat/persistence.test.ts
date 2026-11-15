@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ findRoom: vi.fn(), createMany: vi.fn(), emitEvent: vi.fn() }));
 vi.mock("@/lib/db", () => ({
-  db: { chatRoom: { findFirst: mocks.findRoom }, message: { createMany: mocks.createMany } },
+  db: { message: { createMany: mocks.createMany } },
 }));
+vi.mock("@/lib/orchestration/access", () => ({ requireRoomAccess: mocks.findRoom }));
 vi.mock("@/lib/knowledge/events", () => ({ emitEvent: mocks.emitEvent }));
 
 import { persistChatExchange } from "./persistence";
@@ -19,12 +20,10 @@ describe("chat persistence", () => {
       roomId: "room-a", userId: "user-a", userContent: "hello",
       agentId: "agent-a", assistantContent: "hi",
     });
-    expect(mocks.findRoom).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "room-a", userId: "user-a" },
-    }));
+    expect(mocks.findRoom).toHaveBeenCalledWith("room-a", "user-a");
     expect(mocks.createMany).toHaveBeenCalledWith({
       data: [
-        { chatRoomId: "room-a", role: "user", content: "hello" },
+        { chatRoomId: "room-a", role: "user", content: "hello", authorUserId: "user-a" },
         {
           chatRoomId: "room-a",
           role: "agent",
@@ -60,7 +59,7 @@ describe("chat persistence", () => {
 
     expect(mocks.createMany).toHaveBeenCalledWith({
       data: [
-        { chatRoomId: "room-a", role: "user", content: "run it" },
+        { chatRoomId: "room-a", role: "user", content: "run it", authorUserId: "user-a" },
         expect.objectContaining({
           role: "agent",
           runtimeKind: "codex",

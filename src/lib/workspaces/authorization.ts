@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
+import { projectRoleAllows } from "@/lib/people/roles";
 
 export class WorkspaceAccessError extends Error {
   constructor(
@@ -64,6 +65,12 @@ export async function requireProjectPermission(projectId: string, permissionKey:
   });
   if (!project) throw new WorkspaceAccessError("Project not found", 404);
   if (project.userId === user.id) return { user, project };
+  // Someone added to the project holds that project's role and nothing wider.
+  const membership = await db.projectMember.findUnique({
+    where: { projectId_userId: { projectId, userId: user.id } },
+    select: { role: true },
+  });
+  if (membership && projectRoleAllows(membership.role, permissionKey)) return { user, project };
   if (!project.workspaceId || !(await userHasWorkspacePermission(user.id, project.workspaceId, permissionKey))) {
     throw new WorkspaceAccessError("Project not found", 404);
   }

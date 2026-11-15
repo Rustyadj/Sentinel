@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { findEmailIdentities } from "@/lib/auth/identity";
 import { AUTH_RATE_LIMITS, clientAddress, consumeAuthAttempt, tooManyAttempts } from "@/lib/auth/rate-limit";
 import { isSignupAllowed, SIGNUP_CLOSED_MESSAGE } from "@/lib/auth/signup-policy";
+import { acceptInvitation, findOpenInvitation, invitationAdmits } from "@/lib/people/invitations";
+import { peopleErrorResponse } from "@/lib/people/http";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // bcrypt only hashes the first 72 bytes; a longer limit would silently truncate.
@@ -15,7 +17,7 @@ export async function POST(req: Request) {
     return tooManyAttempts();
   }
 
-  let body: { email?: unknown; password?: unknown; name?: unknown };
+  let body: { email?: unknown; password?: unknown; name?: unknown; inviteToken?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -40,7 +42,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Password must be at most ${MAX_PASSWORD_BYTES} bytes` }, { status: 400 });
   }
 
-  if (!(await isSignupAllowed(email))) {
+  // An invitation is the one thing besides the allowlist that admits a new
+  // account. It is checked in full here (exists, unspent, unexpired, issued to
+  // this address if it names one) and spent below, so a link admits one
+  // person once. Without one, the signup policy applies exactly as before.
+  const inviteToken = typeof body.inviteToken === "string" && body.inviteToken ? body.inviteToken : null;
+  let invitation: Awaited<ReturnType<typeof findOpenInvitation>> | null = null;
+  if (inviteToken) {
+    try {
+      invitation = await findOpenInvitation(inviteToken);
+    } catch (error) {
+      return peopleErrorResponse(error);
+    }
+    if (!invitationAdmits(invitation, email)) {
+      return NextResponse.json({ error: "This invitation was issued to a different email address." }, { status: 403 });
+    }
+  } else if (!(await isSignupAllowed(email))) {
     return NextResponse.json({ error: SIGNUP_CLOSED_MESSAGE }, { status: 403 });
   }
 
@@ -53,9 +70,22 @@ export async function POST(req: Request) {
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 120) : email.split("@")[0];
 
   const user = await db.user.create({
-    data: { email, name, passwordHash },
+    // Someone invited to a project is a guest: they reach that project and
+    // are not enrolled in the shared workspaces. Joining the team makes a member.
+    data: { email, name, passwordHash, accessScope: invitation?.scope === "project" ? "guest" : "member" },
     select: { id: true, email: true, name: true },
   });
+
+  if (inviteToken) {
+    try {
+      await acceptInvitation(inviteToken, user);
+    } catch (error) {
+      // Lost a race for the link. The account was admitted only by that
+      // invitation, so it does not outlive it.
+      await db.user.delete({ where: { id: user.id } }).catch(() => undefined);
+      return peopleErrorResponse(error);
+    }
+  }
 
   return NextResponse.json(user, { status: 201 });
 }

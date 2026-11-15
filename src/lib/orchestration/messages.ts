@@ -9,6 +9,8 @@ export interface PostMessageInput {
   content: string;
   taskId?: string;
   artifactIds?: string[];
+  /** The person who wrote a "user" message. Rooms can be shared, so the room owner is not assumed. */
+  authorUserId?: string;
 }
 
 export async function postCollaborationMessage(input: PostMessageInput) {
@@ -22,6 +24,7 @@ export async function postCollaborationMessage(input: PostMessageInput) {
       recipientAgentIds: input.recipientAgentIds,
       taskId: input.taskId,
       artifactIds: input.artifactIds ?? [],
+      authorUserId: input.senderAgentId === "user" ? input.authorUserId ?? null : null,
     },
   });
 }

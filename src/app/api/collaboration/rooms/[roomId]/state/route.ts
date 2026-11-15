@@ -9,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: Context) {
   try {
     const user = await requireUser();
     const { roomId } = await params;
-    await requireRoomAccess(roomId, user.id);
+    await requireRoomAccess(roomId, user.id, "read");
     return NextResponse.json(await getRoomSnapshot(roomId));
   } catch (error) {
     return collaborationErrorResponse(error);

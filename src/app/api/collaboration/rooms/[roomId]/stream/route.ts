@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: Context) {
   let user;
   try {
     user = await requireUser();
-    await requireRoomAccess(roomId, user.id);
+    await requireRoomAccess(roomId, user.id, "read");
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

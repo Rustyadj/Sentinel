@@ -81,7 +81,10 @@ async function upsertSystemRole(workspaceId: string, name: string, permissionKey
     select: { id: true },
   });
 
-  const description = name === "Owner" ? "Full access to this workspace" : "Baseline access for workspace members";
+  const description =
+    name === "Owner" ? "Full access to this workspace"
+    : name === "Operator" ? "Member access, plus creating work and running agents"
+    : "Baseline access for workspace members";
   return db.role.upsert({
     where: { workspaceId_name: { workspaceId, name } },
     update: { system: true, permissions: { set: permissions.map((p) => ({ id: p.id })) } },
@@ -103,6 +106,24 @@ export async function ensureSystemRoles(workspaceId: string) {
     upsertSystemRole(workspaceId, "Member", MEMBER_PERMISSION_KEYS),
   ]);
   return { ownerRole, memberRole };
+}
+
+/** What an Operator adds to a Member: making things, and running agents. */
+const OPERATOR_PERMISSION_KEYS = [
+  ...MEMBER_PERMISSION_KEYS,
+  "project.create",
+  "project.update",
+  "document.create",
+  "document.update",
+  "meeting.create",
+  "agents.runtime.view",
+  "agents.runtime.execute",
+  "agents.runtime.cancel",
+] as const;
+
+/** The system role behind the organization's "operator" membership. */
+export async function ensureOperatorRole(workspaceId: string) {
+  return upsertSystemRole(workspaceId, "Operator", OPERATOR_PERMISSION_KEYS);
 }
 
 export async function ensureMemberAccess(workspaceId: string, userId: string) {

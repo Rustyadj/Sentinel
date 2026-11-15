@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { emitEvent } from "@/lib/knowledge/events";
+import { requireRoomAccess } from "@/lib/orchestration/access";
 
 export async function persistChatExchange(params: {
   roomId: string;
@@ -14,15 +15,13 @@ export async function persistChatExchange(params: {
     agentRuntimeSessionId?: string;
   };
 }) {
-  const room = await db.chatRoom.findFirst({
-    where: { id: params.roomId, userId: params.userId },
-    select: { id: true, projectId: true },
-  });
+  // Write access, not ownership: a project member's exchange in a shared room is saved too.
+  const room = await requireRoomAccess(params.roomId, params.userId).catch(() => null);
   if (!room) throw new Error("Room not found");
 
   await db.message.createMany({
     data: [
-      { chatRoomId: room.id, role: "user", content: params.userContent },
+      { chatRoomId: room.id, role: "user", content: params.userContent, authorUserId: params.userId },
       {
         chatRoomId: room.id,
         role: "agent",

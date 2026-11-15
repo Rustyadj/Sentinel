@@ -4,6 +4,7 @@ import { AGENT_TEMPLATES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { appendSessionMemory } from "@/lib/knowledge/retrieval";
 import { requireApiUser } from "@/lib/current-user";
+import { requireRoomAccess } from "@/lib/orchestration/access";
 import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 import { persistChatExchange } from "@/lib/chat/persistence";
 import { getControlPlaneUser, requireAgentRecordUser } from "@/lib/agents/permissions";
@@ -52,10 +53,8 @@ async function buildContextBlock(
   const empty: ContextBlockResult = { block: "", knowledgeObjectIds: [] };
   if (!roomId) return empty;
   try {
-    const room = await db.chatRoom.findFirst({
-      where: { id: roomId, userId },
-      select: { projectId: true, userId: true },
-    });
+    // Read access is enough to draw context from a shared project room.
+    const room = await requireRoomAccess(roomId, userId, "read").catch(() => null);
 
     // Agents scoped to "session" only ever see session/user/global memory —
     // never let them pull in project-wide context even if the room has a project.
@@ -344,10 +343,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
     messages = body.messages;
 
     if (roomId) {
-      const room = await db.chatRoom.findFirst({
-        where: { id: roomId, userId: user.id },
-        select: { id: true },
-      });
+      // Owner, or a project member who may write in this project's rooms.
+      const room = await requireRoomAccess(roomId, user.id).catch(() => null);
       if (!room) return sseError("Room not found", 404);
     }
   }

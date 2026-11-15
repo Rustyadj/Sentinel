@@ -38,6 +38,11 @@ const DEFAULT_WORKSPACES = [
 ] as const;
 
 export async function ensureDefaultWorkspaces(ownerId: string) {
+  // A guest was invited to specific projects. Enrolling them here would hand
+  // them every shared workspace, which is exactly what the invitation withheld.
+  const account = await db.user.findUnique({ where: { id: ownerId }, select: { accessScope: true } });
+  if (!account || account.accessScope !== "member") return;
+
   const workspaces = await db.$transaction(
     DEFAULT_WORKSPACES.map((workspace) =>
       db.workspace.upsert({

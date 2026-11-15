@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApiUser } from "@/lib/current-user";
 import { requireProjectPermission } from "@/lib/workspaces/authorization";
+import { reachableProjectIds } from "@/lib/people/project-access";
 import { corsPreflightResponse, withMobileCors } from "@/lib/mobile-cors";
 
 export function OPTIONS() {
@@ -32,6 +33,24 @@ async function handleGet(request: NextRequest): Promise<Response> {
       orderBy: { createdAt: "asc" },
       select: roomSelect,
     });
+
+    // Rooms of projects this person was added to. They belong to someone
+    // else, so none of the primary-room bookkeeping below applies to them.
+    const sharedProjectIds = await reachableProjectIds(user.id);
+    const sharedRooms = sharedProjectIds.length
+      ? await db.chatRoom.findMany({
+          where: { projectId: { in: sharedProjectIds }, NOT: { userId: user.id } },
+          orderBy: { createdAt: "asc" },
+          select: { ...roomSelect, project: { select: { name: true } }, user: { select: { name: true } } },
+        })
+      : [];
+    const shared = sharedRooms.map(({ project, user: owner, ...room }) => ({
+      ...room, shared: true, projectName: project?.name ?? null, ownerName: owner?.name ?? null,
+    }));
+
+    // A guest has no agents to command, so no Mission Control is made for
+    // them: they see the rooms they were invited into and nothing else.
+    if (rooms.length === 0 && user.accessScope === "guest") return NextResponse.json(shared);
 
     // Auto-create a default "Mission Control" room if the user has none.
     // This is always the primary room: the one that normal Mission Control
@@ -74,7 +93,7 @@ async function handleGet(request: NextRequest): Promise<Response> {
       rooms = rooms.map((room) => (room.id === reset.id ? reset : room));
     }
 
-    return NextResponse.json(rooms);
+    return NextResponse.json([...rooms, ...shared]);
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

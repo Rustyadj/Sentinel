@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getVpsAgent } from "@/lib/agents/registry";
+import { requireRoomAccess } from "./access";
 import { runDirectAgentReply } from "./agent-turn";
 import { resolveLead, resolveWorkerPool } from "./capabilities";
 import { emitCollaborationEvent } from "./event-bus";
@@ -27,12 +28,13 @@ export interface RunCollaborationInput {
  * stream picks up.
  */
 export async function runCollaborationTurn(input: RunCollaborationInput): Promise<void> {
-  const room = await db.chatRoom.findFirstOrThrow({ where: { id: input.chatRoomId, userId: input.userId } });
+  const room = await requireRoomAccess(input.chatRoomId, input.userId);
   const lead = resolveLead(room.agentIds);
   const pool = resolveWorkerPool(room.agentIds);
 
   await postCollaborationMessage({
     chatRoomId: room.id, senderAgentId: "user", recipientAgentIds: lead ? [lead] : [], type: "MESSAGE", content: input.userContent,
+    authorUserId: input.userId,
   });
 
   if (room.paused) {
