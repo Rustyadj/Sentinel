@@ -25,12 +25,17 @@ function initials(name: string): string {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function permissionLabel(role: CollaborationParticipant["role"]): string {
+function permissionLabel({ role, outside }: CollaborationParticipant): string {
+  if (outside) return "Answers messages addressed to it. No access to memory, files or computers here";
   if (role === "lead") return "Delegate, decide, pause, request approval";
   if (role === "review") return "Read, review, request changes, approve artifacts";
   if (role === "implementation") return "Read, edit, test, create artifacts";
   return "Read, search, create research artifacts";
 }
+
+/** An agent someone brought is named by whose it is; Sentinel's own by what they do. */
+const roleLabel = (participant: CollaborationParticipant) =>
+  participant.outside ? `${participant.outside.ownerName}'s agent` : ROLE_LABEL[participant.role];
 
 export function CollaborationParticipantBar({
   participants,
@@ -66,7 +71,7 @@ export function CollaborationParticipantBar({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-[11px] font-medium text-[#edf3f8]">{participant.name}</span>
-              <span className="block truncate text-[9.5px] text-[#7f91a7]">{ROLE_LABEL[participant.role]} · {participant.status}</span>
+              <span className="block truncate text-[9.5px] text-[#7f91a7]">{roleLabel(participant)} · {participant.status}</span>
             </span>
           </button>
         ))}
@@ -85,7 +90,7 @@ export function CollaborationParticipantBar({
                   </div>
                   <div className="min-w-0 flex-1">
                     <Dialog.Title className="text-base font-semibold text-[#f1f5f9]">{selected.name}</Dialog.Title>
-                    <Dialog.Description className="mt-1 text-[11px] text-[#8393a8]">{ROLE_LABEL[selected.role]} agent · {selected.status}</Dialog.Description>
+                    <Dialog.Description className="mt-1 text-[11px] text-[#8393a8]">{roleLabel(selected)}{selected.outside ? "" : " agent"} · {selected.status}</Dialog.Description>
                   </div>
                   <Dialog.Close className="rounded-md p-1.5 text-[#718096] outline-none hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/50" aria-label="Close agent information">
                     <X className="h-4 w-4" />
@@ -96,7 +101,7 @@ export function CollaborationParticipantBar({
                   <Info icon={Cpu} label="Runtime" value={selected.runtime} mono />
                   <Info icon={Bot} label="Model" value={selected.model} mono />
                   <Info icon={Activity} label="Health" value={selected.health} />
-                  <Info icon={ShieldCheck} label="Permissions" value={permissionLabel(selected.role)} />
+                  <Info icon={ShieldCheck} label="Permissions" value={permissionLabel(selected)} />
                   <Info icon={Clock3} label="Last activity" value={new Date(selected.lastActivityAt).toLocaleString()} />
                 </dl>
 

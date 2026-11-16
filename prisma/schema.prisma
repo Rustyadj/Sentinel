@@ -1224,6 +1224,7 @@ model Invitation {
 // the page can show who is talking before the words arrive.
 
 model Discussion {
+  executionId String    @default(uuid())
   id          String    @id @default(cuid())
   title       String
   topic       String
@@ -3639,14 +3640,30 @@ model ProjectAgent {
   id          String  @id @default(cuid())
   projectId   String
   agentId     String
-  /// The person this agent answers to. Only they may pause, move or control it.
+  /// The person this agent answers to. Only they may resume, re-key or change it.
+  /// Whoever manages the project may also pause or remove it.
   ownerUserId String
   /// sentinel | claude-code | codex | a2a
   origin       String  @default("sentinel")
   /// For origin "a2a": where the agent publishes its Agent Card.
   agentCardUrl String?
-  /// connecting | connected | disabled
+  /// connecting | connected | disabled | removed. A removed row is kept so
+  /// messages the agent wrote still carry its name.
   status       String  @default("connected")
+
+  /// For origin "a2a", read from the Agent Card when it was last checked.
+  name            String?
+  description     String?
+  /// The JSON-RPC address Sentinel sends messages to.
+  endpointUrl     String?
+  /// A2A wire dialect the card declared: 1.0 | 0.3
+  protocolDialect String?
+  /// Bumped to re-key. The token itself is derived, never stored
+  /// (src/lib/collaboration/agent-token.ts).
+  tokenVersion    Int       @default(1)
+  lastCheckedAt   DateTime?
+  /// Why the last call to the agent's server failed, if it did.
+  lastError       String?
 
   canReadProjectMemory  Boolean @default(true)
   canWriteProjectMemory Boolean @default(false)

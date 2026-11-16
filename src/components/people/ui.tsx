@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Check, Copy, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Small form pieces shared by the People, Roundtable and Projects screens.
@@ -73,6 +75,27 @@ export function Notice({ tone = "error", children }: { tone?: "error" | "info"; 
     )}>
       {children}
     </p>
+  );
+}
+
+/** A value shown once for the person to copy: an invitation link, an agent's token. */
+export function CopyField({ value, label, icon: Icon }: { value: string; label: string; icon: LucideIcon }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  async function copy() {
+    try { await navigator.clipboard.writeText(value); setState("copied"); } catch { setState("failed"); }
+  }
+  return (
+    <div>
+      <div className="flex items-center gap-2 rounded-(--radius-md) border border-(--primary)/60 bg-(--primary-wash) p-2 pl-3">
+        <Icon aria-hidden className="h-4 w-4 shrink-0 text-(--primary)" />
+        <input readOnly value={value} aria-label={label} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-(--foreground) outline-none" />
+        <QuietButton onClick={() => void copy()} className="shrink-0 bg-(--background)">
+          {state === "copied" ? <Check className="h-3.5 w-3.5 text-(--status-online)" /> : <Copy className="h-3.5 w-3.5" />}
+          {state === "copied" ? "Copied" : "Copy"}
+        </QuietButton>
+      </div>
+      {state === "failed" ? <p role="alert" className="mt-1.5 text-[12px] text-(--destructive)">Copy did not work here. Select the text and copy it by hand.</p> : null}
+    </div>
   );
 }
 
