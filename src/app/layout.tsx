@@ -1,16 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Familjen_Grotesk, Martian_Mono, Onest } from "next/font/google";
+import { Bricolage_Grotesque, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { auth } from "@/auth";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { ToastProvider } from "@/components/providers/ToastProvider";
 
-// Onest carries the interface; Familjen Grotesk is reserved for titles, where
-// its narrow, slightly eccentric forms give Sentinel a voice; Martian Mono is
-// for ids, models and telemetry only.
-const ui = Onest({ subsets: ["latin"], variable: "--font-ui", display: "swap" });
-const display = Familjen_Grotesk({ subsets: ["latin"], variable: "--font-display-face", display: "swap" });
-const code = Martian_Mono({ subsets: ["latin"], variable: "--font-code", display: "swap" });
+// Hanken Grotesk carries the interface; Bricolage Grotesque is reserved for
+// titles; JetBrains Mono is for ids, times, models and telemetry only.
+const ui = Hanken_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-ui", display: "swap" });
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600"], variable: "--font-display-face", display: "swap" });
+const code = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-code", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Sentinel OS",
@@ -18,8 +17,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0d1226",
-  colorScheme: "dark",
+  themeColor: "#e6e9e5",
+  colorScheme: "light",
 };
 
 export default async function RootLayout({

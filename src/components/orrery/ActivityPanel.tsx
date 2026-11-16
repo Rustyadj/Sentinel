@@ -30,7 +30,7 @@ export function ActivityPanel({ agents, events, followId, onFollow, roomId, onTr
   const live = agents.filter((a) => a.state === "working").length;
   const byId = new Map(agents.map((a) => [a.id, a]));
   return (
-    <aside data-orrery-ui data-activity-panel aria-label="Agent activity" className="hidden h-full w-[300px] shrink-0 flex-col overflow-hidden border-l border-(--border) bg-(--panel) xl:flex">
+    <aside data-orrery-ui data-activity-panel aria-label="Agent activity" className="m-3 hidden h-[calc(100%-1.5rem)] w-[300px] shrink-0 flex-col overflow-hidden rounded-(--radius-lg) border border-(--border) bg-(--panel) shadow-(--shadow-md) xl:flex">
       <Heading label="Agents" meta={`${live} live`} />
       <ul className="max-h-[46%] shrink-0 space-y-1 overflow-y-auto px-2 pb-2">
         {agents.length === 0 ? <li className="px-2 py-3 text-[12px] text-(--muted-foreground)">No agents registered.</li> : null}

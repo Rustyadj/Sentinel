@@ -61,43 +61,54 @@ function NavLink({ item, pathname, onNavigate, large }: { item: NavItem; pathnam
   );
 }
 
-/** Desktop sidebar: named groups, with search and settings at the foot. */
-export function NavRail() {
+/**
+ * Desktop: the top bar's view tabs. Where you are standing is a raised paper
+ * tab; everything else is quiet text. Groups are separated by a hairline.
+ * Below 2xl only the current tab keeps its label, so the row fits.
+ */
+export function PrimaryNav() {
   const pathname = usePathname();
   const { groups, secondary } = useNavGroups();
+  const items = [
+    ...groups.map((group) => ({ id: group.id, label: group.label, items: group.items })),
+    ...(secondary.length ? [{ id: "utilities", label: "Utilities", items: secondary.filter((item) => item.id !== "search") }] : []),
+  ].filter((group) => group.items.length);
   return (
-    <nav
-      aria-label="Primary"
-      className="hidden w-[216px] shrink-0 flex-col border-r border-(--sidebar-border) bg-(--sidebar) px-2.5 pb-3 lg:flex"
-    >
-      <Link
-        href="/chat"
-        prefetch={false}
-        aria-label="Sentinel home"
-        className="flex h-14 shrink-0 items-center rounded-(--radius-md) px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
-      >
-        <SentinelLogo />
-      </Link>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden pt-2 [scrollbar-width:none]">
-        {groups.map((group) => (
-          <div key={group.id}>
-            <p id={`nav-${group.id}`} className="px-3 pb-1.5 text-[11.5px] font-medium text-(--text-faint)">{group.label}</p>
-            <ul aria-labelledby={`nav-${group.id}`} className="flex flex-col gap-0.5">
-              {group.items.map((item) => (
-                <li key={item.id}><NavLink item={item} pathname={pathname} /></li>
-              ))}
+    <nav aria-label="Primary" className="hidden min-w-0 flex-1 lg:flex">
+      <ul className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        {items.map((group, index) => (
+          <li key={group.id} className="flex items-center gap-0.5">
+            {index > 0 ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 bg-(--border)" /> : null}
+            <ul aria-label={group.label} className="flex items-center gap-0.5">
+              {group.items.map((item) => <li key={item.id}><NavTab item={item} pathname={pathname} /></li>)}
             </ul>
-          </div>
+          </li>
         ))}
-      </div>
-      {secondary.length ? (
-        <ul aria-label="Utilities" className="mt-2 flex flex-col gap-0.5 border-t border-(--sidebar-border) pt-2">
-          {secondary.map((item) => (
-            <li key={item.id}><NavLink item={item} pathname={pathname} /></li>
-          ))}
-        </ul>
-      ) : null}
+      </ul>
     </nav>
+  );
+}
+
+function NavTab({ item, pathname }: { item: NavItem; pathname: string }) {
+  const Icon = ICONS[item.icon] ?? MessageSquare;
+  const active = isShellNavActive(item, pathname);
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      aria-current={active ? "page" : undefined}
+      title={item.label}
+      className={cn(
+        "flex h-10 shrink-0 items-center gap-2 rounded-(--radius-md) border px-3 text-[13px] transition-colors duration-150",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
+        active
+          ? "border-(--border) bg-(--panel) font-semibold text-(--foreground) shadow-(--shadow-sm)"
+          : "border-transparent text-(--muted-foreground) hover:bg-(--panel) hover:text-(--foreground)",
+      )}
+    >
+      <Icon aria-hidden className={cn("h-4 w-4 shrink-0 stroke-[1.7]", active && "text-(--primary)")} />
+      <span className={cn("whitespace-nowrap", !active && "sr-only 2xl:not-sr-only")}>{item.label}</span>
+    </Link>
   );
 }
 

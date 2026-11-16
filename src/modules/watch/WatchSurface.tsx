@@ -38,7 +38,7 @@ export function WatchSurface() {
 
   return (
     <AppShell title="Live graph" header={header}>
-      <div className="flex h-full flex-col xl:flex-row">
+      <div className="watch-ground flex h-full flex-col xl:flex-row">
         <div className="relative min-h-0 min-w-0 flex-1">
           <WatchStage
             model={orrery.model}
