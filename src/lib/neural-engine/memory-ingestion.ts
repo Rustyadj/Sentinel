@@ -19,6 +19,7 @@
 // is linked to what it corrects at the moment it is stored rather than by a
 // sweep that may not run for hours.
 
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notExpired } from "@/lib/learning/memory-governance";
 import { classifyForIngestion, type IngestionVerdict, memoryTypeForLane } from "./ingestion-gate";
@@ -26,6 +27,7 @@ import { assertWritableMemoryScope } from "@/lib/knowledge/memory-scope";
 import { reconsolidateMemory, defaultMode, type ReconsolidationMode } from "./reconsolidation-engine";
 
 export interface RememberInput {
+  eventKind?: "incident";
   content: string;
   owner: string;
   speaker?: string;
@@ -65,7 +67,9 @@ const DUPLICATE_WINDOW = 200;
  * is a result, not an error: the caller asked whether this should be
  * remembered and got an answer, with the reasons attached.
  */
-export async function remember(input: RememberInput): Promise<RememberResult> {
+export async function remember(input: RememberInput, transaction?: Prisma.TransactionClient): Promise<RememberResult> {
+  if (transaction && !input.skipReconsolidation) throw new Error("Transactional admission requires deferred reconsolidation");
+  const store = transaction ?? db;
   const scope = input.scope ?? (input.projectId ? "project" : "user");
   const workspaceId = input.workspaceId ?? null;
   const projectId = input.projectId ?? null;
@@ -77,9 +81,11 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
   // a duplicate?" is a read of memory they cannot see.
   await assertWritableMemoryScope({ userId: input.owner, scope, workspaceId, projectId });
 
-  const existing = await db.memory.findMany({
+  const existing = await store.memory.findMany({
     where: {
       owner: input.owner,
+      // Distinct incidents can have identical symptoms. Event identity dedupes them at ingestion.
+      ...(input.eventKind === "incident" ? { source: input.source } : {}),
       scope,
       projectId,
       ...(scope === "workspace" ? { workspaceId } : {}),
@@ -96,6 +102,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
 
   const verdict = classifyForIngestion({
     content: input.content,
+    eventKind: input.eventKind,
     speaker: input.speaker,
     source: input.source,
     projectId,
@@ -107,7 +114,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
 
   let memoryId: string | null = null;
   if (accepted && verdict.lane) {
-    const memory = await db.memory.create({
+    const memory = await store.memory.create({
       data: {
         type: memoryTypeForLane(verdict.lane),
         scope,
@@ -138,7 +145,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
     memoryId = memory.id;
   }
 
-  const decision = await db.memoryIngestionDecision.create({
+  const decision = await store.memoryIngestionDecision.create({
     data: {
       decision: verdict.decision,
       lane: verdict.lane,

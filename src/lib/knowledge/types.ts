@@ -2,6 +2,7 @@
 // No imports from sibling files.
 
 export type KnowledgeObjectType =
+  | "Service" | "Incident" | "Alert" | "Team" | "Action" | "Resolution" | "Deployment" | "InfrastructureResource"
   | "Note"
   | "Memory"
   | "Project"
@@ -42,6 +43,9 @@ export type KnowledgeObjectType =
   | "AdversarialRun";
 
 export type KnowledgeEdgeType =
+  | "SERVICE_AFFECTED_BY_INCIDENT" | "INCIDENT_TRIGGERED_ALERT"
+  | "RESPONDER_HANDLED_INCIDENT" | "ACTION_RESOLVED_INCIDENT" | "TEAM_OWNS_SERVICE"
+  | "INCIDENT_SIMILAR_TO_INCIDENT" | "SERVICE_CORRELATED_WITH_SERVICE"
   | "references"
   | "belongs_to"
   | "created_by"

@@ -1,5 +1,6 @@
 "use client";
 
+import { OperationalLenses, type OperationalView } from "@/modules/graph/components/OperationalLenses";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
@@ -99,6 +100,7 @@ function buildDemoTraces(graph: LensGraph): RecentTrace[] {
 }
 
 const EMPTY_HIGHLIGHT_TITLES: string[] = [];
+const EMPTY_LENS_GRAPH: LensGraph = { nodes: [], links: [], meta: { demo: false, nodeCount: 0, edgeCount: 0 } };
 
 export function NeuralLens({
   projectId,
@@ -112,6 +114,8 @@ export function NeuralLens({
   /** Additive collaboration focus: these agent/task/file labels stay lit. */
   highlightTitles?: string[];
 } = {}) {
+  const [operational, setOperational] = useState<OperationalView | null>(null);
+  const operationalGraph = useMemo(() => operational ? buildLensGraphFromApi(operational) : null, [operational]);
   const [demoMode, setDemoMode] = useState(initialDemoMode);
   const [demoGraph] = useState<LensGraph>(() => generateDemoGraph());
   const [scopedGraph, setScopedGraph] = useState<LensGraph | null>(null);
@@ -129,6 +133,16 @@ export function NeuralLens({
   const setAvailableTypes = useGraphStore((state) => state.setAvailableTypes);
   const lensClusterId = useGraphStore((state) => state.lensClusterId);
   const setLensCluster = useGraphStore((state) => state.setLensCluster);
+  const operationalModeRef = useRef(false);
+  const priorLensRef = useRef<ClusterId | null>(null);
+  const updateOperational = useCallback((graph: OperationalView | null) => {
+    if (graph && !operationalModeRef.current) {
+      priorLensRef.current = useGraphStore.getState().lensClusterId;
+      setLensCluster(null);
+    } else if (!graph && operationalModeRef.current) setLensCluster(priorLensRef.current);
+    operationalModeRef.current = graph !== null;
+    setOperational(graph);
+  }, [setLensCluster]);
   const lensOnly = useGraphStore((state) => state.lensOnly);
   const setLensOnly = useGraphStore((state) => state.setLensOnly);
   const zoomLevel = useGraphStore((state) => state.zoomLevel);
@@ -231,11 +245,11 @@ export function NeuralLens({
     };
   }, [demoMode, scopedGraph, projectId]);
 
-  const baseGraph = isHistorical
-    ? historicalGraph ?? scopedGraph ?? demoGraph
+  const baseGraph = operationalGraph ?? (isHistorical
+    ? historicalGraph ?? scopedGraph ?? EMPTY_LENS_GRAPH
     : demoMode
       ? demoGraph
-      : scopedGraph ?? demoGraph;
+      : scopedGraph ?? EMPTY_LENS_GRAPH);
 
   useEffect(() => {
     if (!demoMode) return;
@@ -442,8 +456,8 @@ export function NeuralLens({
   }, [selected, baseGraph.nodes, baseGraph.links]);
 
   const liveExecutionPath = useMemo(
-    () => buildActivityPath(filteredGraph, litNodeIds, demoMode),
-    [filteredGraph, litNodeIds, demoMode],
+    () => buildActivityPath(filteredGraph, litNodeIds, demoMode && !operational),
+    [filteredGraph, litNodeIds, demoMode, operational],
   );
   const executionPath = useMemo<ExecutionPath | null>(() => {
     if (!activeTrace) return liveExecutionPath;
@@ -456,6 +470,7 @@ export function NeuralLens({
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#01040a]">
+      <OperationalLenses onGraph={updateOperational} selectedId={selected?.id} projectId={projectId} className="absolute bottom-20 left-1/2 -translate-x-1/2" />
       <NeuralLensGraph
         graph={filteredGraph}
         activeNodeIds={litNodeIds}
@@ -499,11 +514,11 @@ export function NeuralLens({
         typeChips={typeChips}
         activeTypes={activeTypes}
         onToggleType={toggleGraphType}
-        demoMode={demoMode}
+        demoMode={operational ? false : demoMode}
         onToggleDemoMode={setDemoMode}
         layerCounts={layerCounts}
         timelineOpen={timelineOpen}
-        onToggleTimeline={() => setTimelineOpen((open) => !open)}
+        onToggleTimeline={() => { if (!operational) setTimelineOpen((open) => !open); }}
         followLive={followLive}
         onFollowLiveChange={setFollowLive}
       />
@@ -528,21 +543,21 @@ export function NeuralLens({
         onZoomOut={() => graphApi.current?.zoomBy(1.38)}
         onResetView={() => requestFit()}
         onFrameSelection={() => selected && graphApi.current?.focusNode(selected.id)}
-        asOf={isHistorical ? timestampForRange(timeRange) : null}
-        demoMode={demoMode}
+        asOf={isHistorical && !operational ? timestampForRange(timeRange) : null}
+        demoMode={operational ? false : demoMode}
       />
 
       <TimelineScrubber
-        open={timelineOpen}
+        open={timelineOpen && !operational}
         range={timeRange}
         onRangeChange={setTimeRange}
         onClose={() => {
           setTimelineOpen(false);
           setTimeRange("Now");
         }}
-        demoMode={demoMode}
+        demoMode={operational ? false : demoMode}
         loading={historicalLoading}
-        asOf={isHistorical ? timestampForRange(timeRange) : null}
+        asOf={isHistorical && !operational ? timestampForRange(timeRange) : null}
       />
 
       {/* Interaction hints — the globe's controls aren't discoverable without

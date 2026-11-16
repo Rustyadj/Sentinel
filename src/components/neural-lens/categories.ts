@@ -96,6 +96,7 @@ export const CLUSTER_LAYER_ORDER: ClusterId[] = [
 ];
 
 export type NodeCategory =
+  | "Service" | "Incident" | "Alert" | "Team" | "Person" | "Action" | "Resolution" | "Deployment" | "InfrastructureResource" | "Failure"
   | "Workspace"
   | "Project"
   | "Conversation"
@@ -130,6 +131,8 @@ export type NodeCategory =
 /** Every category's home cluster. Hub-eligible categories (org/workspace-ish
  * anchors) are called out separately in HUB_CATEGORIES below. */
 export const CATEGORY_CLUSTER: Record<NodeCategory, ClusterId> = {
+  Service: "Infrastructure", Incident: "Knowledge", Alert: "Cybersecurity", Team: "Organization", Person: "Organization",
+  Action: "Learning", Resolution: "Knowledge", Deployment: "Infrastructure", InfrastructureResource: "Infrastructure", Failure: "Learning",
   Conversation: "Chat",
   Message: "Chat",
 

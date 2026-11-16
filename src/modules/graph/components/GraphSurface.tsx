@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/shell/primitives";
 import { useShellStore } from "@/store/useShellStore";
 import type { SemanticCluster, TimeWindowId } from "@/lib/graph/semantics";
 import type { KnowledgeNode } from "@/lib/knowledge/types";
+import { OperationalLenses, type OperationalView } from "./OperationalLenses";
 import { GraphCanvas } from "./GraphCanvas";
 import { GraphControls, typesForClusters } from "./GraphControls";
 import { GraphNodeInspector } from "./GraphNodeInspector";
@@ -33,7 +34,9 @@ export function GraphSurface() {
     limit: 120,
   }), [focusId, clusters, timeWindow]);
 
-  const { graph, loading, error, expand } = useGraphData(query);
+  const { graph: globalGraph, loading, error, expand } = useGraphData(query);
+  const [operational, setOperational] = useState<OperationalView | null>(null);
+  const graph = operational ?? globalGraph;
 
   const focusOn = useCallback((nodeId: string, label: string, type: KnowledgeNode["type"]) => {
     setHistory((current) => (focusId && focusId !== nodeId ? [...current, focusId] : current));
@@ -86,6 +89,7 @@ export function GraphSurface() {
   return (
     <AppShell header={header} inspector={inspectorBody}>
       <div className="relative h-full w-full">
+        <OperationalLenses onGraph={setOperational} selectedId={inspector?.id} className="absolute bottom-4 left-4" />
         <GraphControls
           activeClusters={clusters}
           onClustersChange={setClusters}
@@ -97,7 +101,7 @@ export function GraphSurface() {
           loading={loading}
         />
 
-        {error ? (
+        {error && !operational ? (
           <EmptyState title="The graph could not be loaded" hint={error} />
         ) : !loading && graph.nodes.length === 0 ? (
           <EmptyState
@@ -112,7 +116,7 @@ export function GraphSurface() {
             focusId={focusId}
             selectedId={inspector?.id ?? null}
             onSelect={onSelect}
-            onExpand={expand}
+            onExpand={operational ? () => {} : expand}
           />
         )}
       </div>

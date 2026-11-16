@@ -11,6 +11,7 @@ interface ApiNode {
   type: string;
   title: string;
   workspaceId?: string | null;
+  metadata?: Record<string, unknown>;
 }
 interface ApiEdge {
   fromObjectId: string;
@@ -101,8 +102,9 @@ export function buildLensGraphFromApi(api: { nodes: ApiNode[]; edges: ApiEdge[] 
     const isHub = hubIds.has(n.id);
     return {
       id: n.id,
-      label: n.title,
+      label: n.metadata?.impact ? `${n.title} · ${(n.metadata.impact as { status: string }).status} impact` : n.title,
       type: n.type,
+      operationalImpact: (n.metadata?.impact as { status?: LensNode["operationalImpact"] } | undefined)?.status,
       hubId: hubOf.get(n.id)!,
       clusterId: clusterOfNode.get(n.id)! as LensNode["clusterId"],
       x: pos.x,

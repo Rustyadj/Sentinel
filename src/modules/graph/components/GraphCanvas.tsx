@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
+import { GRAPH_COLORS } from "@/lib/graph/theme";
 import { clusterColor, clusterOf, edgeWidth, nodeRadius, recencyIntensity } from "@/lib/graph/semantics";
 import type { ScopedGraph, ScopedNode } from "./useGraphData";
 
@@ -83,8 +84,8 @@ export function GraphCanvas({ graph, focusId, selectedId, onSelect, onExpand }: 
   const data = useMemo(() => {
     const nodes: CanvasNode[] = graph.nodes.map((node) => ({
       id: node.id,
-      label: node.title,
-      color: clusterColor(clusterOf(node.type)),
+      label: node.metadata.impact ? `${node.title} · ${(node.metadata.impact as { status: string }).status} impact` : node.title,
+      color: (node.metadata.impact as { status?: string } | undefined)?.status === "confirmed" ? GRAPH_COLORS.red : (node.metadata.impact as { status?: string } | undefined)?.status === "predicted" ? GRAPH_COLORS.amber : clusterColor(clusterOf(node.type)),
       radius: nodeRadius(node.degree, node.id === focusId),
       glow: recencyIntensity(node.createdAt),
       degree: node.degree,

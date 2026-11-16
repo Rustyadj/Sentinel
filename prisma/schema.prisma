@@ -1055,6 +1055,7 @@ model KnowledgeObject {
   @@index([projectId])
   @@index([userId])
   @@index([validTo])
+  @@index([workspaceId, type, validTo])
   @@map("knowledge_objects")
 }
 
@@ -1864,6 +1865,7 @@ model KnowledgeEvent {
 
   @@index([userId, createdAt])
   @@index([projectId, createdAt])
+  @@index([workspaceId, type, createdAt])
   @@map("knowledge_events")
 }
 

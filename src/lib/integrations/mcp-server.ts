@@ -1,3 +1,5 @@
+import { retrieveIncidentHistory } from "@/lib/knowledge/operational-retrieval";
+import { operationalGraph } from "@/lib/knowledge/operational-graph";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -142,9 +144,12 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
 
   server.registerTool("sentinel.memory_search", {
     title: "Search Sentinel memory",
-    description: "Search only memory the authenticated Sentinel user may read. Use for prior decisions or project memory.",
+    description: "Search only memory the authenticated Sentinel user may read. Use for prior decisions or project memory. Set operational and workspaceId for incident history, dependencies, blast radius, team or alert evidence. This tool is read-only.",
     inputSchema: z.object({
       query: z.string().min(1).max(200),
+      operational: z.enum(["history", "dependency", "blast-radius", "team", "alert", "onboarding"]).optional(),
+      serviceId: z.string().max(200).optional(),
+      latest: z.boolean().optional(),
       limit: z.number().int().min(1).max(20).optional(),
       projectHint: z.string().max(120).optional(),
       projectId: z.string().max(100).optional(),
@@ -152,7 +157,7 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
       contextTaskId: z.string().max(100).optional(),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ query, limit = 10, projectHint, projectId, workspaceId, contextTaskId }) => {
+  }, async ({ query, limit = 10, projectHint, projectId, workspaceId, contextTaskId, operational, serviceId, latest }) => {
     requireScope(principal, "sentinel.memory.read");
     // Narrowing to a project is optional. Without one this searches everything
     // the user may read, which is the common case and must not be blocked.
@@ -171,6 +176,13 @@ export function createSentinelMcpServer(principal: McpPrincipal): McpServer {
         );
       }
       scope = resolved.scope;
+    }
+    if (operational) {
+      if (!scope.workspaceId) throw new Error("Operational queries require an explicit permitted workspaceId or project with a workspace.");
+      const result = operational === "history"
+        ? await retrieveIncidentHistory({ userId: principal.userId, workspaceId: scope.workspaceId, query, maxItems: limit }, { serviceId, latest })
+        : await operationalGraph(principal.userId, scope.workspaceId, operational, serviceId);
+      return toolResult({ scope, ...result }, JSON.stringify(result));
     }
     const access = await memoryReadWhere(principal.userId);
     const workspaceProjects = scope.workspaceId && !scope.projectId

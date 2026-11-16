@@ -30,6 +30,9 @@ const BLUE_TYPES = new Set(["Project", "Organization", "Workspace", "Conversatio
 const PURPLE_TYPES = new Set(["Agent", "Memory", "Message", "Module"]);
 
 export function nodeColor(node: Pick<KnowledgeNode, "type" | "metadata">): string {
+  const impact = node.metadata.impact as { status?: string } | undefined;
+  if (impact?.status === "confirmed") return GRAPH_COLORS.red;
+  if (impact?.status === "predicted") return GRAPH_COLORS.amber;
   const meta = node.metadata as { status?: string; alert?: boolean; accent?: string } | undefined;
 
   if (meta?.accent) return meta.accent;

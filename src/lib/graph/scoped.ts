@@ -1,3 +1,5 @@
+import { readableWorkspaceIds } from "@/lib/knowledge/memory-scope";
+import { filterOperationalNodes, filterOperationalEdges } from "@/lib/knowledge/operational-graph";
 import { db } from "@/lib/db";
 import { toKnowledgeNode } from "@/lib/knowledge/objects";
 import { getReadableProjectIds } from "@/lib/knowledge/access";
@@ -52,13 +54,14 @@ function toKnowledgeEdge(record: {
 }
 
 async function accessScope(userId: string, projectId?: string) {
-  const readableProjectIds = await getReadableProjectIds(userId);
+  const [readableProjectIds, workspaceIds] = await Promise.all([getReadableProjectIds(userId), readableWorkspaceIds(userId)]);
   if (projectId && !readableProjectIds.includes(projectId)) {
     throw new Error("Project not found");
   }
   return {
     OR: [
       { userId },
+      { scope: "workspace", workspaceId: { in: workspaceIds }, sourceType: { startsWith: "operational:" } },
       ...(readableProjectIds.length ? [{ projectId: { in: readableProjectIds } }] : []),
     ],
     ...(projectId ? { projectId } : {}),
@@ -124,7 +127,7 @@ export async function getScopedGraph(request: ScopedGraphRequest): Promise<Scope
 
   // The candidate pool is itself bounded: a focused view still only considers
   // objects the caller can read, never the whole table.
-  const pool = await readableObjects(where, request, Math.min(MAX_SCOPE_LIMIT * 4, 1200));
+  const pool = await filterOperationalNodes(request.userId, await readableObjects(where, request, Math.min(MAX_SCOPE_LIMIT * 4, 1200)));
   const poolById = new Map(pool.map((record) => [record.id, record]));
   const allowedIds = new Set(poolById.keys());
 
@@ -156,6 +159,7 @@ export async function getScopedGraph(request: ScopedGraphRequest): Promise<Scope
   // Degree is computed over the returned subgraph, and the count of edges that
   // point outside it is reported separately so the UI can show "more to expand"
   // instead of implying a node is a leaf.
+  edges = await filterOperationalEdges(request.userId, edges);
   const degree = new Map<string, number>();
   for (const edge of edges) {
     degree.set(edge.fromObjectId, (degree.get(edge.fromObjectId) ?? 0) + 1);
@@ -206,14 +210,14 @@ export async function searchGraphNodes(userId: string, query: string, limit = 20
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(limit, 1), 50),
   });
-  return records.map(toKnowledgeNode);
+  return (await filterOperationalNodes(userId, records)).map(toKnowledgeNode);
 }
 
 /** Everything the inspector shows for one node — real relations only. */
 export async function getNodeDetail(userId: string, nodeId: string) {
   const where = await accessScope(userId);
   const record = await db.knowledgeObject.findFirst({ where: { AND: [where, { id: nodeId }] } });
-  if (!record) throw new Error("Node not found");
+  if (!record || !(await filterOperationalNodes(userId, [record])).length) throw new Error("Node not found");
 
   const edges = await db.knowledgeEdge.findMany({
     where: { OR: [{ fromObjectId: nodeId }, { toObjectId: nodeId }] },
@@ -224,11 +228,11 @@ export async function getNodeDetail(userId: string, nodeId: string) {
   const neighbours = neighbourIds.length
     ? await db.knowledgeObject.findMany({ where: { AND: [where, { id: { in: neighbourIds } }] } })
     : [];
-  const neighbourById = new Map(neighbours.map((neighbour) => [neighbour.id, toKnowledgeNode(neighbour)]));
+  const neighbourById = new Map((await filterOperationalNodes(userId, neighbours)).map((neighbour) => [neighbour.id, toKnowledgeNode(neighbour)]));
 
   return {
     node: toKnowledgeNode(record),
-    connections: edges
+    connections: (await filterOperationalEdges(userId, edges))
       .map((edge) => {
         const otherId = edge.fromObjectId === nodeId ? edge.toObjectId : edge.fromObjectId;
         const other = neighbourById.get(otherId);
