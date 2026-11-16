@@ -285,7 +285,15 @@ describe("end to end, against a real A2A server", () => {
     expect((await post({ content: "hello", toAgentId: "a2a-0000000000000000" })).status).toBe(404);
     expect(await roomMessages()).toEqual([]);
 
+    // A paused room asks no agent, and says so rather than recording the message as if it had.
+    await db.chatRoom.update({ where: { id: roomId }, data: { paused: true } });
     received.length = 0;
+    expect((await post({ content: "Any risks?", toAgentId: agent.agentId })).status).toBe(409);
+    expect((await post({ content: "A note for people", })).status).toBe(201);
+    await db.chatRoom.update({ where: { id: roomId }, data: { paused: false } });
+    expect(received).toEqual([]);
+    await db.message.deleteMany({ where: { chatRoomId: roomId } });
+
     expect((await post({ content: "Any risks?", toAgentId: agent.agentId })).status).toBe(201);
     await vi.waitFor(async () => expect((await roomMessages()).some((m) => m.agentId === agent.agentId)).toBe(true), { timeout: 10_000 });
     expect(received.map((r) => r.text)).toEqual(["Any risks?"]);

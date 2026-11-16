@@ -42,7 +42,7 @@ export function ChatSurface() {
   // the people in it ("people"), or to an agent someone brought (its id).
   const [audience, setAudience] = useState<string>("agent");
   // The outside agent last asked, until its answer (or a notice that it did not answer) arrives.
-  const [awaiting, setAwaiting] = useState<{ agentId: string; name: string; roomId: string; after: number } | null>(null);
+  const [awaiting, setAwaiting] = useState<{ agentId: string; name: string; roomId: string; seen: ReadonlySet<string> } | null>(null);
   const me = useMe();
 
   const {
@@ -134,12 +134,13 @@ export function ChatSurface() {
   const toPeople = !outsideTarget && (!canAsk || (inProject && audience === "people"));
   const send = () => {
     if (outsideTarget && activeRoomId) {
-      setAwaiting({ agentId: outsideTarget.agentId, name: outsideTarget.name, roomId: activeRoomId, after: messages.length });
+      setAwaiting({ agentId: outsideTarget.agentId, name: outsideTarget.name, roomId: activeRoomId, seen: new Set(messages.map((m) => m.id)) });
       void handleSendNote(outsideTarget.agentId);
     } else void (toPeople ? handleSendNote() : handleSend());
   };
-  // Waiting ends when anything other than a person's message lands after the question: the answer, or a notice.
-  const awaitingName = awaiting && awaiting.roomId === activeRoomId && !messages.slice(awaiting.after).some((m) => m.role !== "user") ? awaiting.name : null;
+  // Waiting ends when anything other than a person's message arrives that was not there when the question
+  // was asked: the answer, or a notice. Told apart by id, since the transcript is a window that moves.
+  const awaitingName = awaiting && awaiting.roomId === activeRoomId && !messages.some((m) => m.role !== "user" && !awaiting.seen.has(m.id)) ? awaiting.name : null;
   const audienceOptions: Array<[string, string]> = [
     ...(canAsk ? [["agent", activeAgent ? `Ask ${activeAgent.name}` : "Ask an agent"] as [string, string]] : []),
     ["people", "Tell the room"],

@@ -20,6 +20,12 @@ beforeAll(async () => {
     if (req.url === "/html") { res.writeHead(200, { "content-type": "text/html" }); return res.end("<html>"); }
     if (req.url === "/huge") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ blob: "x".repeat(50_000) })); }
     if (req.url === "/slow") return; // never answers
+    if (req.url === "/drip") { // answers forever, a little at a time
+      res.writeHead(200, { "content-type": "application/json" });
+      const drip = setInterval(() => res.write(" "), 20);
+      res.on("close", () => clearInterval(drip));
+      return;
+    }
     let body = "";
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
@@ -60,5 +66,11 @@ describe("requestOutsideJson", () => {
     it("reports a non-JSON answer", async () => { allow(); expect(await failure("/html")).toBe("bad_response"); });
     it("stops reading past the size cap", async () => { allow(); expect(await failure("/huge", { maxBytes: 1_000 })).toBe("too_large"); });
     it("gives up on a server that does not answer", async () => { allow(); expect(await failure("/slow", { timeoutMs: 100 })).toBe("timed_out"); });
+    it("gives up at the deadline on a server that keeps trickling data", async () => {
+      allow();
+      const started = Date.now();
+      expect(await failure("/drip", { timeoutMs: 100 })).toBe("timed_out");
+      expect(Date.now() - started).toBeLessThan(1_000);
+    });
   });
 });

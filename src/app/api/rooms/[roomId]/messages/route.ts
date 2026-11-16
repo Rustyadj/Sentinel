@@ -109,6 +109,12 @@ async function handlePost(request: NextRequest, { params }: Params): Promise<Res
       return NextResponse.json({ error: "That agent is not connected to this project." }, { status: 404 });
     }
 
+    // A paused room takes no new work for any agent, whoever runs it. Refused
+    // rather than quietly recorded, so the person knows it was not asked.
+    if (toAgentId && room.paused) {
+      return NextResponse.json({ error: "This room is paused, so agents are not being asked. Tell the room instead, or resume it." }, { status: 409 });
+    }
+
     const message = await db.message.create({
       data: { chatRoomId: roomId, role: "user", content, authorUserId: user.id },
       select: { id: true, role: true, agentId: true, content: true, createdAt: true, authorUserId: true },
