@@ -337,7 +337,7 @@ export function ChatSurface() {
         </section>
 
         {focusChat ? null : (
-          <div className="order-1 flex h-[210px] shrink-0 border-b border-(--border) lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1 lg:border-b-0">
+          <div className="watch-ground order-1 flex h-[210px] shrink-0 border-b border-(--border) lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1 lg:border-b-0">
             <div className="relative min-w-0 flex-1">
               <WatchStage
                 model={orrery.model}

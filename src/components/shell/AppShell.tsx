@@ -2,7 +2,7 @@
 
 import { CommandPalette } from "./CommandPalette";
 import { ContextInspector } from "./ContextInspector";
-import { MobileNav, NavRail } from "./NavRail";
+import { MobileNav } from "./NavRail";
 import { TopBar } from "./TopBar";
 import { useShellShortcuts } from "./useShellShortcuts";
 
@@ -24,7 +24,6 @@ export function AppShell({ header, title, inspector, children }: {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-(--background) text-(--foreground)">
-      <NavRail />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar left={header} title={title} />
         <div className="flex min-h-0 flex-1 overflow-hidden">

@@ -3,7 +3,7 @@
 import { ModuleTabs } from "./ModuleTabs";
 import { RightPanel } from "./RightPanel";
 import { CommandPalette } from "@/components/shell/CommandPalette";
-import { MobileNav, NavRail } from "@/components/shell/NavRail";
+import { MobileNav } from "@/components/shell/NavRail";
 import { TopBar } from "@/components/shell/TopBar";
 import { useShellShortcuts } from "@/components/shell/useShellShortcuts";
 import { useAppStore } from "@/store/useAppStore";
@@ -25,7 +25,6 @@ export function AppShell({ children, rightPanel = true }: AppShellProps) {
 
   return (
     <div className="sentinel-app-shell flex h-full w-full overflow-hidden bg-(--background) text-(--foreground)">
-      <NavRail />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar left={<ModuleTabs rightPanel={rightPanel} />} />
         <div className="flex min-h-0 flex-1 overflow-hidden">

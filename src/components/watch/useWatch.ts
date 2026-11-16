@@ -59,13 +59,13 @@ export function useWatch(agents: Agent[], local?: { workingAgentId: string | nul
 
   const stageAgents: StageAgent[] = useMemo(() => agents.map((a) => {
     const working = isWorking(a.id);
-    return { id: a.id, name: a.name, color: a.color, working, nodeId: activityState.get(a.id)?.nodeId ?? null, caption: working ? captionOf(a.id) : undefined };
+    return { id: a.id, name: a.name, color: deepenForPaper(a.color), working, nodeId: activityState.get(a.id)?.nodeId ?? null, caption: working ? captionOf(a.id) : undefined };
   }), [agents, isWorking, activityState, captionOf]);
 
   const panelAgents: PanelAgent[] = useMemo(() => agents.map((a) => {
     const working = isWorking(a.id);
     return {
-      id: a.id, name: a.name, color: a.color, model: a.model,
+      id: a.id, name: a.name, color: deepenForPaper(a.color), model: a.model,
       state: working ? "working" : a.status === "offline" ? "offline" : "idle",
       detail: working ? captionOf(a.id) : a.role,
       voice: (CANONICAL_VOICE_AGENT_IDS as readonly string[]).includes(a.id),
@@ -79,4 +79,17 @@ export function useWatch(agents: Agent[], local?: { workingAgentId: string | nul
       : null;
 
   return { orrery, handleRef, activityState, stageAgents, panelAgents, graphMessage };
+}
+
+/**
+ * Agent colours are chosen by people and were picked against a dark ground,
+ * so most are pastel. On Mist's paper they would wash out, so the watch draws
+ * each one mixed 40% toward the ink: still that agent's hue, now legible.
+ */
+export function deepenForPaper(color: string | undefined): string {
+  const hex = /^#?([0-9a-f]{6})$/i.exec(color ?? "")?.[1];
+  if (!hex) return color ?? "var(--entity-agent)";
+  const ink = [0x1a, 0x23, 0x21];
+  const mixed = [0, 2, 4].map((at, i) => Math.round(parseInt(hex.slice(at, at + 2), 16) * 0.6 + ink[i] * 0.4));
+  return `#${mixed.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }

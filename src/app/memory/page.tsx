@@ -56,7 +56,7 @@ export default function MemoryPage() {
   }, []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-(--canvas)">
+    <div className="theme-night relative h-full w-full overflow-hidden bg-(--canvas)">
       <div className="absolute inset-0">
         <NeuralLens />
       </div>

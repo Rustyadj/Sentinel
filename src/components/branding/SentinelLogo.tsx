@@ -13,10 +13,10 @@ interface SentinelLogoProps {
 function Mark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" aria-hidden className={cn("h-full w-auto shrink-0", className)}>
-      <rect width="32" height="32" rx="9" fill="var(--card)" stroke="var(--border-strong)" />
-      <path d="M11 20.5 27 7.5v13.5Z" fill="var(--primary)" opacity="0.3" />
-      <path d="M11 20.5 27 7.5" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="11" cy="20.5" r="4.6" fill="var(--primary)" />
+      <rect width="32" height="32" rx="9" fill="var(--primary)" />
+      <path d="M11 20.5 27 7.5v13.5Z" fill="var(--on-fill)" opacity="0.22" />
+      <path d="M11 20.5 27 7.5" stroke="var(--on-fill)" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="11" cy="20.5" r="4.6" fill="var(--on-fill)" />
     </svg>
   );
 }

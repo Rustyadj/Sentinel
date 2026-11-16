@@ -455,7 +455,7 @@ export function NeuralLens({
   }, [activeTrace, traceStepIndex, liveExecutionPath]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#01040a]">
+    <div className="theme-night relative h-full w-full overflow-hidden bg-[#01040a]">
       <NeuralLensGraph
         graph={filteredGraph}
         activeNodeIds={litNodeIds}
