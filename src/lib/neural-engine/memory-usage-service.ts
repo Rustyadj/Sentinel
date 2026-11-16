@@ -14,6 +14,7 @@
 import { db } from "@/lib/db";
 import { provenanceTrustFor } from "./memory-provenance";
 import type { InjectedMemoryRecord } from "./context-assembly";
+import { memoryWriter } from "./memory-write";
 
 export interface RecordRetrievalInput {
   /** Every memory the retrieval surfaced, injected or not. */
@@ -66,7 +67,7 @@ export async function recordMemoryRetrieval(input: RecordRetrievalInput): Promis
           };
         }),
       }),
-      db.memory.updateMany({
+      memoryWriter("usage").updateMany({
         where: { id: { in: memoryIds } },
         data: { lastRetrievedAt: new Date(), retrievalCount: { increment: 1 } },
       }),
@@ -93,7 +94,7 @@ export async function syncProvenanceTrust(limit = 500): Promise<number> {
 
   let updated = 0;
   for (const memory of memories) {
-    await db.memory.update({
+    await memoryWriter("usage").update({
       where: { id: memory.id },
       data: { provenanceTrust: provenanceTrustFor(memory.provenanceClass) },
     });

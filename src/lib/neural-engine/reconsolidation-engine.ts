@@ -24,6 +24,7 @@ import {
   type ContradictionAssessment,
 } from "./contradiction-detection";
 import { recordMemoryContradiction } from "@/lib/learning/memory-governance";
+import { memoryWriter } from "./memory-write";
 
 export type ReconsolidationMode = "shadow" | "apply";
 
@@ -108,7 +109,7 @@ async function applySupersession(
   cause: ComparableMemory,
   assessment: ContradictionAssessment,
 ): Promise<void> {
-  await db.memory.update({
+  await memoryWriter("reconsolidation").update({
     where: { id: subject.id },
     data: {
       validTo: cause.validFrom,
@@ -178,7 +179,7 @@ export async function reconsolidateMemory(
         // Confirmation, not content change: the duplicate is left in place and
         // the original's confirmation count rises. Deleting the duplicate
         // would discard an independently-sourced observation.
-        await db.memory.update({
+        await memoryWriter("reconsolidation").update({
           where: { id: candidate.id },
           data: { confirmationCount: { increment: 1 }, lastValidatedAt: new Date() },
         }).catch(() => null);

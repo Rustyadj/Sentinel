@@ -19,6 +19,7 @@
 import { db } from "@/lib/db";
 import { recordMemoryUsed, recordMemoryContradiction } from "@/lib/learning/memory-governance";
 import { isDerived } from "./memory-provenance";
+import { memoryWriter } from "./memory-write";
 
 export interface ResolveOutcomeInput {
   experienceId: string;
@@ -126,7 +127,7 @@ export async function resolveRetrievalOutcomes(input: ResolveOutcomeInput): Prom
       // A failed task does not make a memory *wrong*, so this is not a
       // contradiction. It is evidence the memory did not help, tracked
       // separately so genuine contradictions keep their own meaning.
-      await db.memory.update({
+      await memoryWriter("reconsolidation").update({
         where: { id: retrieval.memoryId },
         data: { disconfirmationCount: { increment: 1 } },
       }).catch(() => null);

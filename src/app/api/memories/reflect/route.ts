@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/current-user";
+import { updateUserMemories, updateUserMemory } from "@/lib/neural-engine/memory-write";
 
 export async function POST() {
   try {
@@ -20,20 +21,22 @@ export async function POST() {
       const existingId = seen.get(normalized);
       if (existingId) {
         duplicatesFound.push(mem.id);
-        await db.memory.update({
-          where: { id: mem.id },
-          data: { archived: true, tags: [...mem.tags, "duplicate"] },
-        });
+        // Owned rows only (the query above), and still authorised per row:
+        // a project-scoped row needs project.update, not just ownership.
+        const archived = await updateUserMemory(user.id, mem.id, { archived: true, tags: [...mem.tags, "duplicate"] }, { id: true })
+          .catch(() => null);
+        if (!archived) duplicatesFound.pop();
       } else {
         seen.set(normalized, mem.id);
       }
     }
 
     // Boost importance of pinned memories
-    await db.memory.updateMany({
+    const pinned = await db.memory.findMany({
       where: { owner: user.id, pinned: true, archived: false },
-      data: { importanceScore: 0.95 },
+      select: { id: true },
     });
+    await updateUserMemories(user.id, pinned.map((m) => m.id), { importanceScore: 0.95 });
 
     // Decay old low-confidence memories
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -42,10 +45,8 @@ export async function POST() {
       select: { id: true, confidence: true },
     });
     for (const m of old) {
-      await db.memory.update({
-        where: { id: m.id },
-        data: { importanceScore: Math.max(0.1, m.confidence * 0.8) },
-      });
+      await updateUserMemory(user.id, m.id, { importanceScore: Math.max(0.1, m.confidence * 0.8) }, { id: true })
+        .catch(() => null);
     }
 
     return NextResponse.json({

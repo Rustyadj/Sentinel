@@ -16,6 +16,7 @@
 import { db } from "@/lib/db";
 import { coarseDomain } from "./evaluation-service";
 import { provenanceTrustFor } from "./memory-provenance";
+import { memoryWriter } from "./memory-write";
 
 /** Minimum independent episodes before a pattern may be generalized at all. */
 export const MIN_EPISODES_FOR_GENERALIZATION = 3;
@@ -90,12 +91,25 @@ export function predictionError({ priorSuccessRate, observedScore }: SurpriseInp
 export interface ConsolidationCandidate {
   experienceId: string;
   agentId: string;
+  /** The tenant the episode happened in. Episodes from different workspaces never share a generalization. */
+  workspaceId?: string | null;
   domain: string;
   objective: string;
   succeeded: boolean;
   observedScore: number;
   predictionError: number;
   priority: number;
+}
+
+export type ConsolidationMode = "shadow" | "active";
+
+/**
+ * The deployment's consolidation mode. Shadow unless explicitly set to
+ * "active"; anything unrecognised is shadow, so a typo cannot publish
+ * generated beliefs.
+ */
+export function consolidationMode(env: Record<string, string | undefined> = process.env): ConsolidationMode {
+  return env.SENTINEL_CONSOLIDATION_MODE?.trim().toLowerCase() === "active" ? "active" : "shadow";
 }
 
 /**
@@ -130,7 +144,7 @@ export async function selectConsolidationCandidates(
     },
     orderBy: { completedAt: "desc" },
     take: Math.min(Math.max(limit, 1), 1000),
-    select: { id: true, agentId: true, objective: true, evaluatorScore: true, outcomeStatus: true },
+    select: { id: true, agentId: true, workspaceId: true, objective: true, evaluatorScore: true, outcomeStatus: true },
   });
   if (!experiences.length) return [];
 
@@ -147,6 +161,7 @@ export async function selectConsolidationCandidates(
     const base = {
       experienceId: experience.id,
       agentId: experience.agentId,
+      workspaceId: experience.workspaceId ?? null,
       domain: competencyDomain,
       objective: experience.objective,
       succeeded: observedScore >= 0.5,
@@ -161,6 +176,7 @@ export async function selectConsolidationCandidates(
 
 export interface EpisodeCluster {
   agentId: string;
+  workspaceId: string | null;
   domain: string;
   succeeded: boolean;
   experienceIds: string[];
@@ -180,7 +196,10 @@ export interface EpisodeCluster {
 export function clusterEpisodes(candidates: ConsolidationCandidate[]): EpisodeCluster[] {
   const byAgentDirection = new Map<string, ConsolidationCandidate[]>();
   for (const candidate of candidates) {
-    const key = `${candidate.agentId}::${candidate.succeeded ? "success" : "failure"}`;
+    // Partitioned by tenant as well as agent. An agent serves many workspaces;
+    // pooling their episodes would make one workspace's work evidence for a
+    // belief stored and later read in another.
+    const key = `${candidate.agentId}::${candidate.workspaceId ?? ""}::${candidate.succeeded ? "success" : "failure"}`;
     byAgentDirection.set(key, [...(byAgentDirection.get(key) ?? []), candidate]);
   }
 
@@ -210,6 +229,7 @@ export function clusterEpisodes(candidates: ConsolidationCandidate[]): EpisodeCl
       const bucketTokens = new Set(bucket.flatMap((entry) => [...entry.tokens]));
       clusters.push({
         agentId: bucketMembers[0].agentId,
+        workspaceId: bucketMembers[0].workspaceId ?? null,
         domain: [...bucketTokens].sort().slice(0, 4).join("-") || "general",
         succeeded: bucketMembers[0].succeeded,
         experienceIds,
@@ -252,7 +272,7 @@ export interface ConsolidationCycleResult {
  * duplicated.
  */
 export async function runConsolidationCycle(
-  options: { limit?: number; mode?: "shadow" | "active"; agentId?: string } = {},
+  options: { limit?: number; mode?: ConsolidationMode; agentId?: string } = {},
 ): Promise<ConsolidationCycleResult> {
   const mode = options.mode ?? "shadow";
   const run = await db.consolidationRun.create({ data: { mode } });
@@ -276,7 +296,7 @@ export async function runConsolidationCycle(
     const siblings = await db.memory.findMany({
       where: {
         provenanceClass: "GENERALIZED", type: "agent_capability",
-        owner: cluster.agentId, tags: { has: direction }, validTo: null,
+        owner: cluster.agentId, workspaceId: cluster.workspaceId, tags: { has: direction }, validTo: null,
       },
     });
     const existing = siblings.find(
@@ -285,7 +305,7 @@ export async function runConsolidationCycle(
 
     if (existing) {
       const mergedEpisodes = [...new Set([...existing.derivedFromExperienceIds, ...cluster.experienceIds])];
-      await db.memory.update({
+      await memoryWriter("consolidation").update({
         where: { id: existing.id },
         data: {
           content,
@@ -295,11 +315,12 @@ export async function runConsolidationCycle(
         },
       });
     } else {
-      await db.memory.create({
+      await memoryWriter("consolidation").create({
         data: {
           type: "agent_capability",
           scope: "global",
           owner: cluster.agentId,
+          workspaceId: cluster.workspaceId,
           content,
           source: "consolidation",
           provenanceClass: "GENERALIZED",

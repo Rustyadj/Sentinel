@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import type { Memory, Prisma } from "@prisma/client";
 import { includesSupersededMemories, type TemporalIntent } from "@/lib/knowledge/temporal-intent";
 import { emitLearningEvent } from "./event-service";
+import { memoryWriter } from "@/lib/neural-engine/memory-write";
 
 export type MemoryState =
   | "active"
@@ -132,7 +133,7 @@ const QUARANTINE_TRIGGER_KEYWORDS =
  * is what actually flags candidates for quarantine.
  */
 export async function quarantineMemory(input: QuarantineMemoryInput) {
-  const memory = await db.memory.update({
+  const memory = await memoryWriter("governance").update({
     where: { id: input.memoryId },
     data: {
       state: "quarantined",
@@ -165,7 +166,7 @@ export async function validateQuarantinedMemory(input: ValidateMemoryInput) {
   if (current.state !== "quarantined" && current.state !== "disputed") {
     throw new Error(`Memory ${input.memoryId} is "${current.state}" — nothing to validate.`);
   }
-  const memory = await db.memory.update({
+  const memory = await memoryWriter("governance").update({
     where: { id: input.memoryId },
     data: {
       state: input.newState ?? "active",
@@ -191,7 +192,7 @@ export interface ForgetMemoryInput {
 
 /** `forgotten` removes a memory from normal retrieval. Never a hard delete here — audit/history requirements. */
 export async function forgetMemory(input: ForgetMemoryInput) {
-  const memory = await db.memory.update({
+  const memory = await memoryWriter("governance").update({
     where: { id: input.memoryId },
     data: { state: "forgotten", archived: true },
   });
@@ -261,19 +262,19 @@ export async function runMemoryDecaySweep(params: { workspaceId?: string; limit?
     const netValue = computeMemoryNetValue({ ...memory, stalenessScore }, weights);
 
     if (netValue < FORGET_NET_VALUE_THRESHOLD) {
-      await db.memory.update({
+      await memoryWriter("governance").update({
         where: { id: memory.id },
         data: { state: "forgotten", stalenessScore, valueScore: netValue, archived: true },
       });
       forgotten += 1;
     } else if (stalenessScore > 0.5 && memory.state === "active") {
-      await db.memory.update({
+      await memoryWriter("governance").update({
         where: { id: memory.id },
         data: { state: "stale", stalenessScore, valueScore: netValue },
       });
       markedStale += 1;
     } else {
-      await db.memory.update({ where: { id: memory.id }, data: { stalenessScore, valueScore: netValue } });
+      await memoryWriter("governance").update({ where: { id: memory.id }, data: { stalenessScore, valueScore: netValue } });
       survived += 1;
     }
   }
@@ -341,19 +342,19 @@ export function excludeFromRetrieval(options: RetrievalExclusionOptions = {}): P
 }
 
 export async function recordMemoryUsed(memoryId: string) {
-  return db.memory.update({
+  return memoryWriter("governance").update({
     where: { id: memoryId },
     data: { lastUsefulAt: new Date(), confirmationCount: { increment: 1 } },
   }).catch(() => null); // best-effort — a retrieval hit must never fail the caller's request
 }
 
 export async function recordMemoryContradiction(memoryId: string) {
-  const memory = await db.memory.update({
+  const memory = await memoryWriter("governance").update({
     where: { id: memoryId },
     data: { contradictionCount: { increment: 1 } },
   });
   if (memory.contradictionCount >= 3 && memory.state === "active") {
-    return db.memory.update({ where: { id: memoryId }, data: { state: "disputed" } });
+    return memoryWriter("governance").update({ where: { id: memoryId }, data: { state: "disputed" } });
   }
   return memory;
 }

@@ -29,6 +29,7 @@ import type {
   ProposedLearningCandidateInput,
   RiskLevel,
 } from "./types";
+import { memoryWriter } from "./memory-write";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return (value ?? {}) as Prisma.InputJsonValue;
@@ -472,7 +473,18 @@ async function applyLearningCandidateGoverned(candidateId: string) {
       }
 
       case "memory": {
-        const memory = await tx.memory.create({
+        // The payload names where the memory lands. A candidate belongs to one
+        // experience's workspace, so a project outside it is refused rather
+        // than letting an approved candidate write into another tenant.
+        const targetProjectId = (payload.projectId as string) ?? null;
+        const candidateWorkspaceId = candidate.experience?.workspaceId ?? null;
+        if (targetProjectId && candidateWorkspaceId) {
+          const project = await tx.project.findUnique({ where: { id: targetProjectId }, select: { workspaceId: true } });
+          if (!project || project.workspaceId !== candidateWorkspaceId) {
+            throw new Error("Learning candidate memory targets a project outside the candidate's workspace.");
+          }
+        }
+        const memory = await memoryWriter("learning-candidate", tx).create({
           data: {
             type: (payload.memoryType as string) ?? "pattern",
             scope: (payload.scope as string) ?? "project",
@@ -823,7 +835,7 @@ async function rollbackCandidateInTransaction(
     }
     case "memory": {
       if (candidate.appliedTargetId) {
-        await tx.memory.update({
+        await memoryWriter("learning-candidate", tx).update({
           where: { id: candidate.appliedTargetId },
           data: { archived: true },
         });

@@ -24,6 +24,7 @@
 import { db } from "@/lib/db";
 import { isIndependentEvidence } from "./reconsolidation-service";
 import { defaultMode, type ReconsolidationMode } from "./reconsolidation-engine";
+import { memoryWriter } from "./memory-write";
 
 /** Distinct successful executions before a procedure may leave shadow. */
 export const PROMOTION_MIN_SUCCESSES = 3;
@@ -140,7 +141,7 @@ export async function recordProcedureOutcome(input: {
     };
   }
 
-  const updated = await db.memory.update({
+  const updated = await memoryWriter("procedural").update({
     where: { id: input.memoryId },
     data: {
       supportingExperienceIds: { push: input.experienceId },
@@ -174,7 +175,7 @@ export async function applyPromotion(
   const apply = mode === "apply";
   if (apply) {
     if (assessment.action === "PROMOTE") {
-      await db.memory.update({
+      await memoryWriter("procedural").update({
         where: { id: memoryId },
         data: { shadowOnly: false, state: "stable", lastValidatedAt: new Date() },
       });
@@ -182,9 +183,9 @@ export async function applyPromotion(
       // Back to shadow, not deleted: a procedure that stopped working is
       // evidence about the world, and the executions that disproved it are
       // exactly what a later revision needs.
-      await db.memory.update({ where: { id: memoryId }, data: { shadowOnly: true, state: "disputed" } });
+      await memoryWriter("procedural").update({ where: { id: memoryId }, data: { shadowOnly: true, state: "disputed" } });
     } else if (assessment.action === "QUARANTINE") {
-      await db.memory.update({ where: { id: memoryId }, data: { state: "quarantined" } });
+      await memoryWriter("procedural").update({ where: { id: memoryId }, data: { state: "quarantined" } });
     }
   }
 
