@@ -72,7 +72,10 @@ export const requestOutsideJson: OutsideTransport = async (input) => {
   const payload = input.body === undefined ? null : Buffer.from(JSON.stringify(input.body));
   const send = url.protocol === "https:" ? httpsRequest : httpRequest;
 
-  return new Promise((resolve, reject) => {
+  // An absolute limit, not an idle one: a server that keeps sending a byte now
+  // and then must not be able to hold the connection open past the deadline.
+  let deadline: NodeJS.Timeout | undefined;
+  const request = new Promise<unknown>((resolve, reject) => {
     const req = send(url, {
       method: input.method,
       headers: {
@@ -117,10 +120,14 @@ export const requestOutsideJson: OutsideTransport = async (input) => {
         catch { reject(new OutsideAgentError("The agent's server did not answer with JSON.", "bad_response")); }
       });
     });
-    req.setTimeout(input.timeoutMs, () => req.destroy(new OutsideAgentError("The agent's server took too long to answer.", "timed_out", 504)));
+    deadline = setTimeout(() => {
+      reject(new OutsideAgentError("The agent's server took too long to answer.", "timed_out", 504));
+      req.destroy();
+    }, input.timeoutMs);
     req.on("error", (error) => reject(asOutsideError(error)));
     req.end(payload ?? undefined);
   });
+  return request.finally(() => clearTimeout(deadline));
 };
 
 function asOutsideError(error: unknown): OutsideAgentError {
