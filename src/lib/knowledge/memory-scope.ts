@@ -23,12 +23,14 @@
 //      so revoking a role revokes memory access with it.
 
 import { db } from "@/lib/db";
-import { userHasWorkspacePermission } from "@/lib/workspaces/authorization";
+import { userHasProjectPermission, userHasWorkspacePermission } from "@/lib/workspaces/authorization";
 
 /** The permission that governs reading a workspace's memory. */
 export const MEMORY_READ_PERMISSION = "project.read";
 /** The permission that governs writing workspace-scoped memory. */
 export const MEMORY_WRITE_PERMISSION = "project.write";
+/** The permission that governs writing project-scoped memory (matches the memory routes). */
+export const PROJECT_MEMORY_WRITE_PERMISSION = "project.update";
 
 export interface MemoryScopeAccess {
   /** Workspaces whose workspace-scoped memory this user may read. */
@@ -118,6 +120,19 @@ export async function assertWritableMemoryScope(input: {
         "project_workspace_mismatch",
       );
     }
+  }
+
+  if (scope === "project" && !projectId) {
+    throw new MemoryScopeError("A project-scoped memory must name its project.", "project_required");
+  }
+
+  // A project id is a claim, not a credential. Before this check a write that
+  // named a project but no workspace returned early below, so any caller of
+  // remember() could place memory in a project it is not a member of.
+  if (projectId) {
+    const { allowed, project } = await userHasProjectPermission(userId, projectId, PROJECT_MEMORY_WRITE_PERMISSION);
+    if (!project) throw new MemoryScopeError("Project not found.", "project_not_found");
+    if (!allowed) throw new MemoryScopeError("Not authorised to write memory in that project.", "forbidden");
   }
 
   if (!workspaceId) return;

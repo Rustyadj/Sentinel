@@ -155,6 +155,15 @@ function matchesAny(text: string, patterns: RegExp[]): boolean {
 }
 
 /** Jaccard over word tokens — the same cheap similarity the retrieval planner uses. */
+/**
+ * True when text carries secret-shaped content. The same test the gate uses to
+ * discard an observation, exported so every durable write path — not only the
+ * gated one — refuses to store a credential (see memory-write.ts).
+ */
+export function containsSecretShapedContent(text: string): boolean {
+  return matchesAny(text.replace(/\s+/g, " ").trim(), SECRET_PATTERNS);
+}
+
 export function contentSimilarity(a: string, b: string): number {
   const tokenize = (text: string) =>
     new Set(

@@ -1,6 +1,6 @@
 import type { AgentWorkspace } from "@prisma/client";
-import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { memoryWriter } from "@/lib/neural-engine/memory-write";
 
 /**
  * Workspace state and agent memory stay separate systems. Memory records a
@@ -17,7 +17,7 @@ export async function recordWorkspaceMemoryReference(input: {
     throw new Error("Workspace memory references must stay short — link, do not copy.");
   }
   try {
-    return await db.memory.create({
+    return await memoryWriter("agent-workspace").create({
       data: {
         type: "workspace_reference",
         scope: "agent",

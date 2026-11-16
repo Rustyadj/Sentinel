@@ -24,6 +24,7 @@ import { notExpired } from "@/lib/learning/memory-governance";
 import { classifyForIngestion, type IngestionVerdict, memoryTypeForLane } from "./ingestion-gate";
 import { assertWritableMemoryScope } from "@/lib/knowledge/memory-scope";
 import { reconsolidateMemory, defaultMode, type ReconsolidationMode } from "./reconsolidation-engine";
+import { memoryWriter } from "./memory-write";
 
 export interface RememberInput {
   content: string;
@@ -107,7 +108,7 @@ export async function remember(input: RememberInput): Promise<RememberResult> {
 
   let memoryId: string | null = null;
   if (accepted && verdict.lane) {
-    const memory = await db.memory.create({
+    const memory = await memoryWriter("ingestion").create({
       data: {
         type: memoryTypeForLane(verdict.lane),
         scope,

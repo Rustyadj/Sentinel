@@ -9,6 +9,7 @@
 
 import { db } from "@/lib/db";
 import { emitNeuralEvent } from "./event-service";
+import { memoryWriter } from "./memory-write";
 
 export interface MemoryPatch {
   content?: string;
@@ -41,9 +42,13 @@ export async function supersedeMemory(
 
   const now = new Date();
 
-  const [, next] = await db.$transaction([
-    db.memory.update({ where: { id: currentId }, data: { validTo: now } }),
-    db.memory.create({
+  // One transaction: closing the old version and linking it to its successor
+  // were previously two writes with the link outside the transaction, so a
+  // failure between them left a closed row pointing at nothing.
+  const next = await db.$transaction(async (tx) => {
+    const writer = memoryWriter("temporal", tx);
+    await writer.update({ where: { id: currentId }, data: { validTo: now } });
+    const created = await writer.create({
       data: {
         type: current.type,
         scope: current.scope,
@@ -54,6 +59,12 @@ export async function supersedeMemory(
         importanceScore: patch.importanceScore ?? current.importanceScore,
         source: current.source,
         projectId: current.projectId,
+        // Placement carries forward with the belief. Dropping workspaceId made a
+        // superseded workspace memory's successor unreachable (unresolved
+        // workspace fails closed); dropping botId lost its attribution.
+        workspaceId: current.workspaceId,
+        botId: current.botId,
+        expiresAt: current.expiresAt,
         provenanceClass: patch.provenanceClass ?? current.provenanceClass,
         provenanceTrust: current.provenanceTrust,
         shadowOnly: patch.shadowOnly ?? current.shadowOnly,
@@ -68,10 +79,10 @@ export async function supersedeMemory(
         validFrom: now,
         changeReason,
       },
-    }),
-  ]);
-
-  await db.memory.update({ where: { id: currentId }, data: { supersededById: next.id } });
+    });
+    await writer.update({ where: { id: currentId }, data: { supersededById: created.id } });
+    return created;
+  });
 
   await emitNeuralEvent({
     type: "memory.superseded",

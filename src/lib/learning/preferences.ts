@@ -1,5 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { memoryWriter } from "@/lib/neural-engine/memory-write";
+import { containsSecretShapedContent } from "@/lib/neural-engine/ingestion-gate";
+import { assertWritableMemoryScope } from "@/lib/knowledge/memory-scope";
 
 export const PREFERENCE_EVIDENCE_WEIGHTS = {
   explicit_user_statement: 1,
@@ -63,6 +66,14 @@ export async function recordPreferenceEvidence(input: RecordPreferenceEvidenceIn
 
   const owner = input.userId ?? GLOBAL_USER;
   const memorySource = `learning-core:preference:${owner}:${key}`;
+  if (containsSecretShapedContent(value) || containsSecretShapedContent(input.evidence)) {
+    throw new Error("Secret-shaped content is never stored as a preference.");
+  }
+  // A workspace id is a claim. Recording preference evidence against a
+  // workspace needs the same write permission as any workspace memory.
+  if (input.workspaceId && input.userId) {
+    await assertWritableMemoryScope({ userId: input.userId, scope: "workspace", workspaceId: input.workspaceId });
+  }
 
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${memorySource})) IS NULL AS locked`;
@@ -76,10 +87,13 @@ export async function recordPreferenceEvidence(input: RecordPreferenceEvidenceIn
       if (input.supportsPreference === false) {
         throw new Error("Cannot record conflicting evidence before a canonical preference exists");
       }
-      memory = await tx.memory.create({
+      memory = await memoryWriter("preferences", tx).create({
         data: {
           type: "preference",
           scope: input.workspaceId ? "workspace" : "user",
+          // Without this a workspace preference was a scope="workspace" row
+          // with no workspace, which retrieval treats as unreachable.
+          workspaceId: input.workspaceId ?? null,
           owner,
           content: value,
           tags: ["preference", `preference-key:${key}`],
@@ -130,7 +144,7 @@ export async function recordPreferenceEvidence(input: RecordPreferenceEvidenceIn
       select: { evidenceWeight: true, supportsPreference: true },
     });
     const confidence = calculatePreferenceConfidence(activeEvidence);
-    memory = await tx.memory.update({
+    memory = await memoryWriter("preferences", tx).update({
       where: { id: memory.id },
       data: { confidence },
     });

@@ -30,7 +30,7 @@ import { detectKnowledgeGaps } from "@/lib/learning/knowledge-gaps";
 import { generateLearningGoalsFromGaps } from "@/lib/learning/learning-goals";
 import { runExperienceReplay, type ReplayCategory } from "@/lib/learning/replay";
 import { runCoOccurrenceSelfImprovement } from "@/lib/learning/self-improvement";
-import { runConsolidationCycle } from "@/lib/neural-engine/consolidation-service";
+import { consolidationMode, runConsolidationCycle } from "@/lib/neural-engine/consolidation-service";
 import { QUEUE_PREFIX } from "@/lib/queue-prefix";
 import { startWorkerHeartbeat } from "./heartbeat";
 
@@ -66,7 +66,7 @@ async function processJob(job: Job<JobPayload>) {
     case JOB_NAMES.memoryDecaySweep:
       return runRecordedMemoryDecaySweep();
     case JOB_NAMES.memoryConsolidation:
-      return runRecordedScheduledJob(job.name, () => runConsolidationCycle({ mode: "shadow" }));
+      return runRecordedScheduledJob(job.name, () => runConsolidationCycle({ mode: consolidationMode() }));
     default:
       throw new Error(`No handler registered for job "${job.name}" — refusing to silently no-op it.`);
   }

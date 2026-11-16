@@ -55,25 +55,34 @@ export async function requireWorkspacePermission(workspaceId: string, permission
   return user;
 }
 
-export async function requireProjectPermission(projectId: string, permissionKey: string) {
-  const user = await requireUser().catch(() => {
-    throw new WorkspaceAccessError("Unauthorized", 401);
-  });
+/**
+ * Whether a named user holds a project permission, without reading the request
+ * session. For callers acting on a user's behalf outside an HTTP request (bot
+ * runs, workers). Same rules as requireProjectPermission, which delegates here.
+ */
+export async function userHasProjectPermission(userId: string, projectId: string, permissionKey: string) {
   const project = await db.project.findUnique({
     where: { id: projectId },
     select: { id: true, userId: true, workspaceId: true },
   });
-  if (!project) throw new WorkspaceAccessError("Project not found", 404);
-  if (project.userId === user.id) return { user, project };
+  if (!project) return { allowed: false as const, project: null };
+  if (project.userId === userId) return { allowed: true as const, project };
   // Someone added to the project holds that project's role and nothing wider.
   const membership = await db.projectMember.findUnique({
-    where: { projectId_userId: { projectId, userId: user.id } },
+    where: { projectId_userId: { projectId, userId } },
     select: { role: true },
   });
-  if (membership && projectRoleAllows(membership.role, permissionKey)) return { user, project };
-  if (!project.workspaceId || !(await userHasWorkspacePermission(user.id, project.workspaceId, permissionKey))) {
-    throw new WorkspaceAccessError("Project not found", 404);
-  }
+  if (membership && projectRoleAllows(membership.role, permissionKey)) return { allowed: true as const, project };
+  const allowed = Boolean(project.workspaceId) && (await userHasWorkspacePermission(userId, project.workspaceId!, permissionKey));
+  return { allowed, project };
+}
+
+export async function requireProjectPermission(projectId: string, permissionKey: string) {
+  const user = await requireUser().catch(() => {
+    throw new WorkspaceAccessError("Unauthorized", 401);
+  });
+  const { allowed, project } = await userHasProjectPermission(user.id, projectId, permissionKey);
+  if (!project || !allowed) throw new WorkspaceAccessError("Project not found", 404);
   return { user, project };
 }
 

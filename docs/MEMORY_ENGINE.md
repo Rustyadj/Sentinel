@@ -89,6 +89,49 @@ service was crediting memories no agent had ever read.
 
 ---
 
+## Writes
+
+Every durable `Memory` write goes through one module,
+`src/lib/neural-engine/memory-write.ts`. `tests/memory/write-pipeline-guard.test.ts`
+fails the suite if any other file in `src/`, `worker/` or `scripts/` calls a
+write method on the memory model.
+
+Two kinds of writer:
+
+- **A user** — `createUserMemory`, `updateUserMemory`, `updateUserMemories`,
+  `deleteUserMemory`. Authorised without reading the request session, so the
+  same rule holds for routes, bot runs and workers: personal memory by owner,
+  project memory by `project.update`, workspace memory by the workspace write
+  permission. Not-found and not-permitted are both 404.
+- **A named service** — `memoryWriter(service, tx?)`. Each service has a fixed
+  create right and a column allowlist (`SERVICE_POLICIES`); the decay sweep can
+  move `state`/`valueScore`, it cannot rewrite `content`. Calls stay ordinary
+  Prisma promises, so they compose with transactions.
+
+Invariants for every writer: secret-shaped content is never stored;
+`owner`/`scope`/`projectId`/`workspaceId`/`botId` are never changed by an update
+(moving memory between tenants is a new, separately authorised memory).
+
+Agent observations still enter through `remember()` (`memory-ingestion.ts`):
+authorisation → selective-persistence gate → write (via the `ingestion`
+writer) → reconsolidation. `assertWritableMemoryScope` now checks project
+membership; before, a write naming a project but no workspace was never
+checked.
+
+## Consolidation
+
+`runConsolidationCycle` turns ≥3 similar episodes into a `GENERALIZED` memory.
+The learning worker runs it in `SENTINEL_CONSOLIDATION_MODE` (`shadow` unless
+exactly `active`). Episodes are clustered per (agent, workspace, outcome
+direction); a generalization records its `workspaceId` and never pools
+evidence across tenants. Active-mode behaviour is pinned by
+`tests/memory/consolidation-active.test.ts`.
+
+Generalizations are owned by the agent at scope `global`, and global memory is
+owner-isolated, so **no user-context retrieval returns them even in active
+mode**. Enabling it changes stored data, not prompts, until a reader for
+agent-owned generalizations exists.
+
 ## Embeddings
 
 Configured via environment:
@@ -163,8 +206,8 @@ Implemented and wired:
 Implemented but not yet connected:
 - Embedding provider seam — no reachable provider, so nothing writes
   `memories.embedding` and semantic search remains lexical
-- Ingestion gate — classifies correctly but is not yet called from the chat
-  path, so chat still writes no durable memory
+- Ingestion gate — wired through `remember()` (bot memory); chat still writes
+  no durable memory
 
 Not implemented:
 - Procedural memory as a real lane. `Procedure` exists but is only read and
