@@ -65,7 +65,14 @@ export async function recordPreferenceEvidence(input: RecordPreferenceEvidenceIn
   }
 
   const owner = input.userId ?? GLOBAL_USER;
-  const memorySource = `learning-core:preference:${owner}:${key}`;
+  // The canonical preference is per (owner, placement, key). Personal memory
+  // keeps the original source string, so existing rows are still found; a
+  // workspace preference carries its workspace, so evidence recorded in one
+  // workspace can never move another workspace's (or the personal) preference.
+  const workspaceId = input.workspaceId ?? null;
+  const memorySource = workspaceId
+    ? `learning-core:preference:${owner}:workspace:${workspaceId}:${key}`
+    : `learning-core:preference:${owner}:${key}`;
   if (containsSecretShapedContent(value) || containsSecretShapedContent(input.evidence)) {
     throw new Error("Secret-shaped content is never stored as a preference.");
   }
@@ -79,7 +86,7 @@ export async function recordPreferenceEvidence(input: RecordPreferenceEvidenceIn
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${memorySource})) IS NULL AS locked`;
 
     let memory = await tx.memory.findFirst({
-      where: { type: "preference", owner, source: memorySource, archived: false },
+      where: { type: "preference", owner, source: memorySource, workspaceId, archived: false },
       orderBy: { createdAt: "asc" },
     });
 

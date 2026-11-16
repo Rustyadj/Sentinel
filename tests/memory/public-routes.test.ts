@@ -21,12 +21,13 @@ import * as collection from "@/app/api/memories/route";
 import * as item from "@/app/api/memories/[id]/route";
 import * as reflect from "@/app/api/memories/reflect/route";
 import * as preferences from "@/app/api/learning/preferences/route";
-import { ensureSystemRoles, ensureMemberAccess } from "@/lib/workspaces/permissions-catalog";
+import { ensureSystemRoles, ensureMemberAccess, ensureOperatorRole } from "@/lib/workspaces/permissions-catalog";
 import { remember } from "@/lib/neural-engine/memory-ingestion";
 import { memoryWriter, MemoryWriteDenied } from "@/lib/neural-engine/memory-write";
 
 const P = `pr-${Date.now().toString(36)}`;
-const u = { owner: `${P}-owner`, member: `${P}-member`, stranger: `${P}-stranger` };
+const u = { owner: `${P}-owner`, member: `${P}-member`, operator: `${P}-operator`, stranger: `${P}-stranger` };
+const ws2 = `${P}-ws2`;
 const ws = `${P}-ws`;
 const strangerWs = `${P}-ws-stranger`;
 const project = `${P}-proj`;
@@ -54,6 +55,9 @@ beforeAll(async () => {
   await db.workspace.create({ data: { id: strangerWs, slug: strangerWs, name: "PR other", ownerId: u.stranger } });
   await ensureSystemRoles(ws);
   await ensureMemberAccess(ws, u.member);
+  const operatorRole = await ensureOperatorRole(ws);
+  await db.roleAssignment.create({ data: { workspaceId: ws, roleId: operatorRole.id, userId: u.operator } });
+  await db.workspace.create({ data: { id: ws2, slug: ws2, name: "PR second", ownerId: u.owner } });
   await db.project.create({ data: { id: project, name: "PR", userId: u.owner, workspaceId: ws } });
   await db.project.create({ data: { id: strangerProject, name: "PR other", userId: u.stranger, workspaceId: strangerWs } });
 });
@@ -66,12 +70,12 @@ afterAll(async () => {
   await db.memoryIngestionDecision.deleteMany({ where: { owner: { in: owners } } });
   await db.memory.deleteMany({ where: { owner: { in: owners } } });
   await db.project.deleteMany({ where: { id: { in: [project, strangerProject] } } });
-  for (const w of [ws, strangerWs]) {
+  for (const w of [ws, ws2, strangerWs]) {
     await db.roleAssignment.deleteMany({ where: { workspaceId: w } });
     await db.role.deleteMany({ where: { workspaceId: w } });
     await db.permission.deleteMany({ where: { workspaceId: w } });
   }
-  await db.workspace.deleteMany({ where: { id: { in: [ws, strangerWs] } } });
+  await db.workspace.deleteMany({ where: { id: { in: [ws, ws2, strangerWs] } } });
   await db.user.deleteMany({ where: { id: { in: owners } } });
 });
 
@@ -235,6 +239,31 @@ describe("POST /api/learning/preferences", () => {
     expect(response.status).toBe(201);
     const { memory } = await response.json();
     expect(memory).toMatchObject({ scope: "workspace", workspaceId: ws });
+  });
+
+  it("lets an Operator (role holder, not the workspace owner) record workspace preferences", async () => {
+    as(u.operator);
+    const response = await evidence({ key: `${P}-op-pref`, workspaceId: ws });
+    expect(response.status).toBe(201);
+    expect((await response.json()).memory).toMatchObject({ owner: u.operator, workspaceId: ws });
+  });
+
+  it("refuses workspace preferences for a plain Member, who lacks project.update", async () => {
+    as(u.member);
+    expect((await evidence({ key: `${P}-member-pref`, workspaceId: ws })).status).toBe(403);
+  });
+
+  it("keeps one canonical preference per workspace and one personal, never shared", async () => {
+    const key = `${P}-per-ws`;
+    const a = await (await evidence({ key, value: "concise", workspaceId: ws })).json();
+    const b = await (await evidence({ key, value: "detailed", workspaceId: ws2 })).json();
+    const personal = await (await evidence({ key, value: "terse" })).json();
+    expect(new Set([a.memory.id, b.memory.id, personal.memory.id]).size).toBe(3);
+    expect(b.conflict).toBe(false);
+    expect(b.memory).toMatchObject({ workspaceId: ws2, content: "detailed" });
+    expect(personal.memory).toMatchObject({ scope: "user", workspaceId: null });
+    // Recording in ws2 did not move ws's preference.
+    expect((await row(a.memory.id))?.confidence).toBe(a.memory.confidence);
   });
 
   it("refuses secret-shaped preference values", async () => {

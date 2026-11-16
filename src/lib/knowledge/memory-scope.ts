@@ -27,8 +27,15 @@ import { userHasProjectPermission, userHasWorkspacePermission } from "@/lib/work
 
 /** The permission that governs reading a workspace's memory. */
 export const MEMORY_READ_PERMISSION = "project.read";
-/** The permission that governs writing workspace-scoped memory. */
-export const MEMORY_WRITE_PERMISSION = "project.write";
+/**
+ * The permission that governs writing workspace-scoped memory.
+ *
+ * Was "project.write", a key the permission catalogue never defines or grants,
+ * so only a workspace's direct owner (or a wildcard role) could ever pass it:
+ * Operators and assigned Owners were refused. "project.update" is the
+ * catalogued write permission and matches project-scoped memory.
+ */
+export const MEMORY_WRITE_PERMISSION = "project.update";
 /** The permission that governs writing project-scoped memory (matches the memory routes). */
 export const PROJECT_MEMORY_WRITE_PERMISSION = "project.update";
 
