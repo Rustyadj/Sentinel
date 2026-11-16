@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { getVpsAgent } from "@/lib/agents/registry";
 import { RUNTIME_AGENT_MAP, runtimeEventText } from "@/lib/agents/runtime/chat-routing";
@@ -116,7 +117,8 @@ class Speaker {
     this.prepared = true;
   }
 
-  async speak(prompt: string, onText: (soFar: string) => void): Promise<string> {
+  async speak(prompt: string, onText: (soFar: string) => void, live: () => Promise<boolean>): Promise<string> {
+    if (!(await live())) throw new Error("Discussion stopped");
     await this.prepare();
     const adapter = getRuntimeAdapter(this.seat.runtime.kind);
     const readiness = await adapter.readiness(asRuntimeInstance(this.seat.runtime));
@@ -132,6 +134,7 @@ class Speaker {
       this.sessionId = session.id;
     }
 
+    if (!(await live())) throw new Error("Discussion stopped");
     let text = "";
     const deadline = Date.now() + TURN_TIMEOUT_MS;
     const stream = adapter.send({ sessionId: this.sessionId, prompt, userId: this.userId })[Symbol.asyncIterator]();
@@ -140,11 +143,17 @@ class Speaker {
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw new Error(`${this.seat.name} did not finish within ${TURN_TIMEOUT_MS / 60_000} minutes`);
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const next = await Promise.race([
-          stream.next(),
-          new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), remaining); }),
-        ]).finally(() => clearTimeout(timer));
-        if (next === "timeout") throw new Error(`${this.seat.name} did not finish within ${TURN_TIMEOUT_MS / 60_000} minutes`);
+        const nextPromise = stream.next();
+        let next;
+        for (;;) {
+          next = await Promise.race([
+            nextPromise,
+            new Promise<"check">((resolve) => { timer = setTimeout(() => resolve("check"), Math.min(250, remaining)); }),
+          ]).finally(() => clearTimeout(timer));
+          if (!(await live())) throw new Error("Discussion stopped");
+          if (Date.now() >= deadline) throw new Error(`${this.seat.name} did not finish within ${TURN_TIMEOUT_MS / 60_000} minutes`);
+          if (next !== "check") break;
+        }
         if (next.done) break;
         const event = next.value;
         if (event.type === "error") {
@@ -166,13 +175,14 @@ class Speaker {
   }
 }
 
-async function isLive(discussionId: string): Promise<boolean> {
-  const row = await db.discussion.findUnique({ where: { id: discussionId }, select: { status: true } });
-  return row?.status === "running";
+async function isLive(discussionId: string, executionId: string): Promise<boolean> {
+  const row = await db.discussion.findUnique({ where: { id: discussionId }, select: { status: true, executionId: true } });
+  return row?.status === "running" && row.executionId === executionId;
 }
 
 /** One agent's turn, from "speaking" to "done" or "failed". Returns whether it produced anything. */
-async function takeTurn(input: { discussionId: string; round: number; kind: string; seat: Seat; speaker: Speaker; prompt: string }): Promise<boolean> {
+async function takeTurn(input: { discussionId: string; executionId: string; round: number; kind: string; seat: Seat; speaker: Speaker; prompt: string }): Promise<boolean> {
+  if (!(await isLive(input.discussionId, input.executionId))) return false;
   const turn = await appendTurn(input.discussionId, { round: input.round, kind: input.kind, agentId: input.seat.agentId });
   let lastFlush = 0;
   let pending: Promise<unknown> = Promise.resolve();
@@ -183,20 +193,21 @@ async function takeTurn(input: { discussionId: string; round: number; kind: stri
       lastFlush = now;
       // Words appear on the page as they are produced. Chained so writes land in order.
       pending = pending.then(() =>
-        db.discussionTurn.updateMany({ where: { id: turn.id, status: "speaking" }, data: { content: soFar.slice(0, MAX_TURN_CHARS) } }),
+        db.discussionTurn.updateMany({ where: { id: turn.id, status: "speaking", discussion: { executionId: input.executionId, status: "running" } }, data: { content: soFar.slice(0, MAX_TURN_CHARS) } }),
       ).catch(() => undefined);
-    });
+    }, () => isLive(input.discussionId, input.executionId));
     await pending;
+    if (!(await isLive(input.discussionId, input.executionId))) throw new Error("Discussion stopped");
     const { content, position } = input.kind === "synthesis" ? { content: reply.trim(), position: null } : splitPosition(reply);
-    await db.discussionTurn.update({
-      where: { id: turn.id },
+    await db.discussionTurn.updateMany({
+      where: { id: turn.id, status: "speaking", discussion: { executionId: input.executionId, status: "running" } },
       data: { content: content.slice(0, MAX_TURN_CHARS), position, status: "done", completedAt: new Date() },
     });
     return true;
   } catch (error) {
     await pending;
-    await db.discussionTurn.update({
-      where: { id: turn.id },
+    await db.discussionTurn.updateMany({
+      where: { id: turn.id, status: "speaking" },
       data: { status: "failed", error: (error instanceof Error ? error.message : "Unknown error").slice(0, 400), completedAt: new Date() },
     });
     return false;
@@ -208,41 +219,42 @@ async function takeTurn(input: { discussionId: string; round: number; kind: stri
  * being awaited: Sentinel is a long-running server, so the work continues
  * after the response, and the page follows it by reading the turns.
  */
-export async function runDiscussion(input: { discussionId: string; userId: string; askerName: string; seats: Seat[]; fromRound: number; toRound: number }) {
+export async function runDiscussion(input: { discussionId: string; executionId?: string; userId: string; askerName: string; seats: Seat[]; fromRound: number; toRound: number }) {
   const { discussionId, seats } = input;
   const names = new Map(seats.map((seat) => [seat.agentId, seat.name]));
   const speakers = new Map(seats.map((seat) => [seat.agentId, new Speaker(seat, discussionId, input.userId)]));
-  const discussion = await db.discussion.findUniqueOrThrow({ where: { id: discussionId }, select: { topic: true } });
+  const discussion = await db.discussion.findUniqueOrThrow({ where: { id: discussionId }, select: { topic: true, executionId: true } });
+  const executionId = input.executionId ?? discussion.executionId;
 
   try {
     let spoke = 0;
     for (let round = input.fromRound; round <= input.toRound; round++) {
       for (const seat of seats) {
-        if (!(await isLive(discussionId))) return; // cancelled
+        if (!(await isLive(discussionId, executionId))) return; // cancelled
         const transcript = await transcriptOf(discussionId, names);
         const prompt = round === 1
           ? openingPrompt({ speaker: seat.name, others: seats.filter((s) => s !== seat).map((s) => s.name), asker: input.askerName, topic: discussion.topic, earlier: transcript })
           : responsePrompt({ speaker: seat.name, topic: discussion.topic, transcript, round });
-        const ok = await takeTurn({ discussionId, round, kind: round === 1 ? "opening" : "response", seat, speaker: speakers.get(seat.agentId)!, prompt });
+        const ok = await takeTurn({ discussionId, executionId, round, kind: round === 1 ? "opening" : "response", seat, speaker: speakers.get(seat.agentId)!, prompt });
         if (ok) spoke++;
       }
       // Nobody could speak at all: stop here instead of running empty rounds.
       if (spoke === 0) throw new Error("None of the agents could be reached.");
     }
 
-    if (!(await isLive(discussionId))) return;
+    if (!(await isLive(discussionId, executionId))) return;
     if (spoke >= 2) {
       const closer = seats[0];
       const transcript = await transcriptOf(discussionId, names);
       await takeTurn({
-        discussionId, round: input.toRound, kind: "synthesis", seat: closer, speaker: speakers.get(closer.agentId)!,
+        discussionId, executionId, round: input.toRound, kind: "synthesis", seat: closer, speaker: speakers.get(closer.agentId)!,
         prompt: synthesisPrompt({ speaker: closer.name, asker: input.askerName, topic: discussion.topic, transcript }),
       });
     }
-    await db.discussion.updateMany({ where: { id: discussionId, status: "running" }, data: { status: "completed", completedAt: new Date() } });
+    await db.discussion.updateMany({ where: { id: discussionId, executionId, status: "running" }, data: { status: "completed", completedAt: new Date() } });
   } catch (error) {
     await db.discussion.updateMany({
-      where: { id: discussionId, status: "running" },
+      where: { id: discussionId, executionId, status: "running" },
       data: { status: "failed", error: (error instanceof Error ? error.message : "Unknown error").slice(0, 400), completedAt: new Date() },
     }).catch(() => undefined);
   }
@@ -267,7 +279,7 @@ export async function startDiscussion(input: { topic: string; title?: string; ag
       createdById: user.id, agentIds: seats.map((seat) => seat.agentId), rounds,
     },
   });
-  void runDiscussion({ discussionId: discussion.id, userId: user.id, askerName: user.name ?? "The operator", seats, fromRound: 1, toRound: rounds });
+  void runDiscussion({ discussionId: discussion.id, executionId: discussion.executionId, userId: user.id, askerName: user.name ?? "The operator", seats, fromRound: 1, toRound: rounds });
   return discussion;
 }
 
@@ -280,20 +292,25 @@ export async function continueDiscussion(discussionId: string, user: { id: strin
   const round = (last._max.round ?? 0) + 1;
   if (round > MAX_ROUNDS + 3) throw new RoundtableError("This roundtable has run long enough. Start a new one from where it ended.", 409);
 
+  const executionId = randomUUID();
   const claimed = await db.discussion.updateMany({
     where: { id: discussionId, status: { not: "running" } },
-    data: { status: "running", error: null, completedAt: null },
+    data: { status: "running", executionId, error: null, completedAt: null },
   });
   if (claimed.count !== 1) throw new RoundtableError("This roundtable is still going.", 409);
   // A continuation is always a response round, even if the first attempt never got past openings.
-  void runDiscussion({ discussionId, userId: user.id, askerName: user.name ?? "The operator", seats, fromRound: Math.max(round, 2), toRound: Math.max(round, 2) });
+  void runDiscussion({ discussionId, executionId, userId: user.id, askerName: user.name ?? "The operator", seats, fromRound: Math.max(round, 2), toRound: Math.max(round, 2) });
 }
 
 export async function cancelDiscussion(discussionId: string) {
-  await db.discussion.updateMany({ where: { id: discussionId, status: "running" }, data: { status: "cancelled", completedAt: new Date() } });
-  await db.discussionTurn.updateMany({
-    where: { discussionId, status: "speaking" },
-    data: { status: "failed", error: "Stopped before finishing", completedAt: new Date() },
+  const stopped = await db.discussion.findUnique({ where: { id: discussionId }, select: { executionId: true } });
+  if (!stopped) return;
+  await db.$transaction(async (tx) => {
+    await tx.discussion.updateMany({ where: { id: discussionId, executionId: stopped.executionId, status: "running" }, data: { status: "cancelled", completedAt: new Date() } });
+    await tx.discussionTurn.updateMany({
+      where: { discussionId, status: "speaking", discussion: { executionId: stopped.executionId, status: "cancelled" } },
+      data: { status: "failed", error: "Stopped before finishing", completedAt: new Date() },
+    });
   });
 }
 

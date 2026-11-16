@@ -10,7 +10,7 @@ import { RoundtableError } from "./engine";
 export async function requireDiscussionAccess(discussionId: string, userId: string, mode: "read" | "write") {
   const discussion = await db.discussion.findUnique({ where: { id: discussionId } });
   if (!discussion) throw new RoundtableError("Roundtable not found.", 404);
-  if (discussion.createdById === userId) return discussion;
+  if (!discussion.projectId && discussion.createdById === userId) return discussion;
   if (discussion.projectId) {
     const project = await db.project.findUnique({ where: { id: discussion.projectId }, select: { id: true, userId: true, workspaceId: true } });
     if (project && (await userCanOnProject(userId, project, mode === "read" ? "project.read" : "project.update"))) return discussion;

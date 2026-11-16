@@ -24,13 +24,26 @@ test("a chat reply streams in progressively and reaches the agent", async ({ bro
   await openChat(page);
   const composer = page.getByPlaceholder(/Message Hermes Lisa/);
   await composer.fill("Summarise the pour schedule please");
+  // Observe before sending: polling only after the reply becomes visible can
+  // miss a short stream that finishes between two Playwright polls.
+  await page.evaluate(() => {
+    const state = window as typeof window & { sawPartialChatReply?: boolean };
+    state.sawPartialChatReply = false;
+    const observer = new MutationObserver(() => {
+      const text = document.body.textContent ?? "";
+      if (text.includes("Fake Hermes reply:") && !text.includes("Fake Hermes reply: Summarise the pour schedule please.")) {
+        state.sawPartialChatReply = true;
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
   await composer.press("Enter");
 
   const reply = page.getByText(/Fake Hermes reply/);
   await expect(reply).toBeVisible({ timeout: 30_000 });
   // It arrived in pieces: there is a moment when the text has begun but not ended.
-  const snapshots = new Set<string>();
-  await expect.poll(async () => { snapshots.add(((await reply.first().textContent()) ?? "").trim()); return snapshots.size; }, { timeout: 15_000 }).toBeGreaterThan(1);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { sawPartialChatReply?: boolean }).sawPartialChatReply), { timeout: 15_000 }).toBe(true);
   await expect(page.getByText(/Fake Hermes reply: Summarise the pour schedule please\./)).toBeVisible();
 
   const seen = await fakeHermes(request);

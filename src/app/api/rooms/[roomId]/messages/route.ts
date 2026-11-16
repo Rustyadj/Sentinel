@@ -41,7 +41,7 @@ async function handleGet(request: NextRequest, { params }: Params): Promise<Resp
 
     const messages = await db.message.findMany({
       where: { chatRoomId: roomId },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: cursor ? "asc" : "desc" },
       take: limit,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
@@ -54,6 +54,8 @@ async function handleGet(request: NextRequest, { params }: Params): Promise<Resp
         authorUserId: true,
       },
     });
+
+    if (!cursor) messages.reverse();
 
     // Names for the people who wrote in a shared room. Only names: an email
     // address is not something one project member is owed about another.
