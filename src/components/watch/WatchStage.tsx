@@ -26,6 +26,8 @@ export interface WatchStageProps {
   followId: string | null;
   onFollowChange: (agentId: string | null) => void;
   insets?: WatchInsets;
+  /** Slow drift of every node around its seat. Always off under reduced motion. Defaults to on. */
+  ambient?: boolean;
   className?: string;
   children?: React.ReactNode;
 }
@@ -39,7 +41,7 @@ const NO_INSETS: WatchInsets = { left: 0, right: 0, top: 0, bottom: 0 };
  * canvas.
  */
 export function WatchStage({
-  model, message, handleRef, agents, focusIds, followId, onFollowChange, insets = NO_INSETS, className, children,
+  model, message, handleRef, agents, focusIds, followId, onFollowChange, insets = NO_INSETS, ambient = true, className, children,
 }: WatchStageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +110,7 @@ export function WatchStage({
   useEffect(() => { rendererRef.current?.setFocus(focusIds); }, [focusIds, strata]);
   useEffect(() => { rendererRef.current?.setFollow(followId); }, [followId, strata]);
   useEffect(() => { rendererRef.current?.setEmphasis(emphasis); }, [emphasis]);
+  useEffect(() => { rendererRef.current?.setAmbient(ambient); }, [ambient]);
 
   const setCaptionRef = useCallback((id: string) => (el: HTMLDivElement | null) => {
     if (el) captionRefs.current.set(id, el); else captionRefs.current.delete(id);
