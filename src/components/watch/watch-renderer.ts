@@ -5,10 +5,12 @@
 //
 // Nothing here is invented. A node is drawn only if the model has it, a beam
 // is cast only when `dispatch` reports a real event, and an agent's light
-// turns only while the caller says that agent is working.
+// turns only while the caller says that agent is working. The ambient drift
+// (watch-motion) is a few pixels around each seat and carries no meaning.
 
 import { STRATA, type StrataModel } from "@/components/strata/strata-model";
 import { layoutWatch, RING_RADIUS, type WatchLayout } from "./watch-model";
+import { breath, DRAG_FOLLOW, DRIFT_PX, driftOffset, driftSeed, LIGHT_DRIFT_PX, springDecay, type DriftSeed } from "./watch-motion";
 
 type RGB = readonly [number, number, number];
 
@@ -20,6 +22,10 @@ const BEAM_HALF_LIFE = 7;
 const HEAT_HALF_LIFE = 14;
 const RIPPLE_SECONDS = 1.4;
 const SWEEP_TURNS_PER_SECOND = 0.22;
+/** When drift is the only thing moving, redraw at most this often. */
+const AMBIENT_FRAME_MS = 33;
+/** Pointer travel, in pixels, before a press on a node becomes a drag. */
+const DRAG_THRESHOLD = 3;
 
 export interface WatchAgent {
   id: string;
@@ -52,7 +58,8 @@ export interface WatchOptions {
 }
 
 interface Beam { light: number; node: number; strength: number; phase: number }
-interface Ripple { x: number; y: number; t: number; rgb: RGB }
+/** Anchored to a node, or to a light when `node` is -1, so it follows the drift. */
+interface Ripple { node: number; light: number; t: number; rgb: RGB }
 
 const EMPTY: StrataModel = {
   nodeCount: 0, edgeCount: 0, ids: [], labels: [], types: [],
@@ -113,6 +120,14 @@ export class WatchRenderer {
   private ro: ResizeObserver;
   private disposers: Array<() => void> = [];
   private font: string;
+  private ambient = true;
+  private seeds: DriftSeed[] = [];
+  private lightSeeds: DriftSeed[] = [];
+  /** Screen-pixel displacement of nodes that were dragged and are springing back to their seats. */
+  private offsets = new Map<number, { x: number; y: number }>();
+  private dragNode = -1;
+  private dragOrigin = { x: 0, y: 0, ox: 0, oy: 0 };
+  private lastDraw = 0;
 
   constructor(private canvas: HTMLCanvasElement, private host: HTMLElement, private opts: WatchOptions) {
     this.ctx = canvas.getContext("2d")!;
@@ -147,9 +162,13 @@ export class WatchRenderer {
     this.model = model;
     this.sx = new Float32Array(model.nodeCount);
     this.sy = new Float32Array(model.nodeCount);
+    this.seeds = model.ids.map((id) => driftSeed(id));
+    this.offsets.clear();
+    this.dragNode = -1;
     this.heat.clear();
     this.heatRgb.clear();
     this.beams = [];
+    this.ripples = [];
     this.hover = -1;
     this.relayout();
     // Pin and focus are held by id, so they survive a refresh that keeps the node.
@@ -164,6 +183,7 @@ export class WatchRenderer {
     this.agents = agents;
     this.agentRgb = agents.map((a) => toRgb(a.color));
     this.lightByAgent = new Map(agents.map((a, i) => [a.id, i]));
+    this.lightSeeds = agents.map((a) => driftSeed(`light:${a.id}`));
     if (moved) {
       this.lx = new Float32Array(agents.length);
       this.ly = new Float32Array(agents.length);
@@ -181,6 +201,8 @@ export class WatchRenderer {
 
   setFollow(agentId: string | null) { this.follow = agentId; this.kick(); }
   setEmphasis(ring: number) { this.emphasis = ring; this.kick(); }
+  /** Slow drift around each seat. Off under reduced motion regardless. */
+  setAmbient(on: boolean) { this.ambient = on; this.kick(); }
 
   /** A real event: `agentId` touched `nodeIds`. Casts a beam to each one the graph holds. */
   dispatch(agentId: string, nodeIds: string[]) {
@@ -196,11 +218,11 @@ export class WatchRenderer {
       else this.beams.push({ light, node, strength: 1, phase: this.clock });
       this.heat.set(node, 1);
       this.heatRgb.set(node, rgb);
-      this.ripples.push({ x: this.layout.x[node], y: this.layout.y[node], t: 0, rgb });
+      this.ripples.push({ node, light, t: 0, rgb });
       cast++;
     }
     // An act that touched nothing the graph holds still happened: the light itself answers.
-    if (!cast) this.ripples.push({ x: this.layout.lightX[light], y: this.layout.lightY[light], t: 0, rgb });
+    if (!cast) this.ripples.push({ node: -1, light, t: 0, rgb });
     this.kick();
   }
 
@@ -239,7 +261,7 @@ export class WatchRenderer {
       cx: inset.left + fw / 2 + this.panX,
       cy: inset.top + fh / 2 + this.panY,
       // Room for the captions that hang outside the outer ring.
-      radius: (Math.min(fw, fh) / 2) * 0.86 * this.zoom,
+      radius: (Math.min(fw, fh) / 2) * 0.86 * this.zoom * (this.drifting ? breath(this.clock) : 1),
     };
   }
 
@@ -248,9 +270,15 @@ export class WatchRenderer {
     if (!this.raf) this.raf = requestAnimationFrame((t) => this.tick(t));
   }
 
-  private get moving() {
-    return this.beams.length > 0 || this.ripples.length > 0 || this.heat.size > 0 || (!this.reduce && this.agents.some((a) => a.working));
+  private get drifting() { return this.ambient && !this.reduce; }
+
+  /** Something that carries information is changing on screen. */
+  private get busy() {
+    return this.beams.length > 0 || this.ripples.length > 0 || this.heat.size > 0 || this.offsets.size > 0 || this.dragNode >= 0
+      || (!this.reduce && this.agents.some((a) => a.working));
   }
+
+  private get moving() { return this.busy || (this.drifting && this.model.nodeCount > 0); }
 
   private tick(time: number) {
     this.raf = 0;
@@ -271,9 +299,18 @@ export class WatchRenderer {
       }
       for (const ripple of this.ripples) ripple.t += dt / RIPPLE_SECONDS;
       this.ripples = this.ripples.filter((r) => r.t < 1);
+      // A released node springs back to its seat; the one under the pointer stays where it is held.
+      const spring = springDecay(dt);
+      for (const [node, offset] of this.offsets) {
+        if (node === this.dragNode) continue;
+        offset.x *= spring; offset.y *= spring;
+        if (Math.abs(offset.x) < 0.3 && Math.abs(offset.y) < 0.3) this.offsets.delete(node);
+      }
     }
 
-    if (this.dirty || this.moving) { this.draw(); this.dirty = false; }
+    // Drift alone does not need every frame; anything that carries information does.
+    const due = this.dirty || this.busy || time - this.lastDraw >= AMBIENT_FRAME_MS;
+    if (due && (this.dirty || this.moving)) { this.draw(); this.dirty = false; this.lastDraw = time; }
     if (this.moving) this.raf = requestAnimationFrame((t) => this.tick(t));
     else this.last = 0;
   }
@@ -286,19 +323,38 @@ export class WatchRenderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
 
-    for (let i = 0; i < model.nodeCount; i++) {
-      this.sx[i] = cx + layout.x[i] * radius;
-      this.sy[i] = cy + layout.y[i] * radius;
-    }
+    const t = this.clock;
+    const amp = this.drifting ? DRIFT_PX : 0;
+    const lightAmp = this.drifting ? LIGHT_DRIFT_PX : 0;
     for (let i = 0; i < this.agents.length; i++) {
-      this.lx[i] = cx + layout.lightX[i] * radius;
-      this.ly[i] = cy + layout.lightY[i] * radius;
+      const [dx, dy] = driftOffset(this.lightSeeds[i], t, lightAmp);
+      this.lx[i] = cx + layout.lightX[i] * radius + dx;
+      this.ly[i] = cy + layout.lightY[i] * radius + dy;
+    }
+    // A dragged node pulls its neighbours a little of the way with it.
+    const pull = new Map<number, { x: number; y: number }>();
+    for (const [node, offset] of this.offsets) {
+      for (const j of model.adjacency[node] ?? []) {
+        const p = pull.get(j) ?? { x: 0, y: 0 };
+        p.x += offset.x * DRAG_FOLLOW; p.y += offset.y * DRAG_FOLLOW;
+        pull.set(j, p);
+      }
+    }
+    const lightOf = new Map<number, number>();
+    for (let i = 0; i < layout.lightNode.length; i++) if (layout.lightNode[i] >= 0) lightOf.set(layout.lightNode[i], i);
+    for (let i = 0; i < model.nodeCount; i++) {
+      const light = lightOf.get(i);
+      if (light !== undefined) { this.sx[i] = this.lx[light]; this.sy[i] = this.ly[light]; continue; }
+      const [dx, dy] = driftOffset(this.seeds[i], t, amp);
+      const own = this.offsets.get(i), p = pull.get(i);
+      this.sx[i] = cx + layout.x[i] * radius + dx + (own?.x ?? 0) + (p?.x ?? 0);
+      this.sy[i] = cy + layout.y[i] * radius + dy + (own?.y ?? 0) + (p?.y ?? 0);
     }
 
     this.drawRings(cx, cy, radius);
     this.drawEdges();
     this.drawBeams();
-    this.drawRipples(cx, cy, radius);
+    this.drawRipples();
     this.drawNodes();
     this.drawLights(cx, cy);
     this.drawLabels();
@@ -396,12 +452,15 @@ export class WatchRenderer {
     }
   }
 
-  private drawRipples(cx: number, cy: number, radius: number) {
+  private drawRipples() {
     const { ctx } = this;
     for (const ripple of this.ripples) {
       const ease = 1 - Math.pow(1 - ripple.t, 3);
       ctx.beginPath();
-      ctx.arc(cx + ripple.x * radius, cy + ripple.y * radius, 5 + ease * 22, 0, TAU);
+      const x = ripple.node >= 0 ? this.sx[ripple.node] : this.lx[ripple.light];
+      const y = ripple.node >= 0 ? this.sy[ripple.node] : this.ly[ripple.light];
+      if (x === undefined || y === undefined) continue;
+      ctx.arc(x, y, 5 + ease * 22, 0, TAU);
       ctx.strokeStyle = rgba(ripple.rgb, (1 - ripple.t) * 0.7);
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -553,9 +612,26 @@ export class WatchRenderer {
     };
     const down = (e: PointerEvent) => {
       this.dragging = true; this.moved = false; this.lastX = e.clientX; this.lastY = e.clientY;
+      // A press on a node picks that node up; a press anywhere else pans the chart.
+      const { x, y } = local(e);
+      const hit = this.pick(x, y);
+      this.dragNode = hit.node;
+      if (hit.node >= 0) {
+        const held = this.offsets.get(hit.node) ?? { x: 0, y: 0 };
+        this.dragOrigin = { x: e.clientX, y: e.clientY, ox: held.x, oy: held.y };
+      }
       el.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
+      if (this.dragging && this.dragNode >= 0) {
+        const dx = e.clientX - this.dragOrigin.x, dy = e.clientY - this.dragOrigin.y;
+        if (!this.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        if (!this.moved) { this.moved = true; if (this.hover >= 0) { this.hover = -1; this.opts.onHover?.(null); } }
+        this.offsets.set(this.dragNode, { x: this.dragOrigin.ox + dx, y: this.dragOrigin.oy + dy });
+        el.style.cursor = "grabbing";
+        this.kick();
+        return;
+      }
       if (this.dragging) {
         const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
         if (Math.abs(dx) + Math.abs(dy) > 2) this.moved = true;
@@ -577,8 +653,15 @@ export class WatchRenderer {
     const up = (e: PointerEvent) => {
       if (!this.dragging) return;
       this.dragging = false;
+      const dropped = this.dragNode;
+      this.dragNode = -1;
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-      if (this.moved) return;
+      if (this.moved) {
+        // Under reduced motion the node returns at once instead of springing.
+        if (dropped >= 0 && this.reduce) this.offsets.delete(dropped);
+        this.kick();
+        return;
+      }
       const { x, y } = local(e);
       const hit = this.pick(x, y);
       if (hit.light >= 0) { this.opts.onAgent?.(this.agents[hit.light].id); return; }

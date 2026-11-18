@@ -60,9 +60,10 @@ Daylight on a working floor. Sentinel is where people and agents work together, 
 
 - `watch-model.ts` is the layout: a pure function of the graph and of where the agents stand. The same graph always draws the same picture.
 - `watch-renderer.ts` draws it. A beam is cast only when `dispatch` reports a real event; a light turns only while the caller says that agent is working. Nothing is animated to look busy.
+- `watch-motion.ts` is the ambient layer: every node drifts a few pixels around its seat on a slow, id-seeded path (24–60 s), the chart breathes by under 1%, and a dragged node pulls its neighbours a little and springs back when released. Drift is never information: it is too small and too slow to read as a beam, ripple or turning light, and the seat itself never moves.
 - `useWatch.ts` derives agents, captions and events from the activity feed for every surface that shows the watch.
 - Captions are real DOM text, so they are readable by assistive tech; the canvas carries a full text summary in its `aria-label`.
-- Reduced motion: lights do not turn and nothing travels along a beam; beams, heat and captions still appear because they are information.
+- Reduced motion: lights do not turn, nothing travels along a beam, nothing drifts, and a dropped node returns at once; beams, heat and captions still appear because they are information.
 
 ## Things To Avoid
 

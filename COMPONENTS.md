@@ -70,7 +70,9 @@ Exactly how every component should behave. Visual tokens live in [DESIGN.md](DES
 - **A turning light is a working agent.** Working comes from a live session or run on the server, or from the surface saying it is waiting on that agent. Nothing else makes a light turn.
 - **Captions are DOM text.** Each agent's name, and what it is doing while it works, sit beside its light. They thin out as the canvas gets smaller: all names, then working agents only, then none in a thin band.
 - **Context, never invention.** Focus ids are the room's agents' graph nodes, the room and its project. Ids the graph does not hold are ignored.
-- **Reduced motion.** Lights do not turn and nothing travels along a beam; beams, heat, focus and captions still render, and the canvas only redraws on change.
+- **Ambient drift, not activity.** Each node wanders at most 4.5px around its seat (lights 2px) on a path fixed by its id, and the chart breathes by 0.6%. While drift is the only motion the canvas redraws at ~30fps. `WatchStage` takes `ambient={false}` to turn it off for a surface.
+- **Drag.** Press a node and drag to move it; its neighbours follow at 22% and it springs back to its seat on release (half-life 0.35s). A press on empty ground pans, a click without movement pins, as before.
+- **Reduced motion.** Lights do not turn, nothing travels along a beam and nothing drifts; a dropped node returns at once. Beams, heat, focus and captions still render, and the canvas only redraws on change.
 
 ### The canonical graph (Neural Lens globe)
 
