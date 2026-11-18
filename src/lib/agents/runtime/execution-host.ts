@@ -1,4 +1,5 @@
 import { installedEffortOptions, type EffortLevel } from "@/lib/agents/model-policy";
+import { ensureTaskWorktree, isSafeWorktreeSegment } from "@/lib/orchestration/worktree-manager";
 import { RuntimeError } from "./errors";
 import {
   HEARTBEAT_INTERVAL_MS, isCliRuntimeKind, isRuntimeCallMethod, serializeRuntimeError,
@@ -125,6 +126,17 @@ export async function executeRuntimeCall(
         if (!Array.isArray(models) || models.length > MAX_EFFORT_MODELS) invalid("models");
         const entries = await Promise.all(models.map(async (model) => [str(model, "model"), await installedEffortOptions(runtime, model as string)] as const));
         value = Object.fromEntries(entries);
+        break;
+      }
+      case "ensureWorktree": {
+        // The path is derived here from the re-resolved runtime's root; the
+        // request only names the task, and only for that runtime's own agent.
+        const runtime = await runtimeFor(deps, kind, args[0]);
+        const taskId = str(args[1], "taskId");
+        const agentId = str(args[2], "agentId");
+        if (!isSafeWorktreeSegment(taskId)) invalid("taskId");
+        if (agentId !== runtime.agentId) invalid("agentId");
+        value = await ensureTaskWorktree({ runtime, taskId, agentId }, { local: true });
         break;
       }
     }

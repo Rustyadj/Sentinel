@@ -1,5 +1,8 @@
 import { resolve } from "node:path";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
+import {
+  cliRuntimeExecution, deserializeRuntimeError, isCliRuntimeKind, queueRuntimeCallTransport, type RuntimeCallTransport,
+} from "@/lib/agents/runtime/remote-execution";
 import { nodeRuntimeProcessRunner } from "@/lib/agents/runtime/runner";
 import type { RuntimeInstance } from "@/lib/agents/runtime/types";
 
@@ -24,7 +27,36 @@ export interface WorktreeResult {
  * autonomous worker is ever pointed at the shared root directly once a
  * worktree exists for its task.
  */
-export async function ensureTaskWorktree(input: EnsureWorktreeInput): Promise<WorktreeResult> {
+/** Task ids become a branch name and a directory name: no separators, no traversal. */
+export function isSafeWorktreeSegment(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(value) && !value.includes("..");
+}
+
+let worktreeTransport: RuntimeCallTransport = queueRuntimeCallTransport;
+export function setWorktreeTransportForTests(transport: RuntimeCallTransport = queueRuntimeCallTransport) {
+  worktreeTransport = transport;
+}
+
+/**
+ * In production the app has neither git nor the project root: both live with
+ * the CLI runtimes in orchestration-worker (remote-execution.ts), so the
+ * worktree is made there, on the same filesystem the runtime will run in.
+ */
+async function ensureRemoteWorktree(input: EnsureWorktreeInput): Promise<WorktreeResult> {
+  if (!isCliRuntimeKind(input.runtime.kind)) {
+    throw new RuntimeError("Only CLI runtimes use task worktrees", "configuration_invalid", 503);
+  }
+  for await (const reply of worktreeTransport.call({
+    kind: input.runtime.kind, method: "ensureWorktree", args: [input.runtime.id, input.taskId, input.agentId],
+  })) {
+    if (reply.t === "result") return reply.value as WorktreeResult;
+    if (reply.t === "error") throw deserializeRuntimeError(reply.error);
+  }
+  throw new RuntimeError("The orchestration worker ended the request without a result.", "runtime_host_unavailable", 503);
+}
+
+export async function ensureTaskWorktree(input: EnsureWorktreeInput, options: { local?: boolean } = {}): Promise<WorktreeResult> {
+  if (!options.local && cliRuntimeExecution() === "worker") return ensureRemoteWorktree(input);
   const root = input.runtime.workingDirectoryRoot;
   if (!root) throw new RuntimeError("Runtime has no allowlisted project root", "configuration_invalid", 503);
   const branch = `agent/${input.agentId}/${input.taskId}`;
