@@ -15,7 +15,7 @@ export const ROLE_COPY: Record<OrgRole | ProjectRole, { label: string; grants: s
   admin: { label: "Admin", grants: "Full control: run agents, manage people, change settings." },
   operator: { label: "Operator", grants: "Works in every shared workspace and can run agents. Cannot manage people." },
   member: { label: "Member", grants: "Reads shared workspaces and works on tasks. Cannot run agents." },
-  editor: { label: "Editor", grants: "This project only: write in its rooms, tasks and documents. Cannot run agents." },
+  editor: { label: "Editor", grants: "This project only: write in its rooms, tasks and documents, and bring an agent that runs on their own server. Cannot run Sentinel's agents." },
   viewer: { label: "Viewer", grants: "This project only, read-only." },
 };
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getVpsAgent } from "@/lib/agents/registry";
+import { OUTSIDE_ORIGIN } from "@/lib/collaboration/project-agents";
 import { resolveDisplayRole } from "./capabilities";
 import type {
   AgentDisagreement,
@@ -101,6 +102,31 @@ export async function getRoomSnapshot(chatRoomId: string): Promise<RoomSnapshot>
     };
   });
 
+  // Agents the people on this project brought. They run on their owners' own
+  // servers, so Sentinel knows neither their model nor their state beyond
+  // whether they are switched on and whether the last call was answered.
+  if (room.projectId) {
+    const outside = await db.projectAgent.findMany({
+      where: { projectId: room.projectId, origin: OUTSIDE_ORIGIN, status: { in: ["connected", "disabled"] } },
+      include: { owner: { select: { name: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    for (const agent of outside) {
+      const paused = agent.status !== "connected";
+      participants.push({
+        agentId: agent.agentId,
+        name: agent.name ?? agent.agentId,
+        runtime: `outside agent on ${agent.owner.name ?? "a member"}'s server`,
+        model: "not reported",
+        role: "research",
+        status: paused ? "paused" : "available",
+        health: paused ? "DISCONNECTED" : agent.lastError ? "DEGRADED" : "CONNECTED",
+        lastActivityAt: (agent.lastCheckedAt ?? agent.createdAt).toISOString(),
+        outside: { ownerName: agent.owner.name ?? "A member" },
+      });
+    }
+  }
+
   const artifactIdsByTask = new Map<string, string[]>();
   for (const artifact of artifacts) {
     if (!artifact.taskId) continue;
@@ -127,7 +153,8 @@ export async function getRoomSnapshot(chatRoomId: string): Promise<RoomSnapshot>
       dependsOnTaskIds: task.dependsOnTaskIds,
       artifactIds: artifactIdsByTask.get(task.id) ?? [],
     })),
-    messages: messages.map((message) => ({
+    // A notice (role "system") is nobody's words; this view only has people and agents.
+    messages: messages.filter((message) => message.role !== "system").map((message) => ({
       id: message.id,
       roomId: message.chatRoomId,
       senderAgentId: message.agentId ?? "user",
