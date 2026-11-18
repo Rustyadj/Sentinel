@@ -6,6 +6,8 @@ import { resolveLead, resolveWorkerPool } from "./capabilities";
 import { emitCollaborationEvent } from "./event-bus";
 import { runLisaLoop } from "./lisa-loop";
 import { postCollaborationMessage } from "./messages";
+import { isOutsideAgentId } from "@/lib/collaboration/project-agents";
+import { runOutsideAgentReply } from "./outside-agent-turn";
 
 export interface RunCollaborationInput {
   chatRoomId: string;
@@ -52,6 +54,14 @@ export async function runCollaborationTurn(input: RunCollaborationInput): Promis
   // broadcast-to-all-participants) always goes through Lisa below,
   // regardless of the room's persisted mode.
   const directTargetId = input.recipientAgentIds?.length === 1 ? input.recipientAgentIds[0] : undefined;
+
+  // An agent a person brought, running on their own server. It is only ever
+  // reached this way, by a person addressing it alone: it is never a lead or
+  // a worker, and a message meant for it never falls through to Lisa.
+  if (directTargetId && isOutsideAgentId(directTargetId)) {
+    await runOutsideAgentReply({ roomId: room.id, projectId: room.projectId, agentId: directTargetId, userId: input.userId, userContent: input.userContent });
+    return;
+  }
   if (directTargetId && room.agentIds.includes(directTargetId) && getVpsAgent(directTargetId)) {
     await runDirectAgentReply(room.id, directTargetId, input.userId, input.userContent);
     return;

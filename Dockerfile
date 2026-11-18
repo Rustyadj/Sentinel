@@ -103,7 +103,9 @@ FROM node:20-bookworm-slim AS worker
 ARG SENTINEL_COMMIT=unknown
 ARG SENTINEL_BUILT_AT=unknown
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+# git: claude-code/codex turns run in a per-task worktree of the project root,
+# created here (src/lib/orchestration/worktree-manager.ts) and nowhere else.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates git \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1001 nodejs \
  && useradd  --system --uid 1001 --gid nodejs --create-home nextjs \

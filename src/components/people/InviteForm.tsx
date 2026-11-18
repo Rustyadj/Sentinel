@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { ROLE_COPY } from "@/lib/people/roles";
-import { ChoiceCard, Field, Notice, PrimaryButton, QuietButton, fieldClass, formatDate, readError } from "./ui";
+import { ChoiceCard, CopyField, Field, Notice, PrimaryButton, QuietButton, fieldClass, formatDate, readError } from "./ui";
 
 type Scope = "organization" | "project";
 
@@ -29,7 +29,6 @@ export function InviteForm({ scopes, project, projects = [], onCreated }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const roles = scope === "organization" ? TEAM_ROLES : PROJECT_ROLES;
   const pickScope = (next: Scope) => { setScope(next); setRole(next === "organization" ? "member" : "editor"); };
@@ -43,18 +42,13 @@ export function InviteForm({ scopes, project, projects = [], onCreated }: {
       });
       if (!res.ok) throw new Error(await readError(res, "The invitation was not created."));
       setLink((await res.json()) as { url: string; expiresAt: string });
-      setCopied(false); setEmail("");
+      setEmail("");
       onCreated?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "The invitation was not created.");
     } finally {
       setBusy(false);
     }
-  }
-
-  async function copy() {
-    if (!link) return;
-    try { await navigator.clipboard.writeText(link.url); setCopied(true); } catch { setError("Copy did not work here. Select the link and copy it by hand."); }
   }
 
   if (link) {
@@ -66,14 +60,7 @@ export function InviteForm({ scopes, project, projects = [], onCreated }: {
             Send this to the person yourself. It works once, until {formatDate(link.expiresAt)}. Sentinel keeps no copy of it, so it cannot be shown again after you leave this panel.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-(--radius-md) border border-(--primary)/60 bg-(--primary-wash) p-2 pl-3">
-          <Link2 aria-hidden className="h-4 w-4 shrink-0 text-(--primary)" />
-          <input readOnly value={link.url} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-(--foreground) outline-none" />
-          <QuietButton onClick={() => void copy()} className="shrink-0 bg-(--background)">
-            {copied ? <Check className="h-3.5 w-3.5 text-(--status-online)" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Copied" : "Copy"}
-          </QuietButton>
-        </div>
+        <CopyField value={link.url} label="Invitation link" icon={Link2} />
         {error ? <Notice>{error}</Notice> : null}
         <QuietButton onClick={() => setLink(null)}>Invite someone else</QuietButton>
       </div>

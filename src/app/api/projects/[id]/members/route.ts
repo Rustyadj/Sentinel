@@ -61,8 +61,14 @@ export async function DELETE(req: NextRequest, { params }: Context) {
     if (denied) return denied;
     const memberId = req.nextUrl.searchParams.get("memberId");
     if (!memberId) return NextResponse.json({ error: "memberId is required" }, { status: 400 });
-    const removed = await db.projectMember.deleteMany({ where: { id: memberId, projectId: id } });
-    if (!removed.count) return NextResponse.json({ error: "That person is not on this project." }, { status: 404 });
+    const member = await db.projectMember.findFirst({ where: { id: memberId, projectId: id }, select: { userId: true } });
+    if (!member) return NextResponse.json({ error: "That person is not on this project." }, { status: 404 });
+    // Their agents stop with them: an agent whose owner can no longer reach
+    // the project must not keep answering in its rooms.
+    await db.$transaction([
+      db.projectMember.deleteMany({ where: { id: memberId, projectId: id } }),
+      db.projectAgent.updateMany({ where: { projectId: id, ownerUserId: member.userId, status: "connected" }, data: { status: "disabled" } }),
+    ]);
     await writeAuditLog({ userId: user.id, projectId: id, action: "project.member_removed", entityType: "projectMember", entityId: memberId });
     return NextResponse.json({ ok: true });
   } catch (error) {

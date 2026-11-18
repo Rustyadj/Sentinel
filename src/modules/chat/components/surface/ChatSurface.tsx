@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Activity as ActivityIcon, PanelLeft, Plus, Users } from "lucide-react";
 import { useChatSession } from "@/lib/chat/useChatSession";
 import { useMe } from "@/lib/people/useMe";
+import { useOutsideAgents } from "@/lib/collaboration/useOutsideAgents";
 import { useShellStore } from "@/store/useShellStore";
 import { AppShell } from "@/components/shell/AppShell";
 import { AgentSelector } from "@/components/shell/AgentSelector";
@@ -37,8 +38,11 @@ export function ChatSurface() {
   const [followId, setFollowId] = useState<string | null>(null);
   const [focusChat, setFocusChat] = useState(false);
   const [activityOpen, setActivityOpen] = useState<boolean | null>(null);
-  // In a shared room a message can go to the agent or just to the people in it.
-  const [audience, setAudience] = useState<"agent" | "people">("agent");
+  // In a shared room a message can go to Sentinel's agent ("agent"), just to
+  // the people in it ("people"), or to an agent someone brought (its id).
+  const [audience, setAudience] = useState<string>("agent");
+  // The outside agent last asked, until its answer (or a notice that it did not answer) arrives.
+  const [awaiting, setAwaiting] = useState<{ agentId: string; name: string; roomId: string; seen: ReadonlySet<string> } | null>(null);
   const me = useMe();
 
   const {
@@ -121,11 +125,28 @@ export function ChatSurface() {
     [orrery.status, orrery.graphHealth, orrery.activityHealth, orrery.partial, orrery.activityTruncated],
   );
 
-  // Someone who cannot run agents can still talk to the people in a room.
+  // Someone who cannot run agents can still talk to the people in a room,
+  // and to an agent that runs on its owner's own server.
   const inProject = Boolean(activeRoom?.projectId);
   const canAsk = me ? me.canRunAgents : true;
-  const toPeople = !canAsk || (inProject && audience === "people");
-  const send = () => void (toPeople ? handleSendNote() : handleSend());
+  const outsideAgents = useOutsideAgents(activeRoom?.projectId);
+  const outsideTarget = outsideAgents.find((agent) => agent.agentId === audience) ?? null;
+  const toPeople = !outsideTarget && (!canAsk || (inProject && audience === "people"));
+  const send = () => {
+    if (outsideTarget && activeRoomId) {
+      setAwaiting({ agentId: outsideTarget.agentId, name: outsideTarget.name, roomId: activeRoomId, seen: new Set(messages.map((m) => m.id)) });
+      void handleSendNote(outsideTarget.agentId);
+    } else void (toPeople ? handleSendNote() : handleSend());
+  };
+  // Waiting ends when anything other than a person's message arrives that was not there when the question
+  // was asked: the answer, or a notice. Told apart by id, since the transcript is a window that moves.
+  const awaitingName = awaiting && awaiting.roomId === activeRoomId && !messages.some((m) => m.role !== "user" && !awaiting.seen.has(m.id)) ? awaiting.name : null;
+  const audienceOptions: Array<[string, string]> = [
+    ...(canAsk ? [["agent", activeAgent ? `Ask ${activeAgent.name}` : "Ask an agent"] as [string, string]] : []),
+    ["people", "Tell the room"],
+    ...outsideAgents.map((agent): [string, string] => [agent.agentId, `Ask ${agent.name}`]),
+  ];
+  const selectedAudience = outsideTarget ? outsideTarget.agentId : toPeople ? "people" : "agent";
 
   const contextEntries: ContextEntry[] = useMemo(() => [
     {
@@ -280,7 +301,7 @@ export function ChatSurface() {
                   <ConversationMessage
                     key={message.id}
                     message={message}
-                    agentName={message.agentId ? agentNameById.get(message.agentId) : undefined}
+                    agentName={message.agentName ?? (message.agentId ? agentNameById.get(message.agentId) : undefined)}
                     agentColor={message.agentId ? agentColorById.get(message.agentId) : undefined}
                     streaming={message.isStreaming}
                   />
@@ -290,6 +311,12 @@ export function ChatSurface() {
                 <p className="flex items-center gap-2 text-[13px] text-(--muted-foreground)">
                   <span aria-hidden className="animate-pulse-dot h-2 w-2 rounded-full" style={{ background: activeAgent?.color ?? "var(--primary)" }} />
                   {activeAgent?.name ?? "Agent"} is thinking…
+                </p>
+              ) : null}
+              {awaitingName ? (
+                <p role="status" className="flex items-center gap-2 text-[13px] text-(--muted-foreground)">
+                  <span aria-hidden className="animate-pulse-dot h-2 w-2 rounded-full bg-(--entity-agent)" />
+                  Waiting for {awaitingName} to answer from its own server…
                 </p>
               ) : null}
               <div ref={bottomRef} />
@@ -305,13 +332,13 @@ export function ChatSurface() {
             onDecided={orrery.refresh}
           />
 
-          {inProject && canAsk ? (
-            <div role="group" aria-label="Who this message is for" className="mx-3 mb-2 flex w-fit rounded-full border border-(--border) bg-(--panel) p-0.5 text-[12px]">
-              {([["agent", activeAgent ? `Ask ${activeAgent.name}` : "Ask an agent"], ["people", "Tell the room"]] as const).map(([value, label]) => (
+          {inProject && audienceOptions.length > 1 ? (
+            <div role="group" aria-label="Who this message is for" className="mx-3 mb-2 flex w-fit max-w-[calc(100%-1.5rem)] overflow-x-auto whitespace-nowrap rounded-full border border-(--border) bg-(--panel) p-0.5 text-[12px]">
+              {audienceOptions.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
-                  aria-pressed={audience === value}
+                  aria-pressed={selectedAudience === value}
                   onClick={() => setAudience(value)}
                   className={cn("rounded-full px-3 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
                     audience === value ? "bg-(--accent) text-(--foreground)" : "text-(--muted-foreground) hover:text-(--foreground)")}
@@ -328,11 +355,19 @@ export function ChatSurface() {
             onSend={send}
             disabled={offline || !activeRoom}
             busy={busy}
-            placeholder={toPeople ? "Write to the people in this room…" : activeAgent ? `Message ${activeAgent.name}, or @agent…` : "Message an agent…"}
+            placeholder={outsideTarget
+              ? `Message ${outsideTarget.name}, on ${outsideTarget.isYours ? "your" : `${outsideTarget.ownerName}'s`} server…`
+              : toPeople ? "Write to the people in this room…" : activeAgent ? `Message ${activeAgent.name}, or @agent…` : "Message an agent…"}
             actions={composerActions}
           />
           {me && !me.canRunAgents && activeRoom ? (
-            <p className="-mt-1 px-4 pb-3 text-[12px] text-(--text-faint)">Your role does not run agents, so messages go to the people in the room.</p>
+            <p className="-mt-1 px-4 pb-3 text-[12px] text-(--text-faint)">
+              {outsideTarget
+                ? `${outsideTarget.name} runs on ${outsideTarget.isYours ? "your" : `${outsideTarget.ownerName}'s`} own server. It is sent this message only, and everyone in the room sees its answer.`
+                : outsideAgents.length
+                  ? "Your role does not run Sentinel's agents. Write to the people in the room, or ask an agent someone brought."
+                  : "Your role does not run agents, so messages go to the people in the room."}
+            </p>
           ) : null}
         </section>
 

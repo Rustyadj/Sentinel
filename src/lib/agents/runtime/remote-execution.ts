@@ -40,9 +40,13 @@ export function isCliRuntimeKind(kind: string): kind is CliRuntimeKind {
 
 export const RUNTIME_CALL_QUEUE_NAME = "runtime-calls";
 
-/** Adapter methods that execute the CLI, plus the installed-CLI effort catalog. Everything else is a database read and stays in the app. */
+/**
+ * Adapter methods that execute the CLI, plus the installed-CLI effort catalog
+ * and per-task worktree setup (git and the project root live only on the
+ * runtime host). Everything else is a database read and stays in the app.
+ */
 export const RUNTIME_CALL_METHODS = [
-  "discover", "health", "readiness", "startSession", "resumeSession", "send", "cancel", "effortOptions",
+  "discover", "health", "readiness", "startSession", "resumeSession", "send", "cancel", "effortOptions", "ensureWorktree",
 ] as const;
 export type RuntimeCallMethod = (typeof RUNTIME_CALL_METHODS)[number];
 

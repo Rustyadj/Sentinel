@@ -47,6 +47,8 @@ export interface CollaborationParticipant {
   health: AgentHealth;
   tokenUsage?: { tokens: number; costUsd: number };
   lastActivityAt: string;
+  /** Set for an agent a person brought that runs on their own server, not on Sentinel. */
+  outside?: { ownerName: string };
 }
 
 export type CollaborationArtifactType =

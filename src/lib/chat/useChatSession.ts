@@ -97,6 +97,8 @@ interface ApiMessage {
   createdAt: string;
   authorName?: string | null;
   mine?: boolean;
+  /** Present for an agent someone brought, which the agent store does not know. */
+  agentName?: string;
 }
 
 /** How often a room other people can write in is re-read. */
@@ -110,6 +112,7 @@ function apiMessageToMessage(m: ApiMessage, roomId: string): Message {
     agentId: m.agentId ?? undefined,
     content: m.content,
     timestamp: new Date(m.createdAt),
+    ...(m.agentName ? { agentName: m.agentName } : {}),
     ...(m.role === "user" && m.mine === false ? { mine: false, authorName: m.authorName ?? "Someone" } : {}),
   };
 }
@@ -150,8 +153,11 @@ export interface ChatSession {
   graphRefreshKey: number;
   setActiveRoom: (roomId: string) => void;
   handleSend: () => Promise<void>;
-  /** Sends the input to the people in the room without asking an agent. */
-  handleSendNote: () => Promise<void>;
+  /**
+   * Sends the input to the people in the room without asking a Sentinel agent.
+   * With `toAgentId`, an agent someone brought to the project is asked as well.
+   */
+  handleSendNote: (toAgentId?: string) => Promise<void>;
   handleCreateRoom: () => Promise<void>;
   handleMentionAgent: (agentName: string) => void;
   handleAcceptCandidate: (candidate: ExtractionCandidate) => Promise<void>;
@@ -365,8 +371,8 @@ export function useChatSession(): ChatSession {
     [addMessage, updateMessage, updateAgentStatus, anthropicKey, openaiKey, openrouterKey]
   );
 
-  // A message to the people in the room. No agent is asked anything.
-  const handleSendNote = useCallback(async () => {
+  // A message to the people in the room. No Sentinel agent is asked anything.
+  const handleSendNote = useCallback(async (toAgentId?: string) => {
     const content = input.trim();
     if (!content || !activeRoomId) return;
     setInput("");
@@ -374,7 +380,7 @@ export function useChatSession(): ChatSession {
       const res = await fetch(`/api/rooms/${activeRoomId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, ...(toAgentId ? { toAgentId } : {}) }),
       });
       if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "The message was not sent.");
       addMessage(activeRoomId, apiMessageToMessage((await res.json()) as ApiMessage, activeRoomId));

@@ -44,7 +44,9 @@ export const COMPATIBILITY_RUNTIMES: RuntimeView[] = [
     transport: "docker",
     // Verified 2026-09-07 on the VPS: hermes-nathan2 (container a8a47ec85ac6, pid 119318)
     // listens on 0.0.0.0:4864. Port 4861 answered nothing. Confirmed reachable from the
-    // app container as http://host.docker.internal:4864 -> HTTP 200.
+    // app container as http://host.docker.internal:4864 -> HTTP 200. Since 2026-11-10 the
+    // dashboard binds docker0 (172.16.0.1) and rejects any other Host header with a 400,
+    // so the deployment endpoint is http://172.16.0.1:4864 (docker-compose.yml).
     endpoint: process.env.HERMES_NATHAN2_ENDPOINT ?? "http://127.0.0.1:4864",
     containerName: process.env.HERMES_NATHAN2_CONTAINER ?? "hermes-nathan2",
     configPath: `${CONFIG_ROOT}/hermes-nathan2`,

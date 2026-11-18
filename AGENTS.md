@@ -59,7 +59,7 @@ with its definition in `config.ts`. Verified CLI contracts on this VPS:
 | Gemini 0.58.0 | `-m/--model` | none | `-o stream-json` | needs `--skip-trust`; reports actual models in `result.stats.models` |
 | Hermes (Lisa, Nathan2) | `session.create({model})` | `reasoning_effort` | WebSocket RPC | recreated sessions must reuse the pinned model |
 
-Hermes Lisa listens on `127.0.0.1:4862`, Nathan2 on `0.0.0.0:4864` — **not** the 4860/4861
+Hermes Lisa listens on `127.0.0.1:4862`, Nathan2 on `172.16.0.1:4864` (docker0; its dashboard rejects any other Host header, so `host.docker.internal` fails with 400) — **not** the 4860/4861
 that older config defaulted to.
 
 ## Session provenance
