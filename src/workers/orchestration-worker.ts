@@ -10,6 +10,8 @@ import { executeRuntimeCall } from "@/lib/agents/runtime/execution-host";
 import { REPLY_TTL_SECONDS, RUNTIME_CALL_QUEUE_NAME, replyStreamKey, type RuntimeCallPayload } from "@/lib/agents/runtime/remote-execution";
 import { getLocalRuntimeAdapter, resolveRuntimeInstance } from "@/lib/agents/runtime/service";
 import { startWorkerHeartbeat } from "./heartbeat";
+import { objectivesEnabled, tickObjectives } from "@/lib/objectives/engine";
+import { defaultToolDeps } from "@/lib/objectives/service";
 
 // This process executes the CLI runtimes, for orchestration runs and for the app's runtime calls
 // alike. Read at call time (remote-execution.ts), so setting it here precedes every use.
@@ -61,7 +63,21 @@ reconciler.unref();
 const continuationRetry = setInterval(() => { void retryBotContinuations().catch((error) => console.error("[orchestration-worker] continuation retry failed", error instanceof Error ? error.message : error)); }, 30_000);
 continuationRetry.unref();
 
+// Autonomous objectives (docs/OBJECTIVES.md): state is in Postgres and each objective is leased while advanced,
+// so a restart resumes from the last persisted step. Off unless SENTINEL_OBJECTIVES=on (the global kill switch).
+let objectiveTickRunning = false;
+const objectiveDeps = defaultToolDeps();
+const objectiveTicker = setInterval(() => {
+  if (objectiveTickRunning || !objectivesEnabled()) return;
+  objectiveTickRunning = true;
+  void tickObjectives(workerId, objectiveDeps)
+    .catch((error) => console.error("[orchestration-worker] objective tick failed", error instanceof Error ? error.message : error))
+    .finally(() => { objectiveTickRunning = false; });
+}, Number(process.env.SENTINEL_OBJECTIVES_TICK_MS ?? "10000"));
+objectiveTicker.unref();
+
 async function shutdown() {
+  clearInterval(objectiveTicker);
   clearInterval(reconciler);
   clearInterval(continuationRetry);
   stopHeartbeat();

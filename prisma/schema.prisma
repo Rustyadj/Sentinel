@@ -51,6 +51,7 @@ model User {
   orchestrationRuns        OrchestrationRun[]
   projectAgentsOwned       ProjectAgent[]           @relation("ProjectAgentOwner")
   agentLinkRulesSet        AgentLinkRule[]          @relation("AgentLinkRuleSetter")
+  objectives               Objective[]
 
   @@map("users")
 }
@@ -644,6 +645,7 @@ model Workspace {
   memories          Memory[]
   bots              Bot[]
   mcpServers        McpServerRegistration[]
+  objectives        Objective[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -3703,4 +3705,111 @@ model AgentLinkRule {
   @@unique([projectId, agentId, peerAgentId])
   @@index([projectId, peerAgentId])
   @@map("agent_link_rules")
+}
+
+// =====================================================================
+// Autonomous objectives (docs/OBJECTIVES.md). One high-level goal, planned
+// into a fixed dependency graph of steps that the orchestration-worker
+// advances durably. The plan is fixed when the objective is created: nothing
+// a step reads (web pages, RDAP, agent output) can add or change steps.
+// Approvals reuse ApprovalRequest (taskId = step id, single-use fingerprint);
+// agent work reuses OrchestrationRun.
+// =====================================================================
+
+model Objective {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String
+  title          String
+  goal           String
+  /// Planner template that produced the steps (src/lib/objectives/planner.ts).
+  templateKey    String
+  /// 1 advisory, 2 supervised, 3 managed, 4 delegated (src/lib/objectives/policy.ts).
+  autonomyLevel  Int       @default(2)
+  /// planned, running, paused, waiting_approval, blocked, completed, failed, stopped
+  status         String    @default("running")
+  inputs         Json      @default("{}")
+  budgetCents    Int       @default(0)
+  spentCents     Int       @default(0)
+  report         Json      @default("{}")
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  stopReason     String?
+  stoppedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  steps     ObjectiveStep[]
+  events    ObjectiveEvent[]
+
+  @@index([workspaceId, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@map("objectives")
+}
+
+model ObjectiveStep {
+  id                 String    @id @default(cuid())
+  objectiveId        String
+  /// Stable key inside the objective's plan; dependsOn refers to these.
+  key                String
+  title              String
+  /// Order in the plan, for display and deterministic iteration.
+  position           Int       @default(0)
+  /// Workforce role responsible (src/lib/objectives/roles.ts).
+  role               String
+  /// tool | agent | verify
+  kind               String
+  toolKey            String
+  input              Json      @default("{}")
+  dependsOn          String[]  @default([])
+  /// pending, running, waiting_approval, retry_wait, blocked, advised, completed, failed, cancelled
+  status             String    @default("pending")
+  /// read, write, publish, financial, legal, destructive, credential
+  impact             String    @default("read")
+  attempts           Int       @default(0)
+  maxAttempts        Int       @default(3)
+  nextAttemptAt      DateTime?
+  /// Passed to the tool on every attempt, so a retried side effect is not repeated.
+  idempotencyKey     String    @unique
+  output             Json      @default("{}")
+  verification       Json      @default("{}")
+  blockedReason      String?
+  /// What a human must do to unblock (connect an integration, supply a value).
+  unblockRequest     String?
+  error              String?
+  approvalRequestId  String?
+  /// Set once the approval has been spent for this step (it never clears twice).
+  approvalClearedAt  DateTime?
+  orchestrationRunId String?
+  estimatedCostCents Int       @default(0)
+  actualCostCents    Int       @default(0)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@unique([objectiveId, key])
+  @@index([objectiveId, status])
+  @@map("objective_steps")
+}
+
+/// Append-only activity log for one objective (the dashboard's live feed).
+model ObjectiveEvent {
+  id          String   @id @default(cuid())
+  objectiveId String
+  stepKey     String?
+  type        String
+  message     String
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@index([objectiveId, createdAt])
+  @@map("objective_events")
 }
