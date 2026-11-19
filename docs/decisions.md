@@ -3,6 +3,32 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-010 — Autonomous objectives are a fixed-plan, Postgres-leased step graph
+
+**Date:** 2026-11-19
+**Status:** Proposed (branch `feat/objective-engine`, flag `SENTINEL_OBJECTIVES`, off)
+
+**Decision.** A high-level goal becomes an `Objective` whose `ObjectiveStep` graph is fixed by a vetted
+planner template at creation. The orchestration-worker advances objectives on a timer under a short
+row lease; every transition is persisted, so restarts resume from the last step state. Approvals reuse
+`ApprovalRequest` with the existing single-use fingerprint binding (taskId = step id). Model work is
+delegated through `createOrchestrationRun`, so agent identity, model resolution and memory stay on the
+canonical paths. Financial, legal, destructive and credential steps need a human at every autonomy level.
+A step is completed only with a passing verification.
+
+**Why.** The Lisa room loop lives in the app process and dies with it, and an LLM that re-plans from
+what it reads can be steered by a web page or an email. A fixed plan keeps external content as data;
+a DB lease gives durability without a second queue.
+
+**Rejected.** *Extending `Task`* — it already carries kanban and room-DAG semantics, and has no
+idempotency, retry or verification state. *A BullMQ job per step* — duplicates state Postgres must hold
+anyway. *LLM-generated plans* — deferred until plans can be validated against a tool allowlist before
+they run.
+
+**Consequences.** Only one template exists (business setup). Registrar, email, DNS, hosting, analytics and
+CRM steps block with a connection request until an adapter is written; RDAP availability and DNS
+verification are real.
+
 ## ADR-009 — One release revision drives the app, the migration job and both workers
 
 **Date:** 2026-10-09

@@ -7,6 +7,7 @@ import { resumeAfterApproval, resumeMissionAfterApproval } from "@/lib/orchestra
 import { GuardianReviewAlreadyResolvedError, resolveGuardianReview } from "@/lib/learning/guardian";
 import { HttpError, errorResponse as botErrorResponse, requireBotAdmin } from "@/lib/bots/api";
 import { resolveBotTaskApproval } from "@/lib/bots/tasks";
+import { OBJECTIVE_APPROVAL_TYPE } from "@/lib/objectives/types";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -76,7 +77,10 @@ export async function PATCH(req: NextRequest, { params }: Context) {
       const { recordProductionFailure } = await import("@/lib/learning/production-failures");
       await recordProductionFailure("rejected_approval", { sourceId: id, workspaceId: approval.workspaceId, userId: user.id, context: { decisionNote: body.decisionNote, taskId: approval.taskId } }).catch(() => undefined);
     }
-    if (body.status === "approved" && approval.taskId) {
+    if (approval.type === OBJECTIVE_APPROVAL_TYPE) {
+      // Objective steps are re-checked by the objective engine on its next tick
+      // (src/lib/objectives/engine.ts); taskId there is a step id, not a Task.
+    } else if (body.status === "approved" && approval.taskId) {
       // A collaboration-room approval gate resuming its task is a distinct
       // pipeline from this route's normal request/response cycle, so it
       // runs detached rather than holding this response open on it.
