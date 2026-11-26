@@ -53,6 +53,7 @@ export const SHELL_NAV_GROUPS: NavGroup[] = [
       { id: "roundtable", label: "Roundtable", icon: "MessagesSquare", href: "/roundtable", guest: true },
       { id: "projects",   label: "Projects",   icon: "FolderKanban",  href: "/projects", guest: true },
       { id: "tasks",      label: "Tasks",      icon: "ListChecks",    href: "/tasks" },
+      { id: "objectives", label: "Objectives", icon: "Target",        href: "/objectives" },
     ],
   },
   {

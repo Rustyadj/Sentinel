@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Activity, BookOpen, Boxes, Bot, FolderKanban, GitBranch, HardDrive, ListChecks, MessageSquare, MessagesSquare,
-  Radar, Search, Settings, Users, X, type LucideIcon,
+  Radar, Search, Settings, Target, Users, X, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SHELL_NAV_GROUPS, SHELL_SECONDARY_NAV, type NavItem } from "@/lib/navigation";
@@ -15,7 +15,7 @@ import { useShellStore } from "@/store/useShellStore";
 
 const ICONS: Record<string, LucideIcon> = {
   MessageSquare, MessagesSquare, FolderKanban, Radar, BookOpen, HardDrive, Bot, Boxes, ListChecks, Activity, GitBranch,
-  Users, Search, Settings,
+  Users, Search, Settings, Target,
 };
 
 export function isShellNavActive(item: NavItem, pathname: string) {
