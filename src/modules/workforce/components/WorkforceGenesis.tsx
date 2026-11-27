@@ -14,12 +14,13 @@ const newAgent = (key: string): WorkforcePlan["specialists"][number] => ({
   reportsTo: null, objectives: [{ goal: "", metric: "", cadence: "once" }], requestedCapabilities: [],
 });
 
-export function WorkforceGenesis({ workspace, canGenerate }: { workspace: WorkforceSnapshot["workspace"]; canGenerate: boolean }) {
+export function WorkforceGenesis({ workspace, canPlan, providerAvailable }: { workspace: WorkforceSnapshot["workspace"]; canPlan: boolean; providerAvailable: boolean }) {
   const [instruction, setInstruction] = useState("");
   const [plan, setPlan] = useState<WorkforcePlan | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const organization = workspace.organization ?? workspace.name;
+  const canGenerate = canPlan && providerAvailable;
 
   async function generate(event: React.FormEvent) {
     event.preventDefault();
@@ -79,7 +80,9 @@ export function WorkforceGenesis({ workspace, canGenerate }: { workspace: Workfo
               placeholder="Create a five-agent marketing department to research construction leads, improve SEO, produce content, monitor competitors, and report weekly." />
             <Button disabled={pending || !instruction.trim()}>{pending ? "Generating…" : "Generate plan"}</Button>
           </form>}
-          {!canGenerate && <p className="text-sm text-(--muted-foreground)">Natural-language planning requires workspace configuration access and a configured OpenRouter connection.</p>}
+          {!canGenerate && <p className="text-sm text-(--muted-foreground)">
+            {canPlan ? "Connect OpenRouter to generate a plan from instructions." : "Workspace configuration access is required to generate a plan."}
+          </p>}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={pending} onClick={() => apply(marketingPlan(organization))}>Marketing template</Button>
             <Button type="button" variant="outline" disabled={pending} onClick={() => apply(emptyPlan)}>Start manually</Button>

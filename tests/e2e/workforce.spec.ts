@@ -23,9 +23,9 @@ test("organization ownership, Titan ICF draft and recorded operations", async ({
   });
   const org = await db.organization.create({ data: { name: "Titan ICF", ownerId: owner.id } });
   const workspace = await db.workspace.create({
-    data: { slug: `titan-e2e-${suffix}`, name: `Titan ICF E2E ${suffix}`, ownerId: owner.id, organizationId: org.id },
+    data: { slug: `titan-e2e-${suffix}`, name: "Titan ICF Marketing", ownerId: owner.id, organizationId: org.id },
   });
-  await db.objective.create({
+  const objective = await db.objective.create({
     data: { workspaceId: workspace.id, userId: owner.id, title: "Research construction leads", goal: "Find leads", templateKey: "test_fixture" },
   });
   const pageErrors: string[] = [];
@@ -60,7 +60,19 @@ test("organization ownership, Titan ICF draft and recorded operations", async ({
 
     await page.getByRole("tab", { name: "Operations" }).click();
     await expect(page.getByText("Research construction leads", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    await page.getByLabel("Import Sentinel surface JSON").setInputFiles({
+      name: "workflow.json", mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({
+        version: 1, title: "Generated project report", components: [
+          { id: "pause", type: "action", label: "Proposed control label", action: "pause", objectiveId: objective.id },
+          { id: "foreign", type: "action", label: "Unknown objective", action: "pause", objectiveId: "outside-workspace" },
+        ],
+      })),
+    });
+    const report = page.getByRole("region", { name: "Generated project report" });
+    await expect(report).toBeVisible();
+    await expect(report.getByRole("button", { name: "Unknown objective" })).toHaveCount(0);
+    await report.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByText("Paused by operator.", { exact: true })).toBeVisible({ timeout: 25_000 });
     expect((await db.objective.findFirstOrThrow({ where: { workspaceId: workspace.id } })).status).toBe("paused");
     const evidence = process.env.SENTINEL_WORKFORCE_E2E_SCREENSHOTS;

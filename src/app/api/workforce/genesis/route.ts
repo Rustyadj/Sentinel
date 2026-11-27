@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canEditConfig, getWorkspaceControlPlaneUser } from "@/lib/agents/permissions";
 import { db } from "@/lib/db";
+import { getVisibleWorkforceOrganization } from "@/lib/workforce/organization";
 import { planWorkforce, WorkforcePlanningError } from "@/lib/workforce/planning";
 
 const requestSchema = z.strictObject({
@@ -16,10 +17,11 @@ export async function POST(request: Request) {
   if (!user || !canEditConfig(user.role)) return Response.json({ error: "Workforce planning requires workspace configuration access." }, { status: 403 });
   const workspace = await db.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
-    select: { name: true, organization: { select: { name: true } } },
+    select: { name: true, organization: { select: { id: true, name: true, ownerId: true } } },
   });
+  const org = await getVisibleWorkforceOrganization(user.id, workspace.organization);
   try {
-    return Response.json({ plan: await planWorkforce(instruction, workspace.organization?.name ?? workspace.name, request.signal) });
+    return Response.json({ plan: await planWorkforce(instruction, org?.name ?? workspace.name, request.signal) });
   } catch (error) {
     if (error instanceof WorkforcePlanningError) return Response.json({ error: error.message }, { status: 502 });
     throw error;

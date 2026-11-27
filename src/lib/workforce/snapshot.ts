@@ -4,7 +4,7 @@ import { canEditConfig, getWorkspaceControlPlaneUser } from "@/lib/agents/permis
 import { getAccessibleLearningScope } from "@/lib/learning/authorization";
 import { requireWorkspacePermission, userHasWorkspacePermission } from "@/lib/workspaces/authorization";
 import { summarizeRecordedSteps } from "./analytics";
-import { canManageDepartments } from "./organization";
+import { canManageDepartments, getVisibleWorkforceOrganization } from "./organization";
 import { planningAvailable } from "./planning";
 
 export async function getWorkforceSnapshot(workspaceId: string) {
@@ -24,12 +24,7 @@ export async function getWorkforceSnapshot(workspaceId: string) {
     getAccessibleLearningScope(user.id),
   ]);
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const membership = workspace.organization && await db.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId: workspace.organization.id, userId: user.id } },
-    select: { role: true },
-  });
-  const org = workspace.organization && (membership || workspace.organization.ownerId === user.id)
-    ? workspace.organization : null;
+  const org = await getVisibleWorkforceOrganization(user.id, workspace.organization);
   const [agents, runtimes, departments, teams, objectives, events, tasks, runs, steps, skills, connections, manageDepartments] = await Promise.all([
     canReadAgents ? db.agent.findMany({
       where: { workspaceId, id: { notIn: [...RETIRED_AGENT_IDS] } },

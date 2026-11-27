@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import type { WorkforceSnapshot } from "@/lib/workforce/snapshot";
 import { objectiveActionKey, type Surface, type SurfaceAction } from "@/lib/workforce/surface";
 import { OrganizationDesigner } from "./OrganizationDesigner";
@@ -23,7 +22,6 @@ const percentage = new Intl.NumberFormat("en-US", { style: "percent", maximumFra
 export function WorkforceConsole({ workspaces }: { workspaces: WorkspaceChoice[] }) {
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? "");
   return <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
-    <WorkspaceHeader title="Workforce" description="Plan teams and track agent operations in Sentinel." showBack={false} showTabs={false} />
     {workspaces.length ? <>
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm font-medium">
         <label htmlFor="workforce-workspace">Workspace</label>
@@ -80,8 +78,8 @@ function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
     : <p role="status">Loading workforce…</p>;
 
   return <Tabs value={active} onValueChange={setActive}>
-    <div className="overflow-auto">
-      <TabsList aria-label="Workforce sections">
+    <div>
+      <TabsList className="flex-wrap justify-start" aria-label="Workforce views">
         <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="organization">Organization</TabsTrigger>
         <TabsTrigger value="genesis">Genesis</TabsTrigger>
@@ -93,7 +91,7 @@ function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
     </div>
     <TabsContent value="overview"><Overview data={data} onChange={refresh} /></TabsContent>
     <TabsContent value="organization"><OrganizationDesigner data={data} onSaved={refresh} /></TabsContent>
-    <TabsContent value="genesis" forceMount className="data-[state=inactive]:hidden"><WorkforceGenesis workspace={data.workspace} canGenerate={data.access.plan && data.planningAvailable} /></TabsContent>
+    <TabsContent value="genesis" forceMount className="data-[state=inactive]:hidden"><WorkforceGenesis workspace={data.workspace} canPlan={data.access.plan} providerAvailable={data.planningAvailable} /></TabsContent>
     <TabsContent value="agents"><WorkforceAgents data={data} onChange={refresh} /></TabsContent>
     <TabsContent value="operations"><Operations data={data} onChange={refresh} /></TabsContent>
     {data.access.canExecute && <TabsContent value="audio"><WorkforceAudio workspaceId={workspaceId} available={data.audioAvailable} /></TabsContent>}
@@ -149,13 +147,13 @@ function Operations({ data, onChange }: { data: WorkforceSnapshot; onChange: () 
   const [imported, setImported] = useState<unknown>(null);
 
   if (!data.access.canReadTasks) return <p className="text-sm">Operations require permission to read workspace tasks.</p>;
-  const allowed = new Set<string>();
+  const allowed = new Map<string, string>();
   function actions(objective: WorkforceSnapshot["objectives"][number]) {
     if (!data.access.controlObjectives) return [];
     const list: SurfaceAction[] = [];
     function add(action: SurfaceAction["action"], label: string, stepKey?: string) {
       const item: SurfaceAction = { id: `action-${list.length}`, type: "action", action, label, objectiveId: objective.id, stepKey };
-      allowed.add(objectiveActionKey(item));
+      allowed.set(objectiveActionKey(item), label);
       list.push(item);
     }
     if (["running", "waiting_approval"].includes(objective.status)) add("pause", "Pause");
@@ -250,7 +248,7 @@ function Operations({ data, onChange }: { data: WorkforceSnapshot; onChange: () 
           </label>
         </CardContent>
       </Card>
-      {imported !== null && <WorkforceSurface surface={imported} />}
+      {imported !== null && <WorkforceSurface surface={imported} allowedActions={allowed} onAction={run} busy={busy} />}
     </div>
   </div>;
 }

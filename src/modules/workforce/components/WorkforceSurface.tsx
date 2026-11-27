@@ -6,7 +6,7 @@ import { objectiveActionKey, surfaceSchema, type SurfaceAction } from "@/lib/wor
 
 export function WorkforceSurface({ surface, allowedActions, onAction, busy }: {
   surface: unknown;
-  allowedActions?: ReadonlySet<string>;
+  allowedActions?: ReadonlyMap<string, string>;
   onAction?: (action: SurfaceAction) => void;
   busy?: boolean;
 }) {
@@ -14,7 +14,7 @@ export function WorkforceSurface({ surface, allowedActions, onAction, busy }: {
   if (!parsed.success) return <p role="alert">This interface contains invalid components.</p>;
   const { title, components } = parsed.data;
 
-  return <Card>
+  return <Card role="region" aria-label={title}>
     <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
     <CardContent className="space-y-4">
       {components.map((item) => {
@@ -47,10 +47,12 @@ export function WorkforceSurface({ surface, allowedActions, onAction, busy }: {
               </ul>
             </figure>;
           }
-          case "action":
-            if (!onAction || !allowedActions?.has(objectiveActionKey(item))) return null;
-            return <Button key={item.id} variant="outline" size="sm" disabled={busy}
-              onClick={() => onAction(item)}>{item.label}</Button>;
+          case "action": {
+            const label = allowedActions?.get(objectiveActionKey(item));
+            if (!onAction || !label) return null;
+            return <Button key={item.id} className="mr-2" variant="outline" size="sm" disabled={busy}
+              onClick={() => onAction(item)}>{label}</Button>;
+          }
         }
       })}
     </CardContent>

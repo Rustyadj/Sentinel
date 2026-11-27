@@ -2,6 +2,15 @@ import { db } from "@/lib/db";
 import { canManagePeople, isOrgRole } from "@/lib/people/roles";
 import { requireWorkspacePermission, userHasWorkspacePermission, WorkspaceAccessError } from "@/lib/workspaces/authorization";
 
+export async function getVisibleWorkforceOrganization(userId: string, org: { id: string; name: string; ownerId: string | null } | null) {
+  if (!org || org.ownerId === userId) return org;
+  const membership = await db.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: org.id, userId } },
+    select: { role: true },
+  });
+  return isOrgRole(membership?.role) ? org : null;
+}
+
 export async function canManageDepartments(userId: string, workspaceId: string, organizationId: string, ownerId: string | null) {
   const [workspaceEditor, membership] = await Promise.all([
     userHasWorkspacePermission(userId, workspaceId, "workspace.update"),
