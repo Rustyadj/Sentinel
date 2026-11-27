@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { WorkforceSnapshot } from "@/lib/workforce/snapshot";
+import { WorkforceTeams } from "./WorkforceTeams";
 
 type Department = WorkforceSnapshot["departments"][number];
 const empty = { name: "", description: "", parentDepartmentId: "" };
@@ -55,12 +56,6 @@ export function OrganizationDesigner({ data, onSaved }: { data: WorkforceSnapsho
           </div>
           {data.access.manageDepartments && <Button variant="ghost" size="sm" disabled={pending} onClick={() => select(department)}>Edit {department.name}</Button>}
         </div>)}
-        <h3 className="text-sm font-medium">Workspace teams</h3>
-        {data.teams.length === 0 && <p className="text-sm text-(--muted-foreground)">No teams are visible in this workspace.</p>}
-        <ul className="space-y-2 text-sm">{data.teams.map((team) => <li key={team.id}>
-          <span className="font-medium">{team.name}</span> · {team.memberAgentIds.length} agent assignments
-          {team.description && <p className="text-(--muted-foreground)">{team.description}</p>}
-        </li>)}</ul>
       </CardContent>
     </Card>
     {data.access.manageDepartments && <Card>
@@ -85,5 +80,6 @@ export function OrganizationDesigner({ data, onSaved }: { data: WorkforceSnapsho
         </form>
       </CardContent>
     </Card>}
+    {(data.access.canReadTeams || data.access.canCreateTeams) && <WorkforceTeams data={data} onSaved={onSaved} />}
   </div>;
 }

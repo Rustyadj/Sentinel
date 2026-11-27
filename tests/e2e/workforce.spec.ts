@@ -50,6 +50,11 @@ test("organization ownership, Titan ICF draft and recorded operations", async ({
     await page.getByRole("button", { name: "Save department" }).click();
     await expect(page.getByRole("button", { name: "Edit Marketing and Growth" })).toBeVisible();
 
+    await page.getByRole("button", { name: "New team" }).click();
+    await page.getByLabel("Team name").fill("Lead research");
+    await page.getByRole("button", { name: "Save team" }).click();
+    await expect(page.getByRole("button", { name: "Edit Lead research" })).toBeVisible({ timeout: 25_000 });
+
     await page.getByRole("tab", { name: "Genesis" }).click();
     await page.getByRole("button", { name: "Marketing template" }).click();
     await expect(page.getByRole("group", { name: "Jordan" }).getByLabel("Cadence")).toHaveValue("weekly");

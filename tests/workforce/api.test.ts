@@ -3,6 +3,7 @@ import { beforeAll, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { GET } from "@/app/api/workforce/route";
 import { POST } from "@/app/api/workforce/departments/route";
+import { POST as saveTeam } from "@/app/api/workforce/teams/route";
 import { POST as generatePlan } from "@/app/api/workforce/genesis/route";
 
 const actor = vi.hoisted(() => ({ identity: null as null | { id: string; email: string } }));
@@ -70,4 +71,20 @@ it("persists the department hierarchy with an audit record and rejects invalid p
     expect.objectContaining({ id: root.id, name: "Marketing and Sales" }),
   ]));
   expect(await db.auditLog.count({ where: { workspaceId, entityId: root.id, action: "department.updated" } })).toBe(1);
+});
+
+
+it("reuses canonical teams and restricts agent reassignment to the selected workspace", async () => {
+  actor.identity = owner;
+  const [specialist, foreign] = await Promise.all([workspaceId, otherWorkspaceId].map((id) => db.agent.create({
+    data: { workspaceId: id, name: "Marketing specialist", role: "Research", avatar: "AI", color: "#123456", model: "example", skills: [], toolPermissions: [] },
+  })));
+  const body = { workspaceId, name: "Quarterly campaign", description: "Temporary marketing project" };
+  expect((await saveTeam(request({ ...body, memberAgentIds: [foreign.id] }))).status).toBe(400);
+  const created = await saveTeam(request({ ...body, memberAgentIds: [specialist.id] }));
+  expect(created.status).toBe(201);
+  const { team } = await created.json();
+  expect(team.memberAgentIds).toEqual([specialist.id]);
+  expect((await saveTeam(request({ id: team.id, ...body, memberAgentIds: [] }))).status).toBe(200);
+  expect(await db.team.findUnique({ where: { id: team.id } })).toMatchObject({ memberAgentIds: [] });
 });

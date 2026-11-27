@@ -9,7 +9,7 @@ import { planningAvailable } from "./planning";
 
 export async function getWorkforceSnapshot(workspaceId: string) {
   const user = await requireWorkspacePermission(workspaceId, "workspace.read");
-  const [workspace, canReadTasks, canUpdateTasks, canReadAgents, canReadTeams, canUpdateWorkspace, canExecute, controlUser, learningScope] = await Promise.all([
+  const [workspace, canReadTasks, canUpdateTasks, canReadAgents, canReadTeams, canCreateTeams, canUpdateTeams, canUpdateWorkspace, canExecute, controlUser, learningScope] = await Promise.all([
     db.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { id: true, name: true, organization: { select: { id: true, name: true, ownerId: true } } },
@@ -18,6 +18,8 @@ export async function getWorkforceSnapshot(workspaceId: string) {
     userHasWorkspacePermission(user.id, workspaceId, "task.update"),
     userHasWorkspacePermission(user.id, workspaceId, "agents.runtime.view"),
     userHasWorkspacePermission(user.id, workspaceId, "team.read"),
+    userHasWorkspacePermission(user.id, workspaceId, "team.create"),
+    userHasWorkspacePermission(user.id, workspaceId, "team.update"),
     userHasWorkspacePermission(user.id, workspaceId, "workspace.update"),
     userHasWorkspacePermission(user.id, workspaceId, "agents.runtime.execute"),
     getWorkspaceControlPlaneUser(workspaceId),
@@ -88,7 +90,7 @@ export async function getWorkforceSnapshot(workspaceId: string) {
 
   return {
     workspace: { id: workspace.id, name: workspace.name, organization: org?.name ?? null },
-    access: { canReadTasks, canReadAgents, canReadTeams, manageDepartments, canUpdateWorkspace, canExecute, controlObjectives: canReadTasks && canUpdateTasks, plan: !!controlUser && canEditConfig(controlUser.role) },
+    access: { canReadTasks, canReadAgents, canReadTeams, canCreateTeams, canUpdateTeams, manageDepartments, canUpdateWorkspace, canExecute, controlObjectives: canReadTasks && canUpdateTasks, plan: !!controlUser && canEditConfig(controlUser.role) },
     planningAvailable: planningAvailable(),
     mediaAvailable: Boolean(process.env.OPENAI_API_KEY?.trim()),
     agents, runtimes, departments, teams, objectives, events, tasks, runs, connections, skills,

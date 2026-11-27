@@ -16,7 +16,7 @@ Baseline is `d2b7e4eb4ba41dd8440904eecc683c2893f72425`. Workforce development is
 
 The proposed commit boundary is a workforce-side command carrying workspace ID, authenticated actor, validated plan, and stable request ID. The canonical operation should return department, agent, objective, and scheduled activation IDs plus per-capability availability. It must be safe to retry after a partial failure, preserve tenant scoping at every write, and resolve standing authority at execution. A plan can list proposed capabilities but grants none. No workforce schema, migration, runtime, identity store, or authorization policy is added by this branch.
 
-The existing agent-record API persists a row. The baseline runtime router maps fixed agent IDs, so writing five arbitrary rows would give the operator five records without five executable agents. The workforce draft is intentionally a draft until that provisioning contract exists. Department CRUD operates directly on existing departments with workspace and organization checks. Existing objective controls and skill version APIs continue to own execution and publication state.
+The existing agent-record API persists a row. The baseline runtime router maps fixed agent IDs, so writing five arbitrary rows would give the operator five records without five executable agents. The workforce draft is intentionally a draft until that provisioning contract exists. Department creation and edits use existing departments with workspace and organization checks. Team creation and reassignment use the canonical Team service and workspace permissions. Existing objective controls and skill version APIs continue to own execution and publication state.
 
 ## Capability integration
 
