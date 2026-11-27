@@ -11,6 +11,8 @@ import { REPLY_TTL_SECONDS, RUNTIME_CALL_QUEUE_NAME, replyStreamKey, type Runtim
 import { getLocalRuntimeAdapter, resolveRuntimeInstance } from "@/lib/agents/runtime/service";
 import { startWorkerHeartbeat } from "./heartbeat";
 import { objectivesEnabled, tickObjectives } from "@/lib/objectives/engine";
+import { proactiveEnabled, runProactiveCycle } from "@/lib/autonomy/proactive-scan";
+import { resumeRoomProactively } from "@/lib/orchestration/orchestrator";
 import { defaultToolDeps } from "@/lib/objectives/service";
 
 // This process executes the CLI runtimes, for orchestration runs and for the app's runtime calls
@@ -76,8 +78,29 @@ const objectiveTicker = setInterval(() => {
 }, Number(process.env.SENTINEL_OBJECTIVES_TICK_MS ?? "10000"));
 objectiveTicker.unref();
 
+// Proactive intelligence (src/lib/autonomy/proactive-scan.ts): detects unfinished/stalled work tied to existing
+// objectives and resumes it within delegated authority. Off unless SENTINEL_PROACTIVE=on; per-workspace/agent
+// throttles (interval, daily limit, min score) come from AutonomySettings.
+let proactiveRunning = false;
+const proactiveTicker = setInterval(() => {
+  if (proactiveRunning || !proactiveEnabled()) return;
+  proactiveRunning = true;
+  void (async () => {
+    const workspaces = await db.workspace.findMany({ where: { enabled: true }, select: { id: true }, take: 200 });
+    for (const workspace of workspaces) {
+      const result = await runProactiveCycle(workspace.id, { resumeRoom: resumeRoomProactively }).catch((error) => {
+        console.error("[orchestration-worker] proactive cycle failed", workspace.id, error instanceof Error ? error.message : error);
+        return null;
+      });
+      if (result?.started.length) console.log("[orchestration-worker] proactive work started", workspace.id, result.started);
+    }
+  })().finally(() => { proactiveRunning = false; });
+}, Number(process.env.SENTINEL_PROACTIVE_TICK_MS ?? "300000"));
+proactiveTicker.unref();
+
 async function shutdown() {
   clearInterval(objectiveTicker);
+  clearInterval(proactiveTicker);
   clearInterval(reconciler);
   clearInterval(continuationRetry);
   stopHeartbeat();

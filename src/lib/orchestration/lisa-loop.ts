@@ -17,11 +17,16 @@ import { postCollaborationMessage } from "./messages";
 import { createRoomTask, setTaskStatus } from "./task-router";
 import { currentWorkload, selectWorker } from "./worker-router";
 import { ensureTaskWorktree, mergeTaskBranch } from "./worktree-manager";
+import { authorizeTaskAction, resolveHoldWithGrant } from "@/lib/autonomy/task-authority";
+import { getAutonomySettings } from "@/lib/autonomy/settings-store";
+import { DEFAULT_AUTONOMY_SETTINGS } from "@/lib/autonomy/settings";
 
-/** Hard ceiling on how many turns Lisa's own reasoning loop can take for one
- *  objective before Sentinel forces a stop and asks the human (spec's loop
- *  protection — this budgets the *whole* orchestration, not just review cycles). */
-const MAX_LISA_ITERATIONS = 25;
+/** Default orchestration budget when no workspace/agent autonomy setting
+ *  applies. The live value is AutonomySettings.maxOrchestrationIterations
+ *  (src/lib/autonomy/settings.ts) — a configurable execution budget, not a
+ *  universal step limit. It still budgets the *whole* orchestration so a
+ *  genuinely stuck loop surfaces instead of spinning forever. */
+const DEFAULT_LISA_ITERATIONS = DEFAULT_AUTONOMY_SETTINGS.maxOrchestrationIterations;
 const MAX_REVIEW_CYCLES = 3;
 const SENSITIVE_SCOPE_PATTERNS = [/prisma\/schema\.prisma/i, /agents\/runtime\//i, /auth\.ts$/i, /migrations\//i];
 
@@ -145,6 +150,9 @@ export interface ActionClearance {
   runId: string;
   fingerprint: string;
   approval: ApprovalRequest | null;
+  /** Standing delegation grant that cleared this execution instead of a per-action approval. */
+  standingGrant?: { id: string; grantedByUserId?: string | null } | null;
+  workspaceId?: string | null;
 }
 
 /** Exported for tests: each call is a new execution (a new run id). */
@@ -182,13 +190,33 @@ export async function ensureApprovalCleared(roomId: string, task: Task, clearanc
   const allowlist = workspaceApprovalAllowlist(workspaceId);
   if (!requiresHumanApproval(actionClass, { runtimeKind: runtime?.kind, capabilities: task.capabilities, allowlist })) return true;
   const risk = escalateRisk(displayRiskFloor(actionClass), assessRisk(`${task.title} ${task.description ?? ""} ${task.fileScope.join(" ")}`));
+
+  // Standing delegation (src/lib/autonomy/): authority a human granted once
+  // clears this action without a new prompt. No grant is never permission —
+  // it falls through to the per-action approval, which now names exactly
+  // what authority is missing.
+  const authorityWorkspace = task.workspaceId ?? await resolveWorkspaceId(roomId).catch(() => null);
+  let missingAuthority: string | undefined;
+  if (authorityWorkspace) {
+    const authority = await authorizeTaskAction({
+      task, roomId, workspaceId: authorityWorkspace, runtimeKind: runtime?.kind ?? null, actionClass, fingerprint: clearance.fingerprint, gate: "approval",
+    }).catch(() => null);
+    if (authority?.authorized && authority.grant) {
+      clearance.standingGrant = authority.grant as { id: string; grantedByUserId?: string | null };
+      clearance.workspaceId = authorityWorkspace;
+      return true;
+    }
+    missingAuthority = authority?.missing;
+  }
   if (await spendApproval(task, clearance)) return true;
   const pending = await db.approvalRequest.findFirst({ where: { taskId: task.id, actionFingerprint: clearance.fingerprint, status: "pending" } });
   if (pending) return false;
   const approval = await requestApprovalGate({
     chatRoomId: roomId, taskId: task.id, requesterAgentId: task.agentId ?? task.createdByAgentId ?? "hermes-lisa",
-    title: `Approval required: ${task.title}`, description: task.description ?? undefined, command: task.title,
-    actionFingerprint: clearance.fingerprint, actionClass,
+    title: `Approval required: ${task.title}`,
+    description: [task.description, missingAuthority && `Missing authority: ${missingAuthority}`].filter(Boolean).join("\n\n") || undefined,
+    command: task.title, actionFingerprint: clearance.fingerprint, actionClass,
+    extraPayload: missingAuthority ? { missingAuthority } : {},
   });
   await setTaskStatus(task.id, "APPROVAL_REQUIRED");
   await emitCollaborationEvent(roomId, "approval.requested", { taskId: task.id, approvalId: approval.id, risk, actionClass });
@@ -249,15 +277,35 @@ export async function ensureGuardianCleared(ctx: Pick<LoopContext, "roomId">, ta
 
   const actionClass = classifyTaskAction(task, { kind: runtimeKind });
   const risk = escalateRisk(guardianRiskFloor(actionClass), assessRisk(actionText));
+
+  // Standing delegation counts as the human authorization Tier 3 needs and as
+  // the human review a Tier 2 hold waits for — but only a grant covering the
+  // operation the task actually implies (task-authority.ts), and never for a
+  // hard block (prompt override, exfiltration, traversal, fake approval).
+  let delegated = approval ? null : clearance.standingGrant ?? null;
+  if (!approval && !delegated) {
+    const workspaceId = clearance.workspaceId ?? task.workspaceId ?? await resolveWorkspaceId(ctx.roomId).catch(() => null);
+    if (workspaceId) {
+      const authority = await authorizeTaskAction({
+        task, roomId: ctx.roomId, workspaceId, runtimeKind, actionClass, fingerprint: clearance.fingerprint, gate: "guardian",
+      }).catch(() => null);
+      if (authority?.authorized && authority.grant) delegated = authority.grant as { id: string; grantedByUserId?: string | null };
+    }
+  }
+
   const evaluation = await evaluateGuardian({
     action: actionText,
     actor: ownerAgentId,
     runtime: runtimeKind,
     riskLevel: risk,
-    humanAuthorized: approval !== null,
+    humanAuthorized: approval !== null || delegated !== null,
   });
 
   if (evaluation.verdict === "allow") return true;
+  if (evaluation.mode === "review" && evaluation.verdict === "hold" && delegated && await resolveHoldWithGrant(evaluation.decision.id, delegated)) {
+    await emitCollaborationEvent(ctx.roomId, "authority.applied", { taskId: task.id, grantId: delegated.id, gate: "guardian_review", guardianDecisionId: evaluation.decision.id });
+    return true;
+  }
 
   const needsTier3Approval = evaluation.decision.reasonCodes.includes("tier3_requires_human_approval");
   if (needsTier3Approval || evaluation.mode === "review") {
@@ -326,7 +374,7 @@ async function runImplementation(ctx: LoopContext, task: Task, runtime: Awaited<
 
   try {
     const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId: task.id, agentId: ownerAgentId, userId: ctx.userId });
-    const output = await runAgentTurn({ roomId: ctx.roomId, agentId: ownerAgentId, userId: ctx.userId, prompt: context, workingDirectory: worktree?.path });
+    const output = await runAgentTurn({ roomId: ctx.roomId, agentId: ownerAgentId, userId: ctx.userId, prompt: context, workingDirectory: worktree?.path, surface: "worker_task" });
 
     const artifact = await db.artifact.create({
       data: { type: "code_diff", title: `${ownerAgentId} result for ${task.id}`, content: output.slice(0, 20_000), createdBy: ownerAgentId, chatRoomId: ctx.roomId, taskId: task.id },
@@ -484,7 +532,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
         chatRoomId: ctx.roomId, taskId, agentId: reviewerAgentId, userId: ctx.userId,
         extra: 'Review the implementation above. Reply with a first line of exactly "VERDICT: APPROVE" or "VERDICT: CHANGES_REQUESTED", followed by your reasoning.',
       });
-      const reviewResult = await runAgentTurn({ roomId: ctx.roomId, agentId: reviewerAgentId, userId: ctx.userId, prompt: reviewContext });
+      const reviewResult = await runAgentTurn({ roomId: ctx.roomId, agentId: reviewerAgentId, userId: ctx.userId, prompt: reviewContext, surface: "peer_review" });
       const approved = /VERDICT:\s*APPROVE/i.test(reviewResult) && !/VERDICT:\s*CHANGES_REQUESTED/i.test(reviewResult);
 
       if (approved) {
@@ -511,7 +559,7 @@ async function executeDirective(ctx: LoopContext, directive: Directive): Promise
       const task = await db.task.findUnique({ where: { id: taskId } });
       if (!task?.agentId) return { error: "task not found or has no owner yet" };
       const context = await buildAgentContext({ chatRoomId: ctx.roomId, taskId, agentId: task.agentId, userId: ctx.userId, extra: "Self-check your latest work against the task's acceptance criteria. State clearly whether it's correct and complete, and what (if anything) is missing." });
-      const result = await runAgentTurn({ roomId: ctx.roomId, agentId: task.agentId, userId: ctx.userId, prompt: context });
+      const result = await runAgentTurn({ roomId: ctx.roomId, agentId: task.agentId, userId: ctx.userId, prompt: context, surface: "self_validation" });
       await postCollaborationMessage({ chatRoomId: ctx.roomId, senderAgentId: task.agentId, recipientAgentIds: ["user"], type: "RESULT", taskId, content: result.slice(0, 4_000) });
       return { taskId, selfCheck: result.slice(0, 1_000) };
     }
@@ -645,14 +693,18 @@ export interface RunLisaLoopInput {
  * replaces the previous single-shot "plan once, then run a hardcoded
  * pipeline" orchestrator with something that genuinely continues until
  * the objective's acceptance criteria pass, bounded by
- * MAX_LISA_ITERATIONS so a stuck loop surfaces to the human instead of
+ * the configurable orchestration budget so a stuck loop surfaces to the human instead of
  * spinning forever.
  */
 export async function runLisaLoop(input: RunLisaLoopInput): Promise<void> {
   const ctx: LoopContext = { roomId: input.roomId, userId: input.userId, lead: input.lead, pool: input.pool };
   let body = input.seed;
+  const workspaceId = await resolveWorkspaceId(input.roomId).catch(() => null);
+  const budget = workspaceId
+    ? (await getAutonomySettings(workspaceId, input.lead).catch(() => null))?.maxOrchestrationIterations ?? DEFAULT_LISA_ITERATIONS
+    : DEFAULT_LISA_ITERATIONS;
 
-  for (let iteration = 0; iteration < MAX_LISA_ITERATIONS; iteration += 1) {
+  for (let iteration = 0; iteration < budget; iteration += 1) {
     const room = await db.chatRoom.findUnique({ where: { id: input.roomId }, select: { paused: true } });
     if (room?.paused) {
       await emitCollaborationEvent(input.roomId, "agent.failed", { reason: "Room paused mid-orchestration" });
@@ -661,7 +713,7 @@ export async function runLisaLoop(input: RunLisaLoopInput): Promise<void> {
 
     const workloads = Object.fromEntries(await Promise.all(ctx.pool.map(async (agentId) => [agentId, await currentWorkload(ctx.roomId, agentId)] as const)));
     const taskSummary = await summarizeRoomTasks(ctx.roomId);
-    const responseText = await runAgentTurn({ roomId: ctx.roomId, agentId: ctx.lead, userId: ctx.userId, prompt: buildLoopPrompt(input.objective, ctx.pool, workloads, taskSummary, body) });
+    const responseText = await runAgentTurn({ roomId: ctx.roomId, agentId: ctx.lead, userId: ctx.userId, prompt: buildLoopPrompt(input.objective, ctx.pool, workloads, taskSummary, body), surface: "lisa_loop" });
 
     const directives = parseDirectives(responseText);
     if (!directives || directives.length === 0) {
@@ -715,9 +767,9 @@ export async function runLisaLoop(input: RunLisaLoopInput): Promise<void> {
     body = `Tool results from your last turn:\n${JSON.stringify(results, null, 2)}\n\nContinue: call more tools, DONE once every acceptance criterion actually passes, or ASK_USER if you need human input.`;
   }
 
-  await emitCollaborationEvent(input.roomId, "task.blocked", { reason: "lisa_loop_budget_exhausted" });
+  await emitCollaborationEvent(input.roomId, "task.blocked", { reason: "lisa_loop_budget_exhausted", budget });
   await postCollaborationMessage({
     chatRoomId: input.roomId, senderAgentId: input.lead, recipientAgentIds: ["user"], type: "BLOCKER",
-    content: "I've reached my orchestration step budget without completing the objective. Human input needed.",
+    content: `I've used this objective's orchestration budget (${budget} turns) without completing it. Completed work is preserved; send a message to continue, or raise maxOrchestrationIterations in Autonomy settings.`,
   });
 }

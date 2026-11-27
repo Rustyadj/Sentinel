@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { consumeApproval } from "@/lib/orchestration/approval-binding";
 import { allowedAttempts, decideStep, parseAutonomyLevel, retryDelayMs } from "./policy";
+import { authorizeOperation } from "@/lib/autonomy/authority-store";
+import { operationForStep } from "@/lib/autonomy/authority";
+import { getAutonomySettings } from "@/lib/autonomy/settings-store";
 import { RUNS_AFTER_SETTLED_DEPENDENCIES } from "./planner";
 import { roleAllowsTool } from "./roles";
 import { getTool, type DependencyState, type ToolContext, type ToolDeps, type ToolResult } from "./tools";
@@ -151,7 +154,8 @@ async function applyResult(objective: Objective, step: ObjectiveStep, result: To
       await setStep(step, { status: "blocked", blockedReason: result.reason, unblockRequest: result.unblockRequest }, { type: "step.blocked", message: `${step.title}: ${result.reason}` });
       return;
     case "retry": {
-      const limit = allowedAttempts(level, step.maxAttempts);
+      const recovery = (await getAutonomySettings(objective.workspaceId).catch(() => null))?.maxRecoveryAttempts;
+      const limit = allowedAttempts(level, step.maxAttempts, recovery);
       if (attemptNumber < limit) {
         const nextAttemptAt = new Date(Date.now() + retryDelayMs(attemptNumber));
         await setStep(step, { status: "retry_wait", error: result.error, nextAttemptAt, orchestrationRunId: null }, { type: "step.retry_scheduled", message: `${step.title}: ${result.error} — retry ${attemptNumber + 1}/${limit} at ${nextAttemptAt.toISOString()}` });
@@ -180,6 +184,29 @@ async function requestApproval(objective: Objective, step: ObjectiveStep, ctx: T
   });
   await setStep(step, { status: "waiting_approval", approvalRequestId: approval.id }, { type: "approval.requested", message: `${step.title}: approval requested — ${reason}`, data: { approvalRequestId: approval.id } });
   await writeAuditLog({ workspaceId: objective.workspaceId, userId: objective.userId, approvalRequestId: approval.id, actorType: "system", action: "objective.approval.requested", entityType: "objective_step", entityId: step.id, details: { objectiveId: objective.id, stepKey: step.key, impact: step.impact } });
+}
+
+/**
+ * Standing delegation for one objective step: a grant covering the step's
+ * operation (and fitting its cost inside the grant's own budget) clears it
+ * without a per-step approval, and the use is recorded as provenance.
+ * Supervised objectives only accept grants scoped to that exact objective.
+ */
+async function clearWithStandingAuthority(objective: Objective, step: ObjectiveStep, ctx: ToolContext, objectiveScopedOnly: boolean): Promise<{ cleared: boolean; missing: string | null }> {
+  const preview = actionPreview(step, ctx);
+  const fingerprint = fingerprintStepAction({ objectiveId: objective.id, stepKey: step.key, toolKey: step.toolKey, impact: step.impact, estimatedCostCents: step.estimatedCostCents, preview });
+  const outcome = await authorizeOperation(
+    { workspaceId: objective.workspaceId, agentId: `objective:${step.role}`, objectiveId: objective.id, operation: operationForStep(step.impact, step.kind), costCents: step.estimatedCostCents },
+    { type: "objective_step", id: step.id, correlationId: fingerprint },
+    objectiveScopedOnly ? { grantFilter: (grant) => grant.objectiveId === objective.id } : {},
+  ).catch(() => null);
+  if (!outcome?.authorized || !outcome.grant) return { cleared: false, missing: outcome?.missing ?? null };
+  await setStep(step, { approvalClearedAt: new Date() }, {
+    type: "authority.applied", message: `${step.title}: cleared by standing authority (grant ${outcome.grant.id})`,
+    data: { grantId: outcome.grant.id, useId: outcome.useId, operation: operationForStep(step.impact, step.kind) },
+  });
+  await writeAuditLog({ workspaceId: objective.workspaceId, userId: objective.userId, actorType: "system", action: "objective.step.authorized_by_grant", entityType: "objective_step", entityId: step.id, details: { objectiveId: objective.id, stepKey: step.key, grantId: outcome.grant.id, impact: step.impact } });
+  return { cleared: true, missing: null };
 }
 
 /** Re-check an approval-waiting step. Returns true when it is now cleared to run. */
@@ -282,7 +309,12 @@ async function advanceStep(objective: Objective, step: ObjectiveStep, steps: Obj
       await setStep(step, { status: "advised", blockedReason: decision.reason, unblockRequest: "Raise the objective's autonomy level to let Sentinel execute this, or do it manually." }, { type: "step.advised", message: `${step.title}: recommended, not executed (advisory mode)` });
       return "changed";
     }
-    if (decision.action === "approve") { await requestApproval(objective, step, ctx, decision.reason); return "changed"; }
+    if (decision.action === "approve") {
+      const authority = decision.code === "budget" ? null : await clearWithStandingAuthority(objective, step, ctx, decision.code === "supervised");
+      if (authority?.cleared) return { execute: true, polling: false };
+      await requestApproval(objective, step, ctx, authority?.missing ? `${decision.reason}\n\nMissing authority: ${authority.missing}` : decision.reason);
+      return "changed";
+    }
   }
   return { execute: true, polling: false };
 }

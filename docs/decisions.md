@@ -3,6 +3,37 @@
 Newest first. One entry per significant technical choice: the decision, why, and
 what was rejected. No implementation detail — that belongs in the topic doc.
 
+## ADR-011 — Standing delegation replaces per-action approval; prompts are a composed, inspectable stack
+
+**Date:** 2026-11-27
+**Status:** Proposed (branch `feat/autonomy-first`; proactive cycle behind `SENTINEL_PROACTIVE`, off)
+
+**Decision.** A human delegates authority once as an `AuthorityGrant` (operations, optional
+project/agent/room/objective/capability/runtime narrowing, use limits, recurring window, budget,
+expiry). Every existing gate — Lisa's room approval gate, Guardian Tier 2/3, objective steps — first
+asks `authorizeOperation`; a matching grant clears the action, is spent atomically and leaves an
+`AuthorityGrantUse` row. No grant falls back to the existing per-action approval, which now names the
+missing authority. Consequential operations (external, deploy, publish, financial, legal, destructive,
+credential) must be named on a grant; "routine" never covers them; money needs a budget. Guardian hard
+blocks and the objective's own budget are never cleared by a grant. Agent prompts are composed from
+versioned layers (directive → identity → … → task) by one composer that dedupes, skips layers a
+stateful session already holds, and records a content-addressed manifest for inspection.
+
+**Why.** Every non-read room task required a fresh human approval unless an env-var allowlist existed,
+so autonomy meant clicking "approve" on routine work. Grants keep the human as the source of authority
+while removing repetition. Prompts were assembled ad hoc per surface and the operator-edited agent
+persona was stored but never delivered.
+
+**Rejected.** *Widening `SENTINEL_APPROVAL_ALLOWLIST`* — deploy-wide, per-env, unauditable, no revocation.
+*Reusing `RoleAssignment`/`Permission`* — they gate humans' API access, not per-operation agent
+spending with budgets and use counts. *A global "autonomous" switch* — would override tenant isolation
+and provider requirements by construction.
+
+**Consequences.** Approval count now depends on configured grants (none by default, so behaviour is
+unchanged until someone delegates). Guardian Tier 2 holds can be resolved in the grantor's name.
+New objectives default to Managed (3); failed steps get a configurable recovery budget at every
+executing level.
+
 ## ADR-010 — Autonomous objectives are a fixed-plan, Postgres-leased step graph
 
 **Date:** 2026-11-19
