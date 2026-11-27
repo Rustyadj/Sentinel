@@ -38,7 +38,7 @@ export interface CapabilityEntry {
   tags: string[];
 }
 
-export function mcpCapabilities(catalog: readonly CatalogEntry[], secretRefs: ReadonlyMap<string, string | null> = new Map()): CapabilityEntry[] {
+export function mcpCapabilities(catalog: readonly CatalogEntry[]): CapabilityEntry[] {
   return catalog.flatMap((server) => server.tools.map((tool): CapabilityEntry => {
     const external = server.kind === "registered";
     const readOnly = tool.readOnly === true;
@@ -50,7 +50,7 @@ export function mcpCapabilities(catalog: readonly CatalogEntry[], secretRefs: Re
       available: server.enabled && (server.kind !== "registered" || server.status === "connected"),
       requiredAuthority, cost: external ? "unknown" : "free",
       execution: { sideEffects: !readOnly, destructive, external },
-      reliability: null, credentialRef: secretRefs.get(server.id) ? `env:${secretRefs.get(server.id)}` : null,
+      reliability: null, credentialRef: server.authenticated ? `mcp:${server.id}` : null,
       tags: server.capabilityTags,
     };
   }));
@@ -116,13 +116,13 @@ export function discoverCapabilities(entries: readonly CapabilityEntry[], input:
 
 /** Load every capability source for one workspace. */
 export async function loadCapabilityRegistry(workspaceId: string): Promise<CapabilityEntry[]> {
-  const [catalog, registrations, runtimes, skills] = await Promise.all([
+  const [catalog, runtimeViews, skills] = await Promise.all([
     loadCatalog(workspaceId),
-    db.mcpServerRegistration.findMany({ where: { workspaceId }, select: { id: true, secretEnvVar: true } }),
     listRuntimeViews().catch(() => []),
     // Null-workspace skills are invisible to every tenant (schema invariant), so only this workspace's rows.
     db.skill.findMany({ where: { workspaceId }, take: 200, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, description: true, domain: true, status: true, inputSchema: true, outputSchema: true, requiredTools: true } }),
   ]);
+  const runtimes = runtimeViews.filter((runtime) => runtime.workspaceId === workspaceId);
   const agentIds = runtimes.map((runtime) => runtime.agentId);
   const [agents, competencies] = await Promise.all([
     db.agent.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, capabilityWeights: true } }),
@@ -144,7 +144,7 @@ export async function loadCapabilityRegistry(workspaceId: string): Promise<Capab
     contract: skill.inputSchema || skill.outputSchema ? { input: JSON.stringify(skill.inputSchema ?? {}).slice(0, 300), output: JSON.stringify(skill.outputSchema ?? {}).slice(0, 300) } : null,
   }));
   return [
-    ...mcpCapabilities(catalog, new Map(registrations.map((row) => [row.id, row.secretEnvVar]))),
+    ...mcpCapabilities(catalog),
     ...agentCapabilities(agentSources),
     ...skillCapabilities(skillSources),
   ];

@@ -43,8 +43,12 @@ interface Capability { key: string; kind: string; name: string; description: str
 
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n * 100)}%`);
 
-export function AutonomyConsole({ workspaces }: { workspaces: { id: string; name: string }[] }) {
-  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? "");
+export function AutonomyConsole({ workspaces, initialWorkspaceId, initialTab }: {
+  workspaces: { id: string; name: string }[];
+  initialWorkspaceId?: string;
+  initialTab: "overview" | "capabilities";
+}) {
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId ?? workspaces[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -61,7 +65,7 @@ export function AutonomyConsole({ workspaces }: { workspaces: { id: string; name
       />
       {error ? <p role="alert" className="mb-4 rounded-lg border border-(--status-error) px-3 py-2 text-[13px] text-(--status-error)">{error}</p> : null}
       {!workspaceId ? <p className={muted}>You are not a member of any workspace yet.</p> : (
-        <Tabs defaultValue="overview">
+        <Tabs defaultValue={initialTab}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="authority">Delegated authority</TabsTrigger>

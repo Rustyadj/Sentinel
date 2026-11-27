@@ -84,7 +84,12 @@ export function WorkforceConnections({ data, onChange }: { data: WorkforceSnapsh
         </form>
       </details>}
       {status && <p role="status">{status}</p>}
-      <Button asChild variant="outline" size="sm"><Link href="/bots">Manage MCP catalog</Link></Button>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm"><Link href="/bots">Manage MCP catalog</Link></Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href={{ pathname: "/autonomy", query: { workspaceId: data.workspace.id, tab: "capabilities" } }}>Discover agent capabilities</Link>
+        </Button>
+      </div>
     </CardContent>
   </Card>;
 }
