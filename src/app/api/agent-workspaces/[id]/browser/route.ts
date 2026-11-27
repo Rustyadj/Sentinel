@@ -2,6 +2,7 @@ import { readFile, unlink } from "node:fs/promises";
 import { accessErrorResponse } from "@/lib/workspaces/authorization";
 import { AGENT_WORKSPACE_PERMISSIONS, requireWorkspaceAccess } from "@/lib/agent-workspaces/authorization";
 import { browserRuntimeStatus, getBrowserProvider } from "@/lib/agent-workspaces/browser";
+import { browserWorkflowSchema } from "@/lib/agent-workspaces/browser-workflow";
 import { WorkspaceError, workspaceErrorResponse } from "@/lib/agent-workspaces/errors";
 import { recordWorkspaceEvent } from "@/lib/agent-workspaces/events";
 import { readJson, requireString } from "@/lib/agent-workspaces/http";
@@ -78,6 +79,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     assertNetworkAllowed(workspace.resourceLimits);
     const sessionId = requireString(body.sessionId, "sessionId", 200);
     assertSessionWorkspace(sessionId, id);
+    if (action === "workflow") {
+      const steps = browserWorkflowSchema.safeParse(body.steps);
+      if (!steps.success) throw new WorkspaceError("Provide 1–12 valid browser workflow steps.", "invalid_body");
+      if (!provider.runWorkflow) throw new WorkspaceError("The selected browser provider does not support workflows.", "not_implemented");
+      const workflow = await provider.runWorkflow(sessionId, steps.data);
+      await recordWorkspaceEvent({
+        agentWorkspaceId: id,
+        tenantWorkspaceId: workspace.workspaceId,
+        type: "command.executed",
+        actorUserId: user.id,
+        source: "sentinel-ui",
+        message: `Browser workflow ${workflow.status}`,
+        metadata: { browserSessionId: sessionId, provider: provider.id, steps: workflow.results.length, outcome: workflow.status },
+      }).catch(() => console.error("[browser] Could not record browser workflow activity."));
+      return Response.json({ workflow }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const targetUrl = requireString(body.url, "url", 4096);
 
     if (action === "navigate") {
@@ -130,7 +148,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    throw new WorkspaceError('"action" must be "create", "navigate", or "download".', "invalid_body");
+    throw new WorkspaceError('"action" must be "create", "navigate", "download", or "workflow".', "invalid_body");
   } catch (error) {
     if (error instanceof Error && error.name === "WorkspaceAccessError") return accessErrorResponse(error);
     return workspaceErrorResponse(error);

@@ -18,12 +18,14 @@ import type {
   BrowserSession,
   WorkspaceBrowserProvider,
 } from "../browser";
+import { runBrowserWorkflow, type BrowserWorkflow } from "../browser-workflow";
 import { WorkspaceError } from "../errors";
 
 interface LiveSession extends BrowserSession {
   context: BrowserContext;
   page: Page;
   downloadDirectory: string;
+  operationRunning?: boolean;
 }
 
 interface PlaywrightProcessState {
@@ -45,6 +47,7 @@ const state: PlaywrightProcessState = stateHost[STATE_KEY] ??= {
   sessionsById: new Map(),
 };
 
+const workflowProxy = process.env.SENTINEL_BROWSER_WORKFLOW_PROXY?.trim();
 const DOWNLOAD_ROOT = path.join(tmpdir(), "sentinel-browser-downloads");
 
 function unavailable(message: string, detail?: string): WorkspaceError {
@@ -69,7 +72,13 @@ async function launchBrowser(): Promise<Browser> {
     throw unavailable(reason);
   }
 
-  state.launchPromise = chromium.launch({ headless: true })
+  state.launchPromise = chromium.launch({
+    headless: true,
+    ...(workflowProxy ? {
+      proxy: { server: workflowProxy, bypass: "<-loopback>" },
+      args: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+    } : {}),
+  })
     .then((browser) => {
       state.browser = browser;
       state.probe = "available";
@@ -108,6 +117,18 @@ function requireSession(sessionId: string) {
   const session = state.sessionsById.get(sessionId);
   if (!session) throw new WorkspaceError("Browser session not found. Create one first.", "runtime_not_found");
   return session;
+}
+
+async function withBrowserOperation<T>(sessionId: string, perform: (session: LiveSession) => Promise<T>) {
+  const session = requireSession(sessionId);
+  if (session.operationRunning) throw new WorkspaceError("A browser operation is in progress.", "policy_violation");
+  session.operationRunning = true;
+  try {
+    return await perform(session);
+  } finally {
+    session.currentUrl = session.page.url();
+    session.operationRunning = false;
+  }
 }
 
 function requireHttpUrl(value: string) {
@@ -182,11 +203,11 @@ class PlaywrightBrowserProvider implements WorkspaceBrowserProvider {
     return session ? publicSession(session) : null;
   }
 
-  async navigate(sessionId: string, url: string) {
-    const session = requireSession(sessionId);
-    const response = await session.page.goto(requireHttpUrl(url), { waitUntil: "domcontentloaded" });
-    session.currentUrl = session.page.url();
-    return { url: session.currentUrl, status: response?.status() ?? 0 };
+  navigate(sessionId: string, url: string) {
+    return withBrowserOperation(sessionId, async (session) => {
+      const response = await session.page.goto(requireHttpUrl(url), { waitUntil: "domcontentloaded" });
+      return { url: session.page.url(), status: response?.status() ?? 0 };
+    });
   }
 
   async screenshot(sessionId: string, fullPage: boolean) {
@@ -195,29 +216,31 @@ class PlaywrightBrowserProvider implements WorkspaceBrowserProvider {
     return { contentType: "image/png", data: Buffer.from(data) };
   }
 
-  async download(sessionId: string, url: string, destinationPath: string) {
-    const session = requireSession(sessionId);
-    const target = await safeDownloadPath(session, destinationPath);
-    const [download] = await Promise.all([
-      session.page.waitForEvent("download", { timeout: 30_000 }),
-      session.page.goto(requireHttpUrl(url), { waitUntil: "commit" }).catch((error: unknown) => {
-        if (!/download is starting/i.test(error instanceof Error ? error.message : String(error))) throw error;
-      }),
-    ]);
-    const failure = await download.failure();
-    if (failure) throw new WorkspaceError("Browser download failed.", "command_failed", failure);
-    await download.saveAs(target);
-    return { path: target, sizeBytes: (await stat(target)).size };
+  download(sessionId: string, url: string, destinationPath: string) {
+    return withBrowserOperation(sessionId, async (session) => {
+      const target = await safeDownloadPath(session, destinationPath);
+      const [download] = await Promise.all([
+        session.page.waitForEvent("download", { timeout: 30_000 }),
+        session.page.goto(requireHttpUrl(url), { waitUntil: "commit" }).catch((error: unknown) => {
+          if (!/download is starting/i.test(error instanceof Error ? error.message : String(error))) throw error;
+        }),
+      ]);
+      const failure = await download.failure();
+      if (failure) throw new WorkspaceError("Browser download failed.", "command_failed", failure);
+      await download.saveAs(target);
+      return { path: target, sizeBytes: (await stat(target)).size };
+    });
   }
 
-  async upload(sessionId: string, selector: string, sourcePath: string) {
-    const session = requireSession(sessionId);
-    const root = await realpath(session.downloadDirectory).catch(() => "");
-    const source = await realpath(sourcePath).catch(() => "");
-    if (!root || !source.startsWith(`${root}${path.sep}`)) {
-      throw new WorkspaceError("Uploads may only use files created by this browser session.", "path_escape");
-    }
-    await session.page.locator(selector).setInputFiles(source);
+  upload(sessionId: string, selector: string, sourcePath: string) {
+    return withBrowserOperation(sessionId, async (session) => {
+      const root = await realpath(session.downloadDirectory).catch(() => "");
+      const source = await realpath(sourcePath).catch(() => "");
+      if (!root || !source.startsWith(`${root}${path.sep}`)) {
+        throw new WorkspaceError("Uploads may only use files created by this browser session.", "path_escape");
+      }
+      await session.page.locator(selector).setInputFiles(source);
+    });
   }
 
   async getCookies(sessionId: string) {
@@ -228,6 +251,13 @@ class PlaywrightBrowserProvider implements WorkspaceBrowserProvider {
       path: cookiePath,
       expires: expires < 0 ? null : expires,
     }));
+  }
+
+  async runWorkflow(sessionId: string, actions: BrowserWorkflow) {
+    if (!workflowProxy) {
+      throw unavailable("Browser workflows require the deployment's isolated browser egress proxy.");
+    }
+    return withBrowserOperation(sessionId, (session) => runBrowserWorkflow(session.page, actions));
   }
 
   async closeSession(sessionId: string) {

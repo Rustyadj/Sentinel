@@ -3,6 +3,7 @@
 // points that legitimately drive workspaces (the acceptance script, cron and
 // worker processes). These modules import Node built-ins, so a client import
 // fails loudly on its own.
+import type { BrowserWorkflow, runBrowserWorkflow } from "./browser-workflow";
 import { WorkspaceError } from "./errors";
 import { playwrightBrowserProvider } from "./providers/browser-playwright";
 
@@ -30,6 +31,7 @@ export interface WorkspaceBrowserProvider {
   upload(sessionId: string, selector: string, sourcePath: string): Promise<void>;
   getCookies(sessionId: string): Promise<{ name: string; domain: string; path: string; expires: number | null }[]>;
   closeSession(sessionId: string): Promise<void>;
+  runWorkflow?(sessionId: string, actions: BrowserWorkflow): ReturnType<typeof runBrowserWorkflow>;
 }
 
 let provider: WorkspaceBrowserProvider | null = null;
