@@ -5,6 +5,7 @@ import { readJsonObject, runtimeErrorResponse, SSE_HEADERS, sseEvent } from "@/l
 import { getRuntimeAdapter } from "@/lib/agents/runtime/service";
 import { RuntimeError } from "@/lib/agents/runtime/errors";
 import { runtimeSessionStore } from "@/lib/agents/runtime/store";
+import { composeAgentTurnPrompt } from "@/lib/autonomy/agent-prompt";
 
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
@@ -12,8 +13,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const { user, runtime, session } = await requireSessionAccess(sessionId, RUNTIME_PERMISSIONS.execute);
     const body = await readJsonObject(request);
     if (typeof body.prompt !== "string") throw new RuntimeError("prompt is required", "invalid_body", 400);
+    // Canonical prompt stack (src/lib/autonomy/agent-prompt.ts). On stateful
+    // runtimes the directive and identity go out once per session, not every message.
+    const delivered = Array.isArray(session.metadata.promptLayersDelivered) ? (session.metadata.promptLayersDelivered as unknown[]).filter((h): h is string => typeof h === "string") : [];
+    const turnPrompt = await composeAgentTurnPrompt({
+      agentId: session.agentId, workspaceId: session.workspaceId ?? null, runtimeKind: runtime.kind,
+      taskPrompt: body.prompt, surface: "session_chat", delivered,
+    }).catch(() => null);
+    const prompt = turnPrompt?.composed.text ?? body.prompt;
     await runtimeSessionStore.update(sessionId, {
-      metadata: { ...session.metadata, lastTask: body.prompt.slice(0, 160) },
+      metadata: {
+        ...session.metadata, lastTask: body.prompt.slice(0, 160),
+        ...(turnPrompt ? { promptCompositionHash: turnPrompt.composed.hash } : {}),
+        ...(turnPrompt?.delivered ? { promptLayersDelivered: turnPrompt.delivered } : {}),
+      },
     });
     await runtimeSessionStore.append(sessionId, "status", {
       phase: "task_submitted",
@@ -29,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          for await (const event of adapter.send({ sessionId, prompt: body.prompt as string, userId: user.id })) {
+          for await (const event of adapter.send({ sessionId, prompt, userId: user.id })) {
             controller.enqueue(encoder.encode(sseEvent(event)));
           }
         } catch (error) {

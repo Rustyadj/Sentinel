@@ -138,7 +138,7 @@ function CreateForm({ workspaces, workspaceId, onWorkspace, onCreate, disabled }
   onCreate(body: Record<string, unknown>): void;
 }) {
   const [goal, setGoal] = useState("");
-  const [level, setLevel] = useState<AutonomyLevel>(2);
+  const [level, setLevel] = useState<AutonomyLevel>(3);
   const [budget, setBudget] = useState("50");
   const field = "w-full rounded-md border border-(--border) bg-(--field) px-2.5 py-1.5 text-[13px] focus-visible:outline-2 focus-visible:outline-(--ring)";
   return (
@@ -166,7 +166,7 @@ function CreateForm({ workspaces, workspaceId, onWorkspace, onCreate, disabled }
           <input className={field} type="number" min="0" step="1" value={budget} onChange={(e) => setBudget(e.target.value)} />
         </label>
       </div>
-      <p className="text-[11px] text-(--muted-foreground)">Purchases, legal filings, destructive changes and credential changes always wait for your approval.</p>
+      <p className="text-[11px] text-(--muted-foreground)">Purchases, legal filings, destructive changes and credential changes wait for your approval unless you have delegated that authority in <a className="underline" href="/autonomy">Autonomy</a>. Spending past this budget always asks.</p>
       <Button type="submit" size="sm" disabled={disabled || !goal.trim() || !workspaceId}>Plan and start</Button>
     </form>
   );
