@@ -93,7 +93,11 @@ export type CollaborationEventType =
   | "artifact.modified" | "decision.created" | "execution.started"
   | "execution.output" | "execution.finished" | "approval.requested"
   | "approval.granted" | "approval.denied" | "objective.completed"
-  | "mission.approval_requested" | "mission.blocked";
+  | "mission.approval_requested" | "mission.blocked"
+  // Standing delegation cleared an action without a per-action approval (src/lib/autonomy/).
+  | "authority.applied"
+  // Sentinel started work nobody asked for, tied to an existing objective (src/lib/autonomy/proactive-scan.ts).
+  | "proactive.started";
 
 export interface CollaborationEvent {
   type: CollaborationEventType;

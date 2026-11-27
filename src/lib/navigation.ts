@@ -67,6 +67,7 @@ export const SHELL_NAV_GROUPS: NavGroup[] = [
     id: "run", label: "Run", items: [
       { id: "agents",     label: "Agents",     icon: "Bot",       href: "/agents" },
       { id: "bots",       label: "Bots",       icon: "Boxes",     href: "/bots" },
+      { id: "autonomy",   label: "Autonomy",   icon: "Gauge",     href: "/autonomy" },
       { id: "workspaces", label: "Workspaces", icon: "HardDrive", href: "/agent-workspaces" },
     ],
   },

@@ -9,6 +9,8 @@ import { emitCollaborationEvent } from "./event-bus";
 import { evaluateMissionDirective, MISSION_DIRECTIVE_PROMPT } from "./mission-bridge";
 import { postCollaborationMessage } from "./messages";
 import { ensureTaskWorktree } from "./worktree-manager";
+import { composeAgentTurnPrompt } from "@/lib/autonomy/agent-prompt";
+import { logger } from "@/lib/logger";
 
 export async function resolveAgentRuntime(agentId: string) {
   const route = RUNTIME_AGENT_MAP[agentId];
@@ -24,7 +26,7 @@ export async function resolveAgentRuntime(agentId: string) {
  * workingDirectory) so two parallel tasks for the same agent in the same
  * room, each in its own worktree, never share a process or cwd.
  */
-export async function runAgentTurn(input: { roomId: string; agentId: string; userId: string; prompt: string; workingDirectory?: string }): Promise<string> {
+export async function runAgentTurn(input: { roomId: string; agentId: string; userId: string; prompt: string; workingDirectory?: string; surface?: string }): Promise<string> {
   const runtime = await resolveAgentRuntime(input.agentId);
   const adapter = getRuntimeAdapter(runtime.kind);
   const instance = asRuntimeInstance(runtime);
@@ -51,8 +53,23 @@ export async function runAgentTurn(input: { roomId: string; agentId: string; use
     session = await db.agentSession.update({ where: { id: created.id }, data: { chatRoomId: input.roomId } });
   }
 
+  // Canonical prompt stack (src/lib/autonomy/agent-prompt.ts): Sentinel's
+  // autonomy directive, the agent's own persisted identity, its standing
+  // authority, then this turn's content. Composition failure must never
+  // block the turn, so it falls back to the raw prompt and logs.
+  const sessionMeta = (session.metadata ?? {}) as Record<string, unknown>;
+  const delivered = Array.isArray(sessionMeta.promptLayersDelivered) ? sessionMeta.promptLayersDelivered.filter((h): h is string => typeof h === "string") : [];
+  const turnPrompt = await composeAgentTurnPrompt({
+    agentId: input.agentId, workspaceId: runtime.workspaceId ?? null, runtimeKind: runtime.kind,
+    taskPrompt: input.prompt, surface: input.surface ?? "room_turn", delivered,
+  }).catch((error) => {
+    logger.warn("autonomy.prompt_compose_failed", { agentId: input.agentId, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  });
+  const prompt = turnPrompt?.composed.text ?? input.prompt;
+
   let fullContent = "";
-  for await (const event of adapter.send({ sessionId: session.id, prompt: input.prompt, userId: input.userId })) {
+  for await (const event of adapter.send({ sessionId: session.id, prompt, userId: input.userId })) {
     const text = runtimeEventText(event);
     if (text) fullContent += text;
     // The runtime rejected the requested model itself — surface this as a
@@ -66,6 +83,12 @@ export async function runAgentTurn(input: { roomId: string; agentId: string; use
         typeof event.data.reason === "string" ? event.data.reason : "Runtime rejected the requested model",
       );
     }
+  }
+  if (turnPrompt?.delivered) {
+    // Merge into the session's current metadata (the adapter may have written provenance during send).
+    const fresh = await db.agentSession.findUnique({ where: { id: session.id }, select: { metadata: true } }).catch(() => null);
+    const metadata = { ...((fresh?.metadata ?? {}) as Record<string, unknown>), promptLayersDelivered: turnPrompt.delivered, promptCompositionHash: turnPrompt.composed.hash };
+    await db.agentSession.update({ where: { id: session.id }, data: { metadata } }).catch(() => undefined);
   }
   return fullContent;
 }
@@ -100,7 +123,7 @@ export async function runDirectAgentReply(roomId: string, agentId: string, userI
     // never eligible to bridge back into Lisa's orchestration loop.
     const isLead = getVpsAgent(agentId)?.kind === "hermes";
     const prompt = isLead ? `${MISSION_DIRECTIVE_PROMPT}\n\nUser: ${userContent}` : userContent;
-    const reply = await runAgentTurn({ roomId, agentId, userId, prompt, workingDirectory });
+    const reply = await runAgentTurn({ roomId, agentId, userId, prompt, workingDirectory, surface: "direct_reply" });
     await postCollaborationMessage({
       chatRoomId: roomId, senderAgentId: agentId, recipientAgentIds: ["user"], type: "ANSWER", content: reply.slice(0, 4_000),
     });

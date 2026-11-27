@@ -266,7 +266,10 @@ describe("Lisa's tool-calling execution loop", () => {
     expect(task.status).toBe("CHANGES_REQUESTED");
     const question = await db.message.findFirstOrThrow({ where: { chatRoomId: room.id, messageType: "QUESTION" } });
     expect(question.content).toContain("Review budget");
-  });
+    // Three review cycles, each passing the approval + Guardian gates with
+    // their standing-grant lookups: ~5s under full-suite load. An overrun
+    // keeps this loop running into the next test's runtime adapters.
+  }, 15_000);
 
   it("keyword-gating bypass: an innocuously titled claude-code task is gated, not executed", async () => {
     const { user, room } = await setUpRoom();

@@ -35,10 +35,14 @@ describe("autonomy policy", () => {
     expect(decideStep({ ...base, level: 4, impact: "write", estimatedCostCents: 100, spentCents: 900, budgetCents: 1000 }).action).toBe("execute");
   });
 
-  it("retries scale with autonomy and back off", () => {
-    expect(allowedAttempts(2, 5)).toBe(1);
-    expect(allowedAttempts(3, 5)).toBe(2);
-    expect(allowedAttempts(4, 5)).toBe(5);
+  it("a failed attempt does not end a step: every executing level recovers within the step limit and recovery budget", () => {
+    // Autonomy-first: failure recovery is a configurable budget, not a property of the autonomy level.
+    expect(allowedAttempts(1, 5)).toBe(1); // advisory never executes
+    expect(allowedAttempts(2, 5)).toBe(5);
+    expect(allowedAttempts(3, 5)).toBe(5);
+    expect(allowedAttempts(4, 3)).toBe(3); // the step's own limit caps it
+    expect(allowedAttempts(4, 9, 2)).toBe(3); // recovery budget 2 = 1 attempt + 2 recoveries
+    expect(allowedAttempts(3, 5, 0)).toBe(1);
     expect(retryDelayMs(1)).toBe(30_000);
     expect(retryDelayMs(2)).toBe(60_000);
     expect(retryDelayMs(30)).toBe(15 * 60_000);

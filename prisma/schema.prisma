@@ -116,6 +116,14 @@ model Agent {
   // means "use the built-in default weight table for this agent id."
   capabilityWeights Json @default("{}")
 
+  // --- Persistent identity (additive). Independent of `model`: switching an
+  // agent's model never touches these, so identity survives model changes.
+  // src/lib/autonomy/identity.ts composes them into the prompt.
+  personality        String?
+  specialization     String?
+  communicationStyle String?
+  workingPreferences Json    @default("{}")
+
   workspaceId        String?
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   roleAssignments    RoleAssignment[]
@@ -646,6 +654,8 @@ model Workspace {
   bots              Bot[]
   mcpServers        McpServerRegistration[]
   objectives        Objective[]
+  authorityGrants   AuthorityGrant[]
+  autonomySettings  AutonomySettings[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -3812,4 +3822,117 @@ model ObjectiveEvent {
 
   @@index([objectiveId, createdAt])
   @@map("objective_events")
+}
+
+// =====================================================================
+// Autonomy-first execution (src/lib/autonomy/). Additive only.
+// =====================================================================
+
+/// Standing delegation: authority a human grants once so matching operations
+/// run without another approval. Matching rules live in
+/// src/lib/autonomy/authority.ts. Revocation sets revokedAt; rows are never
+/// deleted so every past use stays attributable.
+model AuthorityGrant {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  /// Optional narrowing. Null = any within the workspace.
+  projectId       String?
+  agentId         String?
+  roomId          String?
+  objectiveId     String?
+  /// read, write, exec, delegate, external, deploy, publish, financial, legal, destructive, credential, or "routine" (= read/write/exec/delegate only).
+  operations      String[]
+  capabilities    String[]  @default([])
+  runtimes        String[]  @default([])
+  maxUses         Int?
+  usesCount       Int       @default(0)
+  budgetCents     Int?
+  spentCents      Int       @default(0)
+  /// Recurring authorization window: day | week.
+  period          String?
+  periodMaxUses   Int?
+  periodStartedAt DateTime?
+  periodUses      Int       @default(0)
+  startsAt        DateTime?
+  expiresAt       DateTime?
+  reason          String    @default("")
+  grantedByUserId String
+  revokedAt       DateTime?
+  revokedByUserId String?
+  revokeReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uses      AuthorityGrantUse[]
+
+  @@index([workspaceId, revokedAt])
+  @@index([agentId])
+  @@map("authority_grants")
+}
+
+/// One operation a grant authorized: the provenance record for "what
+/// authority supported this action".
+model AuthorityGrantUse {
+  id            String   @id @default(cuid())
+  grantId       String
+  workspaceId   String
+  agentId       String
+  operation     String
+  /// task | objective_step | bot_tool | guardian_review | ...
+  subjectType   String
+  subjectId     String
+  costCents     Int      @default(0)
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  grant AuthorityGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([subjectType, subjectId])
+  @@map("authority_grant_uses")
+}
+
+/// Operational autonomy configuration. agentId null = workspace default;
+/// an agent row overrides individual keys. Keys and defaults:
+/// src/lib/autonomy/settings.ts.
+model AutonomySettings {
+  id          String   @id @default(cuid())
+  workspaceId String
+  /// "" = the workspace default row (kept non-null so the unique key works).
+  agentId     String   @default("")
+  settings    Json     @default("{}")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId])
+  @@map("autonomy_settings")
+}
+
+/// Content-addressed record of what Sentinel put into one agent prompt
+/// (src/lib/autonomy/prompt-composer.ts). Identical compositions share a row,
+/// so inspection and version comparison cost one row per distinct prompt stack.
+model PromptComposition {
+  id          String   @id @default(cuid())
+  hash        String   @unique
+  agentId     String
+  workspaceId String?
+  /// lisa_loop | worker_task | bot_task | ...
+  surface     String
+  /// [{ id, version, source, hash, chars, truncated }] in prompt order.
+  layers      Json
+  /// Text of the Sentinel-authored layers only (agent/user/task content is not duplicated here).
+  sentinelText String
+  totalChars  Int
+  sentinelChars Int
+  useCount    Int      @default(1)
+  firstUsedAt DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+
+  @@index([agentId, lastUsedAt])
+  @@map("prompt_compositions")
 }

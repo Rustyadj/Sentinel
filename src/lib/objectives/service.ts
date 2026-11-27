@@ -8,7 +8,7 @@ import { createOrchestrationRun } from "@/lib/orchestration/service";
 import { cancelOrchestrationRun } from "@/lib/orchestration/executor";
 import { assertValidPlan, planObjective, type PlanRequest } from "./planner";
 import { recordEvent } from "./engine";
-import { parseAutonomyLevel } from "./policy";
+import { DEFAULT_AUTONOMY_LEVEL, parseAutonomyLevel } from "./policy";
 import type { ToolDeps } from "./tools";
 import { ACTIVE_OBJECTIVE_STATUSES, SETTLED_STEP_STATUSES, type AutonomyLevel, type StepStatus } from "./types";
 
@@ -71,7 +71,7 @@ export function parseCreateObjectiveBody(body: unknown): CreateObjectiveInput {
   if (typeof b.workspaceId !== "string" || !b.workspaceId) throw new ObjectiveError("workspaceId is required", 400);
   const goal = str(b.goal, 4000)?.trim();
   if (!goal) throw new ObjectiveError("goal is required", 400);
-  const level = b.autonomyLevel === undefined ? 2 : parseAutonomyLevel(b.autonomyLevel);
+  const level = b.autonomyLevel === undefined ? DEFAULT_AUTONOMY_LEVEL : parseAutonomyLevel(b.autonomyLevel);
   if (level === null) throw new ObjectiveError("autonomyLevel must be 1, 2, 3 or 4", 400);
   const budget = b.budgetCents === undefined ? 0 : Number(b.budgetCents);
   if (!Number.isInteger(budget) || budget < 0 || budget > 10_000_000) throw new ObjectiveError("budgetCents must be a non-negative integer", 400);
@@ -89,7 +89,7 @@ export async function createObjective(userId: string, input: CreateObjectiveInpu
   }
   const plan = planned.plan;
   assertValidPlan(plan);
-  const level = (parseAutonomyLevel(input.autonomyLevel) ?? 2) as AutonomyLevel;
+  const level = (parseAutonomyLevel(input.autonomyLevel) ?? DEFAULT_AUTONOMY_LEVEL) as AutonomyLevel;
   const objective = await db.$transaction(async (tx) => {
     const created = await tx.objective.create({
       data: {

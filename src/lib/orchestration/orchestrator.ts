@@ -127,3 +127,14 @@ export async function resumeAfterApproval(taskId: string): Promise<void> {
     seed: `Task ${taskId} ("${task.title}") was just approved by the human operator and can now proceed. Continue the objective.`,
   });
 }
+
+/** Resumes Lisa's loop for proactive follow-up work (src/lib/autonomy/proactive-scan.ts).
+ *  Same rebuild-from-state path as an approval resume; every task Lisa starts
+ *  still passes the approval/authority and Guardian gates. */
+export async function resumeRoomProactively(roomId: string, userId: string, seed: string): Promise<void> {
+  const room = await db.chatRoom.findUnique({ where: { id: roomId } });
+  if (!room || room.paused || room.userId !== userId) return;
+  const lead = resolveLead(room.agentIds);
+  if (!lead) return;
+  await runLisaLoop({ roomId: room.id, userId, lead, pool: resolveWorkerPool(room.agentIds), objective: room.objective, seed });
+}
