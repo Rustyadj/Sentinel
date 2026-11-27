@@ -1,0 +1,32 @@
+# Workforce integration contract
+
+Baseline is `d2b7e4eb4ba41dd8440904eecc683c2893f72425`. Workforce development is in `codex/workforce-platform`. The autonomy implementation was observed in `feat/autonomy-first` at the same baseline with uncommitted changes. This contract records the observed interfaces and the handoffs the two branches need to agree on.
+
+| Surface | Canonical owner and interface | Workforce dependency |
+| --- | --- | --- |
+| Organization and teams | Existing `Organization`, `Department`, `Workspace`, and `Team` rows | Workspace-authorized views. Department writes require the organization owner or admin. A durable agent-to-department relationship, manager identity, and lifecycle/version fields require a coordinated shared schema change. |
+| Agent identity and model | Existing `Agent` record, model policy and runtime registry. Autonomy adds `loadAgentIdentity` and prompt composition. | An idempotent provisioning entry point must return an agent ID linked to an executable runtime. Changing compatible models must keep the ID. |
+| Objectives and execution | `listObjectives`, `getObjective`, `controlObjective`, existing orchestration runs, objective steps and events | Current objective creation supports the business-setup template. Workforce requires assignment to arbitrary provisioned agents, persistent objective plans and a durable recurrence entry point. |
+| Capability discovery | Existing MCP registrations and autonomy's `discoverForAgent` via `/api/autonomy/capabilities` | Discovery returns available and missing permissions. The registry needs a supported invocation and registration contract for first-party adapters and binding to declared target resources. |
+| Standing authority | Autonomy's `authorizeOperation` and grants endpoints | The workforce can display and manage existing grants through these endpoints. Automated provisioning needs an agent-actor entry point that evaluates the already delegated scope. |
+| Delegation and Lisa | Canonical orchestration and the Lisa loop | A workforce provisioning action needs a typed Lisa dispatch hook. Workforce needs explicit agent-ID routing and coordination independent of the Lisa conversation. |
+| Skills and memory | Learning scope and skill version services, agent-scoped identity and memory | Reuse the skills catalog and activation endpoints. Memory access remains subject to the canonical runtime's access policy. |
+| Execution and accounting | Objective events and steps, orchestration runs, attempts, recorded cost provenance | Display source-specific measures. Workspace aggregate measures already available. Per-department and per-agent metrics require stable attribution, and missing recorded costs require provenance rather than inferred estimates. |
+| Resource and schedule activation | Existing agent-workspace, bot routines, and orchestration services | Core needs a scheduled activation contract for provisioned agent IDs, with authority evaluated by the worker at execution time. |
+
+The proposed commit boundary is a workforce-side command carrying workspace ID, authenticated actor, validated plan, and stable request ID. The canonical operation should return department, agent, objective, and scheduled activation IDs plus per-capability availability. It must be safe to retry after a partial failure, preserve tenant scoping at every write, and resolve standing authority at execution. A plan can list proposed capabilities but grants none. No workforce schema, migration, runtime, identity store, or authorization policy is added by this branch.
+
+The existing agent-record API persists a row. The baseline runtime router maps fixed agent IDs, so writing five arbitrary rows would give the operator five records without five executable agents. The workforce draft is intentionally a draft until that provisioning contract exists. Department CRUD operates directly on existing departments with workspace and organization checks. Existing objective controls and skill version APIs continue to own execution and publication state.
+
+## Capability integration
+
+- Browser execution has an existing Playwright provider under `agent-workspaces`. It already handles session creation, navigation, screenshots, downloads and constrained uploads. Its in-memory sessions cannot survive a process restart. Before agent registration, add tenant-isolated browser execution and egress enforceable across redirects, subrequests, and sockets. Browser results are data. Store download and screenshot artifacts through the workspace artifact service.
+- MCP registration and connection are the existing path for external services. A configuration record alone cannot attest readiness. Live credential and provider probes are separate from capability discovery.
+- Hermes voice uses the existing voice configuration, LiveKit and OpenAI realtime routes, and Telnyx infrastructure. Provider adapters should advertise modality-specific support and route media through canonical workspace artifacts.
+- A2UI's current v1.0 design uses client-owned catalogs and declarative components with separate action messages. Sentinel's workforce surface uses a bounded local schema based on that design. A wire-level A2UI transport requires separate catalog negotiation and message mapping. [A2UI roadmap](https://a2ui.org/roadmap/) and [message reference](https://a2ui.org/reference/messages/).
+
+## Shared changes to coordinate
+
+- Adopt a single additive migration for department-to-agent membership, reporting relationships, and durable workforce plan revisions after autonomy schema changes land. Reuse `Team` for project membership and `Department` for hierarchy.
+- Add root navigation once both branches agree on Workforce placement. The initial page is available at `/workforce`.
+- Connect the typed Lisa action to canonical provisioning, then verify five real runtime bindings, delegated authority, worker restart recovery, deliverables, and recurring reporting on isolated Postgres/Redis with configured providers.
