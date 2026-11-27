@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { errorResponse, HttpError, readBody, requiredString, requireBotAdmin } from "@/lib/bots/api";
 import { registerMcpServer, refreshMcpServer } from "@/lib/bots/catalog";
+import { isMcpEnvironmentCredentialBound } from "@/lib/bots/mcp-credentials";
 import { listBotHosts } from "@/lib/bots/models";
 import { createBot } from "@/lib/bots/service";
 import { getBotTemplate } from "@/lib/bots/templates";
@@ -23,9 +24,16 @@ export async function POST(request: Request) {
     if (!url) throw new HttpError("MOBILEOPS_MCP_URL is not configured on Sentinel", 409);
     if (!process.env.MOBILEOPS_MCP_TOKEN?.trim()) throw new HttpError("MOBILEOPS_MCP_TOKEN is not configured on Sentinel", 409);
 
+    if (!isMcpEnvironmentCredentialBound(workspaceId, url, "MOBILEOPS_MCP_TOKEN")) {
+      throw new HttpError("The MobileOps MCP credential is not configured for this workspace.", 409);
+    }
+
     let server = await db.mcpServerRegistration.findUnique({ where: { workspaceId_slug: { workspaceId, slug: "mobileops" } } });
     if (!server) {
       server = await registerMcpServer({ workspaceId, name: "MobileOps", url, description: "Typed MobileOps operational and admin tools.", authMode: "bearer-env", secretEnvVar: "MOBILEOPS_MCP_TOKEN", capabilityTags: ["mobileops", "operations", "admin"] }, user.id);
+    }
+    if (server.authMode !== "bearer-env" || server.secretEnvVar !== "MOBILEOPS_MCP_TOKEN" || server.url !== new URL(url).href) {
+      throw new HttpError("The existing MobileOps entry points to a different connection.", 409);
     }
     server = await refreshMcpServer(server.id, workspaceId, user.id);
     if (server.status !== "connected" || !Array.isArray(server.tools) || server.tools.length === 0) throw new HttpError(`MobileOps tool discovery failed: ${server.lastError ?? "no tools discovered"}`, 409);

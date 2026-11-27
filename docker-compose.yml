@@ -102,6 +102,9 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
+    env_file:
+      - path: ${MCP_CATALOG_CREDENTIAL_ENV_FILE:-./.env.mcp-credentials}
+        required: false
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD:-hermes}@postgres:5432/hermesos
@@ -184,6 +187,7 @@ services:
       SENTINEL_AGENT_MCP_HERMES_NATHAN2_NAME: ${SENTINEL_AGENT_MCP_HERMES_NATHAN2_NAME:-mobileops}
       MOBILEOPS_MCP_URL: ${MOBILEOPS_MCP_URL:-}
       MOBILEOPS_MCP_TOKEN: ${MOBILEOPS_MCP_TOKEN:-}
+      MOBILEOPS_MCP_WORKSPACE_ID: ${MOBILEOPS_MCP_WORKSPACE_ID:-}
       AGENT_CONFIG_DIR: /opt/sentinel-os/agents
       AGENT_LOG_DIR: /opt/sentinel-os/logs
       AGENT_PROJECT_ROOT: /opt/sentinel-os/projects

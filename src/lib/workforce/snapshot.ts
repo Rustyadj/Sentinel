@@ -1,3 +1,5 @@
+import { loadCatalog } from "@/lib/bots/catalog";
+import { listMcpCredentialBindings } from "@/lib/bots/mcp-credentials";
 import { db } from "@/lib/db";
 import { RETIRED_AGENT_IDS } from "@/lib/agents/active";
 import { canEditConfig, getWorkspaceControlPlaneUser } from "@/lib/agents/permissions";
@@ -80,11 +82,11 @@ export async function getWorkforceSnapshot(workspaceId: string) {
       select: { id: true, name: true, description: true, domain: true, status: true, version: true, owner: true, requiredTools: true, _count: { select: { versions: true } } },
       orderBy: { name: "asc" },
     }) : [],
-    canReadAgents ? db.mcpServerRegistration.findMany({
-      where: { workspaceId },
-      select: { id: true, name: true, status: true, authMode: true, enabled: true, capabilityTags: true, lastDiscoveredAt: true },
-      orderBy: { name: "asc" },
-    }) : [],
+    canReadAgents ? loadCatalog(workspaceId).then((entries) => entries
+      .filter((entry) => entry.kind === "registered")
+      .map(({ id, name, status, authenticated, enabled, lastError, capabilityTags, lastDiscoveredAt, tools }) => ({
+        id, name, status, authenticated, enabled, lastError, capabilityTags, lastDiscoveredAt, toolCount: tools.length,
+      }))) : [],
     org ? canManageDepartments(user.id, workspaceId, org.id, org.ownerId) : false,
   ]);
 
@@ -94,6 +96,7 @@ export async function getWorkforceSnapshot(workspaceId: string) {
     planningAvailable: planningAvailable(),
     mediaAvailable: Boolean(process.env.OPENAI_API_KEY?.trim()),
     agents, runtimes, departments, teams, objectives, events, tasks, runs, connections, skills,
+    credentialBindings: controlUser && canEditConfig(controlUser.role) ? listMcpCredentialBindings(workspaceId) : [],
     analytics: canReadTasks ? summarizeRecordedSteps(steps) : null,
   };
 }

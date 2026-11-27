@@ -64,14 +64,16 @@ function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
       }
     }
     void load();
-    const timer = active === "operations" ? window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 15_000) : undefined;
-    return () => {
-      window.clearInterval(timer);
-      abort.abort();
-    };
-  }, [workspaceId, revision, active]);
+    return () => abort.abort();
+  }, [workspaceId, revision]);
+
+  const canReadTasks = data?.access.canReadTasks === true;
+  useEffect(() => {
+    if (active !== "operations" || !canReadTasks) return;
+    const source = new EventSource(`/api/workforce/events?workspaceId=${encodeURIComponent(workspaceId)}`);
+    source.addEventListener("activity", () => setRevision((value) => value + 1));
+    return () => source.close();
+  }, [active, canReadTasks, workspaceId]);
 
   if (!data) return error
     ? <div className="space-y-2"><p role="alert">{error}</p><Button variant="outline" onClick={refresh}>Retry</Button></div>
@@ -213,7 +215,7 @@ function Operations({ data, onChange }: { data: WorkforceSnapshot; onChange: () 
     </div>
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>Execution activity</CardTitle><p className="text-xs text-(--muted-foreground)">Refreshes every 15 seconds while open.</p></CardHeader>
+        <CardHeader><CardTitle>Execution activity</CardTitle></CardHeader>
         <CardContent>
           {!data.events.length && <p className="text-sm text-(--muted-foreground)">No objective events recorded.</p>}
           <ol className="space-y-3">{data.events.map((event) => <li className="border-b border-(--border) pb-2 text-sm" key={event.id}>

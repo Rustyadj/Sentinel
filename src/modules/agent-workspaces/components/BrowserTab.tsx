@@ -33,13 +33,13 @@ export function BrowserTab({
   }, [screenshotUrl]);
 
   useEffect(() => {
-    if (browserRuntime.attached || !browserRuntime.reason?.includes("probe is still running")) return;
+    if (browserRuntime.attached) return;
     const timer = window.setInterval(() => {
       void workspaceApi.browserStatus(workspaceId).then((status) => {
         setRuntime(status);
-        if (status.attached || !status.reason?.includes("probe is still running")) window.clearInterval(timer);
+        if (status.attached) window.clearInterval(timer);
       }).catch(() => undefined);
-    }, 500);
+    }, 5_000);
     return () => window.clearInterval(timer);
   }, [browserRuntime, workspaceId]);
 
@@ -79,7 +79,13 @@ export function BrowserTab({
 
   async function start() {
     const result = await run("start", () => workspaceApi.browserCreate(workspaceId));
-    if (result) setSession(result.session);
+    if (result) {
+      setSession(result.session);
+      if (result.session.currentUrl) {
+        setUrl(result.session.currentUrl);
+        await run("screenshot", () => refreshScreenshot(result.session.sessionId));
+      }
+    }
   }
 
   async function navigate() {
@@ -127,7 +133,7 @@ export function BrowserTab({
         {!session ? (
           <Button size="sm" disabled={!canExecute || busy} onClick={() => void start()}>
             {pending === "start" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-            Start browser
+            Start or resume browser
           </Button>
         ) : (
           <>

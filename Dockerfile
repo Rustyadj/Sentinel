@@ -72,7 +72,8 @@ ENV SENTINEL_BUILT_AT=$SENTINEL_BUILT_AT
 
 # Non-root user for security
 RUN groupadd --system --gid 1001 nodejs \
- && useradd  --system --uid 1001 --gid nodejs nextjs
+ && useradd  --system --uid 1001 --gid nodejs nextjs \
+ && install -d -m 0700 -o nextjs -g nodejs /var/lib/sentinel-browser
 
 # Standalone output — only what's needed to run
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

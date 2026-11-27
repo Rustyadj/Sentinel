@@ -1,0 +1,35 @@
+services:
+  app:
+    environment:
+      SENTINEL_BROWSER_WS_ENDPOINT: ws://browser:9231${SENTINEL_BROWSER_WS_PATH:?Set the browser WebSocket path}
+      SENTINEL_BROWSER_STATE_DIR: /var/lib/sentinel-browser
+    networks:
+      - browser_control
+    volumes:
+      - browser_state:/var/lib/sentinel-browser
+
+  browser:
+    build:
+      context: .
+      dockerfile: deploy/browser/Dockerfile
+    init: true
+    shm_size: 256mb
+    restart: unless-stopped
+    environment:
+      SENTINEL_BROWSER_WORKFLOW_PROXY: ${SENTINEL_BROWSER_WORKFLOW_PROXY:?Set the isolated browser egress proxy}
+      SENTINEL_BROWSER_WS_PATH: ${SENTINEL_BROWSER_WS_PATH:?Set the browser WebSocket path}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      - browser_control
+      - browser_egress
+
+networks:
+  browser_control:
+    internal: true
+  browser_egress:
+    external: true
+    name: ${SENTINEL_BROWSER_EGRESS_NETWORK:?Set the internal network shared with the egress proxy}
+
+volumes:
+  browser_state:

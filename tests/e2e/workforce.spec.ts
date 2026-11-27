@@ -65,6 +65,10 @@ test("organization ownership, Titan ICF draft and recorded operations", async ({
 
     await page.getByRole("tab", { name: "Operations" }).click();
     await expect(page.getByText("Research construction leads", { exact: true })).toBeVisible();
+    await db.objectiveEvent.create({
+      data: { objectiveId: objective.id, type: "step_completed", message: "Live objective step recorded." },
+    });
+    await expect(page.getByText("Live objective step recorded.", { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Import Sentinel surface JSON").setInputFiles({
       name: "workflow.json", mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify({

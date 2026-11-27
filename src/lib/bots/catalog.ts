@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/workspaces/audit";
 import { isPublicAddress } from "@/lib/net/public-address";
 import { publicOnlyFetch } from "@/lib/net/public-fetch";
+import { isMcpEnvironmentCredentialBound } from "./mcp-credentials";
 import { slugify } from "./schema";
 import type { CatalogServer, CatalogTool } from "./policy";
 
@@ -78,6 +79,16 @@ export function builtinCatalog(): CatalogServer[] {
   ];
 }
 
+function connectionStatus(row: { workspaceId: string; url: string; authMode: string; secretEnvVar: string | null; status: string; lastError: string | null }) {
+  if (row.authMode === "bearer-env") {
+    const env = row.secretEnvVar;
+    if (!env || !isMcpEnvironmentCredentialBound(row.workspaceId, row.url, env) || !process.env[env]?.trim()) {
+      return { status: "credential_unavailable", lastError: "The workspace credential binding is unavailable on this deployment." };
+    }
+  }
+  return { status: row.status, lastError: row.lastError };
+}
+
 function storedTools(value: Prisma.JsonValue): CatalogTool[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -102,6 +113,7 @@ export interface CatalogEntry extends CatalogServer {
   lastDiscoveredAt: string | null;
   lastError: string | null;
   url?: string;
+  authenticated?: boolean;
 }
 
 /** Every server and tool a bot in this workspace can be granted. */
@@ -111,11 +123,16 @@ export async function loadCatalog(workspaceId: string): Promise<CatalogEntry[]> 
   return [
     { ...sentinel, kind: "sentinel", description: "Sentinel's own MCP server.", enabled: true, status: "connected", capabilityTags: ["orchestration", "memory"], lastDiscoveredAt: null, lastError: null },
     { ...hermes, kind: "hermes-builtin", description: "Tools the Hermes runtime provides natively.", enabled: true, status: "connected", capabilityTags: [], lastDiscoveredAt: null, lastError: null },
-    ...registered.map((row): CatalogEntry => ({
-      id: row.id, slug: row.slug, name: row.name, tools: storedTools(row.tools), kind: "registered",
-      description: row.description, enabled: row.enabled, status: row.status, capabilityTags: row.capabilityTags,
-      lastDiscoveredAt: row.lastDiscoveredAt?.toISOString() ?? null, lastError: row.lastError, url: row.url,
-    })),
+    ...registered.map((row): CatalogEntry => {
+      const status = connectionStatus(row);
+      return {
+        ...status,
+        id: row.id, slug: row.slug, name: row.name, tools: status.status === "connected" ? storedTools(row.tools) : [], kind: "registered",
+        description: row.description, enabled: row.enabled, capabilityTags: row.capabilityTags,
+        lastDiscoveredAt: row.lastDiscoveredAt?.toISOString() ?? null, url: row.url,
+        authenticated: row.authMode === "bearer-env",
+      };
+    }),
   ];
 }
 
@@ -148,6 +165,7 @@ export async function assertSafeMcpUrl(raw: string): Promise<URL> {
   let url: URL;
   try { url = new URL(raw); } catch { throw new McpRegistrationError("url is not a valid URL"); }
   const allowPrivate = allowPrivateMcpTargets();
+  if (url.hash) throw new McpRegistrationError("url must not include a fragment");
   if (url.username || url.password) throw new McpRegistrationError("url must not embed credentials");
   if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) throw new McpRegistrationError("url must use https");
   if (allowPrivate) return url;
@@ -160,26 +178,37 @@ export async function assertSafeMcpUrl(raw: string): Promise<URL> {
 export interface DiscoveredTools { tools: CatalogTool[]; serverName: string | null }
 
 /** Real MCP handshake and `tools/list`. Throws with the transport's own message on failure. */
-export async function discoverMcpTools(input: { url: string; authMode: string; secretEnvVar?: string | null }): Promise<DiscoveredTools> {
+export async function discoverMcpTools(input: { workspaceId?: string; url: string; authMode: string; secretEnvVar?: string | null }): Promise<DiscoveredTools> {
   const url = await assertSafeMcpUrl(input.url);
   const headers: Record<string, string> = {};
   if (input.authMode === "bearer-env") {
-    const secret = input.secretEnvVar ? process.env[input.secretEnvVar] : undefined;
-    if (!secret) throw new McpRegistrationError(`environment variable ${input.secretEnvVar ?? "(unset)"} is not set on this server`);
+    const env = input.secretEnvVar;
+    if (!env || !input.workspaceId || !isMcpEnvironmentCredentialBound(input.workspaceId, url.href, env)) {
+      throw new McpRegistrationError("No deployment credential is bound to this workspace and MCP endpoint.");
+    }
+    const secret = process.env[env]?.trim();
+    if (!secret) throw new McpRegistrationError("The bound MCP credential is missing on this deployment.");
     headers.Authorization = `Bearer ${secret}`;
   }
+  const fetchEndpoint = allowPrivateMcpTargets() ? fetch : publicOnlyFetch;
   const client = new Client({ name: "sentinel-bot-catalog", version: "1.0.0" });
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: { headers },
-    fetch: allowPrivateMcpTargets() ? undefined : publicOnlyFetch,
+    fetch: headers.Authorization
+      ? async (target, init) => {
+        if (new URL(target).href !== url.href) throw new McpRegistrationError("The authenticated MCP endpoint changed.");
+        return fetchEndpoint(target, { ...init, redirect: "error" });
+      }
+      : fetchEndpoint,
   });
   try {
     await client.connect(transport, { timeout: 15_000 });
     const tools: CatalogTool[] = [];
     let cursor: string | undefined;
+    const seenCursors = new Set<string>();
     do {
       const page = await client.listTools(cursor ? { cursor } : {}, { timeout: 15_000 });
-      for (const tool of page.tools) {
+      for (const tool of page.tools.slice(0, 500 - tools.length)) {
         tools.push({
           name: tool.name,
           description: tool.description?.slice(0, 500),
@@ -188,8 +217,13 @@ export async function discoverMcpTools(input: { url: string; authMode: string; s
         });
       }
       cursor = page.nextCursor;
-    } while (cursor && tools.length < 500);
+      if (cursor && seenCursors.has(cursor)) throw new McpRegistrationError("MCP discovery returned a repeated cursor.");
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor && tools.length < 500 && seenCursors.size < 25);
     return { tools, serverName: client.getServerVersion()?.name ?? null };
+  } catch (error) {
+    if (headers.Authorization) throw new McpRegistrationError("Authenticated MCP discovery failed. Check the provider endpoint and credential.");
+    throw error;
   } finally {
     await client.close().catch(() => undefined);
   }
@@ -212,20 +246,23 @@ export async function registerMcpServer(input: RegisterMcpServerInput, userId: s
   if (authMode === "bearer-env" && !/^[A-Z][A-Z0-9_]{1,63}$/.test(input.secretEnvVar ?? "")) {
     throw new McpRegistrationError("secretEnvVar must be an UPPER_SNAKE_CASE environment variable name");
   }
-  await assertSafeMcpUrl(input.url);
+  const url = await assertSafeMcpUrl(input.url);
+  if (authMode === "bearer-env" && !isMcpEnvironmentCredentialBound(input.workspaceId, url.href, input.secretEnvVar!)) {
+    throw new McpRegistrationError("No deployment credential is bound to this workspace and MCP endpoint.");
+  }
   const slug = slugify(name);
   if (slug === SENTINEL_SERVER_ID || slug === "hermes") throw new McpRegistrationError(`"${slug}" is reserved`);
   const existing = await db.mcpServerRegistration.findUnique({ where: { workspaceId_slug: { workspaceId: input.workspaceId, slug } } });
   if (existing) throw new McpRegistrationError(`a server named "${slug}" is already registered`, 409);
   const row = await db.mcpServerRegistration.create({
     data: {
-      workspaceId: input.workspaceId, slug, name, url: input.url, description: input.description?.trim() ?? "",
+      workspaceId: input.workspaceId, slug, name, url: url.href, description: input.description?.trim() ?? "",
       authMode, secretEnvVar: authMode === "bearer-env" ? input.secretEnvVar : null,
       capabilityTags: (input.capabilityTags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
       createdByUserId: userId,
     },
   });
-  await writeAuditLog({ workspaceId: row.workspaceId, userId, action: "bot.mcp_server.registered", entityType: "McpServerRegistration", entityId: row.id, details: { name, url: input.url, authMode } });
+  await writeAuditLog({ workspaceId: row.workspaceId, userId, action: "bot.mcp_server.registered", entityType: "McpServerRegistration", entityId: row.id, details: { name, authMode } });
   return row;
 }
 
@@ -243,7 +280,7 @@ export async function refreshMcpServer(id: string, workspaceId: string, userId: 
     return updated;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return db.mcpServerRegistration.update({ where: { id }, data: { status: "error", lastError: message.slice(0, 500), lastDiscoveredAt: new Date() } });
+    return db.mcpServerRegistration.update({ where: { id }, data: { status: "error", tools: [], lastError: message.slice(0, 500), lastDiscoveredAt: new Date() } });
   }
 }
 

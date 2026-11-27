@@ -37,6 +37,7 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
   const [tab, setTab] = useState<TabId>((TABS.find(([id]) => id === initialTab)?.[0] ?? "overview") as TabId);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [catalog, setCatalog] = useState<CatalogServer[]>([]);
+  const [credentialBindings, setCredentialBindings] = useState<CredentialBinding[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,8 +45,8 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
   const reload = useCallback(async () => {
     const d = await api<Detail>(`/api/bots/${botId}`);
     setDetail(d);
-    const [c, m] = await Promise.all([api<{ servers: CatalogServer[] }>(`/api/bots/catalog?workspaceId=${d.bot.workspaceId}`), api<Meta>(`/api/bots/meta?workspaceId=${d.bot.workspaceId}&runtimeAgentId=${d.bot.runtimeAgentId}&health=1`)]);
-    setCatalog(c.servers); setMeta(m);
+    const [c, m] = await Promise.all([api<{ servers: CatalogServer[]; credentialBindings: CredentialBinding[] }>(`/api/bots/catalog?workspaceId=${d.bot.workspaceId}`), api<Meta>(`/api/bots/meta?workspaceId=${d.bot.workspaceId}&runtimeAgentId=${d.bot.runtimeAgentId}&health=1`)]);
+    setCatalog(c.servers); setCredentialBindings(c.credentialBindings); setMeta(m);
   }, [botId]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { reload().catch((e) => setError(errorMessage(e))); }, [reload]);
@@ -82,7 +83,7 @@ export function BotDetail({ botId, initialTab }: { botId: string; initialTab?: s
         {tab === "model" ? <ModelTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "skills" ? <SkillsTab bot={bot} detail={detail} reload={reload} /> : null}
         {tab === "routines" ? <RoutinesTab botId={bot.id} workspaceId={bot.workspaceId} /> : null}
-        {tab === "tools" ? <ToolsTab bot={bot} detail={detail} catalog={catalog} reload={reload} /> : null}
+        {tab === "tools" ? <ToolsTab bot={bot} detail={detail} catalog={catalog} credentialBindings={credentialBindings} reload={reload} /> : null}
         {tab === "memory" ? <MemoryTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "delegation" ? <DelegationTab bot={bot} meta={meta} reload={reload} /> : null}
         {tab === "test" ? <TestTab bot={bot} detail={detail} /> : null}
@@ -251,11 +252,14 @@ function SkillsTab({ bot, detail, reload }: { bot: Bot; detail: Detail; reload: 
 }
 
 // ------------------------------------------------------------------- tools --
-function ToolsTab({ bot, detail, catalog, reload }: { bot: Bot; detail: Detail; catalog: CatalogServer[]; reload: () => Promise<void> }) {
+type CredentialBinding = { id: string; label: string; endpoint: string; configured: boolean };
+
+function ToolsTab({ bot, detail, catalog, credentialBindings, reload }: { bot: Bot; detail: Detail; catalog: CatalogServer[]; credentialBindings: CredentialBinding[]; reload: () => Promise<void> }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", url: "", authMode: "none", secretEnvVar: "", tags: "", description: "" });
+  const [form, setForm] = useState({ name: "", url: "", credentialBindingId: "", tags: "", description: "" });
   const [busy, setBusy] = useState<string | null>(null);
+  const binding = credentialBindings.find((candidate) => candidate.id === form.credentialBindingId);
   const grant = (serverId: string, toolName: string) => detail.grants.find((g) => g.serverId === serverId && g.toolName === toolName)?.permission ?? "";
   const set = async (serverId: string, toolName: string, permission: string) => {
     setMsg(null);
@@ -264,7 +268,7 @@ function ToolsTab({ bot, detail, catalog, reload }: { bot: Bot; detail: Detail; 
   const server = async (id: string, action: string) => { setBusy(id + action); setMsg(null); try { if (action === "delete") await api(`/api/bots/catalog/${id}`, { method: "DELETE" }); else await api(`/api/bots/catalog/${id}`, { method: "POST", body: { action } }); await reload(); } catch (e) { setMsg(errorMessage(e)); } finally { setBusy(null); } };
   const register = async () => {
     setBusy("register"); setMsg(null);
-    try { const r = await api<{ server: { status: string; lastError: string | null; tools: number } }>("/api/bots/catalog", { method: "POST", body: { workspaceId: bot.workspaceId, name: form.name, url: form.url, description: form.description, authMode: form.authMode, secretEnvVar: form.authMode === "bearer-env" ? form.secretEnvVar : undefined, capabilityTags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) } }); setMsg(r.server.status === "connected" ? `Connected. Found ${r.server.tools} tools.` : `Registered, but discovery failed: ${r.server.lastError}`); setForm({ name: "", url: "", authMode: "none", secretEnvVar: "", tags: "", description: "" }); await reload(); }
+    try { const r = await api<{ server: { status: string; lastError: string | null; tools: number } }>("/api/bots/catalog", { method: "POST", body: { workspaceId: bot.workspaceId, name: form.name, url: binding?.endpoint ?? form.url, description: form.description, credentialBindingId: binding?.id, capabilityTags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) } }); setMsg(r.server.status === "connected" ? `Connected. Found ${r.server.tools} tools.` : `Registered, but discovery failed: ${r.server.lastError}`); setForm({ name: "", url: "", credentialBindingId: "", tags: "", description: "" }); await reload(); }
     catch (e) { setMsg(errorMessage(e)); } finally { setBusy(null); }
   };
   return (
@@ -301,16 +305,18 @@ function ToolsTab({ bot, detail, catalog, reload }: { bot: Bot; detail: Detail; 
       </ul>
       <section className="space-y-2 rounded-lg border border-(--border) p-4">
         <h3 className="text-[14px] font-medium">Connect an MCP server</h3>
-        <p className="text-[12px] text-(--muted-foreground)">For example an image or video generation provider. Sentinel asks it for its tool list. Secrets stay in server environment variables; only the variable name is stored.</p>
+        <p className="text-[12px] text-(--muted-foreground)">Sentinel discovers tools using the endpoint and its configured workspace credential.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="URL"><TextInput value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/mcp" /></Field>
-          <Field label="Authentication"><Select value={form.authMode} onChange={(e) => setForm({ ...form, authMode: e.target.value })}><option value="none">None</option><option value="bearer-env">Bearer token from environment variable</option></Select></Field>
-          {form.authMode === "bearer-env" ? <Field label="Variable name" hint="UPPER_SNAKE_CASE, set on the Sentinel server."><TextInput value={form.secretEnvVar} onChange={(e) => setForm({ ...form, secretEnvVar: e.target.value })} placeholder="PROVIDER_API_KEY" /></Field> : null}
+          <Field label="URL"><TextInput value={binding?.endpoint ?? form.url} readOnly={!!binding} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/mcp" /></Field>
+          {credentialBindings.length > 0 && <Field label="Authentication"><Select value={form.credentialBindingId} onChange={(e) => setForm({ ...form, credentialBindingId: e.target.value })}>
+            <option value="">Public endpoint</option>
+            {credentialBindings.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.label}{item.configured ? "" : " (credential missing)"}</option>)}
+          </Select></Field>}
           <Field label="Capability tags" hint="Comma separated, e.g. image-generation, video-generation."><TextInput value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} /></Field>
           <Field label="Description"><TextInput value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>
-        <Button busy={busy === "register"} disabled={!form.name.trim() || !form.url.trim()} onClick={register}>Connect and discover tools</Button>
+        <Button busy={busy === "register"} disabled={!form.name.trim() || (!binding && !form.url.trim())} onClick={register}>Connect and discover tools</Button>
       </section>
     </div>
   );

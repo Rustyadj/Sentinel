@@ -59,6 +59,26 @@ services:
     ports: ["127.0.0.1:4900:4900"]
     healthcheck: { test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4900/__calls').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""], interval: 3s, timeout: 3s, retries: 20 }
 
+  browser-proxy:
+    image: sentinel-os-worker:${SENTINEL_RELEASE_SHA}
+    pull_policy: never
+    command: node /app/browser-proxy.mjs
+    volumes: ["../../tests/e2e/support/browser-proxy.mjs:/app/browser-proxy.mjs:ro"]
+    networks: [browser_test]
+
+  browser:
+    build:
+      context: ../..
+      dockerfile: deploy/browser/Dockerfile
+    init: true
+    shm_size: 256mb
+    environment:
+      SENTINEL_BROWSER_WORKFLOW_PROXY: http://browser-proxy:8080
+      SENTINEL_BROWSER_WS_PATH: /rc-workforce-browser-verification-only
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [browser_test]
+
   app:
     image: sentinel-os-app:${SENTINEL_RELEASE_SHA}
     pull_policy: never
@@ -74,7 +94,10 @@ services:
       SYSTEM_ONE_MODE: "off"
       SENTINEL_CLI_RUNTIME_HOST: "false"
       SENTINEL_COMMIT: ${SENTINEL_RELEASE_SHA}
-    volumes: [agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
+      SENTINEL_BROWSER_WS_ENDPOINT: ws://browser:9231/rc-workforce-browser-verification-only
+      SENTINEL_BROWSER_STATE_DIR: /var/lib/sentinel-browser
+    networks: [default, browser_test]
+    volumes: [browser_state:/var/lib/sentinel-browser, agent_configs:/opt/sentinel-os/agents, agent_logs:/opt/sentinel-os/logs, projects:/opt/sentinel-os/projects]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -111,7 +134,12 @@ services:
       migrate: { condition: service_completed_successfully }
     healthcheck: { test: ["CMD-SHELL", "test -f /tmp/worker-heartbeat && test $$(( $$(date +%s) - $$(stat -c %Y /tmp/worker-heartbeat) )) -lt 60"], interval: 5s, timeout: 5s, retries: 20, start_period: 30s }
 
+networks:
+  browser_test:
+    internal: true
+
 volumes:
+  browser_state:
   agent_configs:
   agent_logs:
   projects:
