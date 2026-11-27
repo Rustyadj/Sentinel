@@ -1,4 +1,4 @@
-const { chromium } = require("playwright-core");
+import { chromium } from "playwright-core";
 
 async function start() {
   const server = process.env.SENTINEL_BROWSER_WORKFLOW_PROXY;
