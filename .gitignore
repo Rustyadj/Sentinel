@@ -76,3 +76,5 @@ test-results/
 
 # MCP smoke-probe scratch state (client id + PKCE verifier)
 tests/e2e/rc/.seed.json
+
+.env.mcp-credentials

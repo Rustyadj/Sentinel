@@ -3,6 +3,7 @@
 // points that legitimately drive workspaces (the acceptance script, cron and
 // worker processes). These modules import Node built-ins, so a client import
 // fails loudly on its own.
+import type { BrowserWorkflow, runBrowserWorkflow } from "./browser-workflow";
 import { WorkspaceError } from "./errors";
 import { playwrightBrowserProvider } from "./providers/browser-playwright";
 
@@ -23,13 +24,14 @@ export interface WorkspaceBrowserProvider {
   readonly id: string;
   runtimeStatus(): BrowserRuntimeStatus;
   createSession(workspaceId: string): Promise<BrowserSession>;
-  getSession(sessionId: string): BrowserSession | null;
-  navigate(sessionId: string, url: string): Promise<{ url: string; status: number }>;
-  screenshot(sessionId: string, fullPage: boolean): Promise<{ contentType: string; data: Buffer }>;
-  download(sessionId: string, url: string, destinationPath: string): Promise<{ path: string; sizeBytes: number }>;
-  upload(sessionId: string, selector: string, sourcePath: string): Promise<void>;
-  getCookies(sessionId: string): Promise<{ name: string; domain: string; path: string; expires: number | null }[]>;
-  closeSession(sessionId: string): Promise<void>;
+  getSession(workspaceId: string, sessionId: string): Promise<BrowserSession | null>;
+  navigate(workspaceId: string, sessionId: string, url: string): Promise<{ url: string; status: number }>;
+  screenshot(workspaceId: string, sessionId: string, fullPage: boolean): Promise<{ contentType: string; data: Buffer }>;
+  download(workspaceId: string, sessionId: string, url: string, destinationPath: string): Promise<{ path: string; sizeBytes: number }>;
+  upload(workspaceId: string, sessionId: string, selector: string, sourcePath: string): Promise<void>;
+  getCookies(workspaceId: string, sessionId: string): Promise<{ name: string; domain: string; path: string; expires: number | null }[]>;
+  closeSession(workspaceId: string, sessionId: string): Promise<void>;
+  runWorkflow?(workspaceId: string, sessionId: string, actions: BrowserWorkflow): ReturnType<typeof runBrowserWorkflow>;
 }
 
 let provider: WorkspaceBrowserProvider | null = null;

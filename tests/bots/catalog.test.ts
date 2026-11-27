@@ -10,6 +10,7 @@ vi.mock("@/lib/orchestration/queue", () => ({ enqueueOrchestrationRun: vi.fn().m
 
 import { db } from "@/lib/db";
 import { assertSafeMcpUrl, deleteMcpServer, loadCatalog, refreshMcpServer, registerMcpServer, setMcpServerEnabled } from "@/lib/bots/catalog";
+import { listMcpCredentialBindings, matchMcpCredentialBinding } from "@/lib/bots/mcp-credentials";
 import { executeOrchestrationRun } from "@/lib/orchestration/executor";
 import { createBot, grantToolPermission } from "@/lib/bots/service";
 import { delegateToBot, getBotTask } from "@/lib/bots/tasks";
@@ -46,7 +47,7 @@ beforeAll(async () => {
   ({ owner, workspace } = await makeWorkspace());
 });
 afterAll(async () => { delete process.env.MCP_CATALOG_ALLOW_PRIVATE; await new Promise((resolve) => httpServer.close(resolve)); });
-beforeEach(() => { resetScript(); requiredAuth = null; delete process.env.TEST_PROVIDER_KEY; });
+beforeEach(() => { resetScript(); requiredAuth = null; delete process.env.TEST_PROVIDER_KEY; delete process.env.MCP_CATALOG_CREDENTIAL_BINDINGS; });
 
 describe("outbound MCP server registration", () => {
   it("refuses private/loopback targets unless the operator has allowed them, and never embeds credentials", async () => {
@@ -85,15 +86,30 @@ describe("outbound MCP server registration", () => {
 
   it("authenticates with a bearer token read from the environment, and stores no secret", async () => {
     requiredAuth = "s3cret-token";
-    const row = await registerMcpServer({ workspaceId: workspace.id, name: "Keyed Provider", url: baseUrl, authMode: "bearer-env", secretEnvVar: "TEST_PROVIDER_KEY" }, owner.id);
+    const input = { workspaceId: workspace.id, name: "Keyed Provider", url: baseUrl, authMode: "bearer-env" as const, secretEnvVar: "TEST_PROVIDER_KEY" };
+    await expect(registerMcpServer(input, owner.id)).rejects.toThrow(/No deployment credential/);
+    process.env.MCP_CATALOG_CREDENTIAL_BINDINGS = JSON.stringify({ creative: { workspaceId: workspace.id, endpoint: baseUrl, env: "TEST_PROVIDER_KEY", label: "Creative Provider" } });
+    expect(listMcpCredentialBindings(workspace.id)).toEqual([{ id: "creative", label: "Creative Provider", endpoint: baseUrl, configured: false }]);
+    expect(listMcpCredentialBindings("other-workspace")).toEqual([]);
+    expect(matchMcpCredentialBinding("creative", workspace.id, baseUrl + "/other")).toBeNull();
+    expect(matchMcpCredentialBinding("creative", "other-workspace", baseUrl)).toBeNull();
+    await expect(registerMcpServer({ ...input, url: baseUrl + "/other" }, owner.id)).rejects.toThrow(/No deployment credential/);
+    const row = await registerMcpServer(input, owner.id);
     const missing = await refreshMcpServer(row.id, workspace.id, owner.id);
-    expect(missing).toMatchObject({ status: "error", lastError: expect.stringMatching(/TEST_PROVIDER_KEY is not set/) });
+    expect(missing).toMatchObject({ status: "error", lastError: expect.stringMatching(/credential is missing/) });
     process.env.TEST_PROVIDER_KEY = "wrong";
     expect((await refreshMcpServer(row.id, workspace.id, owner.id)).status).toBe("error");
     process.env.TEST_PROVIDER_KEY = "s3cret-token";
     const ok = await refreshMcpServer(row.id, workspace.id, owner.id);
     expect(ok.status).toBe("connected");
     expect(JSON.stringify(ok)).not.toContain("s3cret-token");
+    delete process.env.MCP_CATALOG_CREDENTIAL_BINDINGS;
+    expect((await loadCatalog(workspace.id)).find((entry) => entry.id === row.id)).toMatchObject({
+      status: "credential_unavailable", tools: [],
+    });
+    const before = requests;
+    expect(await refreshMcpServer(row.id, workspace.id, owner.id)).toMatchObject({ status: "error", tools: [] });
+    expect(requests).toBe(before);
     // Same tool names as "Creative Provider": remove it so later tests are unambiguous.
     await deleteMcpServer(row.id, workspace.id, owner.id);
   });
