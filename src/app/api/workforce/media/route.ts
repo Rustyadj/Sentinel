@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { audioFormats, getSpeechProvider, maxAudioBytes } from "@/lib/workforce/media";
+import { analysisFormats, audioFormats, getMediaProvider, maxMediaBytes } from "@/lib/workforce/media";
 import { requireWorkspacePermission, WorkspaceAccessError } from "@/lib/workspaces/authorization";
 
 const noStore = { "Cache-Control": "no-store" };
@@ -29,20 +29,26 @@ export async function POST(request: Request) {
   const params = new URL(request.url).searchParams;
   const workspaceId = params.get("workspaceId");
   const action = params.get("action");
-  if (!workspaceId || workspaceId.length > 100 || (action !== "transcribe" && action !== "synthesize")) {
-    return Response.json({ error: "A workspace and a valid audio action are required." }, { status: 400, headers: noStore });
+  if (!workspaceId || workspaceId.length > 100 || (action !== "transcribe" && action !== "synthesize" && action !== "analyze")) {
+    return Response.json({ error: "A workspace and a valid media action are required." }, { status: 400, headers: noStore });
   }
   try {
     await requireWorkspacePermission(workspaceId, "agents.runtime.execute");
-    const provider = getSpeechProvider();
-    if (!provider) return Response.json({ error: "Configure an OpenAI API key to use workforce audio." }, { status: 503, headers: noStore });
+    const provider = getMediaProvider();
+    if (!provider) return Response.json({ error: "Configure an OpenAI API key to use workforce media." }, { status: 503, headers: noStore });
 
-    if (action === "transcribe") {
+    if (action !== "synthesize") {
       const mime = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? "";
-      if (!Object.hasOwn(audioFormats, mime)) return Response.json({ error: "Unsupported audio file format." }, { status: 415, headers: noStore });
-      const body = await readLimitedBody(request, maxAudioBytes);
-      if (!body) return Response.json({ error: "Audio files must be 10 MB or smaller." }, { status: 413, headers: noStore });
-      if (!body.length) return Response.json({ error: "Select a nonempty audio file." }, { status: 400, headers: noStore });
+      const supported = action === "transcribe" ? Object.hasOwn(audioFormats, mime) : analysisFormats.has(mime);
+      if (!supported) return Response.json({ error: "Unsupported file format for this operation." }, { status: 415, headers: noStore });
+      const body = await readLimitedBody(request, maxMediaBytes);
+      if (!body) return Response.json({ error: "Files must be 10 MB or smaller." }, { status: 413, headers: noStore });
+      if (!body.length) return Response.json({ error: "Select a nonempty file." }, { status: 400, headers: noStore });
+      if (action === "analyze") {
+        const result = await provider.analyze({ bytes: body, mimeType: mime }, request.signal);
+        return Response.json({ provider: provider.id, ...result }, { headers: noStore });
+      }
+
       const audio = new File([new Uint8Array(body)], `audio.${audioFormats[mime]}`, { type: mime });
       const result = await provider.transcribe(audio, request.signal);
       return Response.json({ provider: provider.id, ...result }, { headers: noStore });
@@ -57,6 +63,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof WorkspaceAccessError) return Response.json({ error: error.message }, { status: error.status, headers: noStore });
-    return Response.json({ error: "The speech provider could not complete this request." }, { status: 502, headers: noStore });
+    return Response.json({ error: "The media provider could not complete this request." }, { status: 502, headers: noStore });
   }
 }

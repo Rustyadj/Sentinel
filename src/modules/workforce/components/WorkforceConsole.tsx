@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { WorkforceSnapshot } from "@/lib/workforce/snapshot";
 import { objectiveActionKey, type Surface, type SurfaceAction } from "@/lib/workforce/surface";
 import { OrganizationDesigner } from "./OrganizationDesigner";
-import { WorkforceAudio } from "./WorkforceAudio";
+import { WorkforceMedia } from "./WorkforceMedia";
 import { WorkforceAgents } from "./WorkforceAgents";
 import { WorkforceConnections } from "./WorkforceConnections";
 import { WorkforceGenesis } from "./WorkforceGenesis";
@@ -86,7 +86,7 @@ function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
         <TabsTrigger value="agents">Agents</TabsTrigger>
         <TabsTrigger value="operations">Operations</TabsTrigger>
         <TabsTrigger value="skills">Skills</TabsTrigger>
-        {data.access.canExecute && <TabsTrigger value="audio">Audio</TabsTrigger>}
+        {data.access.canExecute && <TabsTrigger value="media">Media</TabsTrigger>}
       </TabsList>
     </div>
     <TabsContent value="overview"><Overview data={data} onChange={refresh} /></TabsContent>
@@ -94,7 +94,7 @@ function WorkspacePanel({ workspaceId }: { workspaceId: string }) {
     <TabsContent value="genesis" forceMount className="data-[state=inactive]:hidden"><WorkforceGenesis workspace={data.workspace} canPlan={data.access.plan} providerAvailable={data.planningAvailable} /></TabsContent>
     <TabsContent value="agents"><WorkforceAgents data={data} onChange={refresh} /></TabsContent>
     <TabsContent value="operations"><Operations data={data} onChange={refresh} /></TabsContent>
-    {data.access.canExecute && <TabsContent value="audio"><WorkforceAudio workspaceId={workspaceId} available={data.audioAvailable} /></TabsContent>}
+    {data.access.canExecute && <TabsContent value="media"><WorkforceMedia workspaceId={workspaceId} available={data.mediaAvailable} /></TabsContent>}
     <TabsContent value="skills"><WorkforceSkills skills={data.skills} canEdit={data.access.canUpdateWorkspace} onChange={refresh} /></TabsContent>
   </Tabs>;
 }

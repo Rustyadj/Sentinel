@@ -90,7 +90,7 @@ export async function getWorkforceSnapshot(workspaceId: string) {
     workspace: { id: workspace.id, name: workspace.name, organization: org?.name ?? null },
     access: { canReadTasks, canReadAgents, canReadTeams, manageDepartments, canUpdateWorkspace, canExecute, controlObjectives: canReadTasks && canUpdateTasks, plan: !!controlUser && canEditConfig(controlUser.role) },
     planningAvailable: planningAvailable(),
-    audioAvailable: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    mediaAvailable: Boolean(process.env.OPENAI_API_KEY?.trim()),
     agents, runtimes, departments, teams, objectives, events, tasks, runs, connections, skills,
     analytics: canReadTasks ? summarizeRecordedSteps(steps) : null,
   };

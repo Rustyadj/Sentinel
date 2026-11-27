@@ -4,41 +4,47 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export function WorkforceAudio({ workspaceId, available }: { workspaceId: string; available: boolean }) {
+export function WorkforceMedia({ workspaceId, available }: { workspaceId: string; available: boolean }) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState("");
+  const [analysis, setAnalysis] = useState("");
   const [recording, setRecording] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => () => { if (recording) URL.revokeObjectURL(recording); }, [recording]);
 
-  async function process(action: "transcribe" | "synthesize", body: string | File) {
+  async function process(action: "transcribe" | "synthesize" | "analyze", body: string | File) {
     setStatus("");
     setBusy(true);
     try {
       const response = await fetch(`/api/workforce/media?workspaceId=${encodeURIComponent(workspaceId)}&action=${action}`, { method: "POST", body });
       if (!response.ok) {
         const { error } = await response.json();
-        throw new Error(error ?? "Could not process audio.");
+        throw new Error(error ?? "Could not process the media.");
       }
-      if (action === "transcribe") {
-        const result = await response.json();
-        setText(result.text);
-        setStatus("Transcription ready.");
-      } else {
+      if (action === "synthesize") {
         setRecording(URL.createObjectURL(await response.blob()));
         setStatus("Generated speech is ready.");
+      } else {
+        const result = await response.json();
+        if (action === "transcribe") {
+          setText(result.text);
+          setStatus("Transcription ready.");
+        } else {
+          setAnalysis(result.text);
+          setStatus("Analysis ready.");
+        }
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not process audio.");
+      setStatus(error instanceof Error ? error.message : "Could not process the media.");
     } finally {
       setBusy(false);
     }
   }
 
-  return <Card>
+  return <div className="space-y-4"><Card>
     <CardHeader><CardTitle>Audio tools</CardTitle></CardHeader>
     <CardContent className="space-y-3 text-sm">
-      {!available ? <p>Connect OpenAI to transcribe recordings and generate speech in this workspace.</p> : <>
+      {!available ? <p>Connect OpenAI to use workforce media tools.</p> : <>
         <label className="grid gap-1">Transcribe a recording (up to 10 MB)
           <input type="file" accept=".mp3,.mp4,.m4a,.wav,.webm,.flac,.ogg,audio/*" disabled={busy} onChange={(event) => {
             const file = event.currentTarget.files?.[0];
@@ -57,7 +63,21 @@ export function WorkforceAudio({ workspaceId, available }: { workspaceId: string
           <a className="block w-fit underline" href={recording} download="sentinel-speech.mp3">Download MP3</a>
         </div>}
       </>}
-      {status && <p role="status">{status}</p>}
     </CardContent>
-  </Card>;
+  </Card>
+    {available && <Card>
+      <CardHeader><CardTitle>Image and PDF analysis</CardTitle></CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <label className="grid gap-1">Analyze an image, screenshot or PDF with OpenAI (up to 10 MB)
+          <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) void process("analyze", file);
+          }} />
+        </label>
+        {analysis && <p className="whitespace-pre-wrap break-words">{analysis}</p>}
+      </CardContent>
+    </Card>}
+    {status && <p className="text-sm" role="status">{status}</p>}
+  </div>;
 }
